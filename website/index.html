@@ -6,80 +6,77 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
     <title>Codenames Tournament</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        line-height: 1.6;
-        color: #1f2937;
-        background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem;
-      }
-
-      .container {
-        max-width: 800px;
-        text-align: center;
-        animation: fadeInUp 0.8s ease;
-      }
-
-      h1 {
-        font-size: 3.5rem;
-        font-weight: 700;
-        margin-bottom: 1.5rem;
-        background: linear-gradient(135deg, #1f2937, #6366f1);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-
-      .subtitle {
-        font-size: 1.25rem;
-        color: #6b7280;
-        margin-bottom: 3rem;
-      }
-
-      .emoji {
-        font-size: 4rem;
-        margin-bottom: 2rem;
-      }
-
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(30px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      @media (max-width: 768px) {
-        h1 {
-          font-size: 2.5rem;
-        }
-
-        .subtitle {
-          font-size: 1rem;
-        }
-      }
-    </style>
   </head>
   <body>
-    <div class="container">
-      <div class="emoji">🎯</div>
-      <h1>Codenames Tournament</h1>
-      <p class="subtitle">Welcome to the Codenames Tournament!</p>
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-brand">🎯 Codenames Tournament</a>
+        <ul class="nav-menu">
+          <li><a href="/" class="active">Home</a></li>
+          <li><a href="/register.html">Register Team</a></li>
+          <li><a href="/teams.html">Teams (<span id="teams-count">0</span>)</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="home">
+      <section class="hero">
+        <div class="container">
+          <div class="hero-content">
+            <h1 class="hero-title">Codenames Tournament</h1>
+            <p class="hero-subtitle">
+              Gather your team of 3 and compete in the ultimate word game challenge!
+            </p>
+            <div class="hero-stats">
+              <div class="stat-card">
+                <div class="stat-number" id="teams-stat">0</div>
+                <div class="stat-label">Teams Registered</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">3</div>
+                <div class="stat-label">Players Per Team</div>
+              </div>
+            </div>
+            <div class="hero-buttons">
+              <a href="/register.html" class="btn btn-primary">Register Your Team</a>
+              <a href="/teams.html" class="btn btn-secondary">View Teams</a>
+            </div>
+          </div>
+          <div class="hero-image">
+            <div class="gradient-orb"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="info-section">
+        <div class="container">
+          <h2 class="section-title">Tournament Details</h2>
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="info-icon">👥</div>
+              <h3>Team Format</h3>
+              <p>Each team must consist of exactly 3 players. Work together to decode the clues and win!</p>
+            </div>
+            <div class="info-card">
+              <div class="info-icon">📋</div>
+              <h3>How to Play</h3>
+              <p>Standard Codenames rules apply. One spymaster gives clues, two operatives guess the words.</p>
+            </div>
+            <div class="info-card">
+              <div class="info-icon">🏆</div>
+              <h3>Prizes</h3>
+              <p>Compete for glory and bragging rights. The winning team will be crowned champions!</p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
+
+    <script src="app.js"></script>
+    <script>
+      updateTeamsCount();
+    </script>
   </body>
 </html>

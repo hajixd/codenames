@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <title>Register Team - Codenames Tournament</title>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-brand">🎯 Codenames Tournament</a>
+        <ul class="nav-menu">
+          <li><a href="/">Home</a></li>
+          <li><a href="/register.html" class="active">Register Team</a></li>
+          <li><a href="/teams.html">Teams (<span id="teams-count">0</span>)</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="register-page">
+      <div class="container">
+        <div class="register-content">
+          <div class="register-header">
+            <h1>Register Your Team</h1>
+            <p>Fill in your team details to join the tournament</p>
+          </div>
+
+          <div id="error-box" class="error-box" style="display: none;">
+            <h3>Please fix the following errors:</h3>
+            <ul id="error-list"></ul>
+          </div>
+
+          <form id="register-form" class="register-form">
+            <div class="form-section">
+              <h2>Team Information</h2>
+              <div class="form-group">
+                <label for="teamName">Team Name *</label>
+                <input
+                  type="text"
+                  id="teamName"
+                  name="teamName"
+                  placeholder="Enter your team name"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h2>Team Members (3 players required)</h2>
+              <div class="player-card">
+                <h3>Player 1</h3>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="player0-name">Name *</label>
+                    <input
+                      type="text"
+                      id="player0-name"
+                      name="player0-name"
+                      placeholder="Player name"
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="player0-email">Email *</label>
+                    <input
+                      type="email"
+                      id="player0-email"
+                      name="player0-email"
+                      placeholder="player@example.com"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="player-card">
+                <h3>Player 2</h3>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="player1-name">Name *</label>
+                    <input
+                      type="text"
+                      id="player1-name"
+                      name="player1-name"
+                      placeholder="Player name"
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="player1-email">Email *</label>
+                    <input
+                      type="email"
+                      id="player1-email"
+                      name="player1-email"
+                      placeholder="player@example.com"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="player-card">
+                <h3>Player 3</h3>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="player2-name">Name *</label>
+                    <input
+                      type="text"
+                      id="player2-name"
+                      name="player2-name"
+                      placeholder="Player name"
+                      required
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="player2-email">Email *</label>
+                    <input
+                      type="email"
+                      id="player2-email"
+                      name="player2-email"
+                      placeholder="player@example.com"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Register Team</button>
+              <a href="/teams.html" class="btn btn-secondary">View All Teams</a>
+            </div>
+          </form>
+
+          <div class="register-info">
+            <p>
+              <strong>Note:</strong> Make sure all information is correct. You can view all registered teams on the Teams page.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+      updateTeamsCount();
+      
+      document.getElementById('register-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        handleFormSubmit();
+      });
+    </script>
+  </body>
+</html>
