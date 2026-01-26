@@ -6,7 +6,9 @@
 */
 
 const MAX_TEAMS = 8;
-const TEAM_SIZE = 3;
+// Teams should have at least 3 players to be tournament-ready, but can have up to 4.
+const TEAM_MIN = 3;
+const TEAM_MAX = 4;
 
 // Firebase config
 const firebaseConfig = {
@@ -679,7 +681,7 @@ function updateHomeStats(teams) {
   const players = teams.reduce((sum, t) => sum + getMembers(t).length, 0);
 
   // Home "spots" = remaining player slots (more useful than remaining teams)
-  const maxPlayers = MAX_TEAMS * TEAM_SIZE;
+  const maxPlayers = MAX_TEAMS * TEAM_MAX;
   const spots = Math.max(0, maxPlayers - players);
 
   setText('spots-left', spots);
@@ -933,7 +935,7 @@ function renderPlayers(players, teams) {
   const roster = buildRosterIndex(teams);
   const myTeam = st?.team;
   const canManageInvites = !!(st.isCreator && st.teamId && myTeam);
-  const canSendInvitesNow = !!(canManageInvites && getMembers(myTeam).length < TEAM_SIZE);
+  const canSendInvitesNow = !!(canManageInvites && getMembers(myTeam).length < TEAM_MAX);
 
   // Directory = every known player from the Players collection PLUS anyone currently on a team.
   const directory = buildPlayersDirectory(players, teams);
@@ -1124,7 +1126,7 @@ async function upsertPlayerProfile(userId, name) {
 async function sendInviteToPlayer(targetUserId) {
   const st = computeUserState(teamsCache);
   if (!st.isCreator || !st.teamId || !st.team) return;
-  if (getMembers(st.team).length >= TEAM_SIZE) return;
+  if (getMembers(st.team).length >= TEAM_MAX) return;
 
   setHint('players-hint', 'Sending invite…');
 
@@ -1222,7 +1224,7 @@ async function acceptInvite(teamId) {
 
       const team = { id: teamSnap.id, ...teamSnap.data() };
       const members = getMembers(team);
-      if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
+      if (members.length >= TEAM_MAX) throw new Error('Team is full.');
       if (members.some(m => isSameAccount(m, st.userId))) return;
 
       // Remove this user from the team's pending list if present.
@@ -1309,7 +1311,7 @@ function renderTeams(teams) {
           <div class="team-list-members">${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
-          <div class="team-list-count">${members.length}/${TEAM_SIZE}</div>
+          <div class="team-list-count">${members.length}/${TEAM_MAX}</div>
         </div>
       </button>
     `;
@@ -1388,7 +1390,7 @@ function renderTeamModal(teamId) {
 
   const st = computeUserState(teamsCache);
   const joinBtn = document.getElementById('team-modal-join');
-  const full = members.length >= TEAM_SIZE;
+  const full = members.length >= TEAM_MAX;
   const iAmMember = st.teamId === teamId;
   const iAmPendingHere = st.pendingTeamId === teamId;
   const iAmBusy = !!(st.teamId || st.pendingTeamId);
@@ -1601,7 +1603,7 @@ function renderMyTeam(teams) {
   setText('myteam-name', st.team.teamName || 'Unnamed');
   const myNameEl = document.getElementById('myteam-name');
   if (myNameEl) myNameEl.style.color = getDisplayTeamColor(st.team);
-  setText('myteam-size', `${getMembers(st.team).length}/${TEAM_SIZE}`);
+  setText('myteam-size', `${getMembers(st.team).length}/${TEAM_MAX}`);
 
   // Footer buttons
   if (leaveDeleteBtn) {
@@ -2293,7 +2295,7 @@ async function acceptRequest(teamId, userId) {
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
       const pending = getPending(t);
-      if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
+      if (members.length >= TEAM_MAX) throw new Error('Team is full.');
 
       const req = pending.find(r => r.userId === userId);
       if (!req) return;

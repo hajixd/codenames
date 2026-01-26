@@ -1647,16 +1647,19 @@ body.mode-joiner .only-joiner{ display:block; }
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
   border-radius: 999px;
-  background: #ff3b30;
-  color: #fff;
+  /* Blend with the theme (no opaque red). */
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--text);
   font-weight: 900;
-  font-size: 10px;
+  font-size: 9px;
+  letter-spacing: -0.2px;
   line-height: 1;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.22);
 }
 
 .desktop-tabs .tab,
