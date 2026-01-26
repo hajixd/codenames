@@ -144,6 +144,9 @@ function refreshHeaderIdentity() {
     ? (st.team.teamName || 'My team')
     : (st.pendingTeam ? `Pending: ${st.pendingTeam.teamName || 'Team'}` : 'No team');
   setText('user-team-display', teamText);
+
+  // Apply team theme (glow + accent) for the team you're ON.
+  applyTeamThemeFromState(st);
 }
 
 /* =========================
@@ -223,11 +226,47 @@ function computeUserState(teams) {
 }
 
 /* =========================
+   Team theme (color)
+========================= */
+function isValidHexColor(c) {
+  return /^#([0-9a-fA-F]{6})$/.test(String(c || '').trim());
+}
+
+function hexToRgba(hex, alpha) {
+  if (!isValidHexColor(hex)) return `rgba(59,130,246,0)`;
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const a = Math.max(0, Math.min(1, Number(alpha)));
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function applyTeamThemeFromState(st) {
+  const body = document.body;
+  const root = document.documentElement;
+  const raw = st?.team?.teamColor;
+  const color = isValidHexColor(raw) ? raw : (st?.team ? '#3b82f6' : null);
+
+  if (color) {
+    body?.classList.add('has-team-color');
+    root.style.setProperty('--team-accent', color);
+    root.style.setProperty('--team-glow', hexToRgba(color, 0.22));
+  } else {
+    body?.classList.remove('has-team-color');
+    root.style.setProperty('--team-accent', 'transparent');
+    root.style.setProperty('--team-glow', 'rgba(59,130,246,0)');
+  }
+}
+
+/* =========================
    Teams page
 ========================= */
 function renderTeams(teams) {
   const container = document.getElementById('teams-list');
   if (!container) return;
+
+  const st = computeUserState(teams);
 
   if (teams.length === 0) {
     container.innerHTML = '<div class="empty-state">No teams yet</div>';
@@ -241,10 +280,12 @@ function renderTeams(teams) {
       ? members.map(m => (m?.name || '—').trim()).filter(Boolean).join(', ')
       : 'No members yet';
 
+    const isMine = st.teamId === t.id;
+
     return `
-      <button class="team-list-item" type="button" data-team="${esc(t.id)}">
+      <button class="team-list-item ${isMine ? 'is-mine' : ''}" type="button" data-team="${esc(t.id)}">
         <div class="team-list-left">
-          <div class="team-list-name">${esc(t.teamName || 'Unnamed')}</div>
+          <div class="team-list-name ${isMine ? 'team-accent' : ''}">${esc(t.teamName || 'Unnamed')}</div>
           <div class="team-list-members">${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
@@ -438,8 +479,16 @@ function initMyTeamControls() {
   document.getElementById('leave-or-delete')?.addEventListener('click', async () => {
     const st = computeUserState(teamsCache);
     if (!st.teamId) return;
-    if (st.isCreator) await deleteTeam(st.teamId);
-    else await leaveTeam(st.teamId, st.userId);
+
+    if (st.isCreator) {
+      const ok = window.confirm('Are you sure you want to delete your team? This cannot be undone.');
+      if (!ok) return;
+      await deleteTeam(st.teamId);
+    } else {
+      const ok = window.confirm('Are you sure you want to leave this team?');
+      if (!ok) return;
+      await leaveTeam(st.teamId, st.userId);
+    }
   });
 
   document.getElementById('open-requests')?.addEventListener('click', () => {
@@ -460,6 +509,20 @@ function initMyTeamControls() {
       await db.collection('teams').doc(st.teamId).update({ teamName: v });
     }
   });
+
+  // Team color (creator)
+  const colorInput = document.getElementById('team-color-input');
+  colorInput?.addEventListener('input', async () => {
+    const st = computeUserState(teamsCache);
+    if (!st.isCreator || !st.teamId) return;
+    const color = (colorInput.value || '').trim();
+    if (!isValidHexColor(color)) return;
+    try {
+      await db.collection('teams').doc(st.teamId).update({ teamColor: color });
+    } catch (e) {
+      console.warn('Could not update team color', e);
+    }
+  });
 }
 
 function renderMyTeam(teams) {
@@ -471,6 +534,8 @@ function renderMyTeam(teams) {
   const requestsBtn = document.getElementById('open-requests');
   const leaveDeleteBtn = document.getElementById('leave-or-delete');
   const sub = document.getElementById('myteam-subtitle');
+  const colorRow = document.getElementById('team-color-row');
+  const colorInput = document.getElementById('team-color-input');
 
   const hasTeam = !!st.teamId;
   if (createBtn) {
@@ -508,6 +573,17 @@ function renderMyTeam(teams) {
       requestsBtn.textContent = `Requests (${getPending(st.team).length})`;
     } else {
       requestsBtn.style.display = 'none';
+    }
+  }
+
+  // Team color picker (creator only)
+  if (colorRow && colorInput) {
+    if (st.isCreator) {
+      colorRow.style.display = 'flex';
+      const c = (st.team.teamColor || '#3b82f6').trim();
+      if (isValidHexColor(c)) colorInput.value = c;
+    } else {
+      colorRow.style.display = 'none';
     }
   }
 
@@ -660,6 +736,9 @@ async function handleCreateTeam() {
 
   const nameInput = document.getElementById('create-teamName');
   const teamName = (nameInput?.value || '').trim();
+  const colorInput = document.getElementById('create-teamColor');
+  const rawColor = (colorInput?.value || '#3b82f6').trim();
+  const teamColor = isValidHexColor(rawColor) ? rawColor : '#3b82f6';
   if (!teamName) {
     setHint('create-team-hint', 'Enter a team name.');
     return;
@@ -670,6 +749,7 @@ async function handleCreateTeam() {
   try {
     await db.collection('teams').add({
       teamName,
+      teamColor,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       creatorUserId: st.userId,
       creatorName: st.name,

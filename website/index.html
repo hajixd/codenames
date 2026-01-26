@@ -20,7 +20,7 @@
         <div class="header-user">
           <div class="header-user-stack">
             <div class="header-user-value" id="user-name-display" title="Double click to edit">—</div>
-            <div class="header-team" id="user-team-display">No team</div>
+            <div class="header-team team-accent" id="user-team-display">No team</div>
           </div>
           <input class="input header-user-input" id="user-name-input" type="text" placeholder="Your name" style="display:none;" />
         </div>
@@ -107,7 +107,7 @@
                   <div class="team-left">
                     <div class="team-rank">#</div>
                     <div class="team-name-wrap">
-                      <span class="team-name editable" id="myteam-name" title="Double click to rename"></span>
+                      <span class="team-name editable team-accent" id="myteam-name" title="Double click to rename"></span>
                       <input class="team-name-input input" id="myteam-name-input" type="text" style="display:none;" />
                     </div>
                   </div>
@@ -120,6 +120,11 @@
                   <div class="team-section-title">Teammates</div>
                   <div class="players-list" id="myteam-members"></div>
                   <div class="owner-actions-row" id="myteam-actions"></div>
+
+                  <div class="team-color-row" id="team-color-row" style="display:none;">
+                    <div class="team-color-label">Team color</div>
+                    <input class="team-color-input" id="team-color-input" type="color" value="#3b82f6" aria-label="Team color" />
+                  </div>
 
                   <div class="myteam-footer">
                     <button class="btn small" id="open-requests" type="button" style="display:none;">Requests</button>
@@ -193,6 +198,13 @@
               <label class="field">
                 <span class="label">Team name</span>
                 <input type="text" id="create-teamName" class="input" placeholder="e.g., Night Owls" required>
+              </label>
+              <label class="field">
+                <span class="label">Team color</span>
+                <div class="color-picker-row">
+                  <input type="color" id="create-teamColor" class="color-input" value="#3b82f6" aria-label="Team color" />
+                  <span class="hint">Used for a subtle glow + highlights.</span>
+                </div>
               </label>
               <div class="form-actions">
                 <button type="submit" class="btn primary" id="create-team-submit">Create team</button>
