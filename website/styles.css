@@ -1466,8 +1466,8 @@ body.mode-joiner .only-joiner{ display:block; }
 
 .header-line{
   display:flex;
-  justify-content:space-between;
-  gap:10px;
+  justify-content:flex-end;
+  gap:0;
   min-width: var(--namebox-w);
   max-width: 220px;
 }
