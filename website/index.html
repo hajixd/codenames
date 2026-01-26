@@ -45,6 +45,10 @@
           Chat
           <span class="badge tab-badge" id="badge-chat-desktop" aria-label="Unread chat messages" style="display:none;"></span>
         </button>
+        <button class="tab" data-panel="panel-game" type="button">
+          Play
+          <span class="badge tab-badge" id="badge-game-desktop" aria-label="Active games" style="display:none;"></span>
+        </button>
       </nav>
 
       <main class="main-content">
@@ -199,6 +203,134 @@
             </div>
           </div>
         </section>
+
+        <!-- Game Page -->
+        <section class="panel panel-game" id="panel-game">
+          <div class="panel-inner">
+            <!-- Game Lobby View (shown when not in a game) -->
+            <div id="game-lobby">
+              <h2>Play Codenames</h2>
+              <p class="subtitle small">Challenge another team or accept incoming challenges.</p>
+
+              <!-- Your Team Status -->
+              <div class="game-team-status" id="game-team-status">
+                <div class="hint">You need to be on a team to play.</div>
+              </div>
+
+              <!-- Active Game Banner -->
+              <div class="game-active-banner" id="game-active-banner" style="display:none;">
+                <div class="game-banner-info">
+                  <span class="game-banner-title">Game in progress</span>
+                  <span class="game-banner-teams" id="game-banner-teams"></span>
+                </div>
+                <button class="btn primary" id="rejoin-game-btn" type="button">Rejoin Game</button>
+              </div>
+
+              <!-- Incoming Challenges -->
+              <div class="game-section" id="challenges-section" style="display:none;">
+                <div class="game-section-title">Incoming Challenges</div>
+                <div class="challenges-list" id="challenges-list"></div>
+              </div>
+
+              <!-- Challenge Other Teams -->
+              <div class="game-section" id="challenge-teams-section" style="display:none;">
+                <div class="game-section-title">Challenge a Team</div>
+                <div class="challenge-teams-list" id="challenge-teams-list"></div>
+              </div>
+
+              <!-- Pending Challenges You Sent -->
+              <div class="game-section" id="pending-challenges-section" style="display:none;">
+                <div class="game-section-title">Pending Challenges</div>
+                <div class="pending-challenges-list" id="pending-challenges-list"></div>
+              </div>
+            </div>
+
+            <!-- Game Board View (shown during active game) -->
+            <div id="game-board-container" style="display:none;">
+              <!-- Game Header -->
+              <div class="game-header">
+                <div class="game-teams-display">
+                  <div class="game-team red">
+                    <span class="team-name" id="game-red-team"></span>
+                    <span class="cards-left" id="game-red-left">9</span>
+                  </div>
+                  <span class="game-vs">vs</span>
+                  <div class="game-team blue">
+                    <span class="team-name" id="game-blue-team"></span>
+                    <span class="cards-left" id="game-blue-left">8</span>
+                  </div>
+                </div>
+                <div class="game-turn-display">
+                  <span class="turn-label">Turn:</span>
+                  <span class="turn-team" id="game-turn-team">Red</span>
+                  <span class="turn-role" id="game-turn-role">Spymaster</span>
+                </div>
+              </div>
+
+              <!-- Role Selection (before game starts for player) -->
+              <div class="role-selection" id="role-selection" style="display:none;">
+                <div class="role-title">Choose Your Role</div>
+                <div class="role-buttons">
+                  <button class="btn role-btn" id="role-spymaster" type="button">
+                    <span class="role-icon">🕵️</span>
+                    <span class="role-name">Spymaster</span>
+                    <span class="role-desc">Give clues to your team</span>
+                  </button>
+                  <button class="btn role-btn" id="role-operative" type="button">
+                    <span class="role-icon">🔍</span>
+                    <span class="role-name">Operative</span>
+                    <span class="role-desc">Guess the words</span>
+                  </button>
+                </div>
+                <div class="role-status" id="role-status"></div>
+              </div>
+
+              <!-- Game Board -->
+              <div class="game-board" id="game-board">
+                <!-- 5x5 grid of cards will be generated here -->
+              </div>
+
+              <!-- Clue Display / Input -->
+              <div class="clue-area">
+                <!-- Current Clue Display -->
+                <div class="current-clue" id="current-clue" style="display:none;">
+                  <span class="clue-label">Clue:</span>
+                  <span class="clue-word" id="clue-word"></span>
+                  <span class="clue-number" id="clue-number"></span>
+                  <span class="guesses-left" id="guesses-left"></span>
+                </div>
+
+                <!-- Spymaster Clue Input -->
+                <form class="clue-form" id="clue-form" style="display:none;">
+                  <input type="text" class="input clue-input" id="clue-input" placeholder="One word clue" required />
+                  <input type="number" class="input clue-num-input" id="clue-num-input" min="0" max="9" placeholder="#" required />
+                  <button type="submit" class="btn primary">Give Clue</button>
+                </form>
+
+                <!-- Operative Actions -->
+                <div class="operative-actions" id="operative-actions" style="display:none;">
+                  <button class="btn" id="end-turn-btn" type="button">End Turn</button>
+                </div>
+
+                <!-- Waiting Message -->
+                <div class="waiting-message" id="waiting-message" style="display:none;">
+                  Waiting for <span id="waiting-for"></span>...
+                </div>
+              </div>
+
+              <!-- Game Log -->
+              <div class="game-log" id="game-log">
+                <div class="game-log-title">Game Log</div>
+                <div class="game-log-entries" id="game-log-entries"></div>
+              </div>
+
+              <!-- Game Actions -->
+              <div class="game-actions">
+                <button class="btn danger" id="leave-game-btn" type="button">Leave Game</button>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
 
       <!-- Mobile Tabs -->
@@ -225,6 +357,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
           <span>Chat</span>
           <span class="badge tab-badge" id="badge-chat-mobile" aria-label="Unread chat messages" style="display:none;"></span>
+        </button>
+        <button class="tab" data-panel="panel-game" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>
+          <span>Play</span>
+          <span class="badge tab-badge" id="badge-game-mobile" aria-label="Active games" style="display:none;"></span>
         </button>
       </nav>
 
@@ -296,5 +433,6 @@
     </div>
 
     <script src="app.js"></script>
+    <script src="game.js"></script>
   </body>
 </html>

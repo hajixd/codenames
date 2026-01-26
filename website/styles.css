@@ -2127,6 +2127,628 @@ button.player-tag.pill-action:disabled{
 .player-status.pending{ border-color: rgba(250,204,21,0.35); color: rgba(250,204,21,0.95); background: rgba(250,204,21,0.08); }
 .player-status.busy{ border-color: rgba(255,255,255,0.12); color: var(--text-dim); }
 
+/* ==================== CODENAMES GAME ==================== */
+
+/* Game Colors */
+:root {
+  --game-red: #dc2626;
+  --game-red-bg: rgba(220, 38, 38, 0.15);
+  --game-red-border: rgba(220, 38, 38, 0.4);
+  --game-blue: #2563eb;
+  --game-blue-bg: rgba(37, 99, 235, 0.15);
+  --game-blue-border: rgba(37, 99, 235, 0.4);
+  --game-neutral: #71717a;
+  --game-neutral-bg: rgba(113, 113, 122, 0.15);
+  --game-neutral-border: rgba(113, 113, 122, 0.4);
+  --game-assassin: #18181b;
+  --game-assassin-bg: rgba(24, 24, 27, 0.9);
+  --game-assassin-border: rgba(255, 255, 255, 0.2);
+}
+
+/* Game Panel */
+.panel-game .panel-inner {
+  max-width: 900px;
+}
+
+/* Game Lobby */
+#game-lobby h2 {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.game-team-status {
+  margin: 16px 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.game-team-status .team-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.game-team-status .team-name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.game-active-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 12px;
+}
+
+.game-banner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.game-banner-title {
+  font-weight: 700;
+  color: var(--green);
+}
+
+.game-banner-teams {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.game-section {
+  margin-top: 20px;
+}
+
+.game-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.challenges-list,
+.challenge-teams-list,
+.pending-challenges-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.challenge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.challenge-row.incoming {
+  border-color: rgba(250, 204, 21, 0.35);
+  background: rgba(250, 204, 21, 0.06);
+}
+
+.challenge-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.challenge-team-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.challenge-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.challenge-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Game Header */
+.game-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.game-teams-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.game-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
+}
+
+.game-team.red {
+  background: var(--game-red-bg);
+  border: 1px solid var(--game-red-border);
+}
+
+.game-team.blue {
+  background: var(--game-blue-bg);
+  border: 1px solid var(--game-blue-border);
+}
+
+.game-team .team-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.game-team .cards-left {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.game-team.red .cards-left { color: var(--game-red); }
+.game-team.blue .cards-left { color: var(--game-blue); }
+
+.game-vs {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.game-turn-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.turn-label {
+  color: var(--text-dim);
+}
+
+.turn-team {
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.turn-team.red {
+  background: var(--game-red-bg);
+  color: var(--game-red);
+}
+
+.turn-team.blue {
+  background: var(--game-blue-bg);
+  color: var(--game-blue);
+}
+
+.turn-role {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* Role Selection */
+.role-selection {
+  padding: 20px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.role-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.role-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.role-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 24px;
+  min-width: 140px;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.role-btn:hover {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.role-btn.selected {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.role-btn.taken {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.role-icon {
+  font-size: 28px;
+}
+
+.role-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.role-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.role-status {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* Game Board */
+.game-board {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.game-card {
+  aspect-ratio: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+
+.game-card:hover:not(.revealed):not(.disabled) {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.game-card.disabled {
+  cursor: default;
+}
+
+.game-card .card-word {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+/* Spymaster View - Color overlay */
+.game-card.spymaster-view.card-red {
+  background: var(--game-red-bg);
+  border-color: var(--game-red-border);
+}
+
+.game-card.spymaster-view.card-blue {
+  background: var(--game-blue-bg);
+  border-color: var(--game-blue-border);
+}
+
+.game-card.spymaster-view.card-neutral {
+  background: var(--game-neutral-bg);
+  border-color: var(--game-neutral-border);
+}
+
+.game-card.spymaster-view.card-assassin {
+  background: var(--game-assassin-bg);
+  border-color: var(--game-assassin-border);
+}
+
+.game-card.spymaster-view.card-assassin .card-word {
+  color: #ef4444;
+}
+
+/* Revealed Cards */
+.game-card.revealed {
+  cursor: default;
+}
+
+.game-card.revealed.card-red {
+  background: var(--game-red);
+  border-color: var(--game-red);
+}
+
+.game-card.revealed.card-blue {
+  background: var(--game-blue);
+  border-color: var(--game-blue);
+}
+
+.game-card.revealed.card-neutral {
+  background: var(--game-neutral);
+  border-color: var(--game-neutral);
+}
+
+.game-card.revealed.card-assassin {
+  background: #000;
+  border-color: #ef4444;
+}
+
+.game-card.revealed .card-word {
+  color: #fff;
+}
+
+/* Clue Area */
+.clue-area {
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.current-clue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 16px;
+}
+
+.clue-label {
+  color: var(--text-dim);
+}
+
+.clue-word {
+  font-weight: 800;
+  font-size: 20px;
+  text-transform: uppercase;
+}
+
+.clue-number {
+  background: var(--accent);
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.guesses-left {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.clue-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.clue-input {
+  flex: 1;
+  min-width: 120px;
+  margin: 0;
+}
+
+.clue-num-input {
+  width: 60px;
+  margin: 0;
+  text-align: center;
+}
+
+.operative-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.waiting-message {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+/* Game Log */
+.game-log {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.game-log-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.game-log-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.log-entry {
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-entry .log-team {
+  font-weight: 700;
+}
+
+.log-entry .log-team.red { color: var(--game-red); }
+.log-entry .log-team.blue { color: var(--game-blue); }
+
+.log-entry .log-clue {
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.log-entry .log-result {
+  color: var(--text-dim);
+}
+
+/* Game Actions */
+.game-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* Game End Modal */
+.game-end-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.game-end-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 30px;
+  text-align: center;
+  max-width: 400px;
+  width: 100%;
+}
+
+.game-end-title {
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.game-end-title.win { color: var(--green); }
+.game-end-title.lose { color: var(--red); }
+
+.game-end-subtitle {
+  font-size: 16px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+
+.game-end-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .game-board {
+    gap: 6px;
+  }
+
+  .game-card {
+    border-radius: 8px;
+  }
+
+  .game-card .card-word {
+    font-size: 10px;
+  }
+
+  .game-teams-display {
+    flex-wrap: wrap;
+  }
+
+  .game-team {
+    padding: 6px 10px;
+  }
+
+  .game-team .team-name {
+    font-size: 12px;
+  }
+
+  .game-team .cards-left {
+    font-size: 16px;
+  }
+
+  .role-buttons {
+    flex-direction: column;
+  }
+
+  .role-btn {
+    min-width: 100%;
+  }
+
+  .clue-form {
+    flex-direction: column;
+  }
+
+  .clue-input,
+  .clue-num-input {
+    width: 100%;
+  }
+}
+
 /* Invites (My Team) */
 #invites-list{ display:flex; flex-direction: column; gap: 10px; }
 .invite-row{
