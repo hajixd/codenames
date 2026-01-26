@@ -1824,10 +1824,31 @@ function renderChatTabMessages() {
     return;
   }
 
+  const getTeamForMemberId = (memberId) => {
+    const mid = String(memberId || '').trim();
+    if (!mid) return null;
+    for (const t of (teamsCache || [])) {
+      if (findUserInMembers(t, mid)) return t;
+    }
+    return null;
+  };
+
   list.innerHTML = chatMessagesCache.map(m => {
+    const senderName = (m?.senderName || '—');
+    const senderId = String(m?.senderId || '').trim() || nameToAccountId(senderName);
+    const team = getTeamForMemberId(senderId);
+    const teamName = team?.teamName ? String(team.teamName) : '';
+    const color = team ? getDisplayTeamColor(team) : '';
+
+    const label = teamName
+      ? `${senderName} (team ${teamName})`
+      : senderName;
+
+    const whoStyle = color ? `style="color:${esc(color)}"` : '';
+
     return `
       <div class="chat-msg">
-        <div class="chat-line"><span class="chat-who">${esc(m?.senderName || '—')}:</span> <span class="chat-text">${esc(m?.text || '')}</span></div>
+        <div class="chat-line"><span class="chat-who" ${whoStyle}>${esc(label)}:</span> <span class="chat-text">${esc(m?.text || '')}</span></div>
       </div>
     `;
   }).join('');

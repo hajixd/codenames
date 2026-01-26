@@ -1656,8 +1656,9 @@ body.mode-joiner .only-joiner{ display:block; }
 /* Mobile: keep the composer comfortably above bottom tabs */
 @media (max-width: 768px){
   .panel-chat .chat-card{
-    min-height: 54vh;
-    height: 54vh;
+    /* A bit taller so the chat reaches lower on mobile, while keeping the composer visible */
+    min-height: 60vh;
+    height: 60vh;
   }
 }
 
