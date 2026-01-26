@@ -8,8 +8,8 @@
   --bg: #09090b;
   --surface: #131316;
   --surface2: #1a1a1f;
-  /* Even brighter outlines */
-  --border: #5f5f7a;
+  /* Default (neutral) outlines. Team color outline is handled separately via --team-glow. */
+  --border: #34343d;
   --text: #fff;
   --text-dim: #71717a;
   --accent: #3b82f6;
@@ -44,8 +44,9 @@ body.has-team-color::after{
   /* Hug the viewport edges with squared corners */
   inset: 1px;
   border-radius: 0px;
-  border: 1px solid var(--team-glow);
-  box-shadow: 0 0 20px var(--team-glow);
+  /* Brighter team-colored outline */
+  border: 2px solid var(--team-glow);
+  box-shadow: 0 0 28px var(--team-glow);
   pointer-events:none;
   z-index: 998;
   opacity: 0.72;
@@ -1652,6 +1653,14 @@ body.mode-joiner .only-joiner{ display:block; }
   min-height: 68vh;
 }
 
+/* Mobile: keep the composer comfortably above bottom tabs */
+@media (max-width: 768px){
+  .panel-chat .chat-card{
+    min-height: 54vh;
+    height: 54vh;
+  }
+}
+
 .chat-card .chat-messages{
   background: rgba(255,255,255,0.02);
   border: 1px solid rgba(255,255,255,0.06);
@@ -1869,7 +1878,7 @@ button:disabled{
 /* Highlight your current team in the list (very subtle) */
 .team-list-item.is-mine{
   border-color: rgba(255,255,255,0.12);
-  box-shadow: 0 0 0 1px var(--team-glow);
+  box-shadow: 0 0 0 2px var(--team-glow);
 }
 
 .team-list-left{ min-width: 0; }
