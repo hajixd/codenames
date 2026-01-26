@@ -17,7 +17,11 @@
       <header class="desktop-header">
         <div class="logo">CODENAMES</div>
         <div class="header-center">Discord Tournament &bull; 3v3 &bull; 6 Teams Max</div>
-        <div class="mode-indicator" id="mode-indicator-desktop" aria-live="polite"></div>
+        <div class="header-mode-switcher" id="header-mode-switcher-desktop">
+          <span class="mode-label" id="mode-label-desktop">—</span>
+          <button class="mode-btn" type="button" id="mode-set-creator-desktop">Creator</button>
+          <button class="mode-btn" type="button" id="mode-set-joiner-desktop">Joining</button>
+        </div>
         <div class="prize-badge">$150 Prize</div>
       </header>
 
@@ -35,8 +39,12 @@
           <div class="panel-inner">
             <div class="mobile-header">
               <span class="logo">CODENAMES</span>
+              <div class="header-mode-switcher mobile" id="header-mode-switcher-mobile">
+                <span class="mode-label" id="mode-label-mobile">—</span>
+                <button class="mode-btn" type="button" id="mode-set-creator-mobile">Creator</button>
+                <button class="mode-btn" type="button" id="mode-set-joiner-mobile">Join</button>
+              </div>
               <span class="prize-badge">$150</span>
-              <span class="mode-indicator mobile" id="mode-indicator-mobile" aria-live="polite"></span>
             </div>
             <h1>Discord Tournament</h1>
             <p class="subtitle">3v3 teams competing for $150</p>
@@ -68,16 +76,6 @@
             <h2>Teams</h2>
             <p class="subtitle">Create a team, request to join, then have the team creator accept.</p>
 
-            <div class="mode-switcher" id="mode-switcher" aria-label="Mode selector">
-              <div class="mode-switcher-left">
-                <div class="mode-switcher-label">You are:</div>
-                <div class="mode-switcher-value" id="mode-switcher-value">—</div>
-              </div>
-              <div class="mode-switcher-actions">
-                <button class="btn small" type="button" id="mode-set-creator">Creator</button>
-                <button class="btn small" type="button" id="mode-set-joiner">Joining</button>
-              </div>
-            </div>
 
 
             <!-- Current user status (member / pending) -->

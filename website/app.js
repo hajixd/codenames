@@ -130,12 +130,18 @@ function initFirstLoadChooser() {
 }
 
 function initModeSwitcher() {
-  const btnCreator = document.getElementById('mode-set-creator');
-  const btnJoiner = document.getElementById('mode-set-joiner');
-  if (!btnCreator || !btnJoiner) return;
+  // Get all mode buttons (desktop + mobile)
+  const creatorBtns = [
+    document.getElementById('mode-set-creator-desktop'),
+    document.getElementById('mode-set-creator-mobile')
+  ].filter(Boolean);
 
-  btnCreator.addEventListener('click', () => {
-    // If you already have a creator team, we keep you in creator mode.
+  const joinerBtns = [
+    document.getElementById('mode-set-joiner-desktop'),
+    document.getElementById('mode-set-joiner-mobile')
+  ].filter(Boolean);
+
+  const handleCreatorClick = () => {
     setUserMode('creator');
     applyModeUI('creator');
     safeLSSet(FIRST_LOAD_CHOICE, 'create');
@@ -147,9 +153,9 @@ function initModeSwitcher() {
     } else {
       if (c) { c.open = true; c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     }
-  });
+  };
 
-  btnJoiner.addEventListener('click', () => {
+  const handleJoinerClick = () => {
     // Creators should not switch to joiner mode (it becomes confusing / unsafe)
     if (roleState.isCreator) return;
     setUserMode('joiner');
@@ -158,7 +164,10 @@ function initModeSwitcher() {
     setActivePanel('panel-register');
     const j = document.getElementById('join-accordion');
     if (j) { j.open = true; j.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
+  };
+
+  creatorBtns.forEach(btn => btn.addEventListener('click', handleCreatorClick));
+  joinerBtns.forEach(btn => btn.addEventListener('click', handleJoinerClick));
 }
 
 
@@ -171,11 +180,16 @@ function listenToTeams() {
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       updateUI(teamsCache);
+      computeRoleState(teamsCache);
       updateMyStatus(teamsCache);
       renderTeams(teamsCache);
       populateTeamSelects(teamsCache);
     }, (err) => {
       console.error('Team listener error:', err);
+      // If index missing, show helpful message
+      if (err.code === 'failed-precondition') {
+        console.log('Create index at:', err.message);
+      }
     });
 }
 
@@ -868,13 +882,31 @@ function setUserMode(mode) {
   if (mode) safeLSSet(USER_MODE_STORAGE, mode);
 }
 
-function setModeIndicator(text) {
-  const d = document.getElementById('mode-indicator-desktop');
-  const m = document.getElementById('mode-indicator-mobile');
-  if (d) d.textContent = text || '';
-  if (m) m.textContent = text || '';
-  const v = document.getElementById('mode-switcher-value');
-  if (v) v.textContent = text || '—';
+function setModeIndicator(mode) {
+  const text = mode === 'creator' ? 'Creator' : (mode === 'joiner' ? 'Joining' : '—');
+
+  // Update labels
+  const labelDesktop = document.getElementById('mode-label-desktop');
+  const labelMobile = document.getElementById('mode-label-mobile');
+  if (labelDesktop) labelDesktop.textContent = text;
+  if (labelMobile) labelMobile.textContent = text;
+
+  // Update button active states
+  const creatorBtns = [
+    document.getElementById('mode-set-creator-desktop'),
+    document.getElementById('mode-set-creator-mobile')
+  ];
+  const joinerBtns = [
+    document.getElementById('mode-set-joiner-desktop'),
+    document.getElementById('mode-set-joiner-mobile')
+  ];
+
+  creatorBtns.forEach(btn => {
+    if (btn) btn.classList.toggle('active', mode === 'creator');
+  });
+  joinerBtns.forEach(btn => {
+    if (btn) btn.classList.toggle('active', mode === 'joiner');
+  });
 }
 
 function applyModeUI(mode) {
@@ -891,7 +923,7 @@ function applyModeUI(mode) {
   if (regDesktop) regDesktop.textContent = label;
   if (regMobile) regMobile.querySelector('span') ? (regMobile.querySelector('span').textContent = label) : null;
 
-  setModeIndicator(mode === 'creator' ? 'Creator mode' : 'Joining');
+  setModeIndicator(mode);
 
   // Toggle accordions in register panel
   const createAcc = document.getElementById('create-accordion');
@@ -957,11 +989,18 @@ async function computeRoleState(teams) {
   const joinAcc = document.getElementById('join-accordion');
   if (joinAcc && mode === 'joiner') joinAcc.style.display = '';
 
-  // Update mode switcher buttons
-  const bC = document.getElementById('mode-set-creator');
-  const bJ = document.getElementById('mode-set-joiner');
-  if (bC) bC.disabled = roleState.isCreator; // creators don't switch to joiner
-  if (bJ) bJ.disabled = false;
+  // Update mode switcher buttons (desktop + mobile)
+  const creatorBtns = [
+    document.getElementById('mode-set-creator-desktop'),
+    document.getElementById('mode-set-creator-mobile')
+  ];
+  const joinerBtns = [
+    document.getElementById('mode-set-joiner-desktop'),
+    document.getElementById('mode-set-joiner-mobile')
+  ];
+  // Creators can't switch to joiner mode
+  joinerBtns.forEach(btn => { if (btn) btn.disabled = roleState.isCreator; });
+  creatorBtns.forEach(btn => { if (btn) btn.disabled = false; });
 
   // Auto-fill manage team and key if creator
   if (roleState.isCreator) {

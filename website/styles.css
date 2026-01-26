@@ -1039,46 +1039,80 @@ body {
 /* =========================
    Mode / Role UI
 ========================= */
-.mode-indicator{
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.16);
+/* =========================
+   Header Mode Switcher (Top)
+========================= */
+.header-mode-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.9);
-  white-space: nowrap;
-}
-.mode-indicator:empty{ display:none; }
-.mode-indicator.mobile{
-  margin-left: auto;
-  border-color: rgba(0,0,0,0.12);
-  background: rgba(0,0,0,0.04);
-  color: rgba(0,0,0,0.7);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
 }
 
-.mode-switcher{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 16px;
-  background: rgba(0,0,0,0.02);
-  margin: 14px 0 10px;
-}
-.mode-switcher-label{
+.header-mode-switcher .mode-label {
   font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.header-mode-switcher .mode-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.header-mode-switcher .mode-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+}
+
+.header-mode-switcher .mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.header-mode-switcher .mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile header mode switcher */
+.header-mode-switcher.mobile {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.1);
+  padding: 3px 4px 3px 10px;
+}
+
+.header-mode-switcher.mobile .mode-label {
   color: rgba(0,0,0,0.6);
+  font-size: 11px;
 }
-.mode-switcher-value{
-  font-size: 14px;
-  font-weight: 700;
+
+.header-mode-switcher.mobile .mode-btn {
+  color: rgba(0,0,0,0.5);
+  padding: 5px 8px;
+  font-size: 11px;
 }
-.mode-switcher-actions{
-  display:flex;
-  gap:8px;
+
+.header-mode-switcher.mobile .mode-btn:hover {
+  background: rgba(0,0,0,0.08);
+  color: rgba(0,0,0,0.8);
+}
+
+.header-mode-switcher.mobile .mode-btn.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* Creator-only / Joiner-only blocks */
