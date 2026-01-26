@@ -1,10 +1,24 @@
 const MAX_TEAMS = 6;
 
-// Initialize
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyCX_g7RxQsIatEhAnZgeXHedFsxhi8M2m8",
+  authDomain: "codenames-tournament.firebaseapp.com",
+  projectId: "codenames-tournament",
+  storageBucket: "codenames-tournament.firebasestorage.app",
+  messagingSenderId: "199881649305",
+  appId: "1:199881649305:web:b907e2832cf7d9d4151c08"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// Initialize app
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
-  updateUI();
   initForm();
+  listenToTeams(); // Real-time listener
 });
 
 // Tab switching (mobile)
@@ -12,18 +26,15 @@ function initTabs() {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
 
-  // Set initial active panel
   document.getElementById('panel-home').classList.add('active');
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const panelId = tab.dataset.panel;
 
-      // Update tabs
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
 
-      // Update panels
       panels.forEach(p => p.classList.remove('active'));
       document.getElementById(panelId).classList.add('active');
     });
@@ -41,19 +52,26 @@ function initForm() {
   }
 }
 
-// Get/save teams
-function getTeams() {
-  const data = localStorage.getItem('codenames-teams');
-  return data ? JSON.parse(data) : [];
-}
-
-function saveTeams(teams) {
-  localStorage.setItem('codenames-teams', JSON.stringify(teams));
+// Real-time listener for teams
+function listenToTeams() {
+  db.collection('teams')
+    .orderBy('registeredAt', 'asc')
+    .onSnapshot((snapshot) => {
+      const teams = [];
+      snapshot.forEach(doc => {
+        teams.push({ id: doc.id, ...doc.data() });
+      });
+      updateUI(teams);
+    }, (error) => {
+      console.error('Error listening to teams:', error);
+      // Fallback to localStorage if Firebase fails
+      const localTeams = JSON.parse(localStorage.getItem('codenames-teams') || '[]');
+      updateUI(localTeams);
+    });
 }
 
 // Update all UI elements
-function updateUI() {
-  const teams = getTeams();
+function updateUI(teams) {
   const count = teams.length;
   const spots = MAX_TEAMS - count;
 
@@ -70,14 +88,18 @@ function updateUI() {
   if (countHeader) countHeader.textContent = count;
 
   // Check if full
-  if (count >= MAX_TEAMS) {
-    const form = document.getElementById('register-form');
-    const closedMsg = document.getElementById('closed-msg');
-    const submitBtn = document.getElementById('submit-btn');
+  const form = document.getElementById('register-form');
+  const closedMsg = document.getElementById('closed-msg');
+  const submitBtn = document.getElementById('submit-btn');
 
+  if (count >= MAX_TEAMS) {
     if (form) form.style.display = 'none';
     if (closedMsg) closedMsg.style.display = 'flex';
     if (submitBtn) submitBtn.disabled = true;
+  } else {
+    if (form) form.style.display = 'block';
+    if (closedMsg) closedMsg.style.display = 'none';
+    if (submitBtn) submitBtn.disabled = false;
   }
 
   // Render teams list
@@ -118,16 +140,17 @@ function renderTeams(teams) {
 }
 
 // Handle form submit
-function handleSubmit() {
-  const teams = getTeams();
+async function handleSubmit() {
+  const submitBtn = document.getElementById('submit-btn');
+  const errorBox = document.getElementById('error-box');
+  const errorList = document.getElementById('error-list');
 
-  if (teams.length >= MAX_TEAMS) {
+  // Get current team count
+  const snapshot = await db.collection('teams').get();
+  if (snapshot.size >= MAX_TEAMS) {
     alert('Tournament full!');
     return;
   }
-
-  const errorBox = document.getElementById('error-box');
-  const errorList = document.getElementById('error-list');
 
   const teamName = document.getElementById('teamName').value.trim();
   const players = [
@@ -141,8 +164,12 @@ function handleSubmit() {
 
   if (!teamName) {
     errors.push('Team name required');
-  } else if (teams.find(t => t.teamName.toLowerCase() === teamName.toLowerCase())) {
-    errors.push('Team name taken');
+  } else {
+    // Check for duplicate team name
+    const existing = await db.collection('teams').where('teamNameLower', '==', teamName.toLowerCase()).get();
+    if (!existing.empty) {
+      errors.push('Team name taken');
+    }
   }
 
   players.forEach((p, i) => {
@@ -162,28 +189,33 @@ function handleSubmit() {
   }
 
   errorBox.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Registering...';
 
-  // Save team
-  teams.push({
-    id: Date.now().toString(),
-    teamName,
-    players,
-    registeredAt: new Date().toISOString()
-  });
+  try {
+    // Save to Firebase
+    await db.collection('teams').add({
+      teamName,
+      teamNameLower: teamName.toLowerCase(),
+      players,
+      registeredAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-  saveTeams(teams);
+    // Reset form
+    document.getElementById('register-form').reset();
 
-  // Reset form
-  document.getElementById('register-form').reset();
-
-  // Update UI
-  updateUI();
-
-  // Switch to teams tab on mobile
-  const teamsTab = document.querySelector('[data-panel="panel-teams"]');
-  if (teamsTab && window.innerWidth <= 768) {
-    teamsTab.click();
+    // Switch to teams tab on mobile
+    const teamsTab = document.querySelector('[data-panel="panel-teams"]');
+    if (teamsTab && window.innerWidth <= 768) {
+      teamsTab.click();
+    }
+  } catch (error) {
+    console.error('Error registering team:', error);
+    alert('Error registering. Please try again.');
   }
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Register';
 }
 
 // Escape HTML
