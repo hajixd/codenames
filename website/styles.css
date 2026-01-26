@@ -44,10 +44,10 @@ body.has-team-color::after{
   inset: 1px;
   border-radius: 0px;
   border: 1px solid var(--team-glow);
-  box-shadow: 0 0 16px var(--team-glow);
+  box-shadow: 0 0 20px var(--team-glow);
   pointer-events:none;
   z-index: 998;
-  opacity: 0.62;
+  opacity: 0.72;
 }
 
 /* Team accent text (only when you're on a team) */
@@ -1641,6 +1641,7 @@ button:disabled{
 .name-dock-form .btn.primary{
   width: 100%;
   justify-content: center;
+  padding: 9px 14px;
   background: rgba(59,130,246,0.72);
   border-color: rgba(59,130,246,0.28);
 }
