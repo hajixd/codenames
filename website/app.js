@@ -615,6 +615,7 @@ function refreshNameUI() {
   // Also update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
   renderMyTeam(teamsCache);
+  recomputeMyTeamTabBadge();
 
   // Keep header identity (name + team) in sync
   refreshHeaderIdentity();
@@ -642,6 +643,7 @@ function listenToTeams() {
       refreshHeaderIdentity();
       refreshUnreadTeamListener();
       recomputeUnreadBadges();
+      recomputeMyTeamTabBadge();
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
       renderMyTeam(teamsCache);
@@ -668,6 +670,7 @@ function listenToPlayers() {
       // auto-merge them to the earliest-created doc.
       autoMergeDuplicatePlayers(playersCache);
       recomputeUnreadBadges();
+      recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
     }, (err) => {
@@ -1475,11 +1478,6 @@ function renderTeamModal(teamId) {
 
   }
 
-  // If you're on a different team (non-creator), requesting here will switch you if accepted.
-  if (!disabled && !iAmMember && !iAmPendingHere && st.teamId && st.teamId !== teamId) {
-    if (!hint) hint = 'If accepted, you will switch teams.';
-  }
-
   if (joinBtn) {
     joinBtn.disabled = disabled;
     joinBtn.classList.toggle('disabled', disabled);
@@ -1864,6 +1862,22 @@ function recomputeUnreadBadges() {
   setBadge('badge-team', unreadTeamCount);
   setBadge('badge-chat-desktop', unreadGlobalCount + unreadTeamCount);
   setBadge('badge-chat-mobile', unreadGlobalCount + unreadTeamCount);
+}
+
+function recomputeMyTeamTabBadge() {
+  // My Team badge counts actionable team-related items:
+  // - Pending join requests to *your* team if you are the creator
+  // - Invites you have received (regardless of whether you're on a team)
+  const st = computeUserState(teamsCache);
+  let n = 0;
+  if (st?.isCreator && st?.team) n += getPending(st.team).length;
+
+  const me = getMyPlayerDoc();
+  const invites = Array.isArray(me?.invites) ? me.invites : [];
+  n += invites.length;
+
+  setBadge('badge-myteam-desktop', n);
+  setBadge('badge-myteam-mobile', n);
 }
 
 async function markChatRead(mode) {

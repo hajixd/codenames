@@ -37,7 +37,10 @@
         <button class="tab active" data-panel="panel-home" type="button">Home</button>
         <button class="tab" data-panel="panel-teams" type="button">Teams</button>
         <button class="tab" data-panel="panel-players" type="button">Players</button>
-        <button class="tab" data-panel="panel-myteam" type="button">My Team</button>
+        <button class="tab" data-panel="panel-myteam" type="button">
+          My Team
+          <span class="badge tab-badge" id="badge-myteam-desktop" aria-label="Team notifications" style="display:none;"></span>
+        </button>
         <button class="tab" data-panel="panel-chat" type="button">
           Chat
           <span class="badge tab-badge" id="badge-chat-desktop" aria-label="Unread chat messages" style="display:none;"></span>
@@ -214,6 +217,7 @@
         <button class="tab" data-panel="panel-myteam" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           <span>My Team</span>
+          <span class="badge tab-badge" id="badge-myteam-mobile" aria-label="Team notifications" style="display:none;"></span>
         </button>
         <button class="tab" data-panel="panel-chat" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
