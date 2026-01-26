@@ -461,6 +461,7 @@ body {
 
   .panel-inner {
     padding: 20px;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
     min-height: 100%;
     display: flex;
     flex-direction: column;
@@ -1366,3 +1367,111 @@ body.mode-joiner .only-joiner{ display:block; }
 .danger-section { border-color: rgba(248,113,113,0.28); }
 .danger-title { color: #f87171; }
 .danger-desc { color: var(--text-dim); font-size: 13px; margin: 0 0 10px 0; }
+
+/* =========================
+   Simplified app additions
+========================= */
+
+.header-user{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:2px;
+  min-width:120px;
+}
+
+.header-user-label{
+  font-size:12px;
+  opacity:.75;
+}
+
+.header-user-value{
+  font-weight:600;
+  cursor:pointer;
+  user-select:none;
+}
+
+.header-user-input{
+  width:160px;
+  font-size:14px;
+}
+
+.name-card{
+  margin: 18px 0 10px 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.saved-name{
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: 4px;
+  cursor:pointer;
+  user-select:none;
+}
+
+.clickable{
+  text-align:left;
+  width:100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+/* Modal */
+.modal{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.62);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index: 999;
+  padding: 14px;
+}
+
+.modal-card{
+  width: min(520px, 100%);
+  background: rgba(20,20,25,0.92);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 18px;
+  box-shadow: 0 20px 80px rgba(0,0,0,0.55);
+  overflow:hidden;
+}
+
+.modal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.modal-title{
+  font-weight: 700;
+}
+
+.modal-body{
+  padding: 14px 12px;
+}
+
+.request-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.request-row:last-child{ border-bottom: none; }
+
+.request-actions{ display:flex; gap: 8px; }
+
+.btn.disabled,
+button:disabled{
+  opacity: .5;
+  cursor: not-allowed;
+}

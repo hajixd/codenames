@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <title>Codenames Tournament</title>
+    <title>Codenames Teams</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   </head>
@@ -16,46 +16,67 @@
       <!-- Desktop Header -->
       <header class="desktop-header">
         <div class="logo">CODENAMES</div>
-        <div class="header-center">Discord Tournament &bull; 3v3 &bull; 6 Teams Max</div>
-        <div class="header-mode-switcher" id="header-mode-switcher-desktop">
-          <span class="mode-label" id="mode-label-desktop">—</span>
-          <button class="mode-btn" type="button" id="mode-set-creator-desktop">Creator</button>
-          <button class="mode-btn" type="button" id="mode-set-joiner-desktop">Joining</button>
+        <div class="header-center">3v3 &bull; 6 Teams Max</div>
+
+        <div class="header-user">
+          <div class="header-user-label">You</div>
+          <div class="header-user-value" id="user-name-display" title="Double click to edit">—</div>
+          <input class="input header-user-input" id="user-name-input" type="text" placeholder="Your name" style="display:none;" />
         </div>
-        <div class="prize-badge">$150 Prize</div>
       </header>
 
-      <!-- Desktop Tabs (shown on laptop/desktop) -->
+      <!-- Desktop Tabs -->
       <nav class="desktop-tabs" aria-label="Primary">
-        <button class="tab active" data-panel="panel-home" type="button" id="tab-home-desktop">Home</button>
-        <button class="tab" data-panel="panel-register" type="button" id="tab-register-desktop">Teams</button>
-        <button class="tab owner-only" data-panel="panel-requests" type="button" id="tab-requests-desktop" style="display:none;">Requests</button>        <button class="tab" data-panel="panel-teams" type="button" id="tab-teams-desktop">Roster</button>
+        <button class="tab active" data-panel="panel-home" type="button">Home</button>
+        <button class="tab" data-panel="panel-teams" type="button">Teams</button>
+        <button class="tab" data-panel="panel-myteam" type="button">My Team</button>
       </nav>
 
-      <!-- Main Content -->
       <main class="main-content">
-        <!-- Panel 1: Info -->
-        <section class="panel panel-info" id="panel-home">
+        <!-- Home -->
+        <section class="panel panel-info active" id="panel-home">
           <div class="panel-inner">
             <div class="mobile-header">
               <span class="logo">CODENAMES</span>
-              <div class="header-mode-switcher mobile" id="header-mode-switcher-mobile">
-                <span class="mode-label" id="mode-label-mobile">—</span>
-                <button class="mode-btn" type="button" id="mode-set-creator-mobile">Creator</button>
-                <button class="mode-btn" type="button" id="mode-set-joiner-mobile">Join</button>
-              </div>
-              <span class="prize-badge">$150</span>
+              <span class="pill">3v3</span>
             </div>
-            <h1>Discord Tournament</h1>
-            <p class="subtitle">3v3 teams competing for $150</p>
+
+            <h1>Teams</h1>
+            <p class="subtitle">Enter your name, then create a team or request to join one.</p>
+
+            <div class="name-card" id="name-card">
+              <form id="name-form" class="form">
+                <label class="field">
+                  <span class="label">Your name</span>
+                  <input type="text" id="name-input" class="input" placeholder="Name" required>
+                </label>
+                <div class="form-actions">
+                  <button type="submit" class="btn primary">Submit</button>
+                  <span class="hint" id="name-hint"></span>
+                </div>
+              </form>
+
+              <div id="name-saved" style="display:none;">
+                <div class="saved-row">
+                  <div>
+                    <div class="label">Your name</div>
+                    <div class="saved-name" id="name-saved-display" title="Double click to edit">—</div>
+                    <input class="input" id="name-saved-input" type="text" style="display:none;" />
+                    <div class="small-note">Double click your name to edit (desktop or mobile).</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="spots-display">
               <div class="spots-number" id="spots-left">6</div>
-              <div class="spots-label">spots left</div>
+              <div class="spots-label">teams left</div>
             </div>
+
             <div class="info-stats">
               <div class="info-stat">
-                <span class="val">6</span>
-                <span class="lbl">Max Teams</span>
+                <span class="val" id="team-count">0</span>
+                <span class="lbl">Teams</span>
               </div>
               <div class="info-stat">
                 <span class="val">3</span>
@@ -69,159 +90,108 @@
           </div>
         </section>
 
-        <!-- Panel 2: Register -->
-        
-        <section class="panel panel-register" id="panel-register">
-          <div class="panel-inner">
-            <h2>Teams</h2>
-            <p class="subtitle">Create a team or request to join one. Team owners can accept requests.</p>
-
-
-
-            <!-- Current user status (member / pending) -->
-            <div id="my-status" class="status-card" style="display:none;"></div>
-
-            <div class="stack">
-              <details class="accordion" id="create-accordion" open>
-                <summary>
-                  <span>Create a team</span>
-                  <span class="pill">new team</span>
-                </summary>
-
-                <form id="create-team-form" class="form">
-                  <div class="form-grid">
-                    <label class="field">
-                      <span class="label">Team name</span>
-                      <input type="text" id="create-teamName" class="input" placeholder="e.g., Night Owls" required>
-                    </label>
-
-                    <div class="two-col">
-                      <label class="field">
-                        <span class="label">Your name</span>
-                        <input type="text" id="create-name" class="input" placeholder="Name" required>
-                      </label>
-
-                      <label class="field">
-                        <span class="label">Your Discord</span>
-                        <input type="text" id="create-discord" class="input" placeholder="@username" required>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="form-actions">
-                    <button type="submit" id="create-btn" class="btn primary">Create team</button>
-                    <span class="hint" id="create-hint"></span>
-                  </div>
-                </form>
-              </details>
-
-              <details class="accordion" id="join-accordion">
-                <summary>
-                  <span>Request to join a team</span>
-                  <span class="pill">friends</span>
-                </summary>
-
-                <form id="join-team-form" class="form">
-                  <div class="form-grid">
-                    <label class="field">
-                      <span class="label">Choose a team</span>
-                      <select id="join-teamSelect" class="input" required>
-                        <option value="">Loading teams…</option>
-                      </select>
-                    </label>
-
-                    <div class="two-col">
-                      <label class="field">
-                        <span class="label">Your name</span>
-                        <input type="text" id="join-name" class="input" placeholder="Name" required>
-                      </label>
-
-                      <label class="field">
-                        <span class="label">Your Discord</span>
-                        <input type="text" id="join-discord" class="input" placeholder="@username" required>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="form-actions">
-                    <button type="submit" id="join-btn" class="btn primary">Send request</button>
-                    <span class="hint" id="join-hint"></span>
-                  </div>
-                </form>
-              </details>
-
-              <details class="accordion" id="manage-accordion">
-                <summary>
-                  <span>Manage your team</span>
-                  <span class="pill">owner</span>
-                </summary>
-
-                <div class="manage-note">
-                  You created this team from this device. You can rename your team, accept or decline join requests, remove members, and delete your team.
-                </div>
-
-                <span class="hint" id="manage-hint"></span>
-                <div id="manage-area" class="manage-area"></div>
-              </details>
-            </div>
-          </div>
-        </section>
-
-
-        
-        <!-- Panel 2b: Requests (Owner) -->
-        <section class="panel panel-register owner-only" id="panel-requests" style="display:none;">
-          <div class="panel-inner">
-            <h2>Requests</h2>
-            <p class="subtitle small">Review and approve join requests for your team.</p>
-            <span class="hint" id="requests-hint"></span>
-            <div id="requests-area" class="manage-area"></div>
-          </div>
-        </section>
-<!-- Panel 3: Teams -->
-        
+        <!-- Teams Page -->
         <section class="panel panel-teams" id="panel-teams">
           <div class="panel-inner">
-            <h2>Teams <span id="team-count-header">0</span>/6</h2>
-            <p class="subtitle small">Tap a team to expand members and see pending requests.</p>
-            <span class="hint" id="roster-hint"></span>
-            <div class="teams-list" id="teams-list">
-              <!-- Filled by JS -->
-            </div>
+            <h2>Teams <span class="pill" id="team-count-pill">0/6</span></h2>
+            <p class="subtitle small">Tap a team to view members and request to join.</p>
+            <span class="hint" id="teams-hint"></span>
+            <div class="teams-list" id="teams-list"></div>
           </div>
         </section>
 
+        <!-- My Team Page -->
+        <section class="panel panel-register" id="panel-myteam">
+          <div class="panel-inner">
+            <h2>My Team</h2>
+            <p class="subtitle small" id="myteam-subtitle">Create a team or manage your current team.</p>
+
+            <div class="stack">
+              <button class="btn primary" id="open-create-team" type="button">Create a team</button>
+
+              <div class="team-card my-team" id="myteam-card" style="display:none;">
+                <div class="team-summary no-details">
+                  <div class="team-left">
+                    <div class="team-rank">#</div>
+                    <div class="team-name-wrap">
+                      <span class="team-name editable" id="myteam-name" title="Double click to rename"></span>
+                      <input class="team-name-input input" id="myteam-name-input" type="text" style="display:none;" />
+                    </div>
+                  </div>
+                  <div class="team-right">
+                    <span class="meta" id="myteam-size">0/3</span>
+                  </div>
+                </div>
+
+                <div class="team-body">
+                  <div class="team-section-title">Teammates</div>
+                  <div class="players-list" id="myteam-members"></div>
+                  <div class="owner-actions-row" id="myteam-actions"></div>
+
+                  <div class="team-owner-controls" id="myteam-requests" style="display:none;">
+                    <div class="team-section-title">Requests</div>
+                    <div id="myteam-requests-list"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
 
       <!-- Mobile Tabs -->
       <nav class="mobile-tabs">
-        <button class="tab active" data-panel="panel-home" id="tab-home-mobile">
+        <button class="tab active" data-panel="panel-home" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           <span>Home</span>
         </button>
-        <button class="tab" data-panel="panel-register" id="tab-register-mobile">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-          <span>Register</span>
-        </button>
-        <button class="tab owner-only" data-panel="panel-requests" id="tab-requests-mobile" style="display:none;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v14H4z"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M4 10h16"/><path d="M8 14h4"/><path d="M8 18h8"/></svg>
-          <span>Requests</span>
-        </button>        <button class="tab" data-panel="panel-teams" id="tab-teams-mobile">
+        <button class="tab" data-panel="panel-teams" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Teams</span>
         </button>
+        <button class="tab" data-panel="panel-myteam" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>My Team</span>
+        </button>
       </nav>
 
-      <!-- First-load chooser -->
-      <div class="mode-modal" id="mode-modal" style="display:none;" role="dialog" aria-modal="true">
-        <div class="mode-card">
-          <div class="mode-title">What do you want to do?</div>
-          <div class="mode-sub">Pick one — you can switch anytime using the tabs.</div>
-          <div class="mode-actions">
-            <button class="btn primary" id="mode-create" type="button">Create / manage a team</button>
-            <button class="btn" id="mode-join" type="button">Join a team</button>
+      <!-- Team Modal -->
+      <div class="modal" id="team-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <div class="modal-head">
+            <div class="modal-title" id="team-modal-title">Team</div>
+            <button class="icon-btn" id="team-modal-close" type="button" aria-label="Close">×</button>
           </div>
-          <button class="mode-skip" id="mode-skip" type="button">Skip</button>
+          <div class="modal-body">
+            <div class="team-section-title">Members</div>
+            <div class="players-list" id="team-modal-members"></div>
+            <div class="form-actions" style="margin-top:12px;">
+              <button class="btn primary" id="team-modal-join" type="button">Request to join</button>
+              <span class="hint" id="team-modal-hint"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create Team Modal -->
+      <div class="modal" id="create-team-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Create a team</div>
+            <button class="icon-btn" id="create-team-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <form id="create-team-form" class="form">
+              <label class="field">
+                <span class="label">Team name</span>
+                <input type="text" id="create-teamName" class="input" placeholder="e.g., Night Owls" required>
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="create-team-submit">Create team</button>
+                <span class="hint" id="create-team-hint"></span>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
