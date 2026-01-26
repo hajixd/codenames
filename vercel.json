@@ -1,7 +1,3 @@
 {
-  "outputDirectory": "website",
-  "rewrites": [
-    { "source": "/register", "destination": "/register.html" },
-    { "source": "/teams", "destination": "/teams.html" }
-  ]
+  "outputDirectory": "website"
 }

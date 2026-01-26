@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,43 +11,112 @@
   </head>
   <body>
     <div class="app">
-      <header class="header">
+      <!-- Desktop Header -->
+      <header class="desktop-header">
         <div class="logo">CODENAMES</div>
-        <div class="prize">$150 Prize</div>
+        <div class="header-center">Discord Tournament &bull; 3v3 &bull; 6 Teams Max</div>
+        <div class="prize-badge">$150 Prize</div>
       </header>
 
-      <main class="main">
-        <section class="hero">
-          <h1>Discord Tournament</h1>
-          <p>3v3 teams competing for $150</p>
-          <div class="spots">
-            <span class="spots-count" id="spots-left">6</span>
-            <span class="spots-text">spots left</span>
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Panel 1: Info -->
+        <section class="panel panel-info" id="panel-home">
+          <div class="panel-inner">
+            <div class="mobile-header">
+              <span class="logo">CODENAMES</span>
+              <span class="prize-badge">$150</span>
+            </div>
+            <h1>Discord Tournament</h1>
+            <p class="subtitle">3v3 teams competing for $150</p>
+            <div class="spots-display">
+              <div class="spots-number" id="spots-left">6</div>
+              <div class="spots-label">spots left</div>
+            </div>
+            <div class="info-stats">
+              <div class="info-stat">
+                <span class="val">6</span>
+                <span class="lbl">Max Teams</span>
+              </div>
+              <div class="info-stat">
+                <span class="val">3</span>
+                <span class="lbl">Per Team</span>
+              </div>
+              <div class="info-stat">
+                <span class="val" id="players-count">0</span>
+                <span class="lbl">Players</span>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="actions">
-          <a href="/register.html" class="btn-register" id="register-btn">Register Team</a>
-          <a href="/teams.html" class="btn-teams">View Teams (<span id="teams-count">0</span>/6)</a>
+        <!-- Panel 2: Register -->
+        <section class="panel panel-register" id="panel-register">
+          <div class="panel-inner">
+            <h2>Register Team</h2>
+
+            <div id="closed-msg" class="closed-msg" style="display:none;">
+              <p>Tournament Full</p>
+            </div>
+
+            <form id="register-form" class="reg-form">
+              <div id="error-box" class="error-box" style="display:none;">
+                <ul id="error-list"></ul>
+              </div>
+
+              <input type="text" id="teamName" class="input" placeholder="Team name" required>
+
+              <div class="players-grid">
+                <div class="player-input">
+                  <span class="player-num">1</span>
+                  <input type="text" id="p0-name" class="input" placeholder="Name" required>
+                  <input type="text" id="p0-discord" class="input" placeholder="Discord" required>
+                </div>
+                <div class="player-input">
+                  <span class="player-num">2</span>
+                  <input type="text" id="p1-name" class="input" placeholder="Name" required>
+                  <input type="text" id="p1-discord" class="input" placeholder="Discord" required>
+                </div>
+                <div class="player-input">
+                  <span class="player-num">3</span>
+                  <input type="text" id="p2-name" class="input" placeholder="Name" required>
+                  <input type="text" id="p2-discord" class="input" placeholder="Discord" required>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-submit" id="submit-btn">Register</button>
+            </form>
+          </div>
         </section>
 
-        <section class="teams-preview">
-          <h2>Registered Teams</h2>
-          <div class="teams-list" id="teams-preview">
-            <!-- Filled by JS -->
+        <!-- Panel 3: Teams -->
+        <section class="panel panel-teams" id="panel-teams">
+          <div class="panel-inner">
+            <h2>Teams <span id="team-count-header">0</span>/6</h2>
+            <div class="teams-list" id="teams-list">
+              <!-- Filled by JS -->
+            </div>
           </div>
         </section>
       </main>
 
-      <footer class="footer">
-        <p>Codenames Discord Tournament</p>
-      </footer>
+      <!-- Mobile Tabs -->
+      <nav class="mobile-tabs">
+        <button class="tab active" data-panel="panel-home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Home</span>
+        </button>
+        <button class="tab" data-panel="panel-register">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Register</span>
+        </button>
+        <button class="tab" data-panel="panel-teams">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Teams</span>
+        </button>
+      </nav>
     </div>
 
     <script src="app.js"></script>
-    <script>
-      updateTeamsCount();
-      displayTeamsPreview();
-    </script>
   </body>
 </html>
