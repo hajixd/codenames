@@ -1204,81 +1204,103 @@ async function cancelInviteToPlayer(targetUserId) {
 async function acceptInvite(teamId) {
   const st = computeUserState(teamsCache);
   if (!st.name) return;
+
   if (st.teamId && st.teamId === teamId) {
     // Already on this team — just clean up the invite.
     await declineInvite(teamId);
     setHint('invites-hint', 'You are already on this team.');
     return;
   }
-  if (st.isCreator && st.teamId && st.teamId !== teamId) {
-    setHint('invites-hint', 'Delete your team before switching.');
-    return;
-  }
 
-  const teamRef = db.collection('teams').doc(teamId);
   const playerRef = db.collection('players').doc(st.userId);
   setHint('invites-hint', 'Joining…');
 
   try {
-    // Clear any pending requests for this user (across teams) when they join via invite.
-    const pendingTeamIds = (teamsCache || [])
-      .filter(t => getPending(t).some(r => isSameAccount(r, st.userId)))
-      .map(t => t.id);
-
-    const oldTeamId = (st.teamId && st.teamId !== teamId) ? st.teamId : null;
+    // We keep the app small (MAX_TEAMS). Safest approach is to read all teams so we can:
+    // - remove the player from any old team roster (switch)
+    // - clear the player's pending requests from every team once they join
+    const allTeamIds = (teamsCache || []).map(t => String(t.id || '').trim()).filter(Boolean);
+    const teamRefs = allTeamIds.map(id => db.collection('teams').doc(id));
 
     await db.runTransaction(async (tx) => {
-      const refsToRead = [teamRef, playerRef]
-        .concat(oldTeamId ? [db.collection('teams').doc(oldTeamId)] : [])
-        .concat(pendingTeamIds.map(id => db.collection('teams').doc(id)));
-      const snaps = await Promise.all(refsToRead.map(r => tx.get(r)));
-
-      const teamSnap = snaps[0];
-      const playerSnap = snaps[1];
-      if (!teamSnap.exists) throw new Error('Team not found.');
+      const snaps = await Promise.all([tx.get(playerRef)].concat(teamRefs.map(r => tx.get(r))));
+      const playerSnap = snaps[0];
       if (!playerSnap.exists) throw new Error('Player not found.');
 
-      let idx = 2;
-      const oldTeamSnap = oldTeamId ? snaps[idx++] : null;
+      const teams = [];
+      for (let i = 1; i < snaps.length; i++) {
+        const s = snaps[i];
+        if (!s.exists) continue;
+        teams.push({ id: s.id, ...s.data() });
+      }
 
-      const team = { id: teamSnap.id, ...teamSnap.data() };
-      const members = getMembers(team);
-      if (members.length >= TEAM_MAX) throw new Error('Team is full.');
-      if (members.some(m => isSameAccount(m, st.userId))) return;
+      const target = teams.find(t => t.id === teamId);
+      if (!target) throw new Error('Team not found.');
 
-      // Remove this user from the team's pending list if present.
-      const teamPending = getPending(team);
-      const nextTeamPending = teamPending.filter(r => !isSameAccount(r, st.userId));
+      const targetMembers = getMembers(target);
+      if (targetMembers.length >= TEAM_MAX) throw new Error('Team is full.');
+      if (targetMembers.some(m => isSameAccount(m, st.userId))) return;
 
-      const nextMembers = members.concat([{ userId: st.userId, name: st.name }]);
+      // Determine if we're switching from another team.
+      const oldTeam = teams.find(t => t.id !== teamId && getMembers(t).some(m => isSameAccount(m, st.userId))) || null;
+      const oldTeamId = oldTeam?.id ? String(oldTeam.id) : null;
 
+      // Update target team: add member, remove any pending request by this user.
+      const targetPending = getPending(target);
+      const nextTargetPending = targetPending.filter(r => !isSameAccount(r, st.userId));
+      const nextTargetMembers = dedupeRosterByAccount(targetMembers.concat([{ userId: st.userId, name: st.name }]));
+      tx.update(db.collection('teams').doc(teamId), { members: nextTargetMembers, pending: nextTargetPending });
+
+      // Update player doc: remove invite for this team.
       const player = { id: playerSnap.id, ...playerSnap.data() };
       const invites = Array.isArray(player.invites) ? player.invites : [];
       const nextInvites = invites.filter(i => i?.teamId !== teamId);
-
-      tx.update(teamRef, { members: nextMembers, pending: nextTeamPending });
       tx.update(playerRef, { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-      // If switching, remove from the old team roster.
-      if (oldTeamId && oldTeamSnap && oldTeamSnap.exists) {
-        const oldTeam = { id: oldTeamSnap.id, ...oldTeamSnap.data() };
-        const oldMembers = getMembers(oldTeam);
-        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, st.userId));
-        if (nextOldMembers.length !== oldMembers.length) {
-          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
-        }
-      }
-
-      // Clear pending requests from any other teams (so no leader sees stale requests).
-      for (let i = idx; i < snaps.length; i++) {
-        const s = snaps[i];
-        if (!s.exists) continue;
-        const t = { id: s.id, ...s.data() };
+      // Clear this user's pending requests from ALL teams (including the target).
+      for (const t of teams) {
         const p = getPending(t);
         if (!p?.length) continue;
         const next = p.filter(r => !isSameAccount(r, st.userId));
         if (next.length !== p.length) {
-          tx.update(db.collection('teams').doc(s.id), { pending: next });
+          tx.update(db.collection('teams').doc(t.id), { pending: next });
+        }
+      }
+
+      // If switching, remove from old team roster. If you were the creator:
+      // - if you're leaving the last spot, delete the team (and free its name)
+      // - otherwise, hand creator over to a random remaining member
+      if (oldTeamId) {
+        const oldMembers = getMembers(oldTeam);
+        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, st.userId));
+
+        const oldCreatorKey = nameToAccountId((oldTeam.creatorName || '').trim());
+        const myNameKey = nameToAccountId((st.name || '').trim());
+        const leavingIsCreator = !!(
+          String(oldTeam.creatorUserId || '').trim() === String(st.userId || '').trim() ||
+          (oldCreatorKey && myNameKey && oldCreatorKey === myNameKey) ||
+          (oldCreatorKey && oldCreatorKey === String(st.userId || '').trim())
+        );
+
+        if (nextOldMembers.length === 0) {
+          // Delete team + remove name registry mapping (if any).
+          const key = teamNameToKey(String(oldTeam.teamName || '').trim());
+          if (key) {
+            const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+            const nameSnap = await tx.get(nameRef);
+            const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+            if (mappedId === oldTeamId) tx.delete(nameRef);
+          }
+          tx.delete(db.collection('teams').doc(oldTeamId));
+        } else if (leavingIsCreator) {
+          const nextCreator = nextOldMembers[Math.floor(Math.random() * nextOldMembers.length)];
+          tx.update(db.collection('teams').doc(oldTeamId), {
+            members: nextOldMembers,
+            creatorUserId: entryAccountId(nextCreator),
+            creatorName: (nextCreator?.name || '').trim() || oldTeam.creatorName || ''
+          });
+        } else {
+          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
         }
       }
     });
@@ -1423,7 +1445,6 @@ function renderTeamModal(teamId) {
   const iAmMember = st.teamId === teamId;
   const iAmPendingHere = st.pendingTeamId === teamId;
   const hasOtherPending = !!(st.pendingTeamId && st.pendingTeamId !== teamId);
-  const iAmCreatorElsewhere = !!(st.isCreator && st.teamId && st.teamId !== teamId);
   const noName = !st.name;
 
   let label = 'Request to join';
@@ -1443,9 +1464,6 @@ function renderTeamModal(teamId) {
     label = 'Cancel Request';
     variant = 'danger';
     hint = 'Your request is pending.';
-  } else if (iAmCreatorElsewhere) {
-    disabled = true;
-    hint = 'Delete your team before switching.';
   } else if (hasOtherPending) {
     disabled = true;
     hint = 'You already have a pending request.';
@@ -1501,10 +1519,6 @@ async function requestToJoin(teamId, opts = {}) {
   const st = computeUserState(teamsCache);
   if (!st.name) {
     setHint(opts.hintElId || 'team-modal-hint', 'Set your name on Home first.');
-    return;
-  }
-  if (st.isCreator && st.teamId && st.teamId !== teamId) {
-    setHint(opts.hintElId || 'team-modal-hint', 'Delete your team before switching.');
     return;
   }
   if (st.pendingTeamId && st.pendingTeamId !== teamId) {
@@ -2329,66 +2343,85 @@ async function acceptRequest(teamId, userId) {
   const st = computeUserState(teamsCache);
   if (!st.isCreator || st.teamId !== teamId) return;
 
-  const teamRef = db.collection('teams').doc(teamId);
+  const tid = String(teamId || '').trim();
+  if (!tid) return;
+
+  const allTeamIds = (teamsCache || []).map(t => String(t.id || '').trim()).filter(Boolean);
+  const teamRefs = allTeamIds.map(id => db.collection('teams').doc(id));
+  const teamRef = db.collection('teams').doc(tid);
+
   try {
-    // If the requester is already on a different team, accepting will switch them.
-    // Also clear any pending requests for that user across all teams.
-    const pendingTeamIds = (teamsCache || [])
-      .filter(t => getPending(t).some(r => isSameAccount(r, userId)))
-      .map(t => t.id);
-
-    const existingTeam = (teamsCache || []).find(t => getMembers(t).some(m => isSameAccount(m, userId))) || null;
-    const oldTeamId = (existingTeam && existingTeam.id !== teamId) ? existingTeam.id : null;
-    if (oldTeamId && existingTeam?.creatorUserId === userId) {
-      throw new Error('That player is the team creator and must delete their team before switching.');
-    }
-
     await db.runTransaction(async (tx) => {
-      const refsToRead = [teamRef]
-        .concat(oldTeamId ? [db.collection('teams').doc(oldTeamId)] : [])
-        .concat(pendingTeamIds.map(id => db.collection('teams').doc(id)));
-
-      const snaps = await Promise.all(refsToRead.map(r => tx.get(r)));
-      const teamSnap = snaps[0];
-      if (!teamSnap.exists) throw new Error('Team not found.');
-
-      let idx = 1;
-      const oldTeamSnap = oldTeamId ? snaps[idx++] : null;
-
-      const t = { id: teamSnap.id, ...teamSnap.data() };
-      const members = getMembers(t);
-      const pending = getPending(t);
-      if (members.length >= TEAM_MAX) throw new Error('Team is full.');
-
-      const req = pending.find(r => r.userId === userId);
-      if (!req) return;
-
-      const targetId = entryAccountId(req) || String(req.userId || '').trim();
-
-      const newPending = pending.filter(r => r.userId !== userId);
-      const newMembers = dedupeRosterByAccount(members.concat([{ userId: targetId, name: req.name || '—' }]));
-      tx.update(teamRef, { pending: newPending, members: newMembers });
-
-      // If switching, remove from the old team roster.
-      if (oldTeamId && oldTeamSnap && oldTeamSnap.exists) {
-        const oldTeam = { id: oldTeamSnap.id, ...oldTeamSnap.data() };
-        const oldMembers = getMembers(oldTeam);
-        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, targetId));
-        if (nextOldMembers.length !== oldMembers.length) {
-          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
-        }
+      const snaps = await Promise.all(teamRefs.map(r => tx.get(r)));
+      const teams = [];
+      for (const s of snaps) {
+        if (!s.exists) continue;
+        teams.push({ id: s.id, ...s.data() });
       }
 
-      // Clear pending requests from any other teams (so no leader sees stale requests).
-      for (let i = idx; i < snaps.length; i++) {
-        const s = snaps[i];
-        if (!s.exists) continue;
-        const tt = { id: s.id, ...s.data() };
-        const p = getPending(tt);
+      const targetTeam = teams.find(t => t.id === tid);
+      if (!targetTeam) throw new Error('Team not found.');
+
+      const members = getMembers(targetTeam);
+      if (members.length >= TEAM_MAX) throw new Error('Team is full.');
+
+      // Find the request by account (robust to legacy/migrated ids).
+      const pending = getPending(targetTeam);
+      const req = pending.find(r => isSameAccount(r, userId)) || pending.find(r => String(r.userId || '').trim() === String(userId || '').trim());
+      if (!req) return;
+
+      const targetId = entryAccountId(req) || String(userId || '').trim();
+      const targetName = (req.name || '—').trim();
+
+      // Add to target team, remove from its pending.
+      const nextPending = pending.filter(r => !isSameAccount(r, targetId));
+      const nextMembers = dedupeRosterByAccount(members.concat([{ userId: targetId, name: targetName }]));
+      tx.update(teamRef, { pending: nextPending, members: nextMembers });
+
+      // Clear all other pending requests for that person (across all teams).
+      for (const t of teams) {
+        const p = getPending(t);
         if (!p?.length) continue;
         const next = p.filter(r => !isSameAccount(r, targetId));
         if (next.length !== p.length) {
-          tx.update(db.collection('teams').doc(s.id), { pending: next });
+          tx.update(db.collection('teams').doc(t.id), { pending: next });
+        }
+      }
+
+      // If they were already on another team, remove them (switch).
+      const oldTeam = teams.find(t => t.id !== tid && getMembers(t).some(m => isSameAccount(m, targetId))) || null;
+      if (oldTeam) {
+        const oldTeamId = String(oldTeam.id || '').trim();
+        const oldMembers = getMembers(oldTeam);
+        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, targetId));
+
+        const oldCreatorKey = nameToAccountId((oldTeam.creatorName || '').trim());
+        const targetNameKey = nameToAccountId(targetName);
+        const leavingIsCreator = !!(
+          String(oldTeam.creatorUserId || '').trim() === String(targetId || '').trim() ||
+          (oldCreatorKey && targetNameKey && oldCreatorKey === targetNameKey) ||
+          (oldCreatorKey && oldCreatorKey === String(targetId || '').trim())
+        );
+
+        if (nextOldMembers.length === 0) {
+          // Delete team + free its name.
+          const key = teamNameToKey(String(oldTeam.teamName || '').trim());
+          if (key) {
+            const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+            const nameSnap = await tx.get(nameRef);
+            const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+            if (mappedId === oldTeamId) tx.delete(nameRef);
+          }
+          tx.delete(db.collection('teams').doc(oldTeamId));
+        } else if (leavingIsCreator) {
+          const nextCreator = nextOldMembers[Math.floor(Math.random() * nextOldMembers.length)];
+          tx.update(db.collection('teams').doc(oldTeamId), {
+            members: nextOldMembers,
+            creatorUserId: entryAccountId(nextCreator),
+            creatorName: (nextCreator?.name || '').trim() || oldTeam.creatorName || ''
+          });
+        } else {
+          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
         }
       }
     });
