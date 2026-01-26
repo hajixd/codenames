@@ -159,8 +159,11 @@ function listenToTeams() {
 
 function updateHomeStats(teams) {
   const teamCount = teams.length;
-  const spots = Math.max(0, MAX_TEAMS - teamCount);
   const players = teams.reduce((sum, t) => sum + getMembers(t).length, 0);
+
+  // Home "spots" = remaining player slots (more useful than remaining teams)
+  const maxPlayers = MAX_TEAMS * TEAM_SIZE;
+  const spots = Math.max(0, maxPlayers - players);
 
   setText('spots-left', spots);
   setText('players-count', players);
@@ -219,96 +222,32 @@ function renderTeams(teams) {
     return;
   }
 
-  const st = computeUserState(teams);
-
-  container.innerHTML = teams.map((t, idx) => {
+  // Sharp, simple list: team name + member names. Click for details / request.
+  container.innerHTML = teams.map((t) => {
     const members = getMembers(t);
-    const pending = getPending(t);
-    const full = members.length >= TEAM_SIZE;
-
-    const myBadge = st.teamId === t.id ? '<span class="meta pill">my team</span>' : '';
-    const pendingBadge = st.pendingTeamId === t.id ? '<span class="meta pill pending">requested</span>' : '';
-
-    const joinState = computeJoinState({ st, teamId: t.id, membersCount: members.length });
+    const memberNames = members.length
+      ? members.map(m => (m?.name || '—').trim()).filter(Boolean).join(', ')
+      : 'No members yet';
 
     return `
-      <div class="team-card team-card-expanded" data-team="${esc(t.id)}">
-        <div class="team-summary no-details">
-          <div class="team-left">
-            <div class="team-rank">#${idx + 1}</div>
-            <div class="team-name-wrap">
-              <span class="team-name">${esc(t.teamName || 'Unnamed')}</span>
-            </div>
-          </div>
-          <div class="team-right">
-            <span class="meta">${members.length}/${TEAM_SIZE}</span>
-            ${pending.length ? `<span class="meta pill pending">${pending.length} pending</span>` : ''}
-            ${myBadge}${pendingBadge}
-            ${full ? '<span class="meta pill">full</span>' : ''}
-          </div>
+      <button class="team-list-item" type="button" data-team="${esc(t.id)}">
+        <div class="team-list-left">
+          <div class="team-list-name">${esc(t.teamName || 'Unnamed')}</div>
+          <div class="team-list-members">${esc(memberNames)}</div>
         </div>
-
-        <div class="team-body team-body-compact">
-          <div class="team-section-title">Members</div>
-          <div class="players-list">
-            ${members.length
-              ? members.map(m => `
-                  <div class="player-row">
-                    <div class="player-left">
-                      <span class="player-name">${esc(m.name || '—')}</span>
-                    </div>
-                  </div>
-                `).join('')
-              : '<div class="empty-state">No members yet</div>'}
-          </div>
-
-          <div class="team-actions">
-            <button class="btn primary" type="button" data-join-team="${esc(t.id)}" ${joinState.disabled ? 'disabled' : ''}>${esc(joinState.label)}</button>
-            <div class="hint" id="team-hint-${esc(t.id)}">${esc(joinState.hint || '')}</div>
-          </div>
+        <div class="team-list-right">
+          <div class="team-list-count">${members.length}/${TEAM_SIZE}</div>
         </div>
-      </div>
+      </button>
     `;
   }).join('');
 
-  container.querySelectorAll('[data-join-team]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-join-team');
-      if (!teamId) return;
-      await requestToJoin(teamId, { hintElId: `team-hint-${teamId}` });
+  container.querySelectorAll('[data-team]')?.forEach(row => {
+    row.addEventListener('click', () => {
+      const teamId = row.getAttribute('data-team');
+      if (teamId) openTeamModal(teamId);
     });
   });
-}
-
-function computeJoinState({ st, teamId, membersCount }) {
-  const full = membersCount >= TEAM_SIZE;
-  const iAmMember = st.teamId === teamId;
-  const iAmPendingHere = st.pendingTeamId === teamId;
-  const iAmBusy = !!(st.teamId || st.pendingTeamId);
-  const noName = !st.name;
-
-  let label = 'Request to join';
-  let disabled = false;
-  let hint = '';
-
-  if (noName) {
-    disabled = true;
-    hint = 'Set your name on Home first.';
-  } else if (iAmMember) {
-    disabled = true;
-    label = 'You are on this team';
-  } else if (iAmPendingHere) {
-    disabled = true;
-    label = 'Request sent';
-  } else if (iAmBusy) {
-    disabled = true;
-    hint = 'You are already on a team (or have a pending request).';
-  } else if (full) {
-    disabled = true;
-    label = 'Team full';
-  }
-
-  return { label, disabled, hint };
 }
 
 /* =========================
@@ -524,13 +463,12 @@ function renderMyTeam(teams) {
   const members = getMembers(st.team);
   if (membersEl) {
     membersEl.innerHTML = members.map(m => {
-      const isMe = m.userId === st.userId;
       const isOwner = st.team.creatorUserId === m.userId;
       const canKick = st.isCreator && !isOwner;
       return `
         <div class="player-row">
           <div class="player-left">
-            <span class="player-name">${esc(m.name || '—')}${isOwner ? ' <span class="pill">creator</span>' : ''}${isMe ? ' <span class="pill">you</span>' : ''}</span>
+            <span class="player-name">${esc(m.name || '—')}</span>
           </div>
           ${canKick ? `<button class="icon-btn danger" type="button" data-kick="${esc(m.userId)}" title="Kick">×</button>` : ''}
         </div>
