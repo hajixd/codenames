@@ -5,33 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <title>Teams - Codenames Tournament</title>
+    <title>Teams - Codenames</title>
   </head>
   <body>
-    <nav class="navbar">
-      <div class="container">
-        <a href="/" class="nav-brand">🎯 Codenames Tournament</a>
-        <ul class="nav-menu">
-          <li><a href="/">Home</a></li>
-          <li><a href="/register.html">Register Team</a></li>
-          <li><a href="/teams.html" class="active">Teams (<span id="teams-count">0</span>)</a></li>
-        </ul>
-      </div>
-    </nav>
+    <div class="page">
+      <header class="page-header">
+        <a href="/" class="back-link">&larr;</a>
+        <h1 class="page-title">Teams (<span id="teams-count">0</span>/6)</h1>
+      </header>
 
-    <div class="teams-page">
-      <div class="container">
-        <div class="teams-header">
-          <h1>Registered Teams</h1>
-          <p>All teams participating in the Codenames Tournament</p>
-          <a href="/register.html" class="btn btn-primary">Register New Team</a>
-        </div>
-
-        <div id="teams-container">
-          <!-- Teams will be loaded here by JavaScript -->
-        </div>
+      <div id="teams-container">
+        <!-- Filled by JS -->
       </div>
     </div>
 
