@@ -38,7 +38,10 @@
         <button class="tab" data-panel="panel-teams" type="button">Teams</button>
         <button class="tab" data-panel="panel-players" type="button">Players</button>
         <button class="tab" data-panel="panel-myteam" type="button">My Team</button>
-        <button class="tab" data-panel="panel-chat" type="button">Chat</button>
+        <button class="tab" data-panel="panel-chat" type="button">
+          Chat
+          <span class="badge tab-badge" id="badge-chat-desktop" aria-label="Unread chat messages" style="display:none;"></span>
+        </button>
       </nav>
 
       <main class="main-content">
@@ -171,8 +174,14 @@
             <div class="chat-head-row">
               <h2>Chat</h2>
               <div class="segmented" role="tablist" aria-label="Chat mode">
-                <button class="seg-btn active" id="chat-mode-global" type="button" role="tab" aria-selected="true">Global</button>
-                <button class="seg-btn" id="chat-mode-team" type="button" role="tab" aria-selected="false">Team</button>
+                <button class="seg-btn active" id="chat-mode-global" type="button" role="tab" aria-selected="true">
+                  Global
+                  <span class="badge seg-badge" id="badge-global" aria-label="Unread global messages" style="display:none;"></span>
+                </button>
+                <button class="seg-btn" id="chat-mode-team" type="button" role="tab" aria-selected="false">
+                  Team
+                  <span class="badge seg-badge" id="badge-team" aria-label="Unread team messages" style="display:none;"></span>
+                </button>
               </div>
             </div>
 
@@ -209,6 +218,7 @@
         <button class="tab" data-panel="panel-chat" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
           <span>Chat</span>
+          <span class="badge tab-badge" id="badge-chat-mobile" aria-label="Unread chat messages" style="display:none;"></span>
         </button>
       </nav>
 

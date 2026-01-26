@@ -37,6 +37,14 @@ const GLOBAL_CHAT_COLLECTION = 'globalChat';
 let chatMode = 'global'; // 'global' | 'team'
 let chatUnsub = null;
 let chatMessagesCache = [];
+// Unread badges
+let unreadGlobalUnsub = null;
+let unreadTeamUnsub = null;
+let unreadGlobalCache = [];
+let unreadTeamCache = [];
+let unreadGlobalCount = 0;
+let unreadTeamCount = 0;
+let lastReadWriteAtMs = 0;
 let activePanelId = 'panel-home';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -75,8 +83,11 @@ function initTabs() {
       }
       if (panelId === 'panel-chat') {
         startChatSubscription();
+        markChatRead(chatMode);
+        recomputeUnreadBadges();
       }
       activePanelId = panelId;
+      recomputeUnreadBadges();
     });
   });
 }
@@ -627,6 +638,8 @@ function listenToTeams() {
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       refreshHeaderIdentity();
+      refreshUnreadTeamListener();
+      recomputeUnreadBadges();
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
       renderMyTeam(teamsCache);
@@ -652,6 +665,7 @@ function listenToPlayers() {
       // Best-effort: if prior versions created duplicate player docs for the same name,
       // auto-merge them to the earliest-created doc.
       autoMergeDuplicatePlayers(playersCache);
+      recomputeUnreadBadges();
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
     }, (err) => {
@@ -1721,6 +1735,169 @@ function renderRequestsModal() {
 /* =========================
    Chat (tab)
 ========================= */
+function setBadge(el, count) {
+  const node = typeof el === 'string' ? document.getElementById(el) : el;
+  if (!node) return;
+  const n = Number(count || 0);
+  if (!n || n <= 0) {
+    node.style.display = 'none';
+    node.textContent = '';
+    return;
+  }
+  node.style.display = 'inline-flex';
+  node.textContent = n > 99 ? '99+' : String(n);
+}
+
+function getMyPlayerDoc() {
+  const uid = getUserId();
+  return (playersCache || []).find(p => String(p?.id || '').trim() === String(uid || '').trim()) || null;
+}
+
+function getReadMsGlobal() {
+  const me = getMyPlayerDoc();
+  const ts = me?.readReceipts?.global;
+  const ms = tsToMs(ts);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function getReadMsTeam(teamId) {
+  const me = getMyPlayerDoc();
+  const tid = String(teamId || '').trim();
+  if (!tid) return 0;
+  const ts = me?.readReceipts?.team?.[tid];
+  const ms = tsToMs(ts);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function computeUnreadFromCache(cache, lastReadMs) {
+  const myId = String(getUserId() || '').trim();
+  let n = 0;
+  for (const m of (cache || [])) {
+    const createdMs = tsToMs(m?.createdAt);
+    if (!Number.isFinite(createdMs) || createdMs <= lastReadMs) continue;
+    const senderId = String(m?.senderId || '').trim();
+    if (senderId && myId && senderId === myId) continue;
+    n += 1;
+  }
+  return n;
+}
+
+function recomputeUnreadBadges() {
+  // Global
+  const globalLastRead = getReadMsGlobal();
+  let g = computeUnreadFromCache(unreadGlobalCache, globalLastRead);
+
+  // Team
+  const st = computeUserState(teamsCache);
+  const teamId = st?.teamId || '';
+  const teamLastRead = teamId ? getReadMsTeam(teamId) : Number.MAX_SAFE_INTEGER;
+  let t = teamId ? computeUnreadFromCache(unreadTeamCache, teamLastRead) : 0;
+
+  // If user is currently viewing a chat, treat it as read.
+  if (activePanelId === 'panel-chat') {
+    if (chatMode === 'global') g = 0;
+    if (chatMode === 'team') t = 0;
+  }
+
+  unreadGlobalCount = g;
+  unreadTeamCount = t;
+
+  setBadge('badge-global', unreadGlobalCount);
+  setBadge('badge-team', unreadTeamCount);
+  setBadge('badge-chat-desktop', unreadGlobalCount + unreadTeamCount);
+  setBadge('badge-chat-mobile', unreadGlobalCount + unreadTeamCount);
+}
+
+async function markChatRead(mode) {
+  const now = Date.now();
+  // Throttle writes to avoid spam.
+  if (now - lastReadWriteAtMs < 1500) return;
+  lastReadWriteAtMs = now;
+
+  const uid = getUserId();
+  const name = getUserName();
+  if (!uid || !name) return;
+
+  const ref = db.collection('players').doc(uid);
+  try {
+    if (mode === 'team') {
+      const st = computeUserState(teamsCache);
+      const tid = String(st?.teamId || '').trim();
+      if (!tid) return;
+      await ref.set({
+        readReceipts: {
+          team: { [tid]: firebase.firestore.FieldValue.serverTimestamp() }
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } else {
+      await ref.set({
+        readReceipts: { global: firebase.firestore.FieldValue.serverTimestamp() },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (e) {
+    // best-effort
+  }
+}
+
+function initUnreadListeners() {
+  // Global unread listener (always on)
+  if (!unreadGlobalUnsub) {
+    unreadGlobalUnsub = db.collection(GLOBAL_CHAT_COLLECTION)
+      .orderBy('createdAt', 'asc')
+      .limit(200)
+      .onSnapshot((snap) => {
+        unreadGlobalCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        recomputeUnreadBadges();
+      }, () => {
+        // ignore
+      });
+  }
+  refreshUnreadTeamListener();
+}
+
+function refreshUnreadTeamListener() {
+  const st = computeUserState(teamsCache);
+  const tid = String(st?.teamId || '').trim();
+
+  // If no team, clear the team cache and unsubscribe.
+  if (!tid) {
+    if (unreadTeamUnsub) {
+      try { unreadTeamUnsub(); } catch (_) {}
+      unreadTeamUnsub = null;
+    }
+    unreadTeamCache = [];
+    recomputeUnreadBadges();
+    return;
+  }
+
+  // If already listening to the right team, keep it.
+  const currentListeningTeamId = unreadTeamUnsub?.__teamId || '';
+  if (currentListeningTeamId === tid) return;
+
+  if (unreadTeamUnsub) {
+    try { unreadTeamUnsub(); } catch (_) {}
+    unreadTeamUnsub = null;
+  }
+  unreadTeamCache = [];
+
+  const unsub = db.collection('teams')
+    .doc(tid)
+    .collection('chat')
+    .orderBy('createdAt', 'asc')
+    .limit(200)
+    .onSnapshot((snap) => {
+      unreadTeamCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      recomputeUnreadBadges();
+    }, () => {
+      // ignore
+    });
+  // Tag the function so we know which team we're on.
+  unsub.__teamId = tid;
+  unreadTeamUnsub = unsub;
+}
+
 function initChatTab() {
   const btnGlobal = document.getElementById('chat-mode-global');
   const btnTeam = document.getElementById('chat-mode-team');
@@ -1736,7 +1913,10 @@ function initChatTab() {
     // If chat panel is visible, resubscribe.
     if (activePanelId === 'panel-chat') {
       startChatSubscription();
+      // Switching modes while in Chat should clear unread.
+      markChatRead(chatMode);
     }
+    recomputeUnreadBadges();
   };
 
   btnGlobal?.addEventListener('click', () => setMode('global'));
@@ -1746,6 +1926,9 @@ function initChatTab() {
     e.preventDefault();
     await sendChatTabMessage();
   });
+
+  initUnreadListeners();
+  recomputeUnreadBadges();
 }
 
 function stopChatSubscription() {
@@ -1794,6 +1977,9 @@ function startChatSubscription() {
       .onSnapshot((snap) => {
         chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderChatTabMessages();
+        if (activePanelId === 'panel-chat' && chatMode === 'team') {
+          markChatRead('team');
+        }
       }, (err) => {
         console.warn('Team chat listen failed', err);
         setHint('chat-panel-hint', 'Could not load team chat.');
@@ -1809,6 +1995,9 @@ function startChatSubscription() {
     .onSnapshot((snap) => {
       chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderChatTabMessages();
+      if (activePanelId === 'panel-chat' && chatMode === 'global') {
+        markChatRead('global');
+      }
     }, (err) => {
       console.warn('Global chat listen failed', err);
       setHint('chat-panel-hint', 'Could not load global chat.');
