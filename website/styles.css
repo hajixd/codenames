@@ -1613,10 +1613,11 @@ button:disabled{
 /* Name dock: bottom on mobile, unobtrusive card on desktop */
 .name-dock{
   width: 100%;
-  margin-top: 16px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
+  /* Push the name entry lower + make it sleeker */
+  margin-top: 30px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.10);
   backdrop-filter: blur(10px);
 }
@@ -1627,18 +1628,37 @@ button:disabled{
 .name-dock-form .input{ margin-bottom: 0; }
 .name-dock-form .form-actions{ justify-content: flex-end; gap: 10px; }
 
+/* Prettier first-time name entry */
+.name-dock-form .label{ font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; }
+.name-dock-form .input{ font-size: 12px; padding: 9px 12px; border-radius: 10px; }
+.name-dock-form .form-actions{
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+.name-dock-form .btn.primary{
+  width: 100%;
+  justify-content: center;
+  background: rgba(59,130,246,0.72);
+  border-color: rgba(59,130,246,0.28);
+}
+.name-dock-form .hint{ font-size: 12px; }
+
+
 @media (max-width: 768px){
   /* Keep name always reachable on Home */
   #panel-home .panel-inner{ padding-bottom: 110px; }
   #panel-home .name-dock{
     position: sticky;
-    bottom: 78px; /* above mobile tabs */
+    bottom: 66px; /* above mobile tabs */
   }
 }
 
 @media (min-width: 769px){
   /* On desktop, rely on top-right header name; keep dock subtle */
-  #panel-home .name-dock{ max-width: 520px; }
+  #panel-home .name-dock{ max-width: 520px; margin-top: auto; }
 }
 
 /* Teams page: sharp clickable list */
