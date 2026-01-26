@@ -133,6 +133,17 @@ function refreshNameUI() {
   // Also update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
   renderMyTeam(teamsCache);
+
+  // Keep header identity (name + team) in sync
+  refreshHeaderIdentity();
+}
+
+function refreshHeaderIdentity() {
+  const st = computeUserState(teamsCache);
+  const teamText = st.team
+    ? (st.team.teamName || 'My team')
+    : (st.pendingTeam ? `Pending: ${st.pendingTeam.teamName || 'Team'}` : 'No team');
+  setText('user-team-display', teamText);
 }
 
 /* =========================
@@ -143,6 +154,7 @@ function listenToTeams() {
     .orderBy('createdAt', 'asc')
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      refreshHeaderIdentity();
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
       renderMyTeam(teamsCache);
