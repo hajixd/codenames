@@ -251,7 +251,8 @@ function applyTeamThemeFromState(st) {
   if (color) {
     body?.classList.add('has-team-color');
     root.style.setProperty('--team-accent', color);
-    root.style.setProperty('--team-glow', hexToRgba(color, 0.22));
+    // Very subtle, but slightly more visible than before
+    root.style.setProperty('--team-glow', hexToRgba(color, 0.28));
   } else {
     body?.classList.remove('has-team-color');
     root.style.setProperty('--team-accent', 'transparent');
