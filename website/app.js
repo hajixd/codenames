@@ -972,13 +972,13 @@ function renderPlayers(players, teams) {
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
 
       // Right-side pill: show the player's team (if they're on one), otherwise show "Available".
-      // Teammates can also send invites via the left pill.
+      // Teammates can also send invites via the Invite pill.
       const teamPillStyle = teamColor
         ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
         : '';
 
       // Always show the status pill (Available or Team). If you're on a team,
-      // also show an Invite pill to the LEFT of the status pill.
+      // also show an Invite pill to the RIGHT of the status pill.
       let statusPillHtml = memberTeam
         ? `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`
         : `<span class="player-tag ok">Available</span>`;
@@ -1007,8 +1007,8 @@ function renderPlayers(players, teams) {
             <span class="player-name" ${nameStyle}>${esc(name)}</span>
           </div>
           <div class="player-right">
-            ${invitePillHtml}
             ${statusPillHtml}
+            ${invitePillHtml}
           </div>
         </div>
       `;
