@@ -8,8 +8,8 @@
   --bg: #09090b;
   --surface: #131316;
   --surface2: #1a1a1f;
-  /* Brighter outlines */
-  --border: #34343d;
+  /* Even brighter outlines */
+  --border: #5f5f7a;
   --text: #fff;
   --text-dim: #71717a;
   --accent: #3b82f6;
@@ -1596,6 +1596,67 @@ body.mode-joiner .only-joiner{ display:block; }
   gap: 12px;
   /* Taller chat like the rest of the UI */
   height: 72vh;
+}
+
+/* Chat tab */
+.chat-head-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.segmented{
+  display:flex;
+  gap: 6px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.seg-btn{
+  appearance:none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 900;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor:pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.seg-btn:hover{
+  background: var(--surface2);
+  border-color: rgba(255,255,255,0.10);
+  color: var(--text);
+}
+
+.seg-btn.active{
+  background: rgba(59,130,246,0.18);
+  border-color: rgba(59,130,246,0.40);
+  color: var(--text);
+}
+
+.chat-card{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  display:flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 68vh;
+}
+
+.chat-card .chat-messages{
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 10px;
 }
 
 .chat-messages{

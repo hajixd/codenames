@@ -32,10 +32,12 @@ let playersCache = [];
 let openTeamId = null;
 let mergeNamesInFlight = new Set();
 
-// Team chat
-let chatOpenTeamId = null;
+// Chat (tab)
+const GLOBAL_CHAT_COLLECTION = 'globalChat';
+let chatMode = 'global'; // 'global' | 'team'
 let chatUnsub = null;
 let chatMessagesCache = [];
+let activePanelId = 'panel-home';
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
@@ -45,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
-  initTeamChatModal();
+  initChatTab();
   listenToTeams();
   listenToPlayers();
 });
@@ -57,11 +59,24 @@ function initTabs() {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
 
+  activePanelId = document.querySelector('.panel.active')?.id || 'panel-home';
+
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const panelId = tab.dataset.panel;
+      if (!panelId) return;
+      const prev = activePanelId;
       tabs.forEach(t => t.classList.toggle('active', t === tab));
       panels.forEach(p => p.classList.toggle('active', p.id === panelId));
+
+      // Panel lifecycle hooks
+      if (prev === 'panel-chat' && panelId !== 'panel-chat') {
+        stopChatSubscription();
+      }
+      if (panelId === 'panel-chat') {
+        startChatSubscription();
+      }
+      activePanelId = panelId;
     });
   });
 }
@@ -1704,79 +1719,104 @@ function renderRequestsModal() {
 }
 
 /* =========================
-   Team chat
+   Chat (tab)
 ========================= */
-function initTeamChatModal() {
-  const modal = document.getElementById('chat-modal');
-  document.getElementById('chat-modal-close')?.addEventListener('click', closeChatModal);
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) closeChatModal();
-  });
+function initChatTab() {
+  const btnGlobal = document.getElementById('chat-mode-global');
+  const btnTeam = document.getElementById('chat-mode-team');
+  const form = document.getElementById('chat-panel-form');
 
-  const form = document.getElementById('chat-form');
+  const setMode = (mode) => {
+    chatMode = mode === 'team' ? 'team' : 'global';
+    btnGlobal?.classList.toggle('active', chatMode === 'global');
+    btnTeam?.classList.toggle('active', chatMode === 'team');
+    btnGlobal?.setAttribute('aria-selected', chatMode === 'global' ? 'true' : 'false');
+    btnTeam?.setAttribute('aria-selected', chatMode === 'team' ? 'true' : 'false');
+
+    // If chat panel is visible, resubscribe.
+    if (activePanelId === 'panel-chat') {
+      startChatSubscription();
+    }
+  };
+
+  btnGlobal?.addEventListener('click', () => setMode('global'));
+  btnTeam?.addEventListener('click', () => setMode('team'));
+
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await sendChatMessage();
+    await sendChatTabMessage();
   });
 }
 
-function openChatModal() {
+function stopChatSubscription() {
+  if (chatUnsub) {
+    try { chatUnsub(); } catch (_) {}
+    chatUnsub = null;
+  }
+  chatMessagesCache = [];
+  const list = document.getElementById('chat-panel-messages');
+  if (list) list.innerHTML = '';
+  setHint('chat-panel-hint', '');
+}
+
+function startChatSubscription() {
   const st = computeUserState(teamsCache);
-  if (!st.teamId || !st.team) return;
+
   if (!st.name) {
-    setHint('chat-hint', 'Set your name on Home first.');
+    stopChatSubscription();
+    setHint('chat-panel-hint', 'Set your name on Home first.');
     return;
   }
-  const modal = document.getElementById('chat-modal');
-  if (!modal) return;
-  modal.style.display = 'flex';
 
-  const title = document.getElementById('chat-modal-title');
-  if (title) title.textContent = (st.team.teamName || 'Team') + ' chat';
-
-  chatOpenTeamId = st.teamId;
-  setHint('chat-hint', '');
-
-  // Subscribe to this team's chat messages.
+  // Clear any previous subscription.
   if (chatUnsub) {
     try { chatUnsub(); } catch (_) {}
     chatUnsub = null;
   }
 
-  chatUnsub = db.collection('teams')
-    .doc(st.teamId)
-    .collection('chat')
+  const list = document.getElementById('chat-panel-messages');
+  if (list) list.innerHTML = '<div class="empty-state">Loading…</div>';
+
+  if (chatMode === 'team') {
+    if (!st.teamId) {
+      chatMessagesCache = [];
+      renderChatTabMessages();
+      setHint('chat-panel-hint', 'Join a team to use team chat.');
+      return;
+    }
+
+    setHint('chat-panel-hint', '');
+    chatUnsub = db.collection('teams')
+      .doc(st.teamId)
+      .collection('chat')
+      .orderBy('createdAt', 'asc')
+      .limit(200)
+      .onSnapshot((snap) => {
+        chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderChatTabMessages();
+      }, (err) => {
+        console.warn('Team chat listen failed', err);
+        setHint('chat-panel-hint', 'Could not load team chat.');
+      });
+    return;
+  }
+
+  // Global chat
+  setHint('chat-panel-hint', '');
+  chatUnsub = db.collection(GLOBAL_CHAT_COLLECTION)
     .orderBy('createdAt', 'asc')
     .limit(200)
     .onSnapshot((snap) => {
       chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderChatMessages();
+      renderChatTabMessages();
     }, (err) => {
-      console.warn('Chat listen failed', err);
-      setHint('chat-hint', 'Could not load chat.');
+      console.warn('Global chat listen failed', err);
+      setHint('chat-panel-hint', 'Could not load global chat.');
     });
-
-  // Focus composer
-  const input = document.getElementById('chat-input');
-  try { input?.focus(); } catch (_) {}
 }
 
-function closeChatModal() {
-  const modal = document.getElementById('chat-modal');
-  if (modal) modal.style.display = 'none';
-  setHint('chat-hint', '');
-  if (chatUnsub) {
-    try { chatUnsub(); } catch (_) {}
-    chatUnsub = null;
-  }
-  chatOpenTeamId = null;
-  chatMessagesCache = [];
-  const list = document.getElementById('chat-messages');
-  if (list) list.innerHTML = '';
-}
-
-function renderChatMessages() {
-  const list = document.getElementById('chat-messages');
+function renderChatTabMessages() {
+  const list = document.getElementById('chat-panel-messages');
   if (!list) return;
 
   if (!chatMessagesCache?.length) {
@@ -1792,32 +1832,48 @@ function renderChatMessages() {
     `;
   }).join('');
 
-  // Scroll to bottom
   try { list.scrollTop = list.scrollHeight; } catch (_) {}
 }
 
-async function sendChatMessage() {
+async function sendChatTabMessage() {
   const st = computeUserState(teamsCache);
-  if (!st.teamId || !st.team) return;
-  const input = document.getElementById('chat-input');
+  if (!st.name) {
+    setHint('chat-panel-hint', 'Set your name on Home first.');
+    return;
+  }
+
+  const input = document.getElementById('chat-panel-input');
   const text = (input?.value || '').trim();
   if (!text) return;
 
   try {
-    await db.collection('teams')
-      .doc(st.teamId)
-      .collection('chat')
-      .add({
+    if (chatMode === 'team') {
+      if (!st.teamId) {
+        setHint('chat-panel-hint', 'Join a team to use team chat.');
+        return;
+      }
+      await db.collection('teams')
+        .doc(st.teamId)
+        .collection('chat')
+        .add({
+          senderId: st.userId,
+          senderName: st.name,
+          text,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } else {
+      await db.collection(GLOBAL_CHAT_COLLECTION).add({
         senderId: st.userId,
         senderName: st.name,
         text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
+    }
     if (input) input.value = '';
-    setHint('chat-hint', '');
+    setHint('chat-panel-hint', '');
   } catch (e) {
     console.warn('Could not send chat message', e);
-    setHint('chat-hint', 'Could not send message.');
+    setHint('chat-panel-hint', 'Could not send message.');
   }
 }
 
