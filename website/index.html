@@ -20,6 +20,13 @@
         <div class="prize-badge">$150 Prize</div>
       </header>
 
+      <!-- Desktop Tabs (shown on laptop/desktop) -->
+      <nav class="desktop-tabs" aria-label="Primary">
+        <button class="tab active" data-panel="panel-home" type="button">Home</button>
+        <button class="tab" data-panel="panel-register" type="button">Teams</button>
+        <button class="tab" data-panel="panel-teams" type="button">Roster</button>
+      </nav>
+
       <!-- Main Content -->
       <main class="main-content">
         <!-- Panel 1: Info -->
@@ -59,8 +66,11 @@
             <h2>Teams</h2>
             <p class="subtitle">Create a team, request to join, then have the team creator accept.</p>
 
+            <!-- Current user status (member / pending) -->
+            <div id="my-status" class="status-card" style="display:none;"></div>
+
             <div class="stack">
-              <details class="accordion" open>
+              <details class="accordion" id="create-accordion" open>
                 <summary>
                   <span>Create a team</span>
                   <span class="pill">creator</span>
@@ -93,7 +103,7 @@
                 </form>
               </details>
 
-              <details class="accordion">
+              <details class="accordion" id="join-accordion">
                 <summary>
                   <span>Request to join a team</span>
                   <span class="pill">friends</span>
@@ -128,14 +138,15 @@
                 </form>
               </details>
 
-              <details class="accordion">
+              <details class="accordion" id="manage-accordion">
                 <summary>
                   <span>Manage join requests</span>
                   <span class="pill">creator</span>
                 </summary>
 
                 <div class="manage-note">
-                  Enter your team and your Discord handle (the one used when creating the team) to review and accept requests.
+                  Use your <b>creator key</b> to review and accept requests. When you create a team, the key is saved on your device
+                  (and shown once) — keep it somewhere safe if you’ll manage requests from another laptop.
                 </div>
 
                 <form id="manage-form" class="form">
@@ -149,9 +160,18 @@
                       </label>
 
                       <label class="field">
-                        <span class="label">Creator Discord</span>
-                        <input type="text" id="manage-discord" class="input" placeholder="@username" required>
+                        <span class="label">Creator key</span>
+                        <input type="text" id="manage-key" class="input" placeholder="Saved on this device" required>
                       </label>
+                    </div>
+
+                    <!-- Legacy teams (created before creator keys existed) can still be managed by creator Discord -->
+                    <div class="two-col legacy-manage" id="legacy-manage" style="display:none;">
+                      <label class="field">
+                        <span class="label">Creator Discord (legacy)</span>
+                        <input type="text" id="manage-discord" class="input" placeholder="@username">
+                      </label>
+                      <div class="field" aria-hidden="true"></div>
                     </div>
                   </div>
 
@@ -197,6 +217,19 @@
           <span>Teams</span>
         </button>
       </nav>
+
+      <!-- First-load chooser -->
+      <div class="mode-modal" id="mode-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="mode-card">
+          <div class="mode-title">What do you want to do?</div>
+          <div class="mode-sub">Pick one — you can switch anytime using the tabs.</div>
+          <div class="mode-actions">
+            <button class="btn primary" id="mode-create" type="button">Create / manage a team</button>
+            <button class="btn" id="mode-join" type="button">Join a team</button>
+          </div>
+          <button class="mode-skip" id="mode-skip" type="button">Skip</button>
+        </div>
+      </div>
     </div>
 
     <script src="app.js"></script>

@@ -36,41 +36,43 @@ body {
 
 /* ==================== DESKTOP ==================== */
 @media (min-width: 769px) {
-  .mobile-tabs {
-    display: flex;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    padding: 10px 0;
-    justify-content: center;
-  }
+  /* On desktop we use a sleek top tab bar (not the mobile bottom tabs) */
+  .mobile-tabs { display: none; }
 
-  .tab {
-    flex: 1;
-    max-width: 200px;
+  .desktop-tabs {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 4px;
-    background: none;
-    border: none;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .desktop-tabs .tab {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
     color: var(--text-dim);
-    padding: 10px 12px;
-    cursor: pointer;
-    transition: color 0.2s;
-  }
-
-  .tab svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .tab span {
-    font-size: 12px;
+    padding: 10px 14px;
+    border-radius: 999px;
     font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
 
-  .tab.active {
-    color: var(--accent);
+  .desktop-tabs .tab:hover {
+    background: var(--surface2);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .desktop-tabs .tab.active {
+    background: rgba(59,130,246,0.14);
+    border-color: rgba(59,130,246,0.35);
+    color: var(--text);
   }
 
   .mobile-header {
@@ -407,6 +409,10 @@ body {
 /* ==================== MOBILE ==================== */
 @media (max-width: 768px) {
   .desktop-header {
+    display: none;
+  }
+
+  .desktop-tabs {
     display: none;
   }
 
@@ -932,6 +938,96 @@ body {
 .team-footnote { margin-top: 10px; color: var(--text-dim); font-size: 13px; }
 
 .subtitle.small { font-size: 13px; margin-top: 6px; }
+
+/* ==================== FIRST-LOAD CHOOSER + STATUS ==================== */
+.status-card {
+  background: rgba(59,130,246,0.10);
+  border: 1px solid rgba(59,130,246,0.28);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.status-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-title {
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.status-sub {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.status-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.mode-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 50;
+}
+
+.mode-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+
+.mode-title {
+  font-weight: 900;
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.mode-sub {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.mode-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mode-skip {
+  margin-top: 12px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.mode-skip:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
 
 
 @media (max-width: 520px) {

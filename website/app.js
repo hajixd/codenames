@@ -17,10 +17,17 @@ const db = firebase.firestore();
 
 let teamsCache = [];
 let manageUnsub = null;
+let manageAuth = null; // { teamId, method: 'key'|'discord', creatorKeyHash?, creatorDiscordLower? }
+
+const CREATOR_KEY_STORAGE_PREFIX = 'creatorKey:';
+const USER_DISCORD_STORAGE = 'userDiscord';
+const USER_NAME_STORAGE = 'userName';
+const FIRST_LOAD_CHOICE = 'firstLoadChoiceV1';
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initForms();
+  initFirstLoadChooser();
   listenToTeams();
 });
 
@@ -33,19 +40,80 @@ function initTabs() {
 
   // default
   const defaultPanel = 'panel-home';
-  document.getElementById(defaultPanel)?.classList.add('active');
-  document.querySelector(`.tab[data-panel="${defaultPanel}"]`)?.classList.add('active');
+  setActivePanel(defaultPanel, { tabs, panels });
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const panelId = tab.dataset.panel;
 
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-
-      panels.forEach(p => p.classList.remove('active'));
-      document.getElementById(panelId)?.classList.add('active');
+      setActivePanel(panelId, { tabs, panels });
     });
+  });
+}
+
+function setActivePanel(panelId, ctx) {
+  const tabs = ctx?.tabs || document.querySelectorAll('.tab');
+  const panels = ctx?.panels || document.querySelectorAll('.panel');
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === panelId));
+  panels.forEach(p => p.classList.toggle('active', p.id === panelId));
+}
+
+/* =========================
+   First-load chooser
+========================= */
+function initFirstLoadChooser() {
+  const modal = document.getElementById('mode-modal');
+  const btnCreate = document.getElementById('mode-create');
+  const btnJoin = document.getElementById('mode-join');
+  const btnSkip = document.getElementById('mode-skip');
+
+  if (!modal || !btnCreate || !btnJoin || !btnSkip) return;
+
+  // Show once per browser/device
+  const alreadyChosen = safeLSGet(FIRST_LOAD_CHOICE);
+  if (!alreadyChosen) {
+    modal.style.display = 'flex';
+  }
+
+  const close = () => { modal.style.display = 'none'; };
+
+  const openAccordions = (mode) => {
+    const c = document.getElementById('create-accordion');
+    const j = document.getElementById('join-accordion');
+    const m = document.getElementById('manage-accordion');
+    if (mode === 'create') {
+      if (c) c.open = true;
+      if (j) j.open = false;
+      // Keep manage visible but collapsed by default
+      if (m) m.open = false;
+      c?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (mode === 'join') {
+      if (c) c.open = false;
+      if (j) j.open = true;
+      if (m) m.open = false;
+      j?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  btnCreate.addEventListener('click', () => {
+    safeLSSet(FIRST_LOAD_CHOICE, 'create');
+    close();
+    setActivePanel('panel-register');
+    // Wait a tick so the panel is visible before we scroll
+    setTimeout(() => openAccordions('create'), 50);
+  });
+
+  btnJoin.addEventListener('click', () => {
+    safeLSSet(FIRST_LOAD_CHOICE, 'join');
+    close();
+    setActivePanel('panel-register');
+    setTimeout(() => openAccordions('join'), 50);
+  });
+
+  btnSkip.addEventListener('click', () => {
+    safeLSSet(FIRST_LOAD_CHOICE, 'skip');
+    close();
   });
 }
 
@@ -58,6 +126,7 @@ function listenToTeams() {
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       updateUI(teamsCache);
+      updateMyStatus(teamsCache);
       renderTeams(teamsCache);
       populateTeamSelects(teamsCache);
     }, (err) => {
@@ -177,6 +246,23 @@ function initForms() {
     loadManageRequests();
   });
 
+  // Auto-fill creator key when selecting a team
+  const manageSel = document.getElementById('manage-teamSelect');
+  manageSel?.addEventListener('change', () => {
+    const teamId = manageSel.value || '';
+    const keyEl = document.getElementById('manage-key');
+    const legacyBlock = document.getElementById('legacy-manage');
+
+    // Fill from local storage if we have it
+    const storedKey = teamId ? getStoredCreatorKey(teamId) : '';
+    if (keyEl) keyEl.value = storedKey || '';
+
+    // Show legacy Discord field only for teams that don't have creator keys
+    const team = teamsCache.find(t => t.id === teamId);
+    const hasKey = !!(team && team.creatorKeyHash);
+    if (legacyBlock) legacyBlock.style.display = hasKey ? 'none' : (teamId ? '' : 'none');
+  });
+
   // Accept/decline delegation
   document.getElementById('manage-area')?.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
@@ -191,6 +277,51 @@ function initForms() {
     if (action === 'accept') acceptRequest(teamId, reqId);
     if (action === 'decline') declineRequest(teamId, reqId);
   });
+
+  // Member actions (leave team / cancel request)
+  document.getElementById('my-status')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const teamId = btn.dataset.teamId;
+    const discordLower = btn.dataset.discordLower;
+    if (!teamId || !discordLower) return;
+
+    if (action === 'leave') leaveTeam(teamId, discordLower);
+    if (action === 'cancel') cancelJoinRequest(teamId, discordLower);
+    if (action === 'manage') {
+      setActivePanel('panel-register');
+      const m = document.getElementById('manage-accordion');
+      if (m) {
+        m.open = true;
+        m.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+    if (action === 'join') {
+      setActivePanel('panel-register');
+      const j = document.getElementById('join-accordion');
+      if (j) {
+        j.open = true;
+        j.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  });
+
+  // Prefill known user info (stored on this device)
+  const u = getStoredUser();
+  if (u.discord) {
+    const cd = document.getElementById('create-discord');
+    const jd = document.getElementById('join-discord');
+    if (cd && !cd.value) cd.value = '@' + u.discord;
+    if (jd && !jd.value) jd.value = '@' + u.discord;
+  }
+  if (u.name) {
+    const cn = document.getElementById('create-name');
+    const jn = document.getElementById('join-name');
+    if (cn && !cn.value) cn.value = u.name;
+    if (jn && !jn.value) jn.value = u.name;
+  }
 }
 
 async function handleCreateTeam() {
@@ -241,13 +372,18 @@ async function handleCreateTeam() {
       return;
     }
 
-    await db.collection('teams').add({
+    // Creator key (acts like "this browser is the creator")
+    const creatorKey = genCreatorKey();
+    const creatorKeyHash = await sha256Hex(`v1:${creatorKey}`);
+
+    const docRef = await db.collection('teams').add({
       teamName,
       teamNameLower: teamName.toLowerCase(),
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       creatorName: name,
       creatorDiscord: discord,
       creatorDiscordLower: discordLower,
+      creatorKeyHash,
       members: [
         { name, discord, joinedAt: firebase.firestore.FieldValue.serverTimestamp() }
       ],
@@ -256,9 +392,18 @@ async function handleCreateTeam() {
       allDiscords: [discordLower]
     });
 
+    // Save creator key locally for this team, so they can manage without re-entering
+    if (docRef?.id) setStoredCreatorKey(docRef.id, creatorKey);
+
+    // Remember who you are on this device (used for status + leaving)
+    setStoredUser({ name, discord });
+
     // reset form
     document.getElementById('create-team-form')?.reset();
-    hint.textContent = 'Team created! Tell friends to request to join.';
+    // Try to copy the key (best-effort)
+    try { await navigator.clipboard?.writeText(creatorKey); } catch (_) {}
+
+    hint.textContent = `Team created! Creator key: ${creatorKey} (saved on this device${navigator.clipboard ? ' and copied' : ''}). Keep it safe — you’ll need it to accept requests on another device.`;
     hint.classList.remove('error');
     hint.classList.add('ok');
 
@@ -335,6 +480,9 @@ async function handleJoinRequest() {
       });
     });
 
+    // Remember who you are on this device (used for status + leaving)
+    setStoredUser({ name, discord });
+
     document.getElementById('join-team-form')?.reset();
     hint.textContent = 'Request sent! The team creator can accept it in “Manage join requests”.';
     hint.classList.remove('error');
@@ -356,6 +504,9 @@ async function loadManageRequests() {
   const area = document.getElementById('manage-area');
 
   const teamId = document.getElementById('manage-teamSelect')?.value || '';
+  const keyRaw = document.getElementById('manage-key')?.value || '';
+  const key = sanitizeCreatorKey(keyRaw);
+
   const discordRaw = document.getElementById('manage-discord')?.value.trim() || '';
   const discord = sanitizeDiscord(discordRaw);
   const discordLower = discord.toLowerCase();
@@ -363,8 +514,8 @@ async function loadManageRequests() {
   hint.textContent = '';
   area.innerHTML = '';
 
-  if (!teamId || !discord) {
-    hint.textContent = 'Choose a team and enter the creator Discord.';
+  if (!teamId) {
+    hint.textContent = 'Choose a team first.';
     hint.classList.add('error');
     return;
   }
@@ -378,8 +529,25 @@ async function loadManageRequests() {
     if (!teamSnap.exists) throw new Error('Team not found');
 
     const team = teamSnap.data();
-    if ((team.creatorDiscordLower || '').toLowerCase() !== discordLower) {
-      throw new Error('Creator Discord does not match this team.');
+
+    // Prefer creator key verification when available
+    if (team.creatorKeyHash) {
+      if (!key) throw new Error('Enter your creator key.');
+      const keyHash = await sha256Hex(`v1:${key}`);
+      if (String(team.creatorKeyHash) !== String(keyHash)) {
+        throw new Error('Creator key does not match this team.');
+      }
+
+      // Save key for next time on this device
+      setStoredCreatorKey(teamId, key);
+      manageAuth = { teamId, method: 'key', creatorKeyHash: keyHash };
+    } else {
+      // Legacy fallback
+      if (!discord) throw new Error('This team was created before creator keys existed — enter the creator Discord (legacy).');
+      if ((team.creatorDiscordLower || '').toLowerCase() !== discordLower) {
+        throw new Error('Creator Discord does not match this team.');
+      }
+      manageAuth = { teamId, method: 'discord', creatorDiscordLower: discordLower };
     }
 
     // Subscribe to pending requests
@@ -454,6 +622,13 @@ async function acceptRequest(teamId, reqId) {
   const hint = document.getElementById('manage-hint');
   hint.textContent = '';
 
+  // Client-side gate: only allow actions after the creator has loaded/verified.
+  if (!manageAuth || manageAuth.teamId !== teamId) {
+    hint.textContent = 'Load requests as the team creator first.';
+    hint.classList.add('error');
+    return;
+  }
+
   const teamRef = db.collection('teams').doc(teamId);
   const reqRef = teamRef.collection('requests').doc(reqId);
 
@@ -465,6 +640,17 @@ async function acceptRequest(teamId, reqId) {
 
       const team = teamSnap.data();
       const req = reqSnap.data();
+
+      // Re-validate creator on each action (best-effort; real security needs auth).
+      if (team.creatorKeyHash) {
+        if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
+          throw new Error('Creator verification expired. Reload requests as creator.');
+        }
+      } else {
+        if (manageAuth.method !== 'discord' || String((team.creatorDiscordLower || '').toLowerCase()) !== String(manageAuth.creatorDiscordLower || '')) {
+          throw new Error('Creator verification expired. Reload requests as creator.');
+        }
+      }
 
       if (req.status !== 'pending') throw new Error('Request already handled');
 
@@ -503,6 +689,13 @@ async function declineRequest(teamId, reqId) {
   const hint = document.getElementById('manage-hint');
   hint.textContent = '';
 
+  // Client-side gate: only allow actions after the creator has loaded/verified.
+  if (!manageAuth || manageAuth.teamId !== teamId) {
+    hint.textContent = 'Load requests as the team creator first.';
+    hint.classList.add('error');
+    return;
+  }
+
   const teamRef = db.collection('teams').doc(teamId);
   const reqRef = teamRef.collection('requests').doc(reqId);
 
@@ -511,6 +704,19 @@ async function declineRequest(teamId, reqId) {
       const [teamSnap, reqSnap] = await Promise.all([tx.get(teamRef), tx.get(reqRef)]);
       if (!teamSnap.exists) throw new Error('Team not found');
       if (!reqSnap.exists) throw new Error('Request not found');
+
+      const team = teamSnap.data();
+
+      // Re-validate creator on each action (best-effort; real security needs auth).
+      if (team.creatorKeyHash) {
+        if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
+          throw new Error('Creator verification expired. Reload requests as creator.');
+        }
+      } else {
+        if (manageAuth.method !== 'discord' || String((team.creatorDiscordLower || '').toLowerCase()) !== String(manageAuth.creatorDiscordLower || '')) {
+          throw new Error('Creator verification expired. Reload requests as creator.');
+        }
+      }
 
       const req = reqSnap.data();
       if (req.status !== 'pending') throw new Error('Request already handled');
@@ -539,6 +745,226 @@ async function declineRequest(teamId, reqId) {
 /* =========================
    Helpers
 ========================= */
+
+function safeLSGet(key) {
+  try { return localStorage.getItem(key) || ''; } catch (_) { return ''; }
+}
+
+function safeLSSet(key, value) {
+  try { localStorage.setItem(key, String(value ?? '')); } catch (_) {}
+}
+
+function getStoredUser() {
+  const discord = sanitizeDiscord(safeLSGet(USER_DISCORD_STORAGE));
+  const name = (safeLSGet(USER_NAME_STORAGE) || '').trim();
+  return {
+    discord,
+    discordLower: discord ? discord.toLowerCase() : '',
+    name
+  };
+}
+
+function setStoredUser({ name, discord }) {
+  const d = sanitizeDiscord(discord || '');
+  if (d) safeLSSet(USER_DISCORD_STORAGE, d);
+  if (name && String(name).trim()) safeLSSet(USER_NAME_STORAGE, String(name).trim());
+}
+
+function isMemberOfTeam(team, discordLower) {
+  if (!discordLower) return false;
+  const arr = Array.isArray(team.memberDiscords) ? team.memberDiscords : [];
+  if (arr.map(s => String(s).toLowerCase()).includes(discordLower)) return true;
+  const members = getMembers(team);
+  return members.some(m => sanitizeDiscord(m.discord || '').toLowerCase() === discordLower);
+}
+
+function isPendingOnTeam(team, discordLower) {
+  if (!discordLower) return false;
+  const arr = Array.isArray(team.pendingDiscords) ? team.pendingDiscords : [];
+  return arr.map(s => String(s).toLowerCase()).includes(discordLower);
+}
+
+function updateMyStatus(teams) {
+  const box = document.getElementById('my-status');
+  if (!box) return;
+
+  const u = getStoredUser();
+  if (!u.discordLower) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  const memberTeam = teams.find(t => isMemberOfTeam(t, u.discordLower));
+  const pendingTeam = !memberTeam ? teams.find(t => isPendingOnTeam(t, u.discordLower)) : null;
+
+  if (!memberTeam && !pendingTeam) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  box.style.display = '';
+
+  if (memberTeam) {
+    const isCreator = (memberTeam.creatorDiscordLower || '').toLowerCase() === u.discordLower;
+    box.innerHTML = `
+      <div class="status-row">
+        <div>
+          <div class="status-title">${isCreator ? 'You created' : 'You\'re on'} <b>${esc(memberTeam.teamName || 'this team')}</b></div>
+          <div class="status-sub">Discord: @${esc(u.discord)}${isCreator ? ' • You can manage join requests below.' : ''}</div>
+        </div>
+        <div class="status-actions">
+          ${isCreator ? `<button class="btn small" type="button" data-action="manage" data-team-id="${memberTeam.id}" data-discord-lower="${u.discordLower}">Manage</button>` : `<button class="btn small" type="button" data-action="leave" data-team-id="${memberTeam.id}" data-discord-lower="${u.discordLower}">Leave team</button>`}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Pending
+  box.innerHTML = `
+    <div class="status-row">
+      <div>
+        <div class="status-title">Join request pending</div>
+        <div class="status-sub">Waiting for <b>${esc(pendingTeam.teamName || 'team creator')}</b> to accept • Discord: @${esc(u.discord)}</div>
+      </div>
+      <div class="status-actions">
+        <button class="btn small" type="button" data-action="cancel" data-team-id="${pendingTeam.id}" data-discord-lower="${u.discordLower}">Cancel request</button>
+        <button class="btn small" type="button" data-action="join" data-team-id="${pendingTeam.id}" data-discord-lower="${u.discordLower}">View join form</button>
+      </div>
+    </div>
+  `;
+}
+
+async function cancelJoinRequest(teamId, discordLower) {
+  const hint = document.getElementById('join-hint');
+  if (hint) hint.textContent = '';
+
+  const teamRef = db.collection('teams').doc(teamId);
+  const reqRef = teamRef.collection('requests').doc(discordLower);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [teamSnap, reqSnap] = await Promise.all([tx.get(teamRef), tx.get(reqRef)]);
+      if (!teamSnap.exists) throw new Error('Team not found');
+      if (!reqSnap.exists) throw new Error('Request not found');
+
+      const team = teamSnap.data();
+      const req = reqSnap.data();
+      if (req.status !== 'pending') throw new Error('That request is no longer pending');
+
+      tx.update(reqRef, {
+        status: 'cancelled',
+        handledAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      tx.update(teamRef, {
+        pendingDiscords: firebase.firestore.FieldValue.arrayRemove(discordLower),
+        allDiscords: firebase.firestore.FieldValue.arrayRemove(discordLower)
+      });
+    });
+
+    if (hint) {
+      hint.textContent = 'Cancelled your join request.';
+      hint.classList.remove('error');
+      hint.classList.add('ok');
+    }
+  } catch (err) {
+    console.error('Cancel request error:', err);
+    if (hint) {
+      hint.textContent = (err && err.message) ? err.message : 'Error cancelling request.';
+      hint.classList.add('error');
+    }
+  }
+}
+
+async function leaveTeam(teamId, discordLower) {
+  const hint = document.getElementById('join-hint') || document.getElementById('create-hint');
+  if (hint) hint.textContent = '';
+
+  const teamRef = db.collection('teams').doc(teamId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const teamSnap = await tx.get(teamRef);
+      if (!teamSnap.exists) throw new Error('Team not found');
+      const team = teamSnap.data();
+
+      if ((team.creatorDiscordLower || '').toLowerCase() === discordLower) {
+        throw new Error('Creators can\'t leave their own team (no delete flow yet).');
+      }
+
+      const members = getMembers(team);
+      const filtered = members.filter(m => sanitizeDiscord(m.discord || '').toLowerCase() !== discordLower);
+      if (filtered.length === members.length) throw new Error('You are not a member of this team');
+
+      tx.update(teamRef, {
+        members: filtered,
+        memberDiscords: firebase.firestore.FieldValue.arrayRemove(discordLower),
+        allDiscords: firebase.firestore.FieldValue.arrayRemove(discordLower)
+      });
+    });
+
+    if (hint) {
+      hint.textContent = 'You left the team.';
+      hint.classList.remove('error');
+      hint.classList.add('ok');
+    }
+  } catch (err) {
+    console.error('Leave team error:', err);
+    if (hint) {
+      hint.textContent = (err && err.message) ? err.message : 'Error leaving team.';
+      hint.classList.add('error');
+    }
+  }
+}
+
+function sanitizeCreatorKey(input) {
+  if (!input) return '';
+  // Uppercase, strip spaces/punctuation so users can paste with/without formatting
+  return String(input).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 64);
+}
+
+function genCreatorKey() {
+  // Crockford-ish base32 alphabet without ambiguous chars (no I, L, O, 0, 1)
+  const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < 16; i++) {
+    out += ALPH[bytes[i] % ALPH.length];
+  }
+  // Group for readability: XXXX-XXXX-XXXX-XXXX
+  return out.match(/.{1,4}/g).join('-');
+}
+
+function getStoredCreatorKey(teamId) {
+  try {
+    return localStorage.getItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}`) || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function setStoredCreatorKey(teamId, key) {
+  try {
+    localStorage.setItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}`, sanitizeCreatorKey(key));
+  } catch (_) {
+    // ignore
+  }
+}
+
+async function sha256Hex(str) {
+  const enc = new TextEncoder().encode(String(str));
+  const digest = await crypto.subtle.digest('SHA-256', enc);
+  const bytes = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
+}
 
 function isDiscordTaken(discordLower) {
   if (!discordLower) return false;
