@@ -36,6 +36,7 @@
       <nav class="desktop-tabs" aria-label="Primary">
         <button class="tab active" data-panel="panel-home" type="button">Home</button>
         <button class="tab" data-panel="panel-teams" type="button">Teams</button>
+        <button class="tab" data-panel="panel-players" type="button">Players</button>
         <button class="tab" data-panel="panel-myteam" type="button">My Team</button>
       </nav>
 
@@ -99,6 +100,16 @@
           </div>
         </section>
 
+        <!-- Players Page -->
+        <section class="panel panel-players" id="panel-players">
+          <div class="panel-inner">
+            <h2>Players</h2>
+            <p class="subtitle small">Everyone who has entered their name. Team leaders can invite players who aren't on a team yet.</p>
+            <span class="hint" id="players-hint"></span>
+            <div class="players-directory" id="players-list"></div>
+          </div>
+        </section>
+
         <!-- My Team Page -->
         <section class="panel panel-register" id="panel-myteam">
           <div class="panel-inner">
@@ -106,6 +117,14 @@
             <p class="subtitle small" id="myteam-subtitle">Create a team or manage your current team.</p>
 
             <div class="stack">
+              <div class="team-card invites" id="invites-card" style="display:none;">
+                <div class="team-body">
+                  <div class="team-section-title">Invites</div>
+                  <div id="invites-list"></div>
+                  <div class="hint" id="invites-hint" style="margin-top:10px;"></div>
+                </div>
+              </div>
+
               <button class="btn primary" id="open-create-team" type="button">Create a team</button>
 
               <div class="team-card my-team" id="myteam-card" style="display:none;">
@@ -133,7 +152,7 @@
                   </div>
 
                   <div class="myteam-footer">
-                    <button class="btn small" id="open-requests" type="button" style="display:none;">Requests</button>
+<button class="btn small" id="open-requests" type="button" style="display:none;">Requests</button>
                     <button class="btn danger" id="leave-or-delete" type="button" style="display:none;">Leave team</button>
                   </div>
                 </div>
@@ -152,6 +171,10 @@
         <button class="tab" data-panel="panel-teams" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Teams</span>
+        </button>
+        <button class="tab" data-panel="panel-players" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Players</span>
         </button>
         <button class="tab" data-panel="panel-myteam" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>

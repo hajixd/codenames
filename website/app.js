@@ -25,16 +25,19 @@ const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
 
 let teamsCache = [];
+let playersCache = [];
 let openTeamId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initName();
+  initPlayersTab();
   initTeamModal();
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
   listenToTeams();
+  listenToPlayers();
 });
 
 /* =========================
@@ -72,6 +75,8 @@ function getUserName() {
 function setUserName(name) {
   safeLSSet(LS_USER_NAME, (name || '').trim());
   refreshNameUI();
+  // Persist "signed up" players to Firestore so they can appear in the Players tab.
+  upsertPlayerProfile(getUserId(), getUserName());
   // If user is a member/creator, update their stored display name in their team doc (best-effort)
   const st = computeUserState(teamsCache);
   if (st?.team && st?.teamId) {
@@ -113,6 +118,11 @@ function initName() {
   });
 
   refreshNameUI();
+
+  // If the user already had a saved name, make sure they're in the Players directory.
+  if (getUserName()) {
+    upsertPlayerProfile(getUserId(), getUserName());
+  }
 }
 
 function refreshNameUI() {
@@ -161,6 +171,8 @@ function listenToTeams() {
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
       renderMyTeam(teamsCache);
+      renderPlayers(playersCache, teamsCache);
+      renderInvites(playersCache, teamsCache);
       // If a modal is open, refresh its contents
       if (openTeamId) openTeamModal(openTeamId);
       if (document.getElementById('requests-modal')?.style?.display === 'flex') {
@@ -169,6 +181,20 @@ function listenToTeams() {
     }, (err) => {
       console.error('Team listener error:', err);
       setHint('teams-hint', 'Error loading teams.');
+    });
+}
+
+function listenToPlayers() {
+  // Players = anyone who has entered their name on this device at least once.
+  db.collection('players')
+    .orderBy('name', 'asc')
+    .onSnapshot((snapshot) => {
+      playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderPlayers(playersCache, teamsCache);
+      renderInvites(playersCache, teamsCache);
+    }, (err) => {
+      console.error('Players listener error:', err);
+      setHint('players-hint', 'Error loading players.');
     });
 }
 
@@ -228,6 +254,11 @@ function computeUserState(teams) {
 /* =========================
    Team theme (color)
 ========================= */
+function getDisplayTeamColor(team) {
+  const raw = (team?.teamColor || '').trim();
+  return isValidHexColor(raw) ? raw : '#64748b';
+}
+
 function isValidHexColor(c) {
   return /^#([0-9a-fA-F]{6})$/.test(String(c || '').trim());
 }
@@ -261,6 +292,287 @@ function applyTeamThemeFromState(st) {
 }
 
 /* =========================
+   Players page (directory + invites)
+========================= */
+function initPlayersTab() {
+  // Nothing to wire yet (render is driven by listeners), but keep hints clean.
+  setHint('players-hint', '');
+}
+
+function buildRosterIndex(teams) {
+  const memberTeamByUserId = new Map();
+  const pendingTeamByUserId = new Map();
+  for (const t of (teams || [])) {
+    for (const m of getMembers(t)) {
+      if (m?.userId) memberTeamByUserId.set(m.userId, t);
+    }
+    for (const r of getPending(t)) {
+      if (r?.userId) pendingTeamByUserId.set(r.userId, t);
+    }
+  }
+  return { memberTeamByUserId, pendingTeamByUserId };
+}
+
+function renderPlayers(players, teams) {
+  const container = document.getElementById('players-list');
+  if (!container) return;
+
+  const st = computeUserState(teams);
+  const roster = buildRosterIndex(teams);
+  const myTeam = st?.team;
+  const canInvite = !!(st.isCreator && st.teamId && myTeam && getMembers(myTeam).length < TEAM_SIZE);
+
+  if (!players || players.length === 0) {
+    container.innerHTML = '<div class="empty-state">No players yet. Set your name on Home.</div>';
+    return;
+  }
+
+  const rows = players
+    .filter(p => (p?.name || '').trim())
+    .map((p) => {
+      const uid = p.id;
+      const name = (p.name || '—').trim();
+
+      const memberTeam = roster.memberTeamByUserId.get(uid);
+      const pendingTeam = roster.pendingTeamByUserId.get(uid);
+
+      const team = memberTeam || pendingTeam || null;
+      const teamName = team ? (team.teamName || 'Team') : '—';
+      const teamColor = team ? getDisplayTeamColor(team) : null;
+
+      const tag = memberTeam
+        ? ''
+        : (pendingTeam ? '<span class="player-tag pending">Pending</span>' : '<span class="player-tag ok">Available</span>');
+
+      const invites = Array.isArray(p.invites) ? p.invites : [];
+      const alreadyInvitedByMe = !!(st.teamId && invites.some(i => i?.teamId === st.teamId));
+      const showInvite = canInvite && uid !== st.userId && !memberTeam && !pendingTeam;
+      const inviteDisabled = alreadyInvitedByMe || !st.name;
+
+      return `
+        <div class="player-row player-directory-row">
+          <div class="player-left">
+            <span class="player-name">${esc(name)}</span>
+            <span class="player-team">
+              ${teamColor ? `<span class="team-color-dot sm" style="--dot-color:${esc(teamColor)}"></span>` : `<span class="team-color-dot sm muted"></span>`}
+              <span class="player-team-name">${esc(teamName)}</span>
+              ${tag}
+            </span>
+          </div>
+          <div class="player-right">
+            ${showInvite ? `
+              <button class="btn primary small" type="button" data-invite="${esc(uid)}" ${inviteDisabled ? 'disabled' : ''}>
+                ${alreadyInvitedByMe ? 'Invited' : 'Invite'}
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+  container.innerHTML = rows.length
+    ? rows.join('')
+    : '<div class="empty-state">No players yet. Set your name on Home.</div>';
+
+  container.querySelectorAll('[data-invite]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetId = btn.getAttribute('data-invite');
+      if (!targetId) return;
+      await sendInviteToPlayer(targetId);
+    });
+  });
+
+  // Helpful hint for leaders
+  if (st.isCreator && st.teamId) {
+    if (!st.name) setHint('players-hint', 'Set your name on Home first.');
+    else if (!canInvite) setHint('players-hint', 'Your team is full — you can’t invite more players.');
+    else setHint('players-hint', 'Tap Invite to send a team invite.');
+  }
+}
+function renderInvites(players, teams) {
+  const card = document.getElementById('invites-card');
+  const list = document.getElementById('invites-list');
+  if (!card || !list) return;
+
+  const st = computeUserState(teams);
+  const noName = !st.name;
+
+  // Only show invites if the user isn't on a team (or pending).
+  if (st.teamId || st.pendingTeamId) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const me = (players || []).find(p => p.id === st.userId);
+  const invites = Array.isArray(me?.invites) ? me.invites : [];
+  if (!invites.length) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  if (noName) {
+    setHint('invites-hint', 'Set your name on Home first.');
+  } else {
+    setHint('invites-hint', '');
+  }
+
+  list.innerHTML = invites.map(inv => {
+    const teamName = inv?.teamName || 'Team';
+    const teamId = inv?.teamId || '';
+    return `
+      <div class="request-row">
+        <div class="player-left">
+          <span class="player-name">${esc(teamName)}</span>
+        </div>
+        <div class="request-actions">
+          <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
+          <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-invite-accept]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-invite-accept');
+      if (!teamId) return;
+      await acceptInvite(teamId);
+      renderInvites(playersCache, teamsCache);
+      renderMyTeam(teamsCache);
+    });
+  });
+
+  list.querySelectorAll('[data-invite-decline]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-invite-decline');
+      if (!teamId) return;
+      await declineInvite(teamId);
+      renderInvites(playersCache, teamsCache);
+    });
+  });
+}
+
+async function upsertPlayerProfile(userId, name) {
+  const n = (name || '').trim();
+  if (!userId || !n) return;
+  const ref = db.collection('players').doc(userId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        tx.set(ref, {
+          name: n,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          invites: []
+        });
+      } else {
+        tx.update(ref, {
+          name: n,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    });
+  } catch (e) {
+    // best effort
+    console.warn('Could not upsert player profile', e);
+  }
+}
+
+async function sendInviteToPlayer(targetUserId) {
+  const st = computeUserState(teamsCache);
+  if (!st.isCreator || !st.teamId || !st.team) return;
+  if (getMembers(st.team).length >= TEAM_SIZE) return;
+
+  setHint('players-hint', 'Sending invite…');
+
+  const teamId = st.teamId;
+  const invite = {
+    teamId,
+    teamName: st.team.teamName || 'Team',
+    teamColor: st.team.teamColor || null,
+    inviterUserId: st.userId,
+    inviterName: st.name || '—',
+    invitedAt: firebase.firestore.Timestamp.now(),
+  };
+
+  const playerRef = db.collection('players').doc(targetUserId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const ps = await tx.get(playerRef);
+      if (!ps.exists) throw new Error('Player not found.');
+      const p = { id: ps.id, ...ps.data() };
+      const invites = Array.isArray(p.invites) ? p.invites : [];
+      if (invites.some(i => i?.teamId === teamId)) return;
+      tx.update(playerRef, { invites: invites.concat([invite]), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+    setHint('players-hint', 'Invite sent.');
+  } catch (e) {
+    console.error(e);
+    setHint('players-hint', e?.message || 'Could not send invite.');
+  }
+}
+
+async function acceptInvite(teamId) {
+  const st = computeUserState(teamsCache);
+  if (!st.name) return;
+  if (st.teamId || st.pendingTeamId) {
+    setHint('invites-hint', 'You are already on a team (or have a pending request).');
+    return;
+  }
+
+  const teamRef = db.collection('teams').doc(teamId);
+  const playerRef = db.collection('players').doc(st.userId);
+  setHint('invites-hint', 'Joining…');
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [teamSnap, playerSnap] = await Promise.all([tx.get(teamRef), tx.get(playerRef)]);
+      if (!teamSnap.exists) throw new Error('Team not found.');
+      if (!playerSnap.exists) throw new Error('Player not found.');
+
+      const team = { id: teamSnap.id, ...teamSnap.data() };
+      const members = getMembers(team);
+      if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
+      if (members.some(m => m?.userId === st.userId)) return;
+
+      const nextMembers = members.concat([{ userId: st.userId, name: st.name }]);
+
+      const player = { id: playerSnap.id, ...playerSnap.data() };
+      const invites = Array.isArray(player.invites) ? player.invites : [];
+      const nextInvites = invites.filter(i => i?.teamId !== teamId);
+
+      tx.update(teamRef, { members: nextMembers });
+      tx.update(playerRef, { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    setHint('invites-hint', 'Joined!');
+    activatePanel('panel-myteam');
+  } catch (e) {
+    console.error(e);
+    setHint('invites-hint', e?.message || 'Could not join team.');
+  }
+}
+
+async function declineInvite(teamId) {
+  const st = computeUserState(teamsCache);
+  const playerRef = db.collection('players').doc(st.userId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(playerRef);
+      if (!snap.exists) return;
+      const p = { id: snap.id, ...snap.data() };
+      const invites = Array.isArray(p.invites) ? p.invites : [];
+      tx.update(playerRef, { invites: invites.filter(i => i?.teamId !== teamId), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+/* =========================
    Teams page
 ========================= */
 function renderTeams(teams) {
@@ -286,7 +598,7 @@ function renderTeams(teams) {
     return `
       <button class="team-list-item ${isMine ? 'is-mine' : ''}" type="button" data-team="${esc(t.id)}">
         <div class="team-list-left">
-          <div class="team-list-name ${isMine ? 'team-accent' : ''}">${esc(t.teamName || 'Unnamed')}</div>
+          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-color-dot" style="--dot-color: ${esc(getDisplayTeamColor(t))}"></span><span class="team-list-name-text">${esc(t.teamName || 'Unnamed')}</span></div>
           <div class="team-list-members">${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
@@ -349,7 +661,7 @@ function renderTeamModal(teamId) {
   const team = teamsCache.find(t => t.id === teamId);
   if (!team) return;
 
-  setText('team-modal-title', team.teamName || 'Team');
+  setHTML('team-modal-title', `<span class="team-title-inline"><span class="team-color-dot" style="--dot-color: ${esc(getDisplayTeamColor(team))}"></span><span>${esc(team.teamName || 'Team')}</span></span>`);
 
   const membersEl = document.getElementById('team-modal-members');
   const members = getMembers(team);
@@ -577,14 +889,17 @@ function renderMyTeam(teams) {
     }
   }
 
-  // Team color picker (creator only)
+  // Team color picker (visible to everyone; editable by creator)
   if (colorRow && colorInput) {
+    colorRow.style.display = 'flex';
+    const c = getDisplayTeamColor(st.team);
+    colorInput.value = c;
     if (st.isCreator) {
-      colorRow.style.display = 'flex';
-      const c = (st.team.teamColor || '#3b82f6').trim();
-      if (isValidHexColor(c)) colorInput.value = c;
+      colorInput.disabled = false;
+      colorRow.classList.remove('readonly');
     } else {
-      colorRow.style.display = 'none';
+      colorInput.disabled = true;
+      colorRow.classList.add('readonly');
     }
   }
 
@@ -938,6 +1253,11 @@ function wireInlineEdit({ displayEl, inputEl, getValue, onCommit }) {
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = String(value);
+}
+
+function setHTML(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = String(html);
 }
 
 function setHint(id, value) {
