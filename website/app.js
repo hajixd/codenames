@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initForms();
   initFirstLoadChooser();
   initModeSwitcher();
+  initRosterInlineEditing();
   listenToTeams();
 });
 
@@ -245,26 +246,56 @@ function renderTeams(teams) {
     return;
   }
 
+  const isCreator = !!(roleState && roleState.isCreator && roleState.creatorTeamId);
+  const myTeamId = roleState ? roleState.creatorTeamId : null;
+
   const html = teams.map((team, i) => {
     const members = getMembers(team);
     const pendingCount = Array.isArray(team.pendingDiscords) ? team.pendingDiscords.length : 0;
 
+    const isMyTeam = isCreator && myTeamId && team.id === myTeamId && isOwnerOf(team.id);
+
     const memberRows = members.length
-      ? members.map(m => `
-          <div class="player-row">
-            <span>${esc(m.name || '')}</span>
-            <span class="discord">@${esc(m.discord || '')}</span>
-          </div>
-        `).join('')
+      ? members.map(m => {
+          const d = sanitizeDiscord(m.discord || '');
+          const dl = d.toLowerCase();
+          const creatorLower = String(team.creatorDiscordLower || '').toLowerCase();
+          const isOwner = dl && (dl === creatorLower);
+          const removeBtn = (isMyTeam && !isOwner)
+            ? `<button class="icon-btn danger" type="button" title="Remove" aria-label="Remove member" data-action="kick" data-team-id="${team.id}" data-req-id="${esc(dl)}">×</button>`
+            : '';
+          return `
+            <div class="player-row">
+              <div class="player-left">
+                <span class="player-name">${esc(m.name || '')}${isOwner ? ' <span class="pill">owner</span>' : ''}</span>
+                <span class="discord">@${esc(d || '')}</span>
+              </div>
+              ${removeBtn}
+            </div>
+          `;
+        }).join('')
       : '<div class="empty-state">No accepted members yet</div>';
 
+    const ownerControls = isMyTeam ? `
+      <div class="team-owner-controls">
+        <div class="team-section-title">Owner Controls</div>
+        <div class="owner-actions-row">
+          <button class="btn danger small" type="button" data-action="delete-team" data-team-id="${team.id}" data-req-id="__">Delete Team</button>
+        </div>
+        <div class="small-note">Tip: double click the team name to rename it.</div>
+      </div>
+    ` : '';
+
     return `
-      <div class="team-card">
+      <div class="team-card ${isMyTeam ? 'my-team' : ''}">
         <details class="team-details">
           <summary class="team-summary">
             <div class="team-left">
               <div class="team-rank">#${i + 1}</div>
-              <div class="team-name">${esc(team.teamName || 'Unnamed')}</div>
+              <div class="team-name-wrap">
+                <span class="team-name ${isMyTeam ? 'editable' : ''}" data-team-id="${team.id}">${esc(team.teamName || 'Unnamed')}</span>
+                ${isMyTeam ? `<input class="team-name-input input" type="text" value="${esc(team.teamName || '')}" data-team-id="${team.id}" style="display:none;" />` : ''}
+              </div>
             </div>
             <div class="team-right">
               <span class="meta">${members.length}/${TEAM_SIZE}</span>
@@ -276,6 +307,7 @@ function renderTeams(teams) {
             <div class="team-section-title">Members</div>
             <div class="players-list">${memberRows}</div>
             ${pendingCount ? `<div class="team-footnote">${pendingCount} join request${pendingCount === 1 ? '' : 's'} waiting for creator approval.</div>` : ''}
+            ${ownerControls}
           </div>
         </details>
       </div>
@@ -303,6 +335,8 @@ function initForms() {
   bindOwnerActions('manage-area');
   bindOwnerActions('requests-area');
   bindOwnerActions('settings-area');
+  // Roster actions (kick/delete buttons)
+  bindOwnerActions('teams-list');
 
   // Member actions (leave team / cancel request)
   document.getElementById('my-status')?.addEventListener('click', (e) => {
@@ -377,6 +411,109 @@ function bindOwnerActions(containerId) {
     if (action === 'delete-team') deleteTeam(teamId, hintEl);
   });
 }
+
+function initRosterInlineEditing() {
+  const container = document.getElementById('teams-list');
+  if (!container) return;
+
+  // Inline rename: double click team name (owner team only)
+  container.addEventListener('dblclick', (e) => {
+    const nameEl = e.target.closest('.team-name.editable');
+    if (!nameEl) return;
+
+    const teamId = nameEl.dataset.teamId;
+    if (!teamId || !isOwnerOf(teamId)) return;
+
+    const input = nameEl.parentElement?.querySelector('.team-name-input');
+    if (!input) return;
+
+    nameEl.style.display = 'none';
+    input.style.display = '';
+    input.value = (nameEl.textContent || '').trim();
+    input.focus();
+    input.select();
+  });
+
+  // Commit / cancel rename
+  container.addEventListener('keydown', async (e) => {
+    const input = e.target.closest('.team-name-input');
+    if (!input) return;
+
+    const teamId = input.dataset.teamId;
+    const span = input.parentElement?.querySelector('.team-name');
+    if (!teamId || !span) return;
+
+    if (e.key === 'Escape') {
+      input.style.display = 'none';
+      span.style.display = '';
+      span.focus?.();
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const newName = (input.value || '').trim();
+      input.blur();
+      await renameTeamTo(teamId, newName, document.getElementById('roster-hint'));
+      input.style.display = 'none';
+      span.style.display = '';
+    }
+  });
+
+  container.addEventListener('blur', async (e) => {
+    const input = e.target.closest('.team-name-input');
+    if (!input) return;
+
+    const teamId = input.dataset.teamId;
+    const span = input.parentElement?.querySelector('.team-name');
+    if (!teamId || !span) return;
+
+    const newName = (input.value || '').trim();
+    input.style.display = 'none';
+    span.style.display = '';
+
+    // Only submit if changed
+    const oldName = (span.textContent || '').trim();
+    if (newName && newName !== oldName) {
+      await renameTeamTo(teamId, newName, document.getElementById('roster-hint'));
+    }
+  }, true);
+}
+
+async function renameTeamTo(teamId, newName, hintEl) {
+  const hint = hintEl || document.getElementById('manage-hint');
+  if (hint) hint.textContent = '';
+
+  if (!isOwnerOf(teamId)) {
+    if (hint) { hint.textContent = 'You are not the owner of this team.'; hint.classList.add('error'); }
+    return;
+  }
+
+  const name = (newName || '').trim();
+  if (!name) {
+    if (hint) { hint.textContent = 'Team name cannot be empty.'; hint.classList.add('error'); }
+    return;
+  }
+
+  const teamRef = db.collection('teams').doc(teamId);
+
+  try {
+    const existing = await db.collection('teams')
+      .where('teamNameLower', '==', name.toLowerCase())
+      .get();
+
+    const conflicts = existing.docs.filter(d => d.id !== teamId);
+    if (conflicts.length > 0) throw new Error('That team name is already taken.');
+
+    await teamRef.update({ teamName: name, teamNameLower: name.toLowerCase() });
+
+    if (hint) { hint.textContent = 'Team renamed.'; hint.classList.remove('error'); hint.classList.add('ok'); }
+  } catch (err) {
+    console.error('Rename error:', err);
+    if (hint) { hint.textContent = err.message || 'Could not rename team.'; hint.classList.add('error'); }
+  }
+}
+
 async function handleCreateTeam() {
   const btn = document.getElementById('create-btn');
   const hint = document.getElementById('create-hint');
@@ -873,7 +1010,7 @@ function applyModeUI(mode) {
   // Update tab label so it feels distinct
   const regDesktop = document.getElementById('tab-register-desktop');
   const regMobile = document.getElementById('tab-register-mobile');
-  const label = mode === 'creator' ? 'My Team' : 'Join';
+  const label = mode === 'creator' ? 'Teams' : 'Join';
   if (regDesktop) regDesktop.textContent = label;
   if (regMobile) regMobile.querySelector('span') ? (regMobile.querySelector('span').textContent = label) : null;
 
@@ -900,15 +1037,29 @@ function applyModeUI(mode) {
 
 
 function updateOwnerNavVisibility() {
-  const show = !!(roleState && roleState.isCreator && roleState.creatorTeamId);
+  const showOwner = !!(roleState && roleState.isCreator && roleState.creatorTeamId);
+
   document.querySelectorAll('.owner-only').forEach(el => {
-    el.style.display = show ? '' : 'none';
+    el.style.display = showOwner ? '' : 'none';
   });
 
-  // If user is viewing an owner panel but no longer owner, bounce back
+  // Creators manage via Requests + Roster, so hide the register/my-team tab for them
+  const regDesktop = document.getElementById('tab-register-desktop');
+  const regMobile = document.getElementById('tab-register-mobile');
+  const hideRegister = !!(roleState && roleState.isCreator);
+  if (regDesktop) regDesktop.style.display = hideRegister ? 'none' : '';
+  if (regMobile) regMobile.style.display = hideRegister ? 'none' : '';
+
   const active = document.querySelector('.panel.active');
-  if (!show && active && (active.id === 'panel-requests' || active.id === 'panel-settings')) {
-    setActivePanel('panel-register');
+
+  // If creator is on the now-hidden register panel, bounce to roster
+  if (hideRegister && active && active.id === 'panel-register') {
+    setActivePanel('panel-teams');
+  }
+
+  // If user is viewing owner panels but no longer owner, bounce to home
+  if (!showOwner && active && active.id === 'panel-requests') {
+    setActivePanel('panel-home');
   }
 }
 function computeRoleState(teams) {

@@ -136,15 +136,9 @@ body {
     min-height: 100%;
     display: flex;
     flex-direction: column;
-  }
-  .panel-inner {
-    flex: 1;
-    padding: 32px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+    overflow: visible;
 
+  }
   /* Info Panel */
   .panel-info {
     display: flex;
@@ -372,6 +366,37 @@ body {
   .player-row .discord {
     color: var(--text-dim);
   }
+
+  .player-row { align-items: center; gap: 10px; }
+  .player-left { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; }
+  .player-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .icon-btn:hover { filter: brightness(1.1); }
+  .icon-btn.danger {
+    border-color: rgba(239,68,68,0.45);
+    background: rgba(239,68,68,0.12);
+    color: var(--text);
+  }
+
+  .team-name-wrap { display: flex; align-items: center; min-width: 0; }
+  .team-name.editable { cursor: text; border-bottom: 1px dashed rgba(255,255,255,0.25); }
+  .team-name-input { max-width: 260px; height: 34px; padding: 6px 10px; font-weight: 800; }
+
+  .team-owner-controls { margin-top: 14px; }
+  .owner-actions-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .team-card.my-team { box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 10px 30px rgba(0,0,0,0.25); }
 
   .empty-state {
     flex: 1;
