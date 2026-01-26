@@ -962,10 +962,8 @@ function renderPlayers(players, teams) {
 
       const invites = Array.isArray(p.invites) ? p.invites : [];
       const alreadyInvitedByMe = !!(st.teamId && invites.some(i => i?.teamId === st.teamId));
-      // Allow inviting even if the player has a pending request somewhere.
-      // Show "Cancel invite" if already invited (even if the team is currently full).
-      const showInviteButton = canManageInvites && uid !== st.userId && !memberTeam && (alreadyInvitedByMe || canSendInvitesNow);
-      const inviteDisabled = !st.name;
+      const isTeammate = !!(memberTeam && st.teamId && memberTeam.id === st.teamId);
+      const inviteDisabledBase = !st.name;
 
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
 
@@ -975,17 +973,28 @@ function renderPlayers(players, teams) {
         ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
         : '';
 
-      let statusPillHtml = '';
-      if (memberTeam) {
-        statusPillHtml = `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`;
-      } else if (showInviteButton) {
-        statusPillHtml = `
-          <button class="player-tag pill-action ${alreadyInvitedByMe ? 'cancel' : 'invite'}" type="button" data-invite="${esc(uid)}" data-invite-mode="${alreadyInvitedByMe ? 'cancel' : 'send'}" ${inviteDisabled ? 'disabled' : ''}>
-            ${alreadyInvitedByMe ? 'Cancel invite' : 'Invite'}
-          </button>
-        `;
-      } else {
-        statusPillHtml = `<span class="player-tag ok">Available</span>`;
+      // Always show the status pill (Available or Team). If you're a team leader,
+      // also show an Invite pill to the LEFT of the status pill.
+      let statusPillHtml = memberTeam
+        ? `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`
+        : `<span class="player-tag ok">Available</span>`;
+
+      let invitePillHtml = '';
+      if (canManageInvites && uid !== st.userId) {
+        if (isTeammate) {
+          invitePillHtml = `<button class="player-tag pill-action invite" type="button" disabled title="Already on your team">Invite</button>`;
+        } else {
+          const mode = alreadyInvitedByMe ? 'cancel' : 'send';
+          const disabled = inviteDisabledBase || (!alreadyInvitedByMe && !canSendInvitesNow);
+          const title = inviteDisabledBase
+            ? 'Set your name on Home first.'
+            : (!alreadyInvitedByMe && !canSendInvitesNow ? 'Your team is full.' : '');
+          invitePillHtml = `
+            <button class="player-tag pill-action ${alreadyInvitedByMe ? 'cancel' : 'invite'}" type="button" data-invite="${esc(uid)}" data-invite-mode="${mode}" ${disabled ? 'disabled' : ''} ${title ? `title="${esc(title)}"` : ''}>
+              ${alreadyInvitedByMe ? 'Cancel invite' : 'Invite'}
+            </button>
+          `;
+        }
       }
 
       return `
@@ -994,6 +1003,7 @@ function renderPlayers(players, teams) {
             <span class="player-name" ${nameStyle}>${esc(name)}</span>
           </div>
           <div class="player-right">
+            ${invitePillHtml}
             ${statusPillHtml}
           </div>
         </div>
@@ -1032,12 +1042,8 @@ function renderInvites(players, teams) {
   const st = computeUserState(teams);
   const noName = !st.name;
 
-  // Only show invites if the user isn't already on a team.
+  // Invites are useful even if you're already on a team (accepting will switch you).
   // If the user has a pending request somewhere, they can still accept an invite (and the pending request will be cleared).
-  if (st.teamId) {
-    card.style.display = 'none';
-    return;
-  }
 
   const me = (players || []).find(p => p.id === st.userId);
   const invites = Array.isArray(me?.invites) ? me.invites : [];
@@ -1198,8 +1204,14 @@ async function cancelInviteToPlayer(targetUserId) {
 async function acceptInvite(teamId) {
   const st = computeUserState(teamsCache);
   if (!st.name) return;
-  if (st.teamId) {
-    setHint('invites-hint', 'You are already on a team.');
+  if (st.teamId && st.teamId === teamId) {
+    // Already on this team — just clean up the invite.
+    await declineInvite(teamId);
+    setHint('invites-hint', 'You are already on this team.');
+    return;
+  }
+  if (st.isCreator && st.teamId && st.teamId !== teamId) {
+    setHint('invites-hint', 'Delete your team before switching.');
     return;
   }
 
@@ -1213,14 +1225,21 @@ async function acceptInvite(teamId) {
       .filter(t => getPending(t).some(r => isSameAccount(r, st.userId)))
       .map(t => t.id);
 
+    const oldTeamId = (st.teamId && st.teamId !== teamId) ? st.teamId : null;
+
     await db.runTransaction(async (tx) => {
-      const refsToRead = [teamRef, playerRef].concat(pendingTeamIds.map(id => db.collection('teams').doc(id)));
+      const refsToRead = [teamRef, playerRef]
+        .concat(oldTeamId ? [db.collection('teams').doc(oldTeamId)] : [])
+        .concat(pendingTeamIds.map(id => db.collection('teams').doc(id)));
       const snaps = await Promise.all(refsToRead.map(r => tx.get(r)));
 
       const teamSnap = snaps[0];
       const playerSnap = snaps[1];
       if (!teamSnap.exists) throw new Error('Team not found.');
       if (!playerSnap.exists) throw new Error('Player not found.');
+
+      let idx = 2;
+      const oldTeamSnap = oldTeamId ? snaps[idx++] : null;
 
       const team = { id: teamSnap.id, ...teamSnap.data() };
       const members = getMembers(team);
@@ -1240,8 +1259,18 @@ async function acceptInvite(teamId) {
       tx.update(teamRef, { members: nextMembers, pending: nextTeamPending });
       tx.update(playerRef, { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
 
+      // If switching, remove from the old team roster.
+      if (oldTeamId && oldTeamSnap && oldTeamSnap.exists) {
+        const oldTeam = { id: oldTeamSnap.id, ...oldTeamSnap.data() };
+        const oldMembers = getMembers(oldTeam);
+        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, st.userId));
+        if (nextOldMembers.length !== oldMembers.length) {
+          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
+        }
+      }
+
       // Clear pending requests from any other teams (so no leader sees stale requests).
-      for (let i = 2; i < snaps.length; i++) {
+      for (let i = idx; i < snaps.length; i++) {
         const s = snaps[i];
         if (!s.exists) continue;
         const t = { id: s.id, ...s.data() };
@@ -1393,7 +1422,8 @@ function renderTeamModal(teamId) {
   const full = members.length >= TEAM_MAX;
   const iAmMember = st.teamId === teamId;
   const iAmPendingHere = st.pendingTeamId === teamId;
-  const iAmBusy = !!(st.teamId || st.pendingTeamId);
+  const hasOtherPending = !!(st.pendingTeamId && st.pendingTeamId !== teamId);
+  const iAmCreatorElsewhere = !!(st.isCreator && st.teamId && st.teamId !== teamId);
   const noName = !st.name;
 
   let label = 'Request to join';
@@ -1413,15 +1443,23 @@ function renderTeamModal(teamId) {
     label = 'Cancel Request';
     variant = 'danger';
     hint = 'Your request is pending.';
-  } else if (iAmBusy) {
+  } else if (iAmCreatorElsewhere) {
     disabled = true;
-    hint = 'You are already on a team (or have a pending request).';
+    hint = 'Delete your team before switching.';
+  } else if (hasOtherPending) {
+    disabled = true;
+    hint = 'You already have a pending request.';
   } else if (full) {
     // Allow requests even when a team is full; the leader can accept later once space is available.
     disabled = false;
     label = 'Request to join';
     hint = '';
 
+  }
+
+  // If you're on a different team (non-creator), requesting here will switch you if accepted.
+  if (!disabled && !iAmMember && !iAmPendingHere && st.teamId && st.teamId !== teamId) {
+    if (!hint) hint = 'If accepted, you will switch teams.';
   }
 
   if (joinBtn) {
@@ -1465,8 +1503,12 @@ async function requestToJoin(teamId, opts = {}) {
     setHint(opts.hintElId || 'team-modal-hint', 'Set your name on Home first.');
     return;
   }
-  if (st.teamId || st.pendingTeamId) {
-    setHint(opts.hintElId || 'team-modal-hint', 'You are already on a team (or have a pending request).');
+  if (st.isCreator && st.teamId && st.teamId !== teamId) {
+    setHint(opts.hintElId || 'team-modal-hint', 'Delete your team before switching.');
+    return;
+  }
+  if (st.pendingTeamId && st.pendingTeamId !== teamId) {
+    setHint(opts.hintElId || 'team-modal-hint', 'You already have a pending request.');
     return;
   }
 
@@ -2287,12 +2329,33 @@ async function acceptRequest(teamId, userId) {
   const st = computeUserState(teamsCache);
   if (!st.isCreator || st.teamId !== teamId) return;
 
-  const ref = db.collection('teams').doc(teamId);
+  const teamRef = db.collection('teams').doc(teamId);
   try {
+    // If the requester is already on a different team, accepting will switch them.
+    // Also clear any pending requests for that user across all teams.
+    const pendingTeamIds = (teamsCache || [])
+      .filter(t => getPending(t).some(r => isSameAccount(r, userId)))
+      .map(t => t.id);
+
+    const existingTeam = (teamsCache || []).find(t => getMembers(t).some(m => isSameAccount(m, userId))) || null;
+    const oldTeamId = (existingTeam && existingTeam.id !== teamId) ? existingTeam.id : null;
+    if (oldTeamId && existingTeam?.creatorUserId === userId) {
+      throw new Error('That player is the team creator and must delete their team before switching.');
+    }
+
     await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Team not found.');
-      const t = { id: snap.id, ...snap.data() };
+      const refsToRead = [teamRef]
+        .concat(oldTeamId ? [db.collection('teams').doc(oldTeamId)] : [])
+        .concat(pendingTeamIds.map(id => db.collection('teams').doc(id)));
+
+      const snaps = await Promise.all(refsToRead.map(r => tx.get(r)));
+      const teamSnap = snaps[0];
+      if (!teamSnap.exists) throw new Error('Team not found.');
+
+      let idx = 1;
+      const oldTeamSnap = oldTeamId ? snaps[idx++] : null;
+
+      const t = { id: teamSnap.id, ...teamSnap.data() };
       const members = getMembers(t);
       const pending = getPending(t);
       if (members.length >= TEAM_MAX) throw new Error('Team is full.');
@@ -2304,7 +2367,30 @@ async function acceptRequest(teamId, userId) {
 
       const newPending = pending.filter(r => r.userId !== userId);
       const newMembers = dedupeRosterByAccount(members.concat([{ userId: targetId, name: req.name || '—' }]));
-      tx.update(ref, { pending: newPending, members: newMembers });
+      tx.update(teamRef, { pending: newPending, members: newMembers });
+
+      // If switching, remove from the old team roster.
+      if (oldTeamId && oldTeamSnap && oldTeamSnap.exists) {
+        const oldTeam = { id: oldTeamSnap.id, ...oldTeamSnap.data() };
+        const oldMembers = getMembers(oldTeam);
+        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, targetId));
+        if (nextOldMembers.length !== oldMembers.length) {
+          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
+        }
+      }
+
+      // Clear pending requests from any other teams (so no leader sees stale requests).
+      for (let i = idx; i < snaps.length; i++) {
+        const s = snaps[i];
+        if (!s.exists) continue;
+        const tt = { id: s.id, ...s.data() };
+        const p = getPending(tt);
+        if (!p?.length) continue;
+        const next = p.filter(r => !isSameAccount(r, targetId));
+        if (next.length !== p.length) {
+          tx.update(db.collection('teams').doc(s.id), { pending: next });
+        }
+      }
     });
   } catch (e) {
     console.error(e);
