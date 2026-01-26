@@ -133,12 +133,14 @@ function initModeSwitcher() {
   // Get all mode buttons (desktop + mobile)
   const creatorBtns = [
     document.getElementById('mode-set-creator-desktop'),
-    document.getElementById('mode-set-creator-mobile')
+    document.getElementById('mode-set-creator-mobile'),
+    document.getElementById('mode-set-creator-inline')
   ].filter(Boolean);
 
   const joinerBtns = [
     document.getElementById('mode-set-joiner-desktop'),
-    document.getElementById('mode-set-joiner-mobile')
+    document.getElementById('mode-set-joiner-mobile'),
+    document.getElementById('mode-set-joiner-inline')
   ].filter(Boolean);
 
   const handleCreatorClick = () => {
@@ -631,6 +633,25 @@ async function handleJoinRequest() {
   btn.textContent = 'Sending…';
 
   try {
+    // Only one request at a time
+    if (roleState && roleState.pendingTeamId) {
+      if (roleState.pendingTeamId === teamId) {
+        hint.textContent = 'You already have a pending request for this team. You can cancel it below.';
+        hint.classList.add('error');
+        return;
+      }
+      hint.textContent = 'You already have a pending request to another team. Cancel it before requesting a different team.';
+      hint.classList.add('error');
+      return;
+    }
+
+    // Already a member of a team
+    if (roleState && roleState.memberTeamId) {
+      hint.textContent = 'You are already on a team. Leave your team before requesting another.';
+      hint.classList.add('error');
+      return;
+    }
+
     // Discord uniqueness (local cache)
     if (isDiscordTaken(discordLower)) {
       hint.textContent = 'That Discord handle is already on a team or pending on another team.';
@@ -700,12 +721,20 @@ function autoLoadManagePanel(teamId) {
   if (manageUnsub) manageUnsub();
 
   // Subscribe to pending requests
+  // NOTE: We intentionally avoid a where+orderBy query here because it can require a Firestore composite index.
   manageUnsub = teamRef.collection('requests')
     .where('status', '==', 'pending')
-    .orderBy('requestedAt', 'asc')
     .onSnapshot((snap) => {
       const freshTeam = teamsCache.find(t => t.id === teamId) || team;
-      renderOwnerViews(teamId, freshTeam, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      reqs.sort((a, b) => {
+        const ta = a.requestedAt?.toMillis ? a.requestedAt.toMillis() : 0;
+        const tb = b.requestedAt?.toMillis ? b.requestedAt.toMillis() : 0;
+        return ta - tb;
+      });
+      renderOwnerViews(teamId, freshTeam, reqs);
+    }, (err) => {
+      console.error('Requests listener error:', err);
     });
 }
 
@@ -985,11 +1014,13 @@ function setModeIndicator(mode) {
   // Update button active states
   const creatorBtns = [
     document.getElementById('mode-set-creator-desktop'),
-    document.getElementById('mode-set-creator-mobile')
+    document.getElementById('mode-set-creator-mobile'),
+    document.getElementById('mode-set-creator-inline')
   ];
   const joinerBtns = [
     document.getElementById('mode-set-joiner-desktop'),
-    document.getElementById('mode-set-joiner-mobile')
+    document.getElementById('mode-set-joiner-mobile'),
+    document.getElementById('mode-set-joiner-inline')
   ];
 
   creatorBtns.forEach(btn => {
@@ -1116,11 +1147,13 @@ function computeRoleState(teams) {
   // Update mode switcher buttons (desktop + mobile)
   const creatorBtns = [
     document.getElementById('mode-set-creator-desktop'),
-    document.getElementById('mode-set-creator-mobile')
+    document.getElementById('mode-set-creator-mobile'),
+    document.getElementById('mode-set-creator-inline')
   ];
   const joinerBtns = [
     document.getElementById('mode-set-joiner-desktop'),
-    document.getElementById('mode-set-joiner-mobile')
+    document.getElementById('mode-set-joiner-mobile'),
+    document.getElementById('mode-set-joiner-inline')
   ];
   // Creators can't switch to joiner mode
   joinerBtns.forEach(btn => { if (btn) btn.disabled = roleState.isCreator; });
@@ -1132,6 +1165,7 @@ function computeRoleState(teams) {
   }
 
   updateOwnerNavVisibility();
+  updateJoinLockUI();
 }
 
 function safeLSGet(key) {
@@ -1240,6 +1274,39 @@ function updateMyStatus(teams) {
       </div>
     </div>
   `;
+}
+
+function updateJoinLockUI() {
+  const lockbar = document.getElementById('join-lockbar');
+  const cancelBtn = document.getElementById('cancel-pending-btn');
+  const form = document.getElementById('join-team-form');
+  const u = getStoredUser();
+
+  const pendingTeamId = roleState ? roleState.pendingTeamId : null;
+  const hasPending = !!(pendingTeamId && u.discordLower && !roleState.isCreator);
+
+  if (lockbar) lockbar.style.display = hasPending ? '' : 'none';
+
+  if (cancelBtn) {
+    cancelBtn.onclick = () => {
+      if (hasPending) cancelJoinRequest(pendingTeamId, u.discordLower);
+    };
+  }
+
+  if (form) {
+    form.classList.toggle('locked', hasPending);
+    form.querySelectorAll('input, select, button').forEach(el => {
+      el.disabled = hasPending;
+    });
+  }
+
+  // Grey out the Join/Teams tab while pending (still clickable so you can cancel)
+  const regDesktop = document.getElementById('tab-register-desktop');
+  const regMobile = document.getElementById('tab-register-mobile');
+  [regDesktop, regMobile].forEach(t => {
+    if (!t) return;
+    t.classList.toggle('tab-pending', hasPending);
+  });
 }
 
 async function cancelJoinRequest(teamId, discordLower) {
