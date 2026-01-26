@@ -313,6 +313,82 @@ function buildRosterIndex(teams) {
   return { memberTeamByUserId, pendingTeamByUserId };
 }
 
+// Players directory should include:
+// - anyone in the `players` collection (signed up)
+// - anyone who appears in an accepted team roster (even if they never saved a name on this device)
+function buildPlayersDirectory(players, teams) {
+  const byId = new Map();
+
+  for (const p of (players || [])) {
+    if (!p?.id) continue;
+    byId.set(p.id, { ...p });
+  }
+
+  for (const t of (teams || [])) {
+    for (const m of getMembers(t)) {
+      const uid = m?.userId;
+      if (!uid) continue;
+      if (!byId.has(uid)) {
+        byId.set(uid, { id: uid, name: (m?.name || '').trim(), invites: [] });
+      } else {
+        // Prefer the canonical name in `players`, but fill gaps from team roster.
+        const cur = byId.get(uid);
+        const curName = (cur?.name || '').trim();
+        const rosterName = (m?.name || '').trim();
+        if (!curName && rosterName) cur.name = rosterName;
+        byId.set(uid, cur);
+      }
+    }
+
+    // Also include users who have submitted a request (pending), but do NOT expose
+    // which team they requested publicly.
+    for (const r of getPending(t)) {
+      const uid = r?.userId;
+      if (!uid) continue;
+      if (!byId.has(uid)) {
+        byId.set(uid, { id: uid, name: (r?.name || '').trim(), invites: [] });
+      } else {
+        const cur = byId.get(uid);
+        const curName = (cur?.name || '').trim();
+        const reqName = (r?.name || '').trim();
+        if (!curName && reqName) cur.name = reqName;
+        byId.set(uid, cur);
+      }
+    }
+  }
+
+  return Array.from(byId.values())
+    .filter(p => (p?.name || '').trim())
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+}
+
+// Best-effort name lookup for a user id.
+// Used so team leaders can invite roster-detected users who don't yet have a `players` doc.
+function findKnownUserName(userId) {
+  const pid = String(userId || '').trim();
+  if (!pid) return '';
+  const p = (playersCache || []).find(x => x?.id === pid);
+  const pn = (p?.name || '').trim();
+  if (pn) return pn;
+
+  for (const t of (teamsCache || [])) {
+    for (const m of getMembers(t)) {
+      if (m?.userId === pid) {
+        const n = (m?.name || '').trim();
+        if (n) return n;
+      }
+    }
+    for (const r of getPending(t)) {
+      if (r?.userId === pid) {
+        const n = (r?.name || '').trim();
+        if (n) return n;
+      }
+    }
+  }
+
+  return '';
+}
+
 function renderPlayers(players, teams) {
   const container = document.getElementById('players-list');
   if (!container) return;
@@ -322,44 +398,49 @@ function renderPlayers(players, teams) {
   const myTeam = st?.team;
   const canInvite = !!(st.isCreator && st.teamId && myTeam && getMembers(myTeam).length < TEAM_SIZE);
 
-  if (!players || players.length === 0) {
+  // Directory = every known player from the Players collection PLUS anyone currently on a team.
+  const directory = buildPlayersDirectory(players, teams);
+
+  if (!directory || directory.length === 0) {
     container.innerHTML = '<div class="empty-state">No players yet. Set your name on Home.</div>';
     return;
   }
 
-  const rows = players
+  const rows = directory
     .filter(p => (p?.name || '').trim())
     .map((p) => {
       const uid = p.id;
       const name = (p.name || '—').trim();
 
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const pendingTeam = roster.pendingTeamByUserId.get(uid);
-
-      const team = memberTeam || pendingTeam || null;
+      // IMPORTANT: do not show pending requests publicly.
+      // Only show team if the player is an accepted member.
+      const team = memberTeam || null;
       const teamName = team ? (team.teamName || 'Team') : '—';
       const teamColor = team ? getDisplayTeamColor(team) : null;
 
-      const tag = memberTeam
-        ? ''
-        : (pendingTeam ? '<span class="player-tag pending">Pending</span>' : '<span class="player-tag ok">Available</span>');
+      const showAvailable = !memberTeam;
 
       const invites = Array.isArray(p.invites) ? p.invites : [];
       const alreadyInvitedByMe = !!(st.teamId && invites.some(i => i?.teamId === st.teamId));
-      const showInvite = canInvite && uid !== st.userId && !memberTeam && !pendingTeam;
+      // Allow inviting even if the player has a pending request somewhere.
+      const showInvite = canInvite && uid !== st.userId && !memberTeam;
       const inviteDisabled = alreadyInvitedByMe || !st.name;
+
+      const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
+      const teamStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
 
       return `
         <div class="player-row player-directory-row">
           <div class="player-left">
-            <span class="player-name">${esc(name)}</span>
-            <span class="player-team">
-              ${teamColor ? `<span class="team-color-dot sm" style="--dot-color:${esc(teamColor)}"></span>` : `<span class="team-color-dot sm muted"></span>`}
-              <span class="player-team-name">${esc(teamName)}</span>
-              ${tag}
-            </span>
+            <span class="player-name" ${nameStyle}>${esc(name)}</span>
+            <div class="player-meta">
+              <span class="player-meta-label">Team:</span>
+              <span class="player-team-name" ${teamStyle}>${esc(teamName)}</span>
+            </div>
           </div>
           <div class="player-right">
+            ${showAvailable ? `<span class="player-tag ok">Available</span>` : ''}
             ${showInvite ? `
               <button class="btn primary small" type="button" data-invite="${esc(uid)}" ${inviteDisabled ? 'disabled' : ''}>
                 ${alreadyInvitedByMe ? 'Invited' : 'Invite'}
@@ -397,8 +478,9 @@ function renderInvites(players, teams) {
   const st = computeUserState(teams);
   const noName = !st.name;
 
-  // Only show invites if the user isn't on a team (or pending).
-  if (st.teamId || st.pendingTeamId) {
+  // Only show invites if the user isn't already on a team.
+  // If the user has a pending request somewhere, they can still accept an invite (and the pending request will be cleared).
+  if (st.teamId) {
     card.style.display = 'none';
     return;
   }
@@ -499,10 +581,22 @@ async function sendInviteToPlayer(targetUserId) {
   };
 
   const playerRef = db.collection('players').doc(targetUserId);
+  const fallbackName = findKnownUserName(targetUserId) || '—';
   try {
     await db.runTransaction(async (tx) => {
       const ps = await tx.get(playerRef);
-      if (!ps.exists) throw new Error('Player not found.');
+      if (!ps.exists) {
+        // If the user has never "signed up" (no players doc), create a lightweight profile
+        // so invites can still work for roster-detected users.
+        tx.set(playerRef, {
+          name: fallbackName,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          invites: [invite]
+        });
+        return;
+      }
+
       const p = { id: ps.id, ...ps.data() };
       const invites = Array.isArray(p.invites) ? p.invites : [];
       if (invites.some(i => i?.teamId === teamId)) return;
@@ -518,8 +612,8 @@ async function sendInviteToPlayer(targetUserId) {
 async function acceptInvite(teamId) {
   const st = computeUserState(teamsCache);
   if (!st.name) return;
-  if (st.teamId || st.pendingTeamId) {
-    setHint('invites-hint', 'You are already on a team (or have a pending request).');
+  if (st.teamId) {
+    setHint('invites-hint', 'You are already on a team.');
     return;
   }
 
@@ -528,8 +622,17 @@ async function acceptInvite(teamId) {
   setHint('invites-hint', 'Joining…');
 
   try {
+    // Clear any pending requests for this user (across teams) when they join via invite.
+    const pendingTeamIds = (teamsCache || [])
+      .filter(t => getPending(t).some(r => r?.userId === st.userId))
+      .map(t => t.id);
+
     await db.runTransaction(async (tx) => {
-      const [teamSnap, playerSnap] = await Promise.all([tx.get(teamRef), tx.get(playerRef)]);
+      const refsToRead = [teamRef, playerRef].concat(pendingTeamIds.map(id => db.collection('teams').doc(id)));
+      const snaps = await Promise.all(refsToRead.map(r => tx.get(r)));
+
+      const teamSnap = snaps[0];
+      const playerSnap = snaps[1];
       if (!teamSnap.exists) throw new Error('Team not found.');
       if (!playerSnap.exists) throw new Error('Player not found.');
 
@@ -538,14 +641,31 @@ async function acceptInvite(teamId) {
       if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
       if (members.some(m => m?.userId === st.userId)) return;
 
+      // Remove this user from the team's pending list if present.
+      const teamPending = getPending(team);
+      const nextTeamPending = teamPending.filter(r => r?.userId !== st.userId);
+
       const nextMembers = members.concat([{ userId: st.userId, name: st.name }]);
 
       const player = { id: playerSnap.id, ...playerSnap.data() };
       const invites = Array.isArray(player.invites) ? player.invites : [];
       const nextInvites = invites.filter(i => i?.teamId !== teamId);
 
-      tx.update(teamRef, { members: nextMembers });
+      tx.update(teamRef, { members: nextMembers, pending: nextTeamPending });
       tx.update(playerRef, { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+      // Clear pending requests from any other teams (so no leader sees stale requests).
+      for (let i = 2; i < snaps.length; i++) {
+        const s = snaps[i];
+        if (!s.exists) continue;
+        const t = { id: s.id, ...s.data() };
+        const p = getPending(t);
+        if (!p?.length) continue;
+        const next = p.filter(r => r?.userId !== st.userId);
+        if (next.length !== p.length) {
+          tx.update(db.collection('teams').doc(s.id), { pending: next });
+        }
+      }
     });
 
     setHint('invites-hint', 'Joined!');
@@ -595,10 +715,13 @@ function renderTeams(teams) {
 
     const isMine = st.teamId === t.id;
 
+    const tc = getDisplayTeamColor(t);
+    const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
+
     return `
       <button class="team-list-item ${isMine ? 'is-mine' : ''}" type="button" data-team="${esc(t.id)}">
         <div class="team-list-left">
-          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-color-dot" style="--dot-color: ${esc(getDisplayTeamColor(t))}"></span><span class="team-list-name-text">${esc(t.teamName || 'Unnamed')}</span></div>
+          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(t.teamName || 'Unnamed')}</span></div>
           <div class="team-list-members">${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
@@ -661,16 +784,18 @@ function renderTeamModal(teamId) {
   const team = teamsCache.find(t => t.id === teamId);
   if (!team) return;
 
-  setHTML('team-modal-title', `<span class="team-title-inline"><span class="team-color-dot" style="--dot-color: ${esc(getDisplayTeamColor(team))}"></span><span>${esc(team.teamName || 'Team')}</span></span>`);
+  const tc = getDisplayTeamColor(team);
+  setHTML('team-modal-title', `<span class="team-title-inline" style="color:${esc(tc)}">${esc(team.teamName || 'Team')}</span>`);
 
   const membersEl = document.getElementById('team-modal-members');
   const members = getMembers(team);
+  const tcMember = getDisplayTeamColor(team);
   if (membersEl) {
     membersEl.innerHTML = members.length
       ? members.map(m => `
           <div class="player-row">
             <div class="player-left">
-              <span class="player-name">${esc(m.name || '—')}</span>
+              <span class="player-name" style="color:${esc(tcMember)}">${esc(m.name || '—')}</span>
             </div>
           </div>
         `).join('')
@@ -706,8 +831,10 @@ function renderTeamModal(teamId) {
     disabled = true;
     hint = 'You are already on a team (or have a pending request).';
   } else if (full) {
-    disabled = true;
-    label = 'Team full';
+    // Allow requests even when a team is full; the leader can accept later once space is available.
+    disabled = false;
+    label = 'Request to join';
+    hint = 'Team is full right now — you can still request. The leader can accept once there is space.';
   }
 
   if (joinBtn) {
@@ -766,7 +893,6 @@ async function requestToJoin(teamId, opts = {}) {
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
       const pending = getPending(t);
-      if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
       if (pending.some(r => r.userId === st.userId)) return;
       // NOTE: serverTimestamp() is not supported inside arrays in Firestore.
       // Use a client timestamp instead.
@@ -873,6 +999,8 @@ function renderMyTeam(teams) {
 
   card.style.display = 'block';
   setText('myteam-name', st.team.teamName || 'Unnamed');
+  const myNameEl = document.getElementById('myteam-name');
+  if (myNameEl) myNameEl.style.color = getDisplayTeamColor(st.team);
   setText('myteam-size', `${getMembers(st.team).length}/${TEAM_SIZE}`);
 
   // Footer buttons
@@ -912,7 +1040,7 @@ function renderMyTeam(teams) {
       return `
         <div class="player-row">
           <div class="player-left">
-            <span class="player-name">${esc(m.name || '—')}</span>
+            <span class="player-name" style="color:${esc(getDisplayTeamColor(st.team))}">${esc(m.name || '—')}</span>
           </div>
           ${canKick ? `<button class="icon-btn danger" type="button" data-kick="${esc(m.userId)}" title="Kick">×</button>` : ''}
         </div>
