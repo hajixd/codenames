@@ -1603,9 +1603,9 @@ button:disabled{
   border-radius: 6px;
 }
 
-/* Make team action buttons match the header name box width */
+/* Team action button should be full width inside the modal */
 #team-modal-join{
-  width: var(--namebox-w);
+  width: 100%;
   justify-content: center;
 }
 
