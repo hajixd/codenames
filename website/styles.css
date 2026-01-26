@@ -1129,22 +1129,49 @@ body.mode-joiner .only-joiner{ display:block; }
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  padding: 10px 0;
-  border-top: 1px solid rgba(0,0,0,0.06);
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
-.member-row:first-child{ border-top:none; padding-top:0; }
+.member-row + .member-row { margin-top: 8px; }
 .member-meta{
   display:flex;
   flex-direction:column;
   gap:2px;
 }
 .member-name{ font-weight: 700; }
-.member-discord{ font-size: 12px; color: rgba(0,0,0,0.6); }
-.danger{
-  border-color: rgba(255, 0, 0, 0.20) !important;
-  background: rgba(255, 0, 0, 0.03) !important;
+.member-discord{ font-size: 12px; color: var(--text-dim); }
+
+/* Rename form */
+.rename-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
 }
-.danger .manage-title{ color: rgba(160,0,0,0.95); }
+.rename-form .field {
+  flex: 1;
+}
+.rename-form .input {
+  margin-bottom: 0;
+}
+.rename-form .btn {
+  flex-shrink: 0;
+}
+
+/* Request meta */
+.req-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Danger zone */
+.danger{
+  border-color: rgba(239, 68, 68, 0.25) !important;
+  background: rgba(239, 68, 68, 0.05) !important;
+}
+.danger .manage-title{ color: var(--red); }
 .danger-actions{
   display:flex;
   flex-wrap:wrap;
@@ -1152,15 +1179,48 @@ body.mode-joiner .only-joiner{ display:block; }
   margin-top: 10px;
 }
 .btn.danger{
-  border-color: rgba(255, 0, 0, 0.35);
-  color: rgba(160,0,0,0.95);
-  background: rgba(255, 0, 0, 0.06);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.08);
 }
 .btn.danger:hover{
-  background: rgba(255, 0, 0, 0.10);
+  background: rgba(239, 68, 68, 0.15);
 }
+
+/* Success button */
+.btn.success {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: var(--green);
+}
+.btn.success:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
 .small-note{
   font-size: 12px;
-  color: rgba(0,0,0,0.62);
-  margin-top: 6px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+/* Empty state in manage cards */
+.manage-card .empty-state {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* Members list */
+.members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Pill in title */
+.manage-title .pill {
+  font-size: 11px;
+  padding: 3px 8px;
 }

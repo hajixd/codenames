@@ -523,7 +523,7 @@ async function handleJoinRequest() {
     if (!roleState.isCreator) { setUserMode('joiner'); applyModeUI('joiner'); }
 
     document.getElementById('join-team-form')?.reset();
-    hint.textContent = 'Request sent! The team creator can accept it in “Manage join requests”.';
+    hint.textContent = 'Request sent! The team owner will review your request.';
     hint.classList.remove('error');
     hint.classList.add('ok');
 
@@ -572,23 +572,24 @@ function renderManageArea(teamId, teamData, requests) {
   const memberRows = members.map(m => {
     const d = sanitizeDiscord(m.discord || '');
     const dl = d.toLowerCase();
-    const isCreator = dl === creatorDiscordLower;
+    const isOwner = dl === creatorDiscordLower;
     return `
       <div class="member-row">
         <div class="member-meta">
-          <div class="member-name">${esc(m.name || 'Player')}${isCreator ? ' <span class="pill">creator</span>' : ''}</div>
+          <div class="member-name">${esc(m.name || 'Player')}${isOwner ? ' <span class="pill">owner</span>' : ''}</div>
           <div class="member-discord">@${esc(d || '—')}</div>
         </div>
-        ${isCreator ? '' : `<button class="btn small" type="button" data-action="kick" data-team-id="${teamId}" data-req-id="${esc(dl)}">Remove</button>`}
+        ${isOwner ? '' : `<button class="btn small danger" type="button" data-action="kick" data-team-id="${teamId}" data-req-id="${esc(dl)}">Remove</button>`}
       </div>
     `;
   }).join('');
 
+  const membersTitle = `Team members <span class="pill">${members.length}/${TEAM_SIZE}</span>`;
   const membersCard = `
     <div class="manage-card">
-      <div class="manage-title">Team members</div>
-      ${memberRows || '<div class="empty-state">No members found.</div>'}
-      <div class="small-note">Team size is ${TEAM_SIZE}. Spots left: <b>${spotsLeft}</b>.</div>
+      <div class="manage-title">${membersTitle}</div>
+      <div class="members-list">${memberRows || '<div class="empty-state">No members found.</div>'}</div>
+      ${spotsLeft > 0 ? `<div class="small-note">${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} available</div>` : '<div class="small-note" style="color: var(--gold);">Team is full</div>'}
     </div>
   `;
 
@@ -599,36 +600,40 @@ function renderManageArea(teamId, teamData, requests) {
       <div class="rename-form">
         <label class="field">
           <span class="label">Team name</span>
-          <input type="text" id="rename-input" class="input" value="${esc(team.teamName || '')}" placeholder="Team name">
+          <input type="text" id="rename-input" class="input" value="${esc(team.teamName || '')}" placeholder="Enter team name">
         </label>
-        <button class="btn small" type="button" data-action="rename-team" data-team-id="${teamId}" data-req-id="__">Rename</button>
+        <button class="btn small primary" type="button" data-action="rename-team" data-team-id="${teamId}" data-req-id="__">Save</button>
       </div>
     </div>
   `;
 
   // Requests card
   let requestsCard = '';
+  const pendingTitle = requests.length
+    ? `Pending requests <span class="pill pending">${requests.length}</span>`
+    : 'Pending requests';
+
   if (!requests.length) {
     requestsCard = `
       <div class="manage-card">
-        <div class="manage-title">Pending requests</div>
-        <div class="empty-state">No pending requests.</div>
+        <div class="manage-title">${pendingTitle}</div>
+        <div class="empty-state">No pending requests yet</div>
       </div>
     `;
   } else {
     const list = requests.map(r => {
       const disabled = spotsLeft <= 0 ? 'disabled' : '';
       const when = r.requestedAt?.toDate ? r.requestedAt.toDate() : null;
-      const time = when ? when.toLocaleString() : '';
+      const timeAgo = when ? formatTimeAgo(when) : '';
       return `
         <div class="req-row">
           <div class="req-left">
             <div class="req-name">${esc(r.name || 'Player')}</div>
-            <div class="req-meta">@${esc(r.discord || r.discordLower || '')}${time ? ` • ${esc(time)}` : ''}</div>
+            <div class="req-meta">@${esc(r.discord || r.discordLower || '')}${timeAgo ? ` • ${timeAgo}` : ''}</div>
           </div>
           <div class="req-actions">
-            <button class="btn small primary" type="button" data-action="accept" data-team-id="${teamId}" data-req-id="${esc(r.discordLower)}" ${disabled}>Accept</button>
-            <button class="btn small" type="button" data-action="decline" data-team-id="${teamId}" data-req-id="${esc(r.discordLower)}">Decline</button>
+            <button class="btn small success" type="button" data-action="accept" data-team-id="${teamId}" data-req-id="${esc(r.discordLower)}" ${disabled}>Accept</button>
+            <button class="btn small danger" type="button" data-action="decline" data-team-id="${teamId}" data-req-id="${esc(r.discordLower)}">Decline</button>
           </div>
         </div>
       `;
@@ -636,8 +641,8 @@ function renderManageArea(teamId, teamData, requests) {
 
     requestsCard = `
       <div class="manage-card">
-        <div class="manage-title">Pending requests</div>
-        ${spotsLeft <= 0 ? `<div class="team-footnote">Team is full — you can decline requests or remove a member to make space.</div>` : ''}
+        <div class="manage-title">${pendingTitle}</div>
+        ${spotsLeft <= 0 ? `<div class="small-note" style="margin-bottom:10px;">Team is full — decline requests or remove a member to make space.</div>` : ''}
         <div class="req-list">${list}</div>
       </div>
     `;
@@ -647,10 +652,10 @@ function renderManageArea(teamId, teamData, requests) {
   const dangerCard = `
     <div class="manage-card danger">
       <div class="manage-title">Danger zone</div>
-      <div class="small-note">This action cannot be undone.</div>
       <div class="danger-actions">
         <button class="btn small danger" type="button" data-action="delete-team" data-team-id="${teamId}" data-req-id="__">Delete team</button>
       </div>
+      <div class="small-note">Deleting your team cannot be undone.</div>
     </div>
   `;
 
@@ -985,15 +990,15 @@ function updateMyStatus(teams) {
   box.style.display = '';
 
   if (memberTeam) {
-    const isCreator = (memberTeam.creatorDiscordLower || '').toLowerCase() === u.discordLower;
+    const isOwner = isOwnerOf(memberTeam.id);
     box.innerHTML = `
       <div class="status-row">
         <div>
-          <div class="status-title">${isCreator ? 'You created' : 'You\'re on'} <b>${esc(memberTeam.teamName || 'this team')}</b></div>
-          <div class="status-sub">Discord: @${esc(u.discord)}${isCreator ? ' • You can manage join requests below.' : ''}</div>
+          <div class="status-title">${isOwner ? 'You own' : 'You\'re on'} <b>${esc(memberTeam.teamName || 'this team')}</b></div>
+          <div class="status-sub">Discord: @${esc(u.discord)}${isOwner ? ' • Manage your team below.' : ''}</div>
         </div>
         <div class="status-actions">
-          ${isCreator ? `<button class="btn small" type="button" data-action="manage" data-team-id="${memberTeam.id}" data-discord-lower="${u.discordLower}">Manage</button>` : `<button class="btn small" type="button" data-action="leave" data-team-id="${memberTeam.id}" data-discord-lower="${u.discordLower}">Leave team</button>`}
+          ${isOwner ? `<button class="btn small primary" type="button" data-action="manage" data-team-id="${memberTeam.id}" data-discord-lower="${u.discordLower}">Manage team</button>` : `<button class="btn small" type="button" data-action="leave" data-team-id="${memberTeam.id}" data-discord-lower="${u.discordLower}">Leave team</button>`}
         </div>
       </div>
     `;
@@ -1005,7 +1010,7 @@ function updateMyStatus(teams) {
     <div class="status-row">
       <div>
         <div class="status-title">Join request pending</div>
-        <div class="status-sub">Waiting for <b>${esc(pendingTeam.teamName || 'team creator')}</b> to accept • Discord: @${esc(u.discord)}</div>
+        <div class="status-sub">Waiting for <b>${esc(pendingTeam.teamName || 'the team')}</b> to accept • Discord: @${esc(u.discord)}</div>
       </div>
       <div class="status-actions">
         <button class="btn small" type="button" data-action="cancel" data-team-id="${pendingTeam.id}" data-discord-lower="${u.discordLower}">Cancel request</button>
@@ -1269,4 +1274,17 @@ function esc(str) {
   const div = document.createElement('div');
   div.textContent = String(str ?? '');
   return div.innerHTML;
+}
+
+// Format time ago (e.g., "2 hours ago")
+function formatTimeAgo(date) {
+  if (!date) return '';
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return date.toLocaleDateString();
 }
