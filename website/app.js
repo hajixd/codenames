@@ -49,6 +49,10 @@ let unreadTeamCount = 0;
 let lastReadWriteAtMs = 0;
 let activePanelId = 'panel-home';
 
+// Profile sync
+let profileUnsub = null;
+let lastLocalNameSetAtMs = 0;
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initName();
@@ -75,23 +79,34 @@ function initTabs() {
     tab.addEventListener('click', () => {
       const panelId = tab.dataset.panel;
       if (!panelId) return;
-      const prev = activePanelId;
-      tabs.forEach(t => t.classList.toggle('active', t === tab));
-      panels.forEach(p => p.classList.toggle('active', p.id === panelId));
-
-      // Panel lifecycle hooks
-      if (prev === 'panel-chat' && panelId !== 'panel-chat') {
-        stopChatSubscription();
-      }
-      if (panelId === 'panel-chat') {
-        startChatSubscription();
-        markChatRead(chatMode);
-        recomputeUnreadBadges();
-      }
-      activePanelId = panelId;
-      recomputeUnreadBadges();
+      switchToPanel(panelId);
     });
   });
+}
+
+function switchToPanel(panelId) {
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.panel');
+  const targetId = String(panelId || '').trim();
+  if (!targetId) return;
+
+  const targetTab = Array.from(tabs).find(t => t.dataset.panel === targetId) || null;
+  const prev = activePanelId;
+
+  tabs.forEach(t => t.classList.toggle('active', t === targetTab));
+  panels.forEach(p => p.classList.toggle('active', p.id === targetId));
+
+  // Panel lifecycle hooks
+  if (prev === 'panel-chat' && targetId !== 'panel-chat') {
+    stopChatSubscription();
+  }
+  if (targetId === 'panel-chat') {
+    startChatSubscription();
+    markChatRead(chatMode);
+    recomputeUnreadBadges();
+  }
+  activePanelId = targetId;
+  recomputeUnreadBadges();
 }
 
 /* =========================
@@ -341,6 +356,9 @@ async function setUserName(name, opts = {}) {
   const nextName = (name || '').trim();
   const prevName = (safeLSGet(LS_USER_NAME) || '').trim();
 
+  // Used to avoid profile listener bouncing the UI during a local rename.
+  lastLocalNameSetAtMs = Date.now();
+
   const prevKey = nameToAccountId(prevName);
   const nextKey = nameToAccountId(nextName);
 
@@ -379,6 +397,9 @@ async function setUserName(name, opts = {}) {
 
   // Update local name after verification.
   safeLSSet(LS_USER_NAME, nextName);
+
+  // Ensure cross-device profile sync is active once we have a name.
+  startProfileNameSync();
 
   try {
     await db.runTransaction(async (tx) => {
@@ -422,6 +443,9 @@ async function setUserName(name, opts = {}) {
     safeLSSet(LS_USER_ID, targetAccountId);
   }
 
+  // Ensure we are listening to the correct profile doc for cross-device name sync.
+  startProfileNameSync();
+
   refreshNameUI();
 
   // Persist "signed up" players to Firestore so they can appear in the Players tab.
@@ -436,9 +460,10 @@ async function setUserName(name, opts = {}) {
   }
 
   // If user is a member/creator, update their stored display name in their team doc (best-effort)
-  const st = computeUserState(teamsCache);
-  if (st?.team && st?.teamId) {
-    updateMemberName(st.teamId, st.userId, st.name);
+  try {
+    await updateNameInAllTeams(getUserId(), getUserName());
+  } catch (e) {
+    // best-effort
   }
 }
 
@@ -589,12 +614,39 @@ function initName() {
 
   refreshNameUI();
 
-  // If the user already had a saved name, normalize their account id (and migrate legacy ids) so
-  // the same name behaves like the same account across devices.
-  if (getUserName()) {
-    // Best-effort: don't block UI on startup.
-    setUserName(getUserName(), { silent: true });
-  }
+  // Keep the local device name in sync with the account profile (so renames propagate
+  // across devices without logging out).
+  startProfileNameSync();
+}
+
+function startProfileNameSync() {
+  try { profileUnsub?.(); } catch (_) {}
+  profileUnsub = null;
+
+  // Only sync when this device has a saved name (i.e., the user is "logged in" on this device).
+  if (!getUserName()) return;
+
+  const uid = getUserId();
+  if (!uid) return;
+
+  profileUnsub = db.collection('players').doc(uid).onSnapshot((snap) => {
+    if (!snap?.exists) return;
+    const remoteName = String(snap.data()?.name || '').trim();
+    if (!remoteName) return;
+
+    const localName = getUserName();
+    if (remoteName && remoteName !== localName) {
+      // Remote profile is the source of truth once linked.
+      // (If the user just changed their name locally, the profile write will land shortly.)
+      const now = Date.now();
+      if (now - lastLocalNameSetAtMs < 750) return;
+      safeLSSet(LS_USER_NAME, remoteName);
+      refreshNameUI();
+    }
+  }, (err) => {
+    // best-effort
+    console.warn('Profile name sync error', err);
+  });
 }
 
 function refreshNameUI() {
@@ -1553,6 +1605,11 @@ async function requestToJoin(teamId, opts = {}) {
    My Team page
 ========================= */
 function initMyTeamControls() {
+  // If you're not on a team, offer a direct jump to the Teams tab.
+  document.getElementById('join-team-btn')?.addEventListener('click', () => {
+    switchToPanel('panel-teams');
+  });
+
   document.getElementById('open-create-team')?.addEventListener('click', () => {
     openCreateTeamModal();
   });
@@ -1578,6 +1635,11 @@ function initMyTeamControls() {
 
   document.getElementById('open-chat')?.addEventListener('click', () => {
     openChatModal();
+  });
+
+  // Quick path: if you're not on a team, jump to Teams tab.
+  document.getElementById('join-team-btn')?.addEventListener('click', () => {
+    switchToPanel('panel-teams');
   });
 
   // Rename team (creator)
@@ -1618,6 +1680,7 @@ function renderMyTeam(teams) {
   const st = computeUserState(teams);
   const createBtn = document.getElementById('open-create-team');
   const card = document.getElementById('myteam-card');
+  const joinBtn = document.getElementById('join-team-btn');
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
@@ -1628,6 +1691,12 @@ function renderMyTeam(teams) {
   const colorInput = document.getElementById('team-color-input');
 
   const hasTeam = !!st.teamId;
+
+  if (joinBtn) {
+    // Only show when you're named and not currently on a team.
+    const show = !!st.name && !hasTeam;
+    joinBtn.style.display = show ? 'inline-flex' : 'none';
+  }
   if (createBtn) {
     // Create button is only relevant if you're not on a team.
     const disableCreate = !st.name || hasTeam || !!st.pendingTeamId || teams.length >= MAX_TEAMS;
@@ -2505,6 +2574,62 @@ async function updateMemberName(teamId, userId, name) {
   } catch (e) {
     // best-effort
     console.warn('Could not update member name', e);
+  }
+}
+
+async function updateNameInAllTeams(userId, name) {
+  const uid = String(userId || '').trim();
+  const n = String(name || '').trim();
+  if (!uid || !n) return;
+
+  // A user can only be on one team, but may appear in pending/legacy fields.
+  for (const t of (teamsCache || [])) {
+    const teamId = String(t?.id || '').trim();
+    if (!teamId) continue;
+    const ref = db.collection('teams').doc(teamId);
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const team = { id: snap.id, ...snap.data() };
+
+        let changed = false;
+
+        const nextMembers = getMembers(team).map(m => {
+          if (!isSameAccount(m, uid)) return m;
+          if (String(m?.name || '').trim() !== n) changed = true;
+          return { ...m, userId: uid, name: n };
+        });
+
+        const nextPending = getPending(team).map(r => {
+          if (!isSameAccount(r, uid)) return r;
+          if (String(r?.name || '').trim() !== n) changed = true;
+          return { ...r, userId: uid, name: n };
+        });
+
+        // Keep creatorName in sync when this account is the creator.
+        const creatorUserId = String(team.creatorUserId || '').trim();
+        const creatorKey = nameToAccountId((team.creatorName || '').trim());
+        const isCreator = (creatorUserId && creatorUserId === uid) || (creatorKey && creatorKey === uid);
+        let nextCreatorName = team.creatorName;
+        let nextCreatorUserId = team.creatorUserId;
+        if (isCreator) {
+          if (String(team.creatorName || '').trim() !== n) changed = true;
+          nextCreatorName = n;
+          nextCreatorUserId = uid;
+        }
+
+        if (!changed) return;
+        tx.update(ref, {
+          members: dedupeRosterByAccount(nextMembers),
+          pending: dedupeRosterByAccount(nextPending),
+          ...(isCreator ? { creatorName: nextCreatorName, creatorUserId: nextCreatorUserId } : {})
+        });
+      });
+    } catch (e) {
+      // best-effort
+      console.warn('Could not update name in team', teamId, e);
+    }
   }
 }
 
