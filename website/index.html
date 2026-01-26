@@ -17,14 +17,15 @@
       <header class="desktop-header">
         <div class="logo">CODENAMES</div>
         <div class="header-center">Discord Tournament &bull; 3v3 &bull; 6 Teams Max</div>
+        <div class="mode-indicator" id="mode-indicator-desktop" aria-live="polite"></div>
         <div class="prize-badge">$150 Prize</div>
       </header>
 
       <!-- Desktop Tabs (shown on laptop/desktop) -->
       <nav class="desktop-tabs" aria-label="Primary">
-        <button class="tab active" data-panel="panel-home" type="button">Home</button>
-        <button class="tab" data-panel="panel-register" type="button">Teams</button>
-        <button class="tab" data-panel="panel-teams" type="button">Roster</button>
+        <button class="tab active" data-panel="panel-home" type="button" id="tab-home-desktop">Home</button>
+        <button class="tab" data-panel="panel-register" type="button" id="tab-register-desktop">Teams</button>
+        <button class="tab" data-panel="panel-teams" type="button" id="tab-teams-desktop">Roster</button>
       </nav>
 
       <!-- Main Content -->
@@ -35,6 +36,7 @@
             <div class="mobile-header">
               <span class="logo">CODENAMES</span>
               <span class="prize-badge">$150</span>
+              <span class="mode-indicator mobile" id="mode-indicator-mobile" aria-live="polite"></span>
             </div>
             <h1>Discord Tournament</h1>
             <p class="subtitle">3v3 teams competing for $150</p>
@@ -65,6 +67,18 @@
           <div class="panel-inner">
             <h2>Teams</h2>
             <p class="subtitle">Create a team, request to join, then have the team creator accept.</p>
+
+            <div class="mode-switcher" id="mode-switcher" aria-label="Mode selector">
+              <div class="mode-switcher-left">
+                <div class="mode-switcher-label">You are:</div>
+                <div class="mode-switcher-value" id="mode-switcher-value">—</div>
+              </div>
+              <div class="mode-switcher-actions">
+                <button class="btn small" type="button" id="mode-set-creator">Creator</button>
+                <button class="btn small" type="button" id="mode-set-joiner">Joining</button>
+              </div>
+            </div>
+
 
             <!-- Current user status (member / pending) -->
             <div id="my-status" class="status-card" style="display:none;"></div>
@@ -204,15 +218,15 @@
 
       <!-- Mobile Tabs -->
       <nav class="mobile-tabs">
-        <button class="tab active" data-panel="panel-home">
+        <button class="tab active" data-panel="panel-home" id="tab-home-mobile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           <span>Home</span>
         </button>
-        <button class="tab" data-panel="panel-register">
+        <button class="tab" data-panel="panel-register" id="tab-register-mobile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           <span>Register</span>
         </button>
-        <button class="tab" data-panel="panel-teams">
+        <button class="tab" data-panel="panel-teams" id="tab-teams-mobile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Teams</span>
         </button>

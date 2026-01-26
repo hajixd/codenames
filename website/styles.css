@@ -1034,3 +1034,99 @@ body {
   .two-col { grid-template-columns: 1fr; }
   .tab { max-width: none; }
 }
+
+
+/* =========================
+   Mode / Role UI
+========================= */
+.mode-indicator{
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.9);
+  white-space: nowrap;
+}
+.mode-indicator:empty{ display:none; }
+.mode-indicator.mobile{
+  margin-left: auto;
+  border-color: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.04);
+  color: rgba(0,0,0,0.7);
+}
+
+.mode-switcher{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  background: rgba(0,0,0,0.02);
+  margin: 14px 0 10px;
+}
+.mode-switcher-label{
+  font-size: 12px;
+  color: rgba(0,0,0,0.6);
+}
+.mode-switcher-value{
+  font-size: 14px;
+  font-weight: 700;
+}
+.mode-switcher-actions{
+  display:flex;
+  gap:8px;
+}
+
+/* Creator-only / Joiner-only blocks */
+.only-creator{ display:none; }
+.only-joiner{ display:none; }
+body.mode-creator .only-creator{ display:block; }
+body.mode-joiner .only-joiner{ display:block; }
+
+/* Manage area additions */
+.manage-card + .manage-card{ margin-top: 12px; }
+
+.member-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
+.member-row:first-child{ border-top:none; padding-top:0; }
+.member-meta{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.member-name{ font-weight: 700; }
+.member-discord{ font-size: 12px; color: rgba(0,0,0,0.6); }
+.danger{
+  border-color: rgba(255, 0, 0, 0.20) !important;
+  background: rgba(255, 0, 0, 0.03) !important;
+}
+.danger .manage-title{ color: rgba(160,0,0,0.95); }
+.danger-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top: 10px;
+}
+.btn.danger{
+  border-color: rgba(255, 0, 0, 0.35);
+  color: rgba(160,0,0,0.95);
+  background: rgba(255, 0, 0, 0.06);
+}
+.btn.danger:hover{
+  background: rgba(255, 0, 0, 0.10);
+}
+.small-note{
+  font-size: 12px;
+  color: rgba(0,0,0,0.62);
+  margin-top: 6px;
+}
