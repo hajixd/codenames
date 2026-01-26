@@ -275,7 +275,16 @@ function initTeamModal() {
 
   document.getElementById('team-modal-join')?.addEventListener('click', async () => {
     if (!openTeamId) return;
+    const st = computeUserState(teamsCache);
+    // If the user already has a pending request for this team, clicking the button cancels it.
+    if (st.pendingTeamId === openTeamId) {
+      await cancelJoinRequest(openTeamId);
+      // Update UI immediately; snapshot listener will also re-render.
+      renderTeamModal(openTeamId);
+      return;
+    }
     await requestToJoin(openTeamId);
+    renderTeamModal(openTeamId);
   });
 }
 
@@ -325,6 +334,7 @@ function renderTeamModal(teamId) {
   let label = 'Request to join';
   let disabled = false;
   let hint = '';
+  let variant = 'primary';
 
   if (noName) {
     disabled = true;
@@ -333,8 +343,11 @@ function renderTeamModal(teamId) {
     disabled = true;
     label = 'You are on this team';
   } else if (iAmPendingHere) {
-    disabled = true;
-    label = 'Request sent';
+    // Replace "Request sent" with a cancellable action.
+    disabled = false;
+    label = 'Cancel Request';
+    variant = 'danger';
+    hint = 'Your request is pending.';
   } else if (iAmBusy) {
     disabled = true;
     hint = 'You are already on a team (or have a pending request).';
@@ -346,9 +359,36 @@ function renderTeamModal(teamId) {
   if (joinBtn) {
     joinBtn.disabled = disabled;
     joinBtn.classList.toggle('disabled', disabled);
+    // Button style variant
+    joinBtn.classList.toggle('primary', variant === 'primary');
+    joinBtn.classList.toggle('danger', variant === 'danger');
     joinBtn.textContent = label;
   }
   setHint('team-modal-hint', hint);
+}
+
+async function cancelJoinRequest(teamId, opts = {}) {
+  const st = computeUserState(teamsCache);
+  const ref = db.collection('teams').doc(teamId);
+
+  setHint(opts.hintElId || 'team-modal-hint', 'Canceling…');
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Team not found.');
+      const t = { id: snap.id, ...snap.data() };
+      const pending = getPending(t);
+      const next = pending.filter(r => r?.userId !== st.userId);
+      // If nothing to remove, no-op.
+      if (next.length === pending.length) return;
+      tx.update(ref, { pending: next });
+    });
+    setHint(opts.hintElId || 'team-modal-hint', 'Request canceled.');
+  } catch (e) {
+    console.error(e);
+    setHint(opts.hintElId || 'team-modal-hint', e?.message || 'Could not cancel request.');
+  }
 }
 
 async function requestToJoin(teamId, opts = {}) {
