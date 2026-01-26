@@ -904,7 +904,7 @@ function buildPlayersDirectory(players, teams) {
 }
 
 // Best-effort name lookup for a user id.
-// Used so team leaders can invite roster-detected users who don't yet have a `players` doc.
+// Used so teammates can invite roster-detected users who don't yet have a `players` doc.
 function findKnownUserName(userId) {
   const pid = String(userId || '').trim();
   if (!pid) return '';
@@ -937,7 +937,8 @@ function renderPlayers(players, teams) {
   const st = computeUserState(teams);
   const roster = buildRosterIndex(teams);
   const myTeam = st?.team;
-  const canManageInvites = !!(st.isCreator && st.teamId && myTeam);
+  // Anyone on a team can send invites (not just the creator).
+  const canManageInvites = !!(st.teamId && myTeam);
   const canSendInvitesNow = !!(canManageInvites && getMembers(myTeam).length < TEAM_MAX);
 
   // Directory = every known player from the Players collection PLUS anyone currently on a team.
@@ -971,12 +972,12 @@ function renderPlayers(players, teams) {
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
 
       // Right-side pill: show the player's team (if they're on one), otherwise show "Available".
-      // For team leaders, replace the Available pill with an Invite / Cancel invite pill-button.
+      // Teammates can also send invites via the left pill.
       const teamPillStyle = teamColor
         ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
         : '';
 
-      // Always show the status pill (Available or Team). If you're a team leader,
+      // Always show the status pill (Available or Team). If you're on a team,
       // also show an Invite pill to the LEFT of the status pill.
       let statusPillHtml = memberTeam
         ? `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`
@@ -1030,8 +1031,8 @@ function renderPlayers(players, teams) {
     });
   });
 
-  // Helpful hint for leaders
-  if (st.isCreator && st.teamId) {
+  // Helpful hint for teammates
+  if (st.teamId) {
     if (!st.name) setHint('players-hint', 'Set your name on Home first.');
     else if (!canSendInvitesNow) setHint('players-hint', 'Your team is full — you can’t send new invites.');
     else setHint('players-hint', 'Tap Invite to send a team invite.');
@@ -1134,7 +1135,7 @@ async function upsertPlayerProfile(userId, name) {
 
 async function sendInviteToPlayer(targetUserId) {
   const st = computeUserState(teamsCache);
-  if (!st.isCreator || !st.teamId || !st.team) return;
+  if (!st.teamId || !st.team) return;
   if (getMembers(st.team).length >= TEAM_MAX) return;
 
   setHint('players-hint', 'Sending invite…');
@@ -1180,7 +1181,7 @@ async function sendInviteToPlayer(targetUserId) {
 
 async function cancelInviteToPlayer(targetUserId) {
   const st = computeUserState(teamsCache);
-  if (!st.isCreator || !st.teamId) return;
+  if (!st.teamId) return;
 
   const playerRef = db.collection('players').doc(String(targetUserId || '').trim());
   setHint('players-hint', 'Canceling invite…');

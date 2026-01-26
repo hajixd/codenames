@@ -114,7 +114,7 @@
         <section class="panel panel-players" id="panel-players">
           <div class="panel-inner">
             <h2>Players</h2>
-            <p class="subtitle small">Everyone who has entered their name. Team leaders can invite players who aren't on a team yet.</p>
+            <p class="subtitle small">Everyone who has entered their name. Anyone on a team can invite players (including people already on teams).</p>
             <span class="hint" id="players-hint"></span>
             <div class="players-directory" id="players-list"></div>
           </div>
@@ -211,7 +211,8 @@
           <span>Teams</span>
         </button>
         <button class="tab" data-panel="panel-players" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <!-- Single-person icon to differentiate from Teams on mobile -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span>Players</span>
         </button>
         <button class="tab" data-panel="panel-myteam" type="button">
