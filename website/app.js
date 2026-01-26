@@ -23,6 +23,9 @@ const db = firebase.firestore();
 
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
+// Account model:
+// - Accounts are keyed by normalized player name so "same name" = same account across devices.
+// - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
 
 let teamsCache = [];
 let playersCache = [];
@@ -59,7 +62,25 @@ function initTabs() {
 /* =========================
    User identity (device-local)
 ========================= */
+function nameToAccountId(name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n) return '';
+  // Firestore doc ids can't contain '/', and we want a stable, readable key.
+  return n
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64);
+}
+
 function getUserId() {
+  const name = getUserName();
+  const key = nameToAccountId(name);
+  // Once a name exists, the account id is the normalized name.
+  if (key) return key;
+
+  // Legacy / pre-name fallback: device-local id
   let id = safeLSGet(LS_USER_ID);
   if (!id) {
     id = (crypto?.randomUUID?.() || ('u_' + Math.random().toString(16).slice(2) + Date.now().toString(16)));
@@ -72,16 +93,143 @@ function getUserName() {
   return (safeLSGet(LS_USER_NAME) || '').trim();
 }
 
-function setUserName(name) {
-  safeLSSet(LS_USER_NAME, (name || '').trim());
+async function setUserName(name) {
+  const nextName = (name || '').trim();
+  const oldStoredId = safeLSGet(LS_USER_ID) || '';
+  safeLSSet(LS_USER_NAME, nextName);
+
+  const nextId = nameToAccountId(nextName);
+  if (!nextId) {
+    refreshNameUI();
+    return;
+  }
+
+  // If this device previously had a legacy random ID, migrate it to the name-keyed account.
+  if (oldStoredId && oldStoredId !== nextId) {
+    try {
+      await migrateIdentity(oldStoredId, nextId, nextName);
+    } catch (e) {
+      console.warn('Identity migration failed (best-effort)', e);
+    }
+  }
+
+  // Persist the account id locally so legacy code paths and older installs converge.
+  safeLSSet(LS_USER_ID, nextId);
+
   refreshNameUI();
+
   // Persist "signed up" players to Firestore so they can appear in the Players tab.
-  upsertPlayerProfile(getUserId(), getUserName());
+  await upsertPlayerProfile(nextId, nextName);
+
   // If user is a member/creator, update their stored display name in their team doc (best-effort)
   const st = computeUserState(teamsCache);
   if (st?.team && st?.teamId) {
     // Only update accepted member entry; we avoid touching pending requests (name is shown from request itself)
-    updateMemberName(st.teamId, getUserId(), getUserName());
+    updateMemberName(st.teamId, nextId, nextName);
+  }
+}
+
+async function migrateIdentity(oldId, newId, displayName) {
+  const fromId = String(oldId || '').trim();
+  const toId = String(newId || '').trim();
+  if (!fromId || !toId || fromId === toId) return;
+
+  // 1) Merge player docs (invites) onto the name-keyed account.
+  const fromRef = db.collection('players').doc(fromId);
+  const toRef = db.collection('players').doc(toId);
+
+  const mergeInvites = (a, b) => {
+    const out = [];
+    const seen = new Set();
+    for (const x of ([]).concat(a || [], b || [])) {
+      const tid = String(x?.teamId || '');
+      if (!tid) continue;
+      if (seen.has(tid)) continue;
+      seen.add(tid);
+      out.push(x);
+    }
+    return out;
+  };
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [fromSnap, toSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+      const from = fromSnap.exists ? ({ id: fromSnap.id, ...fromSnap.data() }) : null;
+      const to = toSnap.exists ? ({ id: toSnap.id, ...toSnap.data() }) : null;
+
+      const nextName = (to?.name || from?.name || displayName || '').trim();
+      const nextInvites = mergeInvites(to?.invites, from?.invites);
+
+      tx.set(toRef, {
+        name: nextName || (displayName || '—'),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ...(to?.createdAt ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() }),
+        invites: nextInvites
+      }, { merge: true });
+
+      if (fromSnap.exists) {
+        // Keep data tidy: once migrated, remove the legacy doc.
+        tx.delete(fromRef);
+      }
+    });
+  } catch (e) {
+    // best-effort
+    console.warn('Could not migrate player doc', e);
+  }
+
+  // 2) Migrate team memberships/ownership from legacy IDs onto the name-keyed ID.
+  // Teams are small (MAX_TEAMS), so scanning client-side is fine.
+  for (const t of (teamsCache || [])) {
+    const teamRef = db.collection('teams').doc(t.id);
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(teamRef);
+        if (!snap.exists) return;
+        const team = { id: snap.id, ...snap.data() };
+
+        let changed = false;
+
+        const nextMembers = getMembers(team).map(m => {
+          const mName = (m?.name || '').trim();
+          const mKey = nameToAccountId(mName);
+          if (m?.userId === fromId || (mKey && mKey === toId)) {
+            changed = true;
+            return { userId: toId, name: mName || displayName || '—' };
+          }
+          return m;
+        });
+
+        const nextPending = getPending(team).map(r => {
+          const rName = (r?.name || '').trim();
+          const rKey = nameToAccountId(rName);
+          if (r?.userId === fromId || (rKey && rKey === toId)) {
+            changed = true;
+            return { ...r, userId: toId, name: rName || displayName || '—' };
+          }
+          return r;
+        });
+
+        let nextCreatorUserId = team.creatorUserId;
+        let nextCreatorName = team.creatorName;
+        const creatorKey = nameToAccountId((team.creatorName || '').trim());
+        if (team.creatorUserId === fromId || (creatorKey && creatorKey === toId)) {
+          if (team.creatorUserId !== toId) changed = true;
+          nextCreatorUserId = toId;
+          nextCreatorName = (displayName || team.creatorName || '').trim();
+        }
+
+        if (!changed) return;
+        tx.update(teamRef, {
+          members: dedupeRosterByAccount(nextMembers),
+          pending: dedupeRosterByAccount(nextPending),
+          creatorUserId: nextCreatorUserId,
+          creatorName: nextCreatorName
+        });
+      });
+    } catch (e) {
+      // best-effort
+      console.warn('Could not migrate team membership', e);
+    }
   }
 }
 
@@ -91,7 +239,7 @@ function initName() {
   const input = document.getElementById('name-input');
   const hint = document.getElementById('name-hint');
 
-  form?.addEventListener('submit', (e) => {
+  form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const v = (input?.value || '').trim();
     if (!v) {
@@ -99,7 +247,7 @@ function initName() {
       return;
     }
     if (hint) hint.textContent = '';
-    setUserName(v);
+    await setUserName(v);
   });
 
   // Double-click editing (works on desktop + mobile)
@@ -119,9 +267,11 @@ function initName() {
 
   refreshNameUI();
 
-  // If the user already had a saved name, make sure they're in the Players directory.
+  // If the user already had a saved name, normalize their account id (and migrate legacy ids) so
+  // the same name behaves like the same account across devices.
   if (getUserName()) {
-    upsertPlayerProfile(getUserId(), getUserName());
+    // Best-effort: don't block UI on startup.
+    setUserName(getUserName());
   }
 }
 
@@ -223,12 +373,46 @@ function getPending(team) {
   return Array.isArray(team.pending) ? team.pending : [];
 }
 
+function entryAccountId(entry) {
+  const n = (entry?.name || '').trim();
+  const k = nameToAccountId(n);
+  return k || String(entry?.userId || '').trim();
+}
+
+function isSameAccount(entry, accountId) {
+  const aid = String(accountId || '').trim();
+  if (!aid) return false;
+  return entryAccountId(entry) === aid;
+}
+
+function dedupeRosterByAccount(list) {
+  const out = [];
+  const seen = new Set();
+  for (const e of (list || [])) {
+    const key = entryAccountId(e);
+    if (!key) continue;
+    if (seen.has(key)) {
+      // Prefer keeping a version that has a name if the existing one is blank
+      const idx = out.findIndex(x => entryAccountId(x) === key);
+      if (idx >= 0) {
+        const curName = (out[idx]?.name || '').trim();
+        const nextName = (e?.name || '').trim();
+        if (!curName && nextName) out[idx] = { ...out[idx], name: nextName };
+      }
+      continue;
+    }
+    seen.add(key);
+    out.push(e);
+  }
+  return out;
+}
+
 function findUserInMembers(team, userId) {
-  return getMembers(team).find(m => m?.userId === userId);
+  return getMembers(team).find(m => isSameAccount(m, userId));
 }
 
 function findUserInPending(team, userId) {
-  return getPending(team).find(r => r?.userId === userId);
+  return getPending(team).find(r => isSameAccount(r, userId));
 }
 
 function computeUserState(teams) {
@@ -239,7 +423,8 @@ function computeUserState(teams) {
     if (findUserInMembers(t, userId)) team = t;
     if (findUserInPending(t, userId)) pendingTeam = t;
   }
-  const isCreator = !!(team && team.creatorUserId && team.creatorUserId === userId);
+  const creatorKey = team ? nameToAccountId((team.creatorName || '').trim()) : '';
+  const isCreator = !!(team && (team.creatorUserId === userId || (creatorKey && creatorKey === userId)));
   return {
     userId,
     name: getUserName(),
@@ -291,6 +476,19 @@ function applyTeamThemeFromState(st) {
   }
 }
 
+function dedupeInvitesByTeamId(invites) {
+  const out = [];
+  const seen = new Set();
+  for (const i of (invites || [])) {
+    const tid = String(i?.teamId || '').trim();
+    if (!tid) continue;
+    if (seen.has(tid)) continue;
+    seen.add(tid);
+    out.push(i);
+  }
+  return out;
+}
+
 /* =========================
    Players page (directory + invites)
 ========================= */
@@ -304,10 +502,12 @@ function buildRosterIndex(teams) {
   const pendingTeamByUserId = new Map();
   for (const t of (teams || [])) {
     for (const m of getMembers(t)) {
-      if (m?.userId) memberTeamByUserId.set(m.userId, t);
+      const key = entryAccountId(m);
+      if (key) memberTeamByUserId.set(key, t);
     }
     for (const r of getPending(t)) {
-      if (r?.userId) pendingTeamByUserId.set(r.userId, t);
+      const key = entryAccountId(r);
+      if (key) pendingTeamByUserId.set(key, t);
     }
   }
   return { memberTeamByUserId, pendingTeamByUserId };
@@ -317,47 +517,45 @@ function buildRosterIndex(teams) {
 // - anyone in the `players` collection (signed up)
 // - anyone who appears in an accepted team roster (even if they never saved a name on this device)
 function buildPlayersDirectory(players, teams) {
-  const byId = new Map();
+  const byKey = new Map();
 
   for (const p of (players || [])) {
-    if (!p?.id) continue;
-    byId.set(p.id, { ...p });
+    const name = (p?.name || '').trim();
+    const key = nameToAccountId(name) || String(p?.id || '').trim();
+    if (!key) continue;
+    // Merge invites when multiple docs share the same name (legacy).
+    const cur = byKey.get(key) || { id: key, name: name, invites: [] };
+    const invitesA = Array.isArray(cur.invites) ? cur.invites : [];
+    const invitesB = Array.isArray(p.invites) ? p.invites : [];
+    const merged = dedupeInvitesByTeamId(invitesA.concat(invitesB));
+    byKey.set(key, { ...cur, id: key, name: cur.name || name, invites: merged });
   }
 
   for (const t of (teams || [])) {
     for (const m of getMembers(t)) {
-      const uid = m?.userId;
-      if (!uid) continue;
-      if (!byId.has(uid)) {
-        byId.set(uid, { id: uid, name: (m?.name || '').trim(), invites: [] });
-      } else {
-        // Prefer the canonical name in `players`, but fill gaps from team roster.
-        const cur = byId.get(uid);
-        const curName = (cur?.name || '').trim();
-        const rosterName = (m?.name || '').trim();
-        if (!curName && rosterName) cur.name = rosterName;
-        byId.set(uid, cur);
-      }
+      const rosterName = (m?.name || '').trim();
+      const key = entryAccountId(m);
+      if (!key) continue;
+      const cur = byKey.get(key) || { id: key, name: rosterName, invites: [] };
+      const curName = (cur?.name || '').trim();
+      if (!curName && rosterName) cur.name = rosterName;
+      byKey.set(key, cur);
     }
 
     // Also include users who have submitted a request (pending), but do NOT expose
     // which team they requested publicly.
     for (const r of getPending(t)) {
-      const uid = r?.userId;
-      if (!uid) continue;
-      if (!byId.has(uid)) {
-        byId.set(uid, { id: uid, name: (r?.name || '').trim(), invites: [] });
-      } else {
-        const cur = byId.get(uid);
-        const curName = (cur?.name || '').trim();
-        const reqName = (r?.name || '').trim();
-        if (!curName && reqName) cur.name = reqName;
-        byId.set(uid, cur);
-      }
+      const reqName = (r?.name || '').trim();
+      const key = entryAccountId(r);
+      if (!key) continue;
+      const cur = byKey.get(key) || { id: key, name: reqName, invites: [] };
+      const curName = (cur?.name || '').trim();
+      if (!curName && reqName) cur.name = reqName;
+      byKey.set(key, cur);
     }
   }
 
-  return Array.from(byId.values())
+  return Array.from(byKey.values())
     .filter(p => (p?.name || '').trim())
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
 }
@@ -367,19 +565,19 @@ function buildPlayersDirectory(players, teams) {
 function findKnownUserName(userId) {
   const pid = String(userId || '').trim();
   if (!pid) return '';
-  const p = (playersCache || []).find(x => x?.id === pid);
+  const p = (playersCache || []).find(x => x?.id === pid || nameToAccountId((x?.name || '').trim()) === pid);
   const pn = (p?.name || '').trim();
   if (pn) return pn;
 
   for (const t of (teamsCache || [])) {
     for (const m of getMembers(t)) {
-      if (m?.userId === pid) {
+      if (entryAccountId(m) === pid) {
         const n = (m?.name || '').trim();
         if (n) return n;
       }
     }
     for (const r of getPending(t)) {
-      if (r?.userId === pid) {
+      if (entryAccountId(r) === pid) {
         const n = (r?.name || '').trim();
         if (n) return n;
       }
@@ -396,7 +594,8 @@ function renderPlayers(players, teams) {
   const st = computeUserState(teams);
   const roster = buildRosterIndex(teams);
   const myTeam = st?.team;
-  const canInvite = !!(st.isCreator && st.teamId && myTeam && getMembers(myTeam).length < TEAM_SIZE);
+  const canManageInvites = !!(st.isCreator && st.teamId && myTeam);
+  const canSendInvitesNow = !!(canManageInvites && getMembers(myTeam).length < TEAM_SIZE);
 
   // Directory = every known player from the Players collection PLUS anyone currently on a team.
   const directory = buildPlayersDirectory(players, teams);
@@ -424,8 +623,9 @@ function renderPlayers(players, teams) {
       const invites = Array.isArray(p.invites) ? p.invites : [];
       const alreadyInvitedByMe = !!(st.teamId && invites.some(i => i?.teamId === st.teamId));
       // Allow inviting even if the player has a pending request somewhere.
-      const showInvite = canInvite && uid !== st.userId && !memberTeam;
-      const inviteDisabled = alreadyInvitedByMe || !st.name;
+      // Show "Cancel invite" if already invited (even if the team is currently full).
+      const showInviteButton = canManageInvites && uid !== st.userId && !memberTeam && (alreadyInvitedByMe || canSendInvitesNow);
+      const inviteDisabled = !st.name;
 
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
 
@@ -444,9 +644,9 @@ function renderPlayers(players, teams) {
           </div>
           <div class="player-right">
             ${statusPillHtml}
-            ${showInvite ? `
-              <button class="btn primary small" type="button" data-invite="${esc(uid)}" ${inviteDisabled ? 'disabled' : ''}>
-                ${alreadyInvitedByMe ? 'Invited' : 'Invite'}
+            ${showInviteButton ? `
+              <button class="btn ${alreadyInvitedByMe ? 'danger' : 'primary'} small" type="button" data-invite="${esc(uid)}" data-invite-mode="${alreadyInvitedByMe ? 'cancel' : 'send'}" ${inviteDisabled ? 'disabled' : ''}>
+                ${alreadyInvitedByMe ? 'Cancel invite' : 'Invite'}
               </button>
             ` : ''}
           </div>
@@ -462,14 +662,19 @@ function renderPlayers(players, teams) {
     btn.addEventListener('click', async () => {
       const targetId = btn.getAttribute('data-invite');
       if (!targetId) return;
-      await sendInviteToPlayer(targetId);
+      const mode = btn.getAttribute('data-invite-mode') || 'send';
+      if (mode === 'cancel') {
+        await cancelInviteToPlayer(targetId);
+      } else {
+        await sendInviteToPlayer(targetId);
+      }
     });
   });
 
   // Helpful hint for leaders
   if (st.isCreator && st.teamId) {
     if (!st.name) setHint('players-hint', 'Set your name on Home first.');
-    else if (!canInvite) setHint('players-hint', 'Your team is full — you can’t invite more players.');
+    else if (!canSendInvitesNow) setHint('players-hint', 'Your team is full — you can’t send new invites.');
     else setHint('players-hint', 'Tap Invite to send a team invite.');
   }
 }
@@ -612,6 +817,32 @@ async function sendInviteToPlayer(targetUserId) {
   }
 }
 
+async function cancelInviteToPlayer(targetUserId) {
+  const st = computeUserState(teamsCache);
+  if (!st.isCreator || !st.teamId) return;
+
+  const playerRef = db.collection('players').doc(String(targetUserId || '').trim());
+  setHint('players-hint', 'Canceling invite…');
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(playerRef);
+      if (!snap.exists) return;
+      const p = { id: snap.id, ...snap.data() };
+      const invites = Array.isArray(p.invites) ? p.invites : [];
+      const nextInvites = invites.filter(i => i?.teamId !== st.teamId);
+      tx.update(playerRef, {
+        invites: nextInvites,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    setHint('players-hint', 'Invite canceled.');
+  } catch (e) {
+    console.error(e);
+    setHint('players-hint', e?.message || 'Could not cancel invite.');
+  }
+}
+
 async function acceptInvite(teamId) {
   const st = computeUserState(teamsCache);
   if (!st.name) return;
@@ -627,7 +858,7 @@ async function acceptInvite(teamId) {
   try {
     // Clear any pending requests for this user (across teams) when they join via invite.
     const pendingTeamIds = (teamsCache || [])
-      .filter(t => getPending(t).some(r => r?.userId === st.userId))
+      .filter(t => getPending(t).some(r => isSameAccount(r, st.userId)))
       .map(t => t.id);
 
     await db.runTransaction(async (tx) => {
@@ -642,11 +873,11 @@ async function acceptInvite(teamId) {
       const team = { id: teamSnap.id, ...teamSnap.data() };
       const members = getMembers(team);
       if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
-      if (members.some(m => m?.userId === st.userId)) return;
+      if (members.some(m => isSameAccount(m, st.userId))) return;
 
       // Remove this user from the team's pending list if present.
       const teamPending = getPending(team);
-      const nextTeamPending = teamPending.filter(r => r?.userId !== st.userId);
+      const nextTeamPending = teamPending.filter(r => !isSameAccount(r, st.userId));
 
       const nextMembers = members.concat([{ userId: st.userId, name: st.name }]);
 
@@ -664,7 +895,7 @@ async function acceptInvite(teamId) {
         const t = { id: s.id, ...s.data() };
         const p = getPending(t);
         if (!p?.length) continue;
-        const next = p.filter(r => r?.userId !== st.userId);
+        const next = p.filter(r => !isSameAccount(r, st.userId));
         if (next.length !== p.length) {
           tx.update(db.collection('teams').doc(s.id), { pending: next });
         }
@@ -863,7 +1094,7 @@ async function cancelJoinRequest(teamId, opts = {}) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const pending = getPending(t);
-      const next = pending.filter(r => r?.userId !== st.userId);
+      const next = pending.filter(r => !isSameAccount(r, st.userId));
       // If nothing to remove, no-op.
       if (next.length === pending.length) return;
       tx.update(ref, { pending: next });
@@ -896,11 +1127,11 @@ async function requestToJoin(teamId, opts = {}) {
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
       const pending = getPending(t);
-      if (pending.some(r => r.userId === st.userId)) return;
+      if (pending.some(r => isSameAccount(r, st.userId))) return;
       // NOTE: serverTimestamp() is not supported inside arrays in Firestore.
       // Use a client timestamp instead.
       tx.update(ref, {
-        pending: pending.concat([{ userId: st.userId, name: st.name, requestedAt: firebase.firestore.Timestamp.now() }])
+        pending: dedupeRosterByAccount(pending.concat([{ userId: st.userId, name: st.name, requestedAt: firebase.firestore.Timestamp.now() }]))
       });
     });
     setHint(opts.hintElId || 'team-modal-hint', 'Request sent.');
@@ -1038,14 +1269,15 @@ function renderMyTeam(teams) {
   const members = getMembers(st.team);
   if (membersEl) {
     membersEl.innerHTML = members.map(m => {
-      const isOwner = st.team.creatorUserId === m.userId;
+      const ownerKey = String(st.team.creatorUserId || '').trim() || nameToAccountId((st.team.creatorName || '').trim());
+      const isOwner = ownerKey ? (entryAccountId(m) === ownerKey) : false;
       const canKick = st.isCreator && !isOwner;
       return `
         <div class="player-row">
           <div class="player-left">
             <span class="player-name" style="color:${esc(getDisplayTeamColor(st.team))}">${esc(m.name || '—')}</span>
           </div>
-          ${canKick ? `<button class="icon-btn danger" type="button" data-kick="${esc(m.userId)}" title="Kick">×</button>` : ''}
+          ${canKick ? `<button class="icon-btn danger" type="button" data-kick="${esc(entryAccountId(m))}" title="Kick">×</button>` : ''}
         </div>
       `;
     }).join('');
@@ -1222,7 +1454,7 @@ async function leaveTeam(teamId, userId) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
-      tx.update(ref, { members: members.filter(m => m.userId !== userId) });
+      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)) });
     });
     activatePanel('panel-teams');
   } catch (e) {
@@ -1262,8 +1494,10 @@ async function acceptRequest(teamId, userId) {
       const req = pending.find(r => r.userId === userId);
       if (!req) return;
 
+      const targetId = entryAccountId(req) || String(req.userId || '').trim();
+
       const newPending = pending.filter(r => r.userId !== userId);
-      const newMembers = members.concat([{ userId: req.userId, name: req.name || '—' }]);
+      const newMembers = dedupeRosterByAccount(members.concat([{ userId: targetId, name: req.name || '—' }]));
       tx.update(ref, { pending: newPending, members: newMembers });
     });
   } catch (e) {
@@ -1302,7 +1536,7 @@ async function kickMember(teamId, userId) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
-      tx.update(ref, { members: members.filter(m => m.userId !== userId) });
+      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)) });
     });
   } catch (e) {
     console.error(e);
@@ -1318,13 +1552,13 @@ async function updateMemberName(teamId, userId, name) {
       if (!snap.exists) return;
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
-      const idx = members.findIndex(m => m.userId === userId);
+      const idx = members.findIndex(m => isSameAccount(m, userId));
       if (idx === -1) return;
       const updated = members.slice();
-      updated[idx] = { ...updated[idx], name };
+      updated[idx] = { ...updated[idx], userId: String(userId || '').trim(), name };
       tx.update(ref, { members: updated });
       // keep creatorName in sync if creator updated
-      if (t.creatorUserId === userId) {
+      if (t.creatorUserId === userId || nameToAccountId((t.creatorName || '').trim()) === String(userId || '').trim()) {
         tx.update(ref, { creatorName: name });
       }
     });
