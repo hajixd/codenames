@@ -636,9 +636,13 @@ function getPending(team) {
 }
 
 function entryAccountId(entry) {
+  // Prefer the stable userId stored on roster entries so accounts don't fragment
+  // simply because a display name changes. We keep a name-based fallback for
+  // legacy/partial data.
+  const uid = String(entry?.userId || '').trim();
+  if (uid) return uid;
   const n = (entry?.name || '').trim();
-  const k = nameToAccountId(n);
-  return k || String(entry?.userId || '').trim();
+  return nameToAccountId(n);
 }
 
 function isSameAccount(entry, accountId) {
@@ -686,7 +690,15 @@ function computeUserState(teams) {
     if (findUserInPending(t, userId)) pendingTeam = t;
   }
   const creatorKey = team ? nameToAccountId((team.creatorName || '').trim()) : '';
-  const isCreator = !!(team && (team.creatorUserId === userId || (creatorKey && creatorKey === userId)));
+  // Creator detection:
+  // - Prefer the stable creatorUserId match
+  // - Fallback to creatorName match (legacy teams)
+  const myNameKey = nameToAccountId(getUserName());
+  const isCreator = !!(team && (
+    team.creatorUserId === userId ||
+    (creatorKey && myNameKey && creatorKey === myNameKey) ||
+    (creatorKey && creatorKey === userId) // very old/buggy sessions
+  ));
   return {
     userId,
     name: getUserName(),
