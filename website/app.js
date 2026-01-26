@@ -447,7 +447,7 @@ async function handleCreateTeam() {
       creatorDiscordLower: discordLower,
       creatorKeyHash,
       members: [
-        { name, discord, joinedAt: firebase.firestore.FieldValue.serverTimestamp() }
+        { name, discord, joinedAt: new Date() }
       ],
       memberDiscords: [discordLower],
       pendingDiscords: [],
