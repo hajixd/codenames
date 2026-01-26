@@ -32,6 +32,11 @@ let playersCache = [];
 let openTeamId = null;
 let mergeNamesInFlight = new Set();
 
+// Team chat
+let chatOpenTeamId = null;
+let chatUnsub = null;
+let chatMessagesCache = [];
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initName();
@@ -40,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
+  initTeamChatModal();
   listenToTeams();
   listenToPlayers();
 });
@@ -302,18 +308,17 @@ function getUserName() {
   return (safeLSGet(LS_USER_NAME) || '').trim();
 }
 
-async function setUserName(name) {
+async function setUserName(name, opts = {}) {
+  const silent = !!opts.silent;
   const nextName = (name || '').trim();
   const prevName = (safeLSGet(LS_USER_NAME) || '').trim();
 
   const prevKey = nameToAccountId(prevName);
   const nextKey = nameToAccountId(nextName);
 
-  // Update local name immediately so UI feels snappy.
-  safeLSSet(LS_USER_NAME, nextName);
-
   // If clearing name, don't touch registry.
   if (!nextKey) {
+    safeLSSet(LS_USER_NAME, nextName);
     refreshNameUI();
     return;
   }
@@ -324,6 +329,28 @@ async function setUserName(name) {
   const prevRef = (prevKey && prevKey !== nextKey) ? namesCol.doc(prevKey) : null;
 
   let targetAccountId = myAccountId;
+
+  // If the name is already mapped to another account, ask for verification before linking.
+  if (!silent) {
+    try {
+      const s = await nextRef.get();
+      const existing = s.exists ? String(s.data()?.accountId || '').trim() : '';
+      if (existing && existing !== myAccountId) {
+        const ok = window.confirm('This name is already taken.\n\nContinue to log in as "' + nextName + '"?');
+        if (!ok) {
+          // Revert to previous name and keep this device on its current account.
+          safeLSSet(LS_USER_NAME, prevName);
+          refreshNameUI();
+          return;
+        }
+      }
+    } catch (e) {
+      // best-effort
+    }
+  }
+
+  // Update local name after verification.
+  safeLSSet(LS_USER_NAME, nextName);
 
   try {
     await db.runTransaction(async (tx) => {
@@ -512,6 +539,8 @@ function initName() {
 
   // Only way to unlink a device from the currently linked name/account.
   logoutBtn?.addEventListener('click', () => {
+    const ok = window.confirm('Are you sure you want to log out on this device?');
+    if (!ok) return;
     logoutLocal();
   });
 
@@ -536,7 +565,7 @@ function initName() {
   // the same name behaves like the same account across devices.
   if (getUserName()) {
     // Best-effort: don't block UI on startup.
-    setUserName(getUserName());
+    setUserName(getUserName(), { silent: true });
   }
 }
 
@@ -1461,6 +1490,10 @@ function initMyTeamControls() {
     openRequestsModal();
   });
 
+  document.getElementById('open-chat')?.addEventListener('click', () => {
+    openChatModal();
+  });
+
   // Rename team (creator)
   wireInlineEdit({
     displayEl: document.getElementById('myteam-name'),
@@ -1502,6 +1535,7 @@ function renderMyTeam(teams) {
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
+  const chatBtn = document.getElementById('open-chat');
   const leaveDeleteBtn = document.getElementById('leave-or-delete');
   const sub = document.getElementById('myteam-subtitle');
   const colorRow = document.getElementById('team-color-row');
@@ -1519,6 +1553,12 @@ function renderMyTeam(teams) {
     if (!st.name) sub.textContent = 'Set your name first (Home tab).';
     else if (hasTeam) sub.textContent = st.isCreator ? 'Double click the team name to rename. You can kick teammates and manage requests.' : 'You are on a team.';
     else sub.textContent = 'Create a team or request to join one from the Teams tab.';
+  }
+
+  if (chatBtn) {
+    chatBtn.style.display = hasTeam ? 'inline-flex' : 'none';
+    chatBtn.disabled = !hasTeam;
+    chatBtn.classList.toggle('disabled', !hasTeam);
   }
 
   if (!card) return;
@@ -1661,6 +1701,128 @@ function renderRequestsModal() {
       renderMyTeam(teamsCache);
     });
   });
+}
+
+/* =========================
+   Team chat
+========================= */
+function initTeamChatModal() {
+  const modal = document.getElementById('chat-modal');
+  document.getElementById('chat-modal-close')?.addEventListener('click', closeChatModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeChatModal();
+  });
+
+  const form = document.getElementById('chat-form');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await sendChatMessage();
+  });
+}
+
+function openChatModal() {
+  const st = computeUserState(teamsCache);
+  if (!st.teamId || !st.team) return;
+  if (!st.name) {
+    setHint('chat-hint', 'Set your name on Home first.');
+    return;
+  }
+  const modal = document.getElementById('chat-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  const title = document.getElementById('chat-modal-title');
+  if (title) title.textContent = (st.team.teamName || 'Team') + ' chat';
+
+  chatOpenTeamId = st.teamId;
+  setHint('chat-hint', '');
+
+  // Subscribe to this team's chat messages.
+  if (chatUnsub) {
+    try { chatUnsub(); } catch (_) {}
+    chatUnsub = null;
+  }
+
+  chatUnsub = db.collection('teams')
+    .doc(st.teamId)
+    .collection('chat')
+    .orderBy('createdAt', 'asc')
+    .limit(200)
+    .onSnapshot((snap) => {
+      chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderChatMessages();
+    }, (err) => {
+      console.warn('Chat listen failed', err);
+      setHint('chat-hint', 'Could not load chat.');
+    });
+
+  // Focus composer
+  const input = document.getElementById('chat-input');
+  try { input?.focus(); } catch (_) {}
+}
+
+function closeChatModal() {
+  const modal = document.getElementById('chat-modal');
+  if (modal) modal.style.display = 'none';
+  setHint('chat-hint', '');
+  if (chatUnsub) {
+    try { chatUnsub(); } catch (_) {}
+    chatUnsub = null;
+  }
+  chatOpenTeamId = null;
+  chatMessagesCache = [];
+  const list = document.getElementById('chat-messages');
+  if (list) list.innerHTML = '';
+}
+
+function renderChatMessages() {
+  const list = document.getElementById('chat-messages');
+  if (!list) return;
+  const st = computeUserState(teamsCache);
+  const myId = st.userId;
+
+  if (!chatMessagesCache?.length) {
+    list.innerHTML = '<div class="empty-state">No messages yet</div>';
+    return;
+  }
+
+  list.innerHTML = chatMessagesCache.map(m => {
+    const mine = String(m?.senderId || '') === String(myId || '');
+    return `
+      <div class="chat-msg ${mine ? 'mine' : ''}">
+        <div class="chat-who">${esc(m?.senderName || '—')}</div>
+        <div class="chat-text">${esc(m?.text || '')}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Scroll to bottom
+  try { list.scrollTop = list.scrollHeight; } catch (_) {}
+}
+
+async function sendChatMessage() {
+  const st = computeUserState(teamsCache);
+  if (!st.teamId || !st.team) return;
+  const input = document.getElementById('chat-input');
+  const text = (input?.value || '').trim();
+  if (!text) return;
+
+  try {
+    await db.collection('teams')
+      .doc(st.teamId)
+      .collection('chat')
+      .add({
+        senderId: st.userId,
+        senderName: st.name,
+        text,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    if (input) input.value = '';
+    setHint('chat-hint', '');
+  } catch (e) {
+    console.warn('Could not send chat message', e);
+    setHint('chat-hint', 'Could not send message.');
+  }
 }
 
 /* =========================

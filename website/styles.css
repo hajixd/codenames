@@ -1584,6 +1584,60 @@ body.mode-joiner .only-joiner{ display:block; }
 
 .request-actions{ display:flex; gap: 8px; }
 
+/* Team chat */
+.chat-modal-body{
+  display:flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-messages{
+  max-height: 360px;
+  overflow: auto;
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px;
+}
+
+.chat-msg{
+  align-self: flex-start;
+  max-width: 85%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.chat-msg.mine{
+  align-self: flex-end;
+  background: rgba(59,130,246,0.14);
+  border-color: rgba(59,130,246,0.22);
+}
+
+.chat-who{
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+
+.chat-text{
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-compose{
+  display:flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.chat-input{ flex: 1 1 auto; margin: 0; }
+.chat-send{ flex: 0 0 auto; }
+
 /* Prettier invite list (My Team) */
 #invites-list{ display:flex; flex-direction: column; gap: 10px; }
 .invite-row{
