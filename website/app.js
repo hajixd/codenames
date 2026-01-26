@@ -1,4 +1,5 @@
 const MAX_TEAMS = 6;
+const TEAM_SIZE = 3;
 
 // Firebase config
 const firebaseConfig = {
@@ -14,19 +15,26 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// Initialize app
+let teamsCache = [];
+let manageUnsub = null;
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
-  initForm();
-  listenToTeams(); // Real-time listener
+  initForms();
+  listenToTeams();
 });
 
-// Tab switching (mobile)
+/* =========================
+   Tabs
+========================= */
 function initTabs() {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
 
-  document.getElementById('panel-home').classList.add('active');
+  // default
+  const defaultPanel = 'panel-home';
+  document.getElementById(defaultPanel)?.classList.add('active');
+  document.querySelector(`.tab[data-panel="${defaultPanel}"]`)?.classList.add('active');
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -36,77 +44,71 @@ function initTabs() {
       tab.classList.add('active');
 
       panels.forEach(p => p.classList.remove('active'));
-      document.getElementById(panelId).classList.add('active');
+      document.getElementById(panelId)?.classList.add('active');
     });
   });
 }
 
-// Form handling
-function initForm() {
-  const form = document.getElementById('register-form');
-  if (form) {
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      handleSubmit();
-    });
-  }
-}
-
-// Real-time listener for teams
+/* =========================
+   Real-time data
+========================= */
 function listenToTeams() {
   db.collection('teams')
-    .orderBy('registeredAt', 'asc')
+    .orderBy('createdAt', 'asc')
     .onSnapshot((snapshot) => {
-      const teams = [];
-      snapshot.forEach(doc => {
-        teams.push({ id: doc.id, ...doc.data() });
-      });
-      updateUI(teams);
-    }, (error) => {
-      console.error('Error listening to teams:', error);
-      // Fallback to localStorage if Firebase fails
-      const localTeams = JSON.parse(localStorage.getItem('codenames-teams') || '[]');
-      updateUI(localTeams);
+      teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      updateUI(teamsCache);
+      renderTeams(teamsCache);
+      populateTeamSelects(teamsCache);
+    }, (err) => {
+      console.error('Team listener error:', err);
     });
 }
 
-// Update all UI elements
 function updateUI(teams) {
-  const count = teams.length;
-  const spots = MAX_TEAMS - count;
+  const teamCount = teams.length;
+  const spots = Math.max(0, MAX_TEAMS - teamCount);
+  const players = teams.reduce((sum, t) => sum + (getMembers(t).length), 0);
 
-  // Update spots
+  // Spots left (team spots)
   const spotsEl = document.getElementById('spots-left');
   if (spotsEl) spotsEl.textContent = spots;
 
-  // Update players count
+  // Player count (accepted members)
   const playersEl = document.getElementById('players-count');
-  if (playersEl) playersEl.textContent = count * 3;
+  if (playersEl) playersEl.textContent = players;
 
-  // Update team count header
+  // Team count header
   const countHeader = document.getElementById('team-count-header');
-  if (countHeader) countHeader.textContent = count;
-
-  // Check if full
-  const form = document.getElementById('register-form');
-  const closedMsg = document.getElementById('closed-msg');
-  const submitBtn = document.getElementById('submit-btn');
-
-  if (count >= MAX_TEAMS) {
-    if (form) form.style.display = 'none';
-    if (closedMsg) closedMsg.style.display = 'flex';
-    if (submitBtn) submitBtn.disabled = true;
-  } else {
-    if (form) form.style.display = 'block';
-    if (closedMsg) closedMsg.style.display = 'none';
-    if (submitBtn) submitBtn.disabled = false;
-  }
-
-  // Render teams list
-  renderTeams(teams);
+  if (countHeader) countHeader.textContent = teamCount;
 }
 
-// Render teams
+function populateTeamSelects(teams) {
+  const joinSel = document.getElementById('join-teamSelect');
+  const manageSel = document.getElementById('manage-teamSelect');
+
+  const opts = ['<option value="">Select a team…</option>']
+    .concat(teams.map(t => {
+      const members = getMembers(t).length;
+      const pending = Array.isArray(t.pendingDiscords) ? t.pendingDiscords.length : 0;
+      const label = `${esc(t.teamName)} (${members}/${TEAM_SIZE}${pending ? ` • ${pending} pending` : ''})`;
+      return `<option value="${t.id}">${label}</option>`;
+    }))
+    .join('');
+
+  if (joinSel) joinSel.innerHTML = opts;
+  if (manageSel) manageSel.innerHTML = opts;
+}
+
+/* =========================
+   Rendering
+========================= */
+function getMembers(team) {
+  if (Array.isArray(team.members)) return team.members;
+  if (Array.isArray(team.players)) return team.players;
+  return [];
+}
+
 function renderTeams(teams) {
   const container = document.getElementById('teams-list');
   if (!container) return;
@@ -116,111 +118,469 @@ function renderTeams(teams) {
     return;
   }
 
-  let html = '';
-  teams.forEach((team, i) => {
-    html += `
+  const html = teams.map((team, i) => {
+    const members = getMembers(team);
+    const pendingCount = Array.isArray(team.pendingDiscords) ? team.pendingDiscords.length : 0;
+
+    const memberRows = members.length
+      ? members.map(m => `
+          <div class="player-row">
+            <span>${esc(m.name || '')}</span>
+            <span class="discord">@${esc(m.discord || '')}</span>
+          </div>
+        `).join('')
+      : '<div class="empty-state">No accepted members yet</div>';
+
+    return `
       <div class="team-card">
-        <div class="team-card-header">
-          <h3>${esc(team.teamName)}</h3>
-          <span class="team-slot">#${i + 1}</span>
-        </div>
-        <div class="team-players">
-          ${team.players.map(p => `
-            <div class="player-row">
-              <span>${esc(p.name)}</span>
-              <span class="discord">@${esc(p.discord)}</span>
+        <details class="team-details">
+          <summary class="team-summary">
+            <div class="team-left">
+              <div class="team-rank">#${i + 1}</div>
+              <div class="team-name">${esc(team.teamName || 'Unnamed')}</div>
             </div>
-          `).join('')}
-        </div>
+            <div class="team-right">
+              <span class="meta">${members.length}/${TEAM_SIZE}</span>
+              ${pendingCount ? `<span class="meta pill pending">${pendingCount} pending</span>` : ''}
+            </div>
+          </summary>
+
+          <div class="team-body">
+            <div class="team-section-title">Members</div>
+            <div class="players-list">${memberRows}</div>
+            ${pendingCount ? `<div class="team-footnote">${pendingCount} join request${pendingCount === 1 ? '' : 's'} waiting for creator approval.</div>` : ''}
+          </div>
+        </details>
       </div>
     `;
-  });
+  }).join('');
 
   container.innerHTML = html;
 }
 
-// Handle form submit
-async function handleSubmit() {
-  const submitBtn = document.getElementById('submit-btn');
-  const errorBox = document.getElementById('error-box');
-  const errorList = document.getElementById('error-list');
-
-  // Get current team count
-  const snapshot = await db.collection('teams').get();
-  if (snapshot.size >= MAX_TEAMS) {
-    alert('Tournament full!');
-    return;
-  }
-
-  const teamName = document.getElementById('teamName').value.trim();
-  const players = [
-    { name: document.getElementById('p0-name').value.trim(), discord: document.getElementById('p0-discord').value.trim() },
-    { name: document.getElementById('p1-name').value.trim(), discord: document.getElementById('p1-discord').value.trim() },
-    { name: document.getElementById('p2-name').value.trim(), discord: document.getElementById('p2-discord').value.trim() }
-  ];
-
-  // Validate
-  const errors = [];
-
-  if (!teamName) {
-    errors.push('Team name required');
-  } else {
-    // Check for duplicate team name
-    const existing = await db.collection('teams').where('teamNameLower', '==', teamName.toLowerCase()).get();
-    if (!existing.empty) {
-      errors.push('Team name taken');
-    }
-  }
-
-  players.forEach((p, i) => {
-    if (!p.name) errors.push(`Player ${i+1} name required`);
-    if (!p.discord) errors.push(`Player ${i+1} Discord required`);
+/* =========================
+   Forms
+========================= */
+function initForms() {
+  document.getElementById('create-team-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    handleCreateTeam();
   });
 
-  const discords = players.map(p => p.discord.toLowerCase()).filter(d => d);
-  if (new Set(discords).size !== discords.length) {
-    errors.push('Duplicate Discord usernames');
+  document.getElementById('join-team-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    handleJoinRequest();
+  });
+
+  document.getElementById('manage-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadManageRequests();
+  });
+
+  // Accept/decline delegation
+  document.getElementById('manage-area')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const teamId = btn.dataset.teamId;
+    const reqId = btn.dataset.reqId;
+
+    if (!teamId || !reqId) return;
+
+    if (action === 'accept') acceptRequest(teamId, reqId);
+    if (action === 'decline') declineRequest(teamId, reqId);
+  });
+}
+
+async function handleCreateTeam() {
+  const btn = document.getElementById('create-btn');
+  const hint = document.getElementById('create-hint');
+
+  const teamName = document.getElementById('create-teamName')?.value.trim() || '';
+  const name = document.getElementById('create-name')?.value.trim() || '';
+  const discordRaw = document.getElementById('create-discord')?.value.trim() || '';
+  const discord = sanitizeDiscord(discordRaw);
+  const discordLower = discord.toLowerCase();
+
+  hint.textContent = '';
+
+  const errors = [];
+  if (!teamName) errors.push('Team name required');
+  if (!name) errors.push('Your name required');
+  if (!discord) errors.push('Discord required');
+
+  if (teamsCache.length >= MAX_TEAMS) {
+    errors.push('Tournament is full (no more team slots).');
   }
 
   if (errors.length) {
-    errorList.innerHTML = errors.map(e => `<li>${e}</li>`).join('');
-    errorBox.style.display = 'block';
+    hint.textContent = errors.join(' ');
+    hint.classList.add('error');
     return;
   }
 
-  errorBox.style.display = 'none';
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Registering...';
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
 
   try {
-    // Save to Firebase
+    // Unique team name
+    const existing = await db.collection('teams')
+      .where('teamNameLower', '==', teamName.toLowerCase())
+      .get();
+
+    if (!existing.empty) {
+      hint.textContent = 'Team name taken.';
+      hint.classList.add('error');
+      return;
+    }
+    // Discord uniqueness (local cache)
+    if (isDiscordTaken(discordLower)) {
+      hint.textContent = 'That Discord handle is already on a team or pending on another team.';
+      hint.classList.add('error');
+      return;
+    }
+
     await db.collection('teams').add({
       teamName,
       teamNameLower: teamName.toLowerCase(),
-      players,
-      registeredAt: firebase.firestore.FieldValue.serverTimestamp()
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      creatorName: name,
+      creatorDiscord: discord,
+      creatorDiscordLower: discordLower,
+      members: [
+        { name, discord, joinedAt: firebase.firestore.FieldValue.serverTimestamp() }
+      ],
+      memberDiscords: [discordLower],
+      pendingDiscords: [],
+      allDiscords: [discordLower]
     });
 
-    // Reset form
-    document.getElementById('register-form').reset();
+    // reset form
+    document.getElementById('create-team-form')?.reset();
+    hint.textContent = 'Team created! Tell friends to request to join.';
+    hint.classList.remove('error');
+    hint.classList.add('ok');
 
-    // Switch to teams tab on mobile
-    const teamsTab = document.querySelector('[data-panel="panel-teams"]');
-    if (teamsTab && window.innerWidth <= 768) {
-      teamsTab.click();
-    }
-  } catch (error) {
-    console.error('Error registering team:', error);
-    alert('Error registering. Please try again.');
+  } catch (err) {
+    console.error('Create team error:', err);
+    hint.textContent = 'Error creating team. Please try again.';
+    hint.classList.add('error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create team';
+  }
+}
+
+async function handleJoinRequest() {
+  const btn = document.getElementById('join-btn');
+  const hint = document.getElementById('join-hint');
+
+  const teamId = document.getElementById('join-teamSelect')?.value || '';
+  const name = document.getElementById('join-name')?.value.trim() || '';
+  const discordRaw = document.getElementById('join-discord')?.value.trim() || '';
+  const discord = sanitizeDiscord(discordRaw);
+  const discordLower = discord.toLowerCase();
+
+  hint.textContent = '';
+
+  const errors = [];
+  if (!teamId) errors.push('Choose a team');
+  if (!name) errors.push('Your name required');
+  if (!discord) errors.push('Discord required');
+
+  if (errors.length) {
+    hint.textContent = errors.join(' ');
+    hint.classList.add('error');
+    return;
   }
 
-  submitBtn.disabled = false;
-  submitBtn.textContent = 'Register';
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    // Discord uniqueness (local cache)
+    if (isDiscordTaken(discordLower)) {
+      hint.textContent = 'That Discord handle is already on a team or pending on another team.';
+      hint.classList.add('error');
+      return;
+    }
+
+    const teamRef = db.collection('teams').doc(teamId);
+    const reqRef = teamRef.collection('requests').doc(discordLower);
+
+    await db.runTransaction(async (tx) => {
+      const teamSnap = await tx.get(teamRef);
+      if (!teamSnap.exists) throw new Error('Team not found');
+
+      const team = teamSnap.data();
+      const members = getMembers(team);
+      const pending = Array.isArray(team.pendingDiscords) ? team.pendingDiscords : [];
+
+      if (members.length >= TEAM_SIZE) throw new Error('That team is full');
+      if (pending.includes(discordLower)) throw new Error('You already requested to join this team');
+
+      // Add request
+      tx.set(reqRef, {
+        name,
+        discord,
+        discordLower,
+        status: 'pending',
+        requestedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      tx.update(teamRef, {
+        pendingDiscords: firebase.firestore.FieldValue.arrayUnion(discordLower),
+        allDiscords: firebase.firestore.FieldValue.arrayUnion(discordLower)
+      });
+    });
+
+    document.getElementById('join-team-form')?.reset();
+    hint.textContent = 'Request sent! The team creator can accept it in “Manage join requests”.';
+    hint.classList.remove('error');
+    hint.classList.add('ok');
+
+  } catch (err) {
+    console.error('Join request error:', err);
+    hint.textContent = (err && err.message) ? err.message : 'Error sending request.';
+    hint.classList.add('error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send request';
+  }
+}
+
+async function loadManageRequests() {
+  const btn = document.getElementById('manage-btn');
+  const hint = document.getElementById('manage-hint');
+  const area = document.getElementById('manage-area');
+
+  const teamId = document.getElementById('manage-teamSelect')?.value || '';
+  const discordRaw = document.getElementById('manage-discord')?.value.trim() || '';
+  const discord = sanitizeDiscord(discordRaw);
+  const discordLower = discord.toLowerCase();
+
+  hint.textContent = '';
+  area.innerHTML = '';
+
+  if (!teamId || !discord) {
+    hint.textContent = 'Choose a team and enter the creator Discord.';
+    hint.classList.add('error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+
+  try {
+    const teamRef = db.collection('teams').doc(teamId);
+    const teamSnap = await teamRef.get();
+    if (!teamSnap.exists) throw new Error('Team not found');
+
+    const team = teamSnap.data();
+    if ((team.creatorDiscordLower || '').toLowerCase() !== discordLower) {
+      throw new Error('Creator Discord does not match this team.');
+    }
+
+    // Subscribe to pending requests
+    if (manageUnsub) manageUnsub();
+    manageUnsub = teamRef.collection('requests')
+      .where('status', '==', 'pending')
+      .orderBy('requestedAt', 'asc')
+      .onSnapshot((snap) => {
+        renderManageArea(teamId, team, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
+
+    hint.textContent = 'Loaded. Accept requests below.';
+    hint.classList.remove('error');
+    hint.classList.add('ok');
+
+  } catch (err) {
+    console.error('Manage load error:', err);
+    hint.textContent = (err && err.message) ? err.message : 'Error loading requests.';
+    hint.classList.add('error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Load requests';
+  }
+}
+
+function renderManageArea(teamId, teamData, requests) {
+  const area = document.getElementById('manage-area');
+  if (!area) return;
+
+  const team = teamsCache.find(t => t.id === teamId) || teamData;
+  const members = getMembers(team);
+  const spotsLeft = Math.max(0, TEAM_SIZE - members.length);
+
+  if (!requests.length) {
+    area.innerHTML = `
+      <div class="manage-card">
+        <div class="manage-title">Pending requests</div>
+        <div class="empty-state">No pending requests.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const rows = requests.map(r => `
+    <div class="req-row">
+      <div class="req-left">
+        <div class="req-name">${esc(r.name || '')}</div>
+        <div class="req-discord">@${esc(r.discord || '')}</div>
+      </div>
+      <div class="req-actions">
+        <button class="btn small primary" data-action="accept" data-team-id="${teamId}" data-req-id="${esc(r.discordLower || r.id)}" ${spotsLeft <= 0 ? 'disabled' : ''}>
+          Accept
+        </button>
+        <button class="btn small" data-action="decline" data-team-id="${teamId}" data-req-id="${esc(r.discordLower || r.id)}">
+          Decline
+        </button>
+      </div>
+    </div>
+  `).join('');
+
+  area.innerHTML = `
+    <div class="manage-card">
+      <div class="manage-title">Pending requests <span class="meta">${requests.length}</span></div>
+      <div class="manage-sub">Spots left: <strong>${spotsLeft}</strong></div>
+      <div class="req-list">${rows}</div>
+      ${spotsLeft <= 0 ? `<div class="team-footnote">Team is full. Decline requests to free up spots.</div>` : ''}
+    </div>
+  `;
+}
+
+async function acceptRequest(teamId, reqId) {
+  const hint = document.getElementById('manage-hint');
+  hint.textContent = '';
+
+  const teamRef = db.collection('teams').doc(teamId);
+  const reqRef = teamRef.collection('requests').doc(reqId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [teamSnap, reqSnap] = await Promise.all([tx.get(teamRef), tx.get(reqRef)]);
+      if (!teamSnap.exists) throw new Error('Team not found');
+      if (!reqSnap.exists) throw new Error('Request not found');
+
+      const team = teamSnap.data();
+      const req = reqSnap.data();
+
+      if (req.status !== 'pending') throw new Error('Request already handled');
+
+      const members = getMembers(team);
+      const pendingDiscords = Array.isArray(team.pendingDiscords) ? team.pendingDiscords : [];
+      const memberDiscords = Array.isArray(team.memberDiscords) ? team.memberDiscords : [];
+
+      if (members.length >= TEAM_SIZE) throw new Error('Team is full');
+      if (!pendingDiscords.includes(reqId)) throw new Error('Request not pending on this team');
+
+      const newMember = { name: req.name, discord: req.discord, joinedAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+      tx.update(reqRef, {
+        status: 'accepted',
+        handledAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      tx.update(teamRef, {
+        members: members.concat([newMember]),
+        pendingDiscords: firebase.firestore.FieldValue.arrayRemove(reqId),
+        memberDiscords: firebase.firestore.FieldValue.arrayUnion(reqId)
+      });
+    });
+
+    hint.textContent = 'Accepted.';
+    hint.classList.remove('error');
+    hint.classList.add('ok');
+  } catch (err) {
+    console.error('Accept error:', err);
+    hint.textContent = (err && err.message) ? err.message : 'Error accepting request.';
+    hint.classList.add('error');
+  }
+}
+
+async function declineRequest(teamId, reqId) {
+  const hint = document.getElementById('manage-hint');
+  hint.textContent = '';
+
+  const teamRef = db.collection('teams').doc(teamId);
+  const reqRef = teamRef.collection('requests').doc(reqId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [teamSnap, reqSnap] = await Promise.all([tx.get(teamRef), tx.get(reqRef)]);
+      if (!teamSnap.exists) throw new Error('Team not found');
+      if (!reqSnap.exists) throw new Error('Request not found');
+
+      const req = reqSnap.data();
+      if (req.status !== 'pending') throw new Error('Request already handled');
+
+      tx.update(reqRef, {
+        status: 'declined',
+        handledAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      tx.update(teamRef, {
+        pendingDiscords: firebase.firestore.FieldValue.arrayRemove(reqId),
+        allDiscords: firebase.firestore.FieldValue.arrayRemove(reqId)
+      });
+    });
+
+    hint.textContent = 'Declined.';
+    hint.classList.remove('error');
+    hint.classList.add('ok');
+  } catch (err) {
+    console.error('Decline error:', err);
+    hint.textContent = (err && err.message) ? err.message : 'Error declining request.';
+    hint.classList.add('error');
+  }
+}
+
+/* =========================
+   Helpers
+========================= */
+
+function isDiscordTaken(discordLower) {
+  if (!discordLower) return false;
+
+  for (const t of teamsCache) {
+    const all = getTeamDiscords(t);
+    if (all.has(discordLower)) return true;
+  }
+  return false;
+}
+
+function getTeamDiscords(team) {
+  const s = new Set();
+
+  const addArr = (arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach(v => {
+      if (typeof v === 'string' && v.trim()) s.add(v.toLowerCase());
+    });
+  };
+
+  addArr(team.allDiscords);
+  addArr(team.memberDiscords);
+  addArr(team.pendingDiscords);
+
+  const members = Array.isArray(team.members) ? team.members : (Array.isArray(team.players) ? team.players : []);
+  members.forEach(m => {
+    const d = (m.discord || m.Discord || '').toString().trim().replace(/^@+/, '').toLowerCase();
+    if (d) s.add(d);
+  });
+
+  return s;
+}
+
+function sanitizeDiscord(input) {
+  if (!input) return '';
+  return input.trim().replace(/^@+/, '').replace(/\s+/g, '');
 }
 
 // Escape HTML
 function esc(str) {
   const div = document.createElement('div');
-  div.textContent = str;
+  div.textContent = String(str ?? '');
   return div.innerHTML;
 }

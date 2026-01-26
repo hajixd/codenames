@@ -53,53 +53,133 @@
         </section>
 
         <!-- Panel 2: Register -->
+        
         <section class="panel panel-register" id="panel-register">
           <div class="panel-inner">
-            <h2>Register Team</h2>
+            <h2>Teams</h2>
+            <p class="subtitle">Create a team, request to join, then have the team creator accept.</p>
 
-            <div id="closed-msg" class="closed-msg" style="display:none;">
-              <p>Tournament Full</p>
+            <div class="stack">
+              <details class="accordion" open>
+                <summary>
+                  <span>Create a team</span>
+                  <span class="pill">creator</span>
+                </summary>
+
+                <form id="create-team-form" class="form">
+                  <div class="form-grid">
+                    <label class="field">
+                      <span class="label">Team name</span>
+                      <input type="text" id="create-teamName" class="input" placeholder="e.g., Night Owls" required>
+                    </label>
+
+                    <div class="two-col">
+                      <label class="field">
+                        <span class="label">Your name</span>
+                        <input type="text" id="create-name" class="input" placeholder="Name" required>
+                      </label>
+
+                      <label class="field">
+                        <span class="label">Your Discord</span>
+                        <input type="text" id="create-discord" class="input" placeholder="@username" required>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="create-btn" class="btn primary">Create team</button>
+                    <span class="hint" id="create-hint"></span>
+                  </div>
+                </form>
+              </details>
+
+              <details class="accordion">
+                <summary>
+                  <span>Request to join a team</span>
+                  <span class="pill">friends</span>
+                </summary>
+
+                <form id="join-team-form" class="form">
+                  <div class="form-grid">
+                    <label class="field">
+                      <span class="label">Choose a team</span>
+                      <select id="join-teamSelect" class="input" required>
+                        <option value="">Loading teams…</option>
+                      </select>
+                    </label>
+
+                    <div class="two-col">
+                      <label class="field">
+                        <span class="label">Your name</span>
+                        <input type="text" id="join-name" class="input" placeholder="Name" required>
+                      </label>
+
+                      <label class="field">
+                        <span class="label">Your Discord</span>
+                        <input type="text" id="join-discord" class="input" placeholder="@username" required>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="join-btn" class="btn primary">Send request</button>
+                    <span class="hint" id="join-hint"></span>
+                  </div>
+                </form>
+              </details>
+
+              <details class="accordion">
+                <summary>
+                  <span>Manage join requests</span>
+                  <span class="pill">creator</span>
+                </summary>
+
+                <div class="manage-note">
+                  Enter your team and your Discord handle (the one used when creating the team) to review and accept requests.
+                </div>
+
+                <form id="manage-form" class="form">
+                  <div class="form-grid">
+                    <div class="two-col">
+                      <label class="field">
+                        <span class="label">Your team</span>
+                        <select id="manage-teamSelect" class="input" required>
+                          <option value="">Loading teams…</option>
+                        </select>
+                      </label>
+
+                      <label class="field">
+                        <span class="label">Creator Discord</span>
+                        <input type="text" id="manage-discord" class="input" placeholder="@username" required>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" id="manage-btn" class="btn">Load requests</button>
+                    <span class="hint" id="manage-hint"></span>
+                  </div>
+                </form>
+
+                <div id="manage-area" class="manage-area"></div>
+              </details>
             </div>
-
-            <form id="register-form" class="reg-form">
-              <div id="error-box" class="error-box" style="display:none;">
-                <ul id="error-list"></ul>
-              </div>
-
-              <input type="text" id="teamName" class="input" placeholder="Team name" required>
-
-              <div class="players-grid">
-                <div class="player-input">
-                  <span class="player-num">1</span>
-                  <input type="text" id="p0-name" class="input" placeholder="Name" required>
-                  <input type="text" id="p0-discord" class="input" placeholder="Discord" required>
-                </div>
-                <div class="player-input">
-                  <span class="player-num">2</span>
-                  <input type="text" id="p1-name" class="input" placeholder="Name" required>
-                  <input type="text" id="p1-discord" class="input" placeholder="Discord" required>
-                </div>
-                <div class="player-input">
-                  <span class="player-num">3</span>
-                  <input type="text" id="p2-name" class="input" placeholder="Name" required>
-                  <input type="text" id="p2-discord" class="input" placeholder="Discord" required>
-                </div>
-              </div>
-
-              <button type="submit" class="btn-submit" id="submit-btn">Register</button>
-            </form>
           </div>
         </section>
 
+
         <!-- Panel 3: Teams -->
+        
         <section class="panel panel-teams" id="panel-teams">
           <div class="panel-inner">
             <h2>Teams <span id="team-count-header">0</span>/6</h2>
+            <p class="subtitle small">Tap a team to expand members and see pending requests.</p>
             <div class="teams-list" id="teams-list">
               <!-- Filled by JS -->
             </div>
           </div>
         </section>
+
       </main>
 
       <!-- Mobile Tabs -->
