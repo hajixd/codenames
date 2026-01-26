@@ -95,6 +95,8 @@ function getUserName() {
 
 async function setUserName(name) {
   const nextName = (name || '').trim();
+  const prevName = (safeLSGet(LS_USER_NAME) || '').trim();
+  const prevNameId = nameToAccountId(prevName);
   const oldStoredId = safeLSGet(LS_USER_ID) || '';
   safeLSSet(LS_USER_NAME, nextName);
 
@@ -105,7 +107,10 @@ async function setUserName(name) {
   }
 
   // If this device previously had a legacy random ID, migrate it to the name-keyed account.
-  if (oldStoredId && oldStoredId !== nextId) {
+  // IMPORTANT: If the user is simply changing their name (e.g. john -> steve), do NOT migrate.
+  // Changing your name should "unlink" you from the prior account.
+  const isRenameOfNameKeyedAccount = !!(prevNameId && oldStoredId === prevNameId && prevNameId !== nextId);
+  if (oldStoredId && oldStoredId !== nextId && !isRenameOfNameKeyedAccount) {
     try {
       await migrateIdentity(oldStoredId, nextId, nextName);
     } catch (e) {
@@ -629,13 +634,24 @@ function renderPlayers(players, teams) {
 
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
 
-      // Right-side status pill: either "Available" or the player's team name styled with the team color.
+      // Right-side pill: show the player's team (if they're on one), otherwise show "Available".
+      // For team leaders, replace the Available pill with an Invite / Cancel invite pill-button.
       const teamPillStyle = teamColor
         ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
         : '';
-      const statusPillHtml = memberTeam
-        ? `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`
-        : `<span class="player-tag ok">Available</span>`;
+
+      let statusPillHtml = '';
+      if (memberTeam) {
+        statusPillHtml = `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`;
+      } else if (showInviteButton) {
+        statusPillHtml = `
+          <button class="player-tag pill-action ${alreadyInvitedByMe ? 'cancel' : 'invite'}" type="button" data-invite="${esc(uid)}" data-invite-mode="${alreadyInvitedByMe ? 'cancel' : 'send'}" ${inviteDisabled ? 'disabled' : ''}>
+            ${alreadyInvitedByMe ? 'Cancel invite' : 'Invite'}
+          </button>
+        `;
+      } else {
+        statusPillHtml = `<span class="player-tag ok">Available</span>`;
+      }
 
       return `
         <div class="player-row player-directory-row">
@@ -644,11 +660,6 @@ function renderPlayers(players, teams) {
           </div>
           <div class="player-right">
             ${statusPillHtml}
-            ${showInviteButton ? `
-              <button class="btn ${alreadyInvitedByMe ? 'danger' : 'primary'} small" type="button" data-invite="${esc(uid)}" data-invite-mode="${alreadyInvitedByMe ? 'cancel' : 'send'}" ${inviteDisabled ? 'disabled' : ''}>
-                ${alreadyInvitedByMe ? 'Cancel invite' : 'Invite'}
-              </button>
-            ` : ''}
           </div>
         </div>
       `;
@@ -711,12 +722,16 @@ function renderInvites(players, teams) {
   list.innerHTML = invites.map(inv => {
     const teamName = inv?.teamName || 'Team';
     const teamId = inv?.teamId || '';
+    const t = (teams || []).find(x => x?.id === teamId);
+    const c = t ? getDisplayTeamColor(t) : null;
+    const nameStyle = c ? `style="color:${esc(c)}"` : '';
     return `
-      <div class="request-row">
-        <div class="player-left">
-          <span class="player-name">${esc(teamName)}</span>
+      <div class="invite-row">
+        <div class="invite-left">
+          <div class="invite-title" ${nameStyle}>${esc(teamName)}</div>
+          <div class="invite-sub">You’ve been invited to join</div>
         </div>
-        <div class="request-actions">
+        <div class="invite-actions">
           <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
           <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
         </div>
