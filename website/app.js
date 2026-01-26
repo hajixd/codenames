@@ -62,6 +62,7 @@ function initTabs() {
 /* =========================
    User identity (device-local)
 ========================= */
+const NAME_REGISTRY_COLLECTION = 'names';
 function nameToAccountId(name) {
   const n = String(name || '').trim().toLowerCase();
   if (!n) return '';
@@ -74,19 +75,19 @@ function nameToAccountId(name) {
     .slice(0, 64);
 }
 
-function getUserId() {
-  const name = getUserName();
-  const key = nameToAccountId(name);
-  // Once a name exists, the account id is the normalized name.
-  if (key) return key;
-
-  // Legacy / pre-name fallback: device-local id
+function getLocalAccountId() {
+  // Stable per-device (or linked) account id.
   let id = safeLSGet(LS_USER_ID);
   if (!id) {
     id = (crypto?.randomUUID?.() || ('u_' + Math.random().toString(16).slice(2) + Date.now().toString(16)));
     safeLSSet(LS_USER_ID, id);
   }
-  return id;
+  return String(id || '').trim();
+}
+
+function getUserId() {
+  // All app logic should use the current linked account id.
+  return getLocalAccountId();
 }
 
 function getUserName() {
@@ -96,43 +97,80 @@ function getUserName() {
 async function setUserName(name) {
   const nextName = (name || '').trim();
   const prevName = (safeLSGet(LS_USER_NAME) || '').trim();
-  const prevNameId = nameToAccountId(prevName);
-  const oldStoredId = safeLSGet(LS_USER_ID) || '';
+
+  const prevKey = nameToAccountId(prevName);
+  const nextKey = nameToAccountId(nextName);
+
+  // Update local name immediately so UI feels snappy.
   safeLSSet(LS_USER_NAME, nextName);
 
-  const nextId = nameToAccountId(nextName);
-  if (!nextId) {
+  // If clearing name, don't touch registry.
+  if (!nextKey) {
     refreshNameUI();
     return;
   }
 
-  // If this device previously had a legacy random ID, migrate it to the name-keyed account.
-  // IMPORTANT: If the user is simply changing their name (e.g. john -> steve), do NOT migrate.
-  // Changing your name should "unlink" you from the prior account.
-  const isRenameOfNameKeyedAccount = !!(prevNameId && oldStoredId === prevNameId && prevNameId !== nextId);
-  if (oldStoredId && oldStoredId !== nextId && !isRenameOfNameKeyedAccount) {
+  const myAccountId = getLocalAccountId();
+  const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
+  const nextRef = namesCol.doc(nextKey);
+  const prevRef = (prevKey && prevKey !== nextKey) ? namesCol.doc(prevKey) : null;
+
+  let targetAccountId = myAccountId;
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const nextSnap = await tx.get(nextRef);
+
+      // If the name already belongs to someone else, link to that account.
+      const existingAccountId = nextSnap.exists ? String(nextSnap.data()?.accountId || '').trim() : '';
+      if (existingAccountId && existingAccountId !== myAccountId) {
+        targetAccountId = existingAccountId;
+      } else {
+        targetAccountId = myAccountId;
+        tx.set(nextRef, {
+          accountId: myAccountId,
+          name: nextName,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          ...(nextSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+        }, { merge: true });
+      }
+
+      // If we're renaming away from a previous name, free the old mapping (only if it points to THIS account).
+      if (prevRef) {
+        const prevSnap = await tx.get(prevRef);
+        const prevAccountId = prevSnap.exists ? String(prevSnap.data()?.accountId || '').trim() : '';
+        if (prevAccountId && prevAccountId === myAccountId) {
+          tx.delete(prevRef);
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('Name linking failed (best-effort). Continuing locally.', e);
+    targetAccountId = myAccountId;
+  }
+
+  // If this name belongs to another account, switch to it (and migrate any local data best-effort).
+  if (targetAccountId && targetAccountId !== myAccountId) {
     try {
-      await migrateIdentity(oldStoredId, nextId, nextName);
+      await migrateIdentity(myAccountId, targetAccountId, nextName);
     } catch (e) {
       console.warn('Identity migration failed (best-effort)', e);
     }
+    safeLSSet(LS_USER_ID, targetAccountId);
   }
-
-  // Persist the account id locally so legacy code paths and older installs converge.
-  safeLSSet(LS_USER_ID, nextId);
 
   refreshNameUI();
 
   // Persist "signed up" players to Firestore so they can appear in the Players tab.
-  await upsertPlayerProfile(nextId, nextName);
+  await upsertPlayerProfile(getUserId(), getUserName());
 
   // If user is a member/creator, update their stored display name in their team doc (best-effort)
   const st = computeUserState(teamsCache);
   if (st?.team && st?.teamId) {
-    // Only update accepted member entry; we avoid touching pending requests (name is shown from request itself)
-    updateMemberName(st.teamId, nextId, nextName);
+    updateMemberName(st.teamId, st.userId, st.name);
   }
 }
+
 
 async function migrateIdentity(oldId, newId, displayName) {
   const fromId = String(oldId || '').trim();
@@ -526,14 +564,14 @@ function buildPlayersDirectory(players, teams) {
 
   for (const p of (players || [])) {
     const name = (p?.name || '').trim();
-    const key = nameToAccountId(name) || String(p?.id || '').trim();
+    const key = String(p?.id || '').trim() || nameToAccountId(name);
     if (!key) continue;
-    // Merge invites when multiple docs share the same name (legacy).
-    const cur = byKey.get(key) || { id: key, name: name, invites: [] };
+    const cur = byKey.get(key) || { id: key, name: '', invites: [] };
     const invitesA = Array.isArray(cur.invites) ? cur.invites : [];
     const invitesB = Array.isArray(p.invites) ? p.invites : [];
     const merged = dedupeInvitesByTeamId(invitesA.concat(invitesB));
-    byKey.set(key, { ...cur, id: key, name: cur.name || name, invites: merged });
+    const curName = (cur?.name || '').trim();
+    byKey.set(key, { ...cur, id: key, name: curName || name, invites: merged });
   }
 
   for (const t of (teams || [])) {
@@ -1083,7 +1121,8 @@ function renderTeamModal(teamId) {
     // Allow requests even when a team is full; the leader can accept later once space is available.
     disabled = false;
     label = 'Request to join';
-    hint = 'Team is full right now — you can still request. The leader can accept once there is space.';
+    hint = '';
+
   }
 
   if (joinBtn) {
