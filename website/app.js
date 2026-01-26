@@ -20,9 +20,8 @@ let roleState = { mode: null, isCreator: false, creatorTeamId: null, memberTeamI
 let lastAppliedMode = null;
 
 let manageUnsub = null;
-let manageAuth = null; // { teamId, method: 'key'|'discord', creatorKeyHash?, creatorDiscordLower? }
 
-const CREATOR_KEY_STORAGE_PREFIX = 'creatorKey:';
+const OWNER_TEAM_STORAGE = 'ownerTeamId';
 const USER_DISCORD_STORAGE = 'userDiscord';
 const USER_NAME_STORAGE = 'userName';
 const FIRST_LOAD_CHOICE = 'firstLoadChoiceV1';
@@ -300,29 +299,7 @@ function initForms() {
     handleJoinRequest();
   });
 
-  document.getElementById('manage-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    loadManageRequests();
-  });
-
-  // Auto-fill creator key when selecting a team
-  const manageSel = document.getElementById('manage-teamSelect');
-  manageSel?.addEventListener('change', () => {
-    const teamId = manageSel.value || '';
-    const keyEl = document.getElementById('manage-key');
-    const legacyBlock = document.getElementById('legacy-manage');
-
-    // Fill from local storage if we have it
-    const storedKey = teamId ? getStoredCreatorKey(teamId) : '';
-    if (keyEl) keyEl.value = storedKey || '';
-
-    // Show legacy Discord field only for teams that don't have creator keys
-    const team = teamsCache.find(t => t.id === teamId);
-    const hasKey = !!(team && team.creatorKeyHash);
-    if (legacyBlock) legacyBlock.style.display = hasKey ? 'none' : (teamId ? '' : 'none');
-  });
-
-  // Accept/decline delegation
+  // Owner actions delegation
   document.getElementById('manage-area')?.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
@@ -331,12 +308,12 @@ function initForms() {
     const teamId = btn.dataset.teamId;
     const reqId = btn.dataset.reqId;
 
-    if (!teamId || !reqId) return;
+    if (!teamId) return;
 
     if (action === 'accept') acceptRequest(teamId, reqId);
     if (action === 'decline') declineRequest(teamId, reqId);
     if (action === 'kick') kickMember(teamId, reqId);
-    if (action === 'rotate-key') rotateCreatorKey(teamId);
+    if (action === 'rename-team') renameTeam(teamId);
     if (action === 'delete-team') deleteTeam(teamId);
   });
 
@@ -434,10 +411,6 @@ async function handleCreateTeam() {
       return;
     }
 
-    // Creator key (acts like "this browser is the creator")
-    const creatorKey = genCreatorKey();
-    const creatorKeyHash = await sha256Hex(`v1:${creatorKey}`);
-
     const docRef = await db.collection('teams').add({
       teamName,
       teamNameLower: teamName.toLowerCase(),
@@ -445,7 +418,6 @@ async function handleCreateTeam() {
       creatorName: name,
       creatorDiscord: discord,
       creatorDiscordLower: discordLower,
-      creatorKeyHash,
       members: [
         { name, discord, joinedAt: new Date() }
       ],
@@ -454,14 +426,11 @@ async function handleCreateTeam() {
       allDiscords: [discordLower]
     });
 
-    // Save creator key locally for this team, so they can manage without re-entering
-    if (docRef?.id) setStoredCreatorKey(docRef.id, creatorKey, creatorKeyHash);
+    // Save this device as the owner
+    if (docRef?.id) setOwnerTeamId(docRef.id);
 
     // Remember who you are on this device (used for status + leaving)
     setStoredUser({ name, discord });
-
-    // You're joining on this device
-    if (!roleState.isCreator) { setUserMode('joiner'); applyModeUI('joiner'); }
 
     // You're now a creator on this device
     setUserMode('creator');
@@ -469,10 +438,8 @@ async function handleCreateTeam() {
 
     // reset form
     document.getElementById('create-team-form')?.reset();
-    // Try to copy the key (best-effort)
-    try { await navigator.clipboard?.writeText(creatorKey); } catch (_) {}
 
-    hint.textContent = `Team created! Creator key: ${creatorKey} (saved on this device${navigator.clipboard ? ' and copied' : ''}). Keep it safe — you’ll need it to accept requests on another device.`;
+    hint.textContent = 'Team created! You can manage your team from this device.';
     hint.classList.remove('error');
     hint.classList.add('ok');
 
@@ -552,12 +519,8 @@ async function handleJoinRequest() {
     // Remember who you are on this device (used for status + leaving)
     setStoredUser({ name, discord });
 
-    // You're joining on this device
+    // Keep joiner mode
     if (!roleState.isCreator) { setUserMode('joiner'); applyModeUI('joiner'); }
-
-    // You're now a creator on this device
-    setUserMode('creator');
-    applyModeUI('creator');
 
     document.getElementById('join-team-form')?.reset();
     hint.textContent = 'Request sent! The team creator can accept it in “Manage join requests”.';
@@ -574,79 +537,25 @@ async function handleJoinRequest() {
   }
 }
 
-async function loadManageRequests() {
-  const btn = document.getElementById('manage-btn');
-  const hint = document.getElementById('manage-hint');
-  const area = document.getElementById('manage-area');
+function autoLoadManagePanel(teamId) {
+  if (!teamId || !isOwnerOf(teamId)) return;
 
-  const teamId = document.getElementById('manage-teamSelect')?.value || '';
-  const keyRaw = document.getElementById('manage-key')?.value || '';
-  const key = sanitizeCreatorKey(keyRaw);
+  const team = teamsCache.find(t => t.id === teamId);
+  if (!team) return;
 
-  const discordRaw = document.getElementById('manage-discord')?.value.trim() || '';
-  const discord = sanitizeDiscord(discordRaw);
-  const discordLower = discord.toLowerCase();
+  const teamRef = db.collection('teams').doc(teamId);
 
-  hint.textContent = '';
-  area.innerHTML = '';
+  // Unsubscribe from previous listener if any
+  if (manageUnsub) manageUnsub();
 
-  if (!teamId) {
-    hint.textContent = 'Choose a team first.';
-    hint.classList.add('error');
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Loading…';
-
-  try {
-    const teamRef = db.collection('teams').doc(teamId);
-    const teamSnap = await teamRef.get();
-    if (!teamSnap.exists) throw new Error('Team not found');
-
-    const team = teamSnap.data();
-
-    // Prefer creator key verification when available
-    if (team.creatorKeyHash) {
-      if (!key) throw new Error('Enter your creator key.');
-      const keyHash = await sha256Hex(`v1:${key}`);
-      if (String(team.creatorKeyHash) !== String(keyHash)) {
-        throw new Error('Creator key does not match this team.');
-      }
-
-      // Save key for next time on this device
-      setStoredCreatorKey(teamId, key, keyHash);
-      manageAuth = { teamId, method: 'key', creatorKeyHash: keyHash };
-    } else {
-      // Legacy fallback
-      if (!discord) throw new Error('This team was created before creator keys existed — enter the creator Discord (legacy).');
-      if ((team.creatorDiscordLower || '').toLowerCase() !== discordLower) {
-        throw new Error('Creator Discord does not match this team.');
-      }
-      manageAuth = { teamId, method: 'discord', creatorDiscordLower: discordLower };
-    }
-
-    // Subscribe to pending requests
-    if (manageUnsub) manageUnsub();
-    manageUnsub = teamRef.collection('requests')
-      .where('status', '==', 'pending')
-      .orderBy('requestedAt', 'asc')
-      .onSnapshot((snap) => {
-        renderManageArea(teamId, team, snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-
-    hint.textContent = 'Loaded. Accept requests below.';
-    hint.classList.remove('error');
-    hint.classList.add('ok');
-
-  } catch (err) {
-    console.error('Manage load error:', err);
-    hint.textContent = (err && err.message) ? err.message : 'Error loading requests.';
-    hint.classList.add('error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Load requests';
-  }
+  // Subscribe to pending requests
+  manageUnsub = teamRef.collection('requests')
+    .where('status', '==', 'pending')
+    .orderBy('requestedAt', 'asc')
+    .onSnapshot((snap) => {
+      const freshTeam = teamsCache.find(t => t.id === teamId) || team;
+      renderManageArea(teamId, freshTeam, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
 }
 
 function renderManageArea(teamId, teamData, requests) {
@@ -680,6 +589,20 @@ function renderManageArea(teamId, teamData, requests) {
       <div class="manage-title">Team members</div>
       ${memberRows || '<div class="empty-state">No members found.</div>'}
       <div class="small-note">Team size is ${TEAM_SIZE}. Spots left: <b>${spotsLeft}</b>.</div>
+    </div>
+  `;
+
+  // Team settings card (rename)
+  const settingsCard = `
+    <div class="manage-card">
+      <div class="manage-title">Team settings</div>
+      <div class="rename-form">
+        <label class="field">
+          <span class="label">Team name</span>
+          <input type="text" id="rename-input" class="input" value="${esc(team.teamName || '')}" placeholder="Team name">
+        </label>
+        <button class="btn small" type="button" data-action="rename-team" data-team-id="${teamId}" data-req-id="__">Rename</button>
+      </div>
     </div>
   `;
 
@@ -721,20 +644,17 @@ function renderManageArea(teamId, teamData, requests) {
   }
 
   // Danger zone
-  const hasKey = !!team.creatorKeyHash;
   const dangerCard = `
     <div class="manage-card danger">
       <div class="manage-title">Danger zone</div>
-      <div class="small-note">These actions affect your whole team.</div>
+      <div class="small-note">This action cannot be undone.</div>
       <div class="danger-actions">
-        ${hasKey ? `<button class="btn small" type="button" data-action="rotate-key" data-team-id="${teamId}" data-req-id="__">Rotate creator key</button>` : ''}
         <button class="btn small danger" type="button" data-action="delete-team" data-team-id="${teamId}" data-req-id="__">Delete team</button>
       </div>
-      ${hasKey ? `<div class="small-note">Rotating the key makes the old key stop working. The new key is saved on this device and copied if allowed.</div>` : `<div class="small-note">This team uses legacy creator Discord verification; rotating keys isn’t available.</div>`}
     </div>
   `;
 
-  area.innerHTML = membersCard + requestsCard + dangerCard;
+  area.innerHTML = membersCard + settingsCard + requestsCard + dangerCard;
 }
 
 
@@ -742,9 +662,9 @@ async function acceptRequest(teamId, reqId) {
   const hint = document.getElementById('manage-hint');
   hint.textContent = '';
 
-  // Client-side gate: only allow actions after the creator has loaded/verified.
-  if (!manageAuth || manageAuth.teamId !== teamId) {
-    hint.textContent = 'Load requests as the team creator first.';
+  // Only owner can accept requests
+  if (!isOwnerOf(teamId)) {
+    hint.textContent = 'You are not the owner of this team.';
     hint.classList.add('error');
     return;
   }
@@ -760,17 +680,6 @@ async function acceptRequest(teamId, reqId) {
 
       const team = teamSnap.data();
       const req = reqSnap.data();
-
-      // Re-validate creator on each action (best-effort; real security needs auth).
-      if (team.creatorKeyHash) {
-        if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
-          throw new Error('Creator verification expired. Reload requests as creator.');
-        }
-      } else {
-        if (manageAuth.method !== 'discord' || String((team.creatorDiscordLower || '').toLowerCase()) !== String(manageAuth.creatorDiscordLower || '')) {
-          throw new Error('Creator verification expired. Reload requests as creator.');
-        }
-      }
 
       if (req.status !== 'pending') throw new Error('Request already handled');
 
@@ -809,9 +718,9 @@ async function declineRequest(teamId, reqId) {
   const hint = document.getElementById('manage-hint');
   hint.textContent = '';
 
-  // Client-side gate: only allow actions after the creator has loaded/verified.
-  if (!manageAuth || manageAuth.teamId !== teamId) {
-    hint.textContent = 'Load requests as the team creator first.';
+  // Only owner can decline requests
+  if (!isOwnerOf(teamId)) {
+    hint.textContent = 'You are not the owner of this team.';
     hint.classList.add('error');
     return;
   }
@@ -824,19 +733,6 @@ async function declineRequest(teamId, reqId) {
       const [teamSnap, reqSnap] = await Promise.all([tx.get(teamRef), tx.get(reqRef)]);
       if (!teamSnap.exists) throw new Error('Team not found');
       if (!reqSnap.exists) throw new Error('Request not found');
-
-      const team = teamSnap.data();
-
-      // Re-validate creator on each action (best-effort; real security needs auth).
-      if (team.creatorKeyHash) {
-        if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
-          throw new Error('Creator verification expired. Reload requests as creator.');
-        }
-      } else {
-        if (manageAuth.method !== 'discord' || String((team.creatorDiscordLower || '').toLowerCase()) !== String(manageAuth.creatorDiscordLower || '')) {
-          throw new Error('Creator verification expired. Reload requests as creator.');
-        }
-      }
 
       const req = reqSnap.data();
       if (req.status !== 'pending') throw new Error('Request already handled');
@@ -941,23 +837,26 @@ function applyModeUI(mode) {
   }
 }
 
-async function computeRoleState(teams) {
+function computeRoleState(teams) {
   const u = getStoredUser();
   const memberTeam = u.discordLower ? teams.find(t => isMemberOfTeam(t, u.discordLower)) : null;
   const pendingTeam = (!memberTeam && u.discordLower) ? teams.find(t => isPendingOnTeam(t, u.discordLower)) : null;
 
-  // Detect creator team via stored creator key hash (fast)
-  let creatorTeam = null;
-  for (const t of teams) {
-    const h = getStoredCreatorKeyHash(t.id);
-    if (h && t.creatorKeyHash && String(h) === String(t.creatorKeyHash)) {
-      creatorTeam = t;
-      break;
+  // Detect owner team via localStorage
+  const ownerTeamId = getOwnerTeamId();
+  let creatorTeam = ownerTeamId ? teams.find(t => t.id === ownerTeamId) : null;
+
+  // Migration: check for old creator key hash in localStorage and migrate
+  if (!creatorTeam) {
+    for (const t of teams) {
+      const oldHash = safeLSGet(`creatorKey:${t.id}:hash`);
+      if (oldHash && t.creatorKeyHash && String(oldHash) === String(t.creatorKeyHash)) {
+        // Migrate to new system
+        setOwnerTeamId(t.id);
+        creatorTeam = t;
+        break;
+      }
     }
-  }
-  // Legacy creator detection (older teams)
-  if (!creatorTeam && u.discordLower) {
-    creatorTeam = teams.find(t => (t.creatorDiscordLower || '').toLowerCase() === u.discordLower) || null;
   }
 
   roleState.isCreator = !!creatorTeam;
@@ -1002,16 +901,9 @@ async function computeRoleState(teams) {
   joinerBtns.forEach(btn => { if (btn) btn.disabled = roleState.isCreator; });
   creatorBtns.forEach(btn => { if (btn) btn.disabled = false; });
 
-  // Auto-fill manage team and key if creator
-  if (roleState.isCreator) {
-    const teamId = roleState.creatorTeamId;
-    const sel = document.getElementById('manage-teamSelect');
-    if (sel && sel.value !== teamId) sel.value = teamId;
-    const keyEl = document.getElementById('manage-creatorKey');
-    if (keyEl && teamId) {
-      const storedKey = getStoredCreatorKey(teamId);
-      if (storedKey && !keyEl.value) keyEl.value = storedKey;
-    }
+  // Auto-load management panel for owner
+  if (roleState.isCreator && roleState.creatorTeamId) {
+    autoLoadManagePanel(roleState.creatorTeamId);
   }
 }
 
@@ -1021,6 +913,23 @@ function safeLSGet(key) {
 
 function safeLSSet(key, value) {
   try { localStorage.setItem(key, String(value ?? '')); } catch (_) {}
+}
+
+// Simple device-based ownership helpers
+function getOwnerTeamId() {
+  return safeLSGet(OWNER_TEAM_STORAGE) || null;
+}
+
+function setOwnerTeamId(teamId) {
+  if (teamId) safeLSSet(OWNER_TEAM_STORAGE, teamId);
+}
+
+function clearOwnerTeamId() {
+  try { localStorage.removeItem(OWNER_TEAM_STORAGE); } catch (_) {}
+}
+
+function isOwnerOf(teamId) {
+  return teamId && getOwnerTeamId() === teamId;
 }
 
 function getStoredUser() {
@@ -1194,8 +1103,9 @@ async function kickMember(teamId, discordLower) {
   const hint = document.getElementById('manage-hint');
   if (hint) hint.textContent = '';
 
-  if (!manageAuth || manageAuth.teamId !== teamId) {
-    if (hint) { hint.textContent = 'Load as the team creator first.'; hint.classList.add('error'); }
+  // Only owner can kick members
+  if (!isOwnerOf(teamId)) {
+    if (hint) { hint.textContent = 'You are not the owner of this team.'; hint.classList.add('error'); }
     return;
   }
 
@@ -1207,16 +1117,9 @@ async function kickMember(teamId, discordLower) {
       if (!teamSnap.exists) throw new Error('Team not found');
       const team = teamSnap.data();
 
-      // Re-validate creator
-      if (team.creatorKeyHash) {
-        if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
-          throw new Error('Creator verification expired. Reload requests as creator.');
-        }
-      }
-
       const creatorLower = String(team.creatorDiscordLower || '').toLowerCase();
       if (creatorLower === String(discordLower).toLowerCase()) {
-        throw new Error('You can’t remove the team creator.');
+        throw new Error('You can\'t remove the team creator.');
       }
 
       const members = getMembers(team);
@@ -1236,59 +1139,13 @@ async function kickMember(teamId, discordLower) {
   }
 }
 
-async function rotateCreatorKey(teamId) {
-  const hint = document.getElementById('manage-hint');
-  if (hint) hint.textContent = '';
-
-  if (!manageAuth || manageAuth.teamId !== teamId) {
-    if (hint) { hint.textContent = 'Load as the team creator first.'; hint.classList.add('error'); }
-    return;
-  }
-
-  const teamRef = db.collection('teams').doc(teamId);
-
-  try {
-    const newKey = genCreatorKey();
-    const newHash = await sha256Hex(`v1:${newKey}`);
-
-    await db.runTransaction(async (tx) => {
-      const teamSnap = await tx.get(teamRef);
-      if (!teamSnap.exists) throw new Error('Team not found');
-      const team = teamSnap.data();
-
-      if (team.creatorKeyHash) {
-        if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
-          throw new Error('Creator verification expired. Reload requests as creator.');
-        }
-      } else {
-        throw new Error('This team is using legacy creator Discord verification.');
-      }
-
-      tx.update(teamRef, { creatorKeyHash: newHash });
-    });
-
-    setStoredCreatorKey(teamId, newKey, newHash);
-    manageAuth.creatorKeyHash = newHash;
-
-    try { await navigator.clipboard?.writeText(newKey); } catch (_) {}
-
-    if (hint) {
-      hint.textContent = `New creator key: ${newKey} (copied if allowed).`;
-      hint.classList.remove('error');
-      hint.classList.add('ok');
-    }
-  } catch (err) {
-    console.error('Rotate key error:', err);
-    if (hint) { hint.textContent = err.message || 'Could not rotate key.'; hint.classList.add('error'); }
-  }
-}
-
 async function deleteTeam(teamId) {
   const hint = document.getElementById('manage-hint');
   if (hint) hint.textContent = '';
 
-  if (!manageAuth || manageAuth.teamId !== teamId) {
-    if (hint) { hint.textContent = 'Load as the team creator first.'; hint.classList.add('error'); }
+  // Only owner can delete the team
+  if (!isOwnerOf(teamId)) {
+    if (hint) { hint.textContent = 'You are not the owner of this team.'; hint.classList.add('error'); }
     return;
   }
 
@@ -1298,22 +1155,8 @@ async function deleteTeam(teamId) {
     const ok = confirm('Delete this team? This will remove the team and all join requests. This cannot be undone.');
     if (!ok) return;
 
-    // Verify creator before delete
     const teamSnap = await teamRef.get();
     if (!teamSnap.exists) throw new Error('Team not found');
-    const team = teamSnap.data();
-
-    if (team.creatorKeyHash) {
-      if (manageAuth.method !== 'key' || String(team.creatorKeyHash) !== String(manageAuth.creatorKeyHash)) {
-        throw new Error('Creator verification expired. Reload requests as creator.');
-      }
-    } else {
-      // Legacy: allow if creator discord matches stored user
-      const u = getStoredUser();
-      if (!u.discordLower || String(team.creatorDiscordLower || '').toLowerCase() !== u.discordLower) {
-        throw new Error('Creator verification expired. Reload requests as creator.');
-      }
-    }
 
     // Delete subcollection requests
     const reqSnap = await teamRef.collection('requests').get();
@@ -1322,8 +1165,7 @@ async function deleteTeam(teamId) {
     batch.delete(teamRef);
     await batch.commit();
 
-    removeStoredCreatorKey(teamId);
-    manageAuth = null;
+    clearOwnerTeamId();
 
     if (hint) {
       hint.textContent = 'Team deleted.';
@@ -1337,71 +1179,51 @@ async function deleteTeam(teamId) {
   }
 }
 
-function sanitizeCreatorKey(input) {
-  if (!input) return '';
-  // Uppercase, strip spaces/punctuation so users can paste with/without formatting
-  return String(input).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 64);
-}
+async function renameTeam(teamId) {
+  const hint = document.getElementById('manage-hint');
+  if (hint) hint.textContent = '';
 
-function genCreatorKey() {
-  // Crockford-ish base32 alphabet without ambiguous chars (no I, L, O, 0, 1)
-  const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  let out = '';
-  for (let i = 0; i < 16; i++) {
-    out += ALPH[bytes[i] % ALPH.length];
+  // Only owner can rename the team
+  if (!isOwnerOf(teamId)) {
+    if (hint) { hint.textContent = 'You are not the owner of this team.'; hint.classList.add('error'); }
+    return;
   }
-  // Group for readability: XXXX-XXXX-XXXX-XXXX
-  return out.match(/.{1,4}/g).join('-');
-}
 
-function getStoredCreatorKey(teamId) {
-  try {
-    return localStorage.getItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}`) || '';
-  } catch (_) {
-    return '';
+  const input = document.getElementById('rename-input');
+  const newName = input?.value.trim() || '';
+
+  if (!newName) {
+    if (hint) { hint.textContent = 'Team name cannot be empty.'; hint.classList.add('error'); }
+    return;
   }
-}
 
-function getStoredCreatorKeyHash(teamId) {
-  try {
-    return localStorage.getItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}:hash`) || '';
-  } catch (_) {
-    return '';
-  }
-}
+  const teamRef = db.collection('teams').doc(teamId);
 
-function setStoredCreatorKey(teamId, key, keyHash) {
   try {
-    const cleaned = sanitizeCreatorKey(key);
-    localStorage.setItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}`, cleaned);
-    if (keyHash) {
-      localStorage.setItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}:hash`, String(keyHash));
+    // Check uniqueness
+    const existing = await db.collection('teams')
+      .where('teamNameLower', '==', newName.toLowerCase())
+      .get();
+
+    const conflicts = existing.docs.filter(d => d.id !== teamId);
+    if (conflicts.length > 0) {
+      throw new Error('That team name is already taken.');
     }
-  } catch (_) {
-    // ignore
-  }
-}
 
-function removeStoredCreatorKey(teamId) {
-  try {
-    localStorage.removeItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}`);
-    localStorage.removeItem(`${CREATOR_KEY_STORAGE_PREFIX}${teamId}:hash`);
-  } catch (_) {
-    // ignore
-  }
-}
+    await teamRef.update({
+      teamName: newName,
+      teamNameLower: newName.toLowerCase()
+    });
 
-async function sha256Hex(str) {
-  const enc = new TextEncoder().encode(String(str));
-  const digest = await crypto.subtle.digest('SHA-256', enc);
-  const bytes = new Uint8Array(digest);
-  let hex = '';
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i].toString(16).padStart(2, '0');
+    if (hint) {
+      hint.textContent = 'Team renamed successfully.';
+      hint.classList.remove('error');
+      hint.classList.add('ok');
+    }
+  } catch (err) {
+    console.error('Rename error:', err);
+    if (hint) { hint.textContent = err.message || 'Could not rename team.'; hint.classList.add('error'); }
   }
-  return hex;
 }
 
 function isDiscordTaken(discordLower) {

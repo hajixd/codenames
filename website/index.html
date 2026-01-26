@@ -152,47 +152,15 @@
 
               <details class="accordion" id="manage-accordion">
                 <summary>
-                  <span>Manage join requests</span>
-                  <span class="pill">creator</span>
+                  <span>Manage your team</span>
+                  <span class="pill">owner</span>
                 </summary>
 
                 <div class="manage-note">
-                  Use your <b>creator key</b> to review and accept requests. When you create a team, the key is saved on your device
-                  (and shown once) — keep it somewhere safe if you’ll manage requests from another laptop.
+                  You created this team from this device. You can rename your team, accept or decline join requests, remove members, and delete your team.
                 </div>
 
-                <form id="manage-form" class="form">
-                  <div class="form-grid">
-                    <div class="two-col">
-                      <label class="field">
-                        <span class="label">Your team</span>
-                        <select id="manage-teamSelect" class="input" required>
-                          <option value="">Loading teams…</option>
-                        </select>
-                      </label>
-
-                      <label class="field">
-                        <span class="label">Creator key</span>
-                        <input type="text" id="manage-key" class="input" placeholder="Saved on this device" required>
-                      </label>
-                    </div>
-
-                    <!-- Legacy teams (created before creator keys existed) can still be managed by creator Discord -->
-                    <div class="two-col legacy-manage" id="legacy-manage" style="display:none;">
-                      <label class="field">
-                        <span class="label">Creator Discord (legacy)</span>
-                        <input type="text" id="manage-discord" class="input" placeholder="@username">
-                      </label>
-                      <div class="field" aria-hidden="true"></div>
-                    </div>
-                  </div>
-
-                  <div class="form-actions">
-                    <button type="submit" id="manage-btn" class="btn">Load requests</button>
-                    <span class="hint" id="manage-hint"></span>
-                  </div>
-                </form>
-
+                <span class="hint" id="manage-hint"></span>
                 <div id="manage-area" class="manage-area"></div>
               </details>
             </div>
