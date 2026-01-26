@@ -7,24 +7,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <title>Codenames Teams</title>
+    <title>Discord Tournament</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   </head>
   <body>
     <div class="app">
-      <!-- Desktop Header -->
-      <header class="desktop-header">
-        <div class="logo">CODENAMES</div>
-        <div class="header-center">3v3 &bull; 6 Teams Max</div>
-
-        <div class="header-user">
-          <div class="header-user-label">You</div>
-          <div class="header-user-value" id="user-name-display" title="Double click to edit">—</div>
-          <input class="input header-user-input" id="user-name-input" type="text" placeholder="Your name" style="display:none;" />
-        </div>
-      </header>
-
       <!-- Desktop Tabs -->
       <nav class="desktop-tabs" aria-label="Primary">
         <button class="tab active" data-panel="panel-home" type="button">Home</button>
@@ -36,55 +24,26 @@
         <!-- Home -->
         <section class="panel panel-info active" id="panel-home">
           <div class="panel-inner">
-            <div class="mobile-header">
-              <span class="logo">CODENAMES</span>
-              <span class="pill">3v3</span>
-            </div>
-
-            <h1>Teams</h1>
-            <p class="subtitle">Enter your name, then create a team or request to join one.</p>
-
-            <div class="name-card" id="name-card">
-              <form id="name-form" class="form">
-                <label class="field">
-                  <span class="label">Your name</span>
-                  <input type="text" id="name-input" class="input" placeholder="Name" required>
-                </label>
-                <div class="form-actions">
-                  <button type="submit" class="btn primary">Submit</button>
-                  <span class="hint" id="name-hint"></span>
-                </div>
-              </form>
-
-              <div id="name-saved" style="display:none;">
-                <div class="saved-row">
-                  <div>
-                    <div class="label">Your name</div>
-                    <div class="saved-name" id="name-saved-display" title="Double click to edit">—</div>
-                    <input class="input" id="name-saved-input" type="text" style="display:none;" />
-                    <div class="small-note">Double click your name to edit (desktop or mobile).</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <h1 class="hero-title">Discord Tournament</h1>
+            <p class="hero-subtitle">3v3 teams competing for $150</p>
 
             <div class="spots-display">
               <div class="spots-number" id="spots-left">6</div>
-              <div class="spots-label">teams left</div>
+              <div class="spots-label">spots left</div>
             </div>
 
             <div class="info-stats">
               <div class="info-stat">
                 <span class="val" id="team-count">0</span>
-                <span class="lbl">Teams</span>
+                <span class="lbl">MAX TEAMS</span>
               </div>
               <div class="info-stat">
                 <span class="val">3</span>
-                <span class="lbl">Per Team</span>
+                <span class="lbl">PER TEAM</span>
               </div>
               <div class="info-stat">
                 <span class="val" id="players-count">0</span>
-                <span class="lbl">Players</span>
+                <span class="lbl">PLAYERS</span>
               </div>
             </div>
           </div>
@@ -94,7 +53,7 @@
         <section class="panel panel-teams" id="panel-teams">
           <div class="panel-inner">
             <h2>Teams <span class="pill" id="team-count-pill">0/6</span></h2>
-            <p class="subtitle small">Tap a team to view members and request to join.</p>
+            <p class="subtitle small">Pick a team and request to join.</p>
             <span class="hint" id="teams-hint"></span>
             <div class="teams-list" id="teams-list"></div>
           </div>
@@ -127,12 +86,9 @@
                   <div class="team-section-title">Teammates</div>
                   <div class="players-list" id="myteam-members"></div>
                   <div class="owner-actions-row" id="myteam-actions"></div>
-
-                  <div class="team-owner-controls" id="myteam-requests" style="display:none;">
-                    <div class="team-section-title">Requests</div>
-                    <div id="myteam-requests-list"></div>
-                  </div>
                 </div>
+
+                <button class="btn danger wide" id="myteam-bottom-action" type="button" style="margin-top:14px; display:none;"></button>
               </div>
             </div>
           </div>
@@ -155,19 +111,32 @@
         </button>
       </nav>
 
-      <!-- Team Modal -->
-      <div class="modal" id="team-modal" style="display:none;" role="dialog" aria-modal="true">
+      <!-- Name dock (bottom on mobile, top-right on desktop) -->
+      <div class="name-dock" id="name-dock">
+        <form id="name-form" class="name-dock-form">
+          <input type="text" id="name-input" class="input" placeholder="Enter your name" required>
+          <button type="submit" class="btn primary">Submit</button>
+          <span class="hint" id="name-hint"></span>
+        </form>
+
+        <div id="name-saved" class="name-dock-saved" style="display:none;">
+          <div class="name-dock-label">Signed in as</div>
+          <div class="name-dock-value" id="name-saved-display" title="Double click to edit">—</div>
+          <input class="input" id="name-saved-input" type="text" style="display:none;" />
+        </div>
+      </div>
+
+      <!-- Requests Modal -->
+      <div class="modal" id="requests-modal" style="display:none;" role="dialog" aria-modal="true">
         <div class="modal-card">
           <div class="modal-head">
-            <div class="modal-title" id="team-modal-title">Team</div>
-            <button class="icon-btn" id="team-modal-close" type="button" aria-label="Close">×</button>
+            <div class="modal-title" id="requests-modal-title">Requests</div>
+            <button class="icon-btn" id="requests-modal-close" type="button" aria-label="Close">×</button>
           </div>
           <div class="modal-body">
-            <div class="team-section-title">Members</div>
-            <div class="players-list" id="team-modal-members"></div>
+            <div id="requests-modal-list"></div>
             <div class="form-actions" style="margin-top:12px;">
-              <button class="btn primary" id="team-modal-join" type="button">Request to join</button>
-              <span class="hint" id="team-modal-hint"></span>
+              <span class="hint" id="requests-modal-hint"></span>
             </div>
           </div>
         </div>

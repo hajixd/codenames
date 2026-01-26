@@ -25,14 +25,14 @@ const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
 
 let teamsCache = [];
-let openTeamId = null;
+let requestsTeamId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initName();
-  initTeamModal();
   initCreateTeamModal();
   initMyTeamControls();
+  initRequestsModal();
   listenToTeams();
 });
 
@@ -104,13 +104,6 @@ function initName() {
     onCommit: (v) => setUserName(v),
   });
 
-  wireInlineEdit({
-    displayEl: document.getElementById('user-name-display'),
-    inputEl: document.getElementById('user-name-input'),
-    getValue: () => getUserName(),
-    onCommit: (v) => setUserName(v),
-  });
-
   refreshNameUI();
 }
 
@@ -119,10 +112,8 @@ function refreshNameUI() {
   const cardForm = document.getElementById('name-form');
   const saved = document.getElementById('name-saved');
   const savedDisplay = document.getElementById('name-saved-display');
-  const headerDisplay = document.getElementById('user-name-display');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
-  if (headerDisplay) headerDisplay.textContent = name || '—';
 
   if (cardForm && saved) {
     cardForm.style.display = name ? 'none' : 'block';
@@ -145,8 +136,7 @@ function listenToTeams() {
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
       renderMyTeam(teamsCache);
-      // If a modal is open, refresh its contents
-      if (openTeamId) openTeamModal(openTeamId);
+      if (requestsTeamId) renderRequestsModal(requestsTeamId);
     }, (err) => {
       console.error('Team listener error:', err);
       setHint('teams-hint', 'Error loading teams.');
@@ -160,7 +150,8 @@ function updateHomeStats(teams) {
 
   setText('spots-left', spots);
   setText('players-count', players);
-  setText('team-count', teamCount);
+  // Home card label is "MAX TEAMS" (matches the screenshot)
+  setText('team-count', MAX_TEAMS);
   setText('team-count-pill', `${teamCount}/${MAX_TEAMS}`);
 }
 
@@ -221,137 +212,70 @@ function renderTeams(teams) {
     const members = getMembers(t);
     const pending = getPending(t);
     const full = members.length >= TEAM_SIZE;
-    const myBadge = st.teamId === t.id ? '<span class="meta pill">my team</span>' : '';
-    const pendingBadge = st.pendingTeamId === t.id ? '<span class="meta pill pending">requested</span>' : '';
+
+    const iAmMember = st.teamId === t.id;
+    const iAmPendingHere = st.pendingTeamId === t.id;
+    const iAmBusy = !!(st.teamId || st.pendingTeamId);
+    const noName = !st.name;
+
+    let label = 'Request to join';
+    let disabled = false;
+    if (noName) { disabled = true; label = 'Set your name first'; }
+    else if (iAmMember) { disabled = true; label = 'Your team'; }
+    else if (iAmPendingHere) { disabled = true; label = 'Request sent'; }
+    else if (iAmBusy) { disabled = true; label = 'Unavailable'; }
+    else if (full) { disabled = true; label = 'Team full'; }
+
+    const myBadge = iAmMember ? '<span class="pill tiny">my team</span>' : '';
+    const pendingBadge = iAmPendingHere ? '<span class="pill tiny pending">requested</span>' : '';
+
+    const slots = Array.from({ length: TEAM_SIZE }).map((_, i) => {
+      const m = members[i];
+      return `<div class="member-pill ${m ? '' : 'empty'}">${esc(m?.name || 'Open')}</div>`;
+    }).join('');
+
     return `
-      <button class="team-card clickable" type="button" data-open-team="${esc(t.id)}">
-        <div class="team-summary no-details">
-          <div class="team-left">
+      <div class="team-card" data-team-card="${esc(t.id)}">
+        <div class="team-head">
+          <div class="team-title">
             <div class="team-rank">#${idx + 1}</div>
-            <div class="team-name-wrap">
-              <span class="team-name">${esc(t.teamName || 'Unnamed')}</span>
-            </div>
-          </div>
-          <div class="team-right">
-            <span class="meta">${members.length}/${TEAM_SIZE}</span>
-            ${pending.length ? `<span class="meta pill pending">${pending.length} pending</span>` : ''}
+            <div class="team-name">${esc(t.teamName || 'Unnamed')}</div>
             ${myBadge}${pendingBadge}
-            ${full ? '<span class="meta pill">full</span>' : ''}
+          </div>
+          <div class="team-meta">
+            <span class="meta">${members.length}/${TEAM_SIZE}</span>
+            ${pending.length ? `<span class="pill tiny pending">${pending.length} pending</span>` : ''}
           </div>
         </div>
-      </button>
+        <div class="team-members">${slots}</div>
+        <div class="team-cta">
+          <button class="btn primary small ${disabled ? 'disabled' : ''}" type="button" data-join-team="${esc(t.id)}" ${disabled ? 'disabled' : ''}>${label}</button>
+        </div>
+      </div>
     `;
   }).join('');
 
-  container.querySelectorAll('[data-open-team]')?.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const teamId = btn.getAttribute('data-open-team');
-      if (teamId) openTeamModal(teamId);
+  container.querySelectorAll('[data-join-team]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-join-team');
+      if (!teamId) return;
+      await requestToJoin(teamId, 'teams-hint');
     });
   });
 }
 
-/* =========================
-   Team modal (view + request)
-========================= */
-function initTeamModal() {
-  const closeBtn = document.getElementById('team-modal-close');
-  const modal = document.getElementById('team-modal');
-  closeBtn?.addEventListener('click', closeTeamModal);
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) closeTeamModal();
-  });
-
-  document.getElementById('team-modal-join')?.addEventListener('click', async () => {
-    if (!openTeamId) return;
-    await requestToJoin(openTeamId);
-  });
-}
-
-function openTeamModal(teamId) {
-  openTeamId = teamId;
-  const modal = document.getElementById('team-modal');
-  if (!modal) return;
-  modal.style.display = 'flex';
-  renderTeamModal(teamId);
-}
-
-function closeTeamModal() {
-  openTeamId = null;
-  const modal = document.getElementById('team-modal');
-  if (modal) modal.style.display = 'none';
-  setHint('team-modal-hint', '');
-}
-
-function renderTeamModal(teamId) {
-  const team = teamsCache.find(t => t.id === teamId);
-  if (!team) return;
-
-  setText('team-modal-title', team.teamName || 'Team');
-
-  const membersEl = document.getElementById('team-modal-members');
-  const members = getMembers(team);
-  if (membersEl) {
-    membersEl.innerHTML = members.length
-      ? members.map(m => `
-          <div class="player-row">
-            <div class="player-left">
-              <span class="player-name">${esc(m.name || '—')}</span>
-            </div>
-          </div>
-        `).join('')
-      : '<div class="empty-state">No members yet</div>';
-  }
-
-  const st = computeUserState(teamsCache);
-  const joinBtn = document.getElementById('team-modal-join');
-  const full = members.length >= TEAM_SIZE;
-  const iAmMember = st.teamId === teamId;
-  const iAmPendingHere = st.pendingTeamId === teamId;
-  const iAmBusy = !!(st.teamId || st.pendingTeamId);
-  const noName = !st.name;
-
-  let label = 'Request to join';
-  let disabled = false;
-  let hint = '';
-
-  if (noName) {
-    disabled = true;
-    hint = 'Set your name on Home first.';
-  } else if (iAmMember) {
-    disabled = true;
-    label = 'You are on this team';
-  } else if (iAmPendingHere) {
-    disabled = true;
-    label = 'Request sent';
-  } else if (iAmBusy) {
-    disabled = true;
-    hint = 'You are already on a team (or have a pending request).';
-  } else if (full) {
-    disabled = true;
-    label = 'Team full';
-  }
-
-  if (joinBtn) {
-    joinBtn.disabled = disabled;
-    joinBtn.classList.toggle('disabled', disabled);
-    joinBtn.textContent = label;
-  }
-  setHint('team-modal-hint', hint);
-}
-
-async function requestToJoin(teamId) {
+async function requestToJoin(teamId, hintId = 'teams-hint') {
   const st = computeUserState(teamsCache);
   if (!st.name) {
-    setHint('team-modal-hint', 'Set your name on Home first.');
+    setHint(hintId, 'Set your name first (Home tab).');
     return;
   }
   if (st.teamId || st.pendingTeamId) {
-    setHint('team-modal-hint', 'You are already on a team (or have a pending request).');
+    setHint(hintId, 'You are already on a team (or have a pending request).');
     return;
   }
 
-  setHint('team-modal-hint', 'Sending…');
+  setHint(hintId, 'Sending…');
 
   const ref = db.collection('teams').doc(teamId);
   try {
@@ -364,13 +288,15 @@ async function requestToJoin(teamId) {
       if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
       if (pending.some(r => r.userId === st.userId)) return;
       tx.update(ref, {
-        pending: pending.concat([{ userId: st.userId, name: st.name, requestedAt: firebase.firestore.FieldValue.serverTimestamp() }])
+        // NOTE: serverTimestamp() is not supported inside arrays.
+        // Use a numeric timestamp for display/ordering if needed.
+        pending: pending.concat([{ userId: st.userId, name: st.name, requestedAt: Date.now() }])
       });
     });
-    setHint('team-modal-hint', 'Request sent.');
+    setHint(hintId, 'Request sent.');
   } catch (e) {
     console.error(e);
-    setHint('team-modal-hint', e?.message || 'Could not send request.');
+    setHint(hintId, e?.message || 'Could not send request.');
   }
 }
 
@@ -404,12 +330,13 @@ function renderMyTeam(teams) {
   const card = document.getElementById('myteam-card');
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
-  const requestsBox = document.getElementById('myteam-requests');
-  const requestsList = document.getElementById('myteam-requests-list');
+  const bottomAction = document.getElementById('myteam-bottom-action');
   const sub = document.getElementById('myteam-subtitle');
 
   const hasTeam = !!st.teamId;
   if (createBtn) {
+    // Only show create button when you are not already on a team
+    createBtn.style.display = hasTeam ? 'none' : 'inline-flex';
     const disableCreate = !st.name || hasTeam || !!st.pendingTeamId || teams.length >= MAX_TEAMS;
     createBtn.disabled = disableCreate;
     createBtn.classList.toggle('disabled', disableCreate);
@@ -456,57 +383,104 @@ function renderMyTeam(teams) {
     });
   }
 
-  // Actions
+  // Creator actions (requests)
   if (actionsEl) {
-    const requestsBtn = (st.isCreator)
-      ? `<button class="btn small" type="button" id="toggle-requests">Requests (${getPending(st.team).length})</button>`
+    actionsEl.innerHTML = st.isCreator
+      ? `<button class="btn ghost small" type="button" id="open-requests">Requests <span class="pill tiny pending">${getPending(st.team).length}</span></button>`
       : '';
-    actionsEl.innerHTML = `${requestsBtn}`;
 
-    actionsEl.querySelector('#toggle-requests')?.addEventListener('click', () => {
-      if (!requestsBox) return;
-      const isOpen = requestsBox.style.display !== 'none';
-      requestsBox.style.display = isOpen ? 'none' : 'block';
+    actionsEl.querySelector('#open-requests')?.addEventListener('click', () => {
+      openRequestsModal(st.teamId);
     });
   }
 
-  // Requests (creator)
-  if (requestsBox && requestsList) {
-    if (!st.isCreator) {
-      requestsBox.style.display = 'none';
-      requestsList.innerHTML = '';
+  // Bottom action button (create/leave/delete)
+  if (bottomAction) {
+    bottomAction.style.display = 'inline-flex';
+    if (st.isCreator) {
+      bottomAction.textContent = 'Delete team';
+      bottomAction.className = 'btn danger wide';
+      bottomAction.onclick = () => deleteTeam(st.teamId);
     } else {
-      const pending = getPending(st.team);
-      requestsList.innerHTML = pending.length
-        ? pending.map(r => {
-            return `
-              <div class="request-row">
-                <div class="player-left">
-                  <span class="player-name">${esc(r.name || '—')}</span>
-                </div>
-                <div class="request-actions">
-                  <button class="btn primary small" type="button" data-accept="${esc(r.userId)}">Accept</button>
-                  <button class="btn danger small" type="button" data-decline="${esc(r.userId)}">Decline</button>
-                </div>
-              </div>
-            `;
-          }).join('')
-        : '<div class="empty-state">No requests</div>';
-
-      requestsList.querySelectorAll('[data-accept]')?.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const uid = btn.getAttribute('data-accept');
-          if (uid) acceptRequest(st.teamId, uid);
-        });
-      });
-      requestsList.querySelectorAll('[data-decline]')?.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const uid = btn.getAttribute('data-decline');
-          if (uid) declineRequest(st.teamId, uid);
-        });
-      });
+      bottomAction.textContent = 'Leave team';
+      bottomAction.className = 'btn danger wide';
+      bottomAction.onclick = () => leaveTeam(st.teamId, st.userId);
     }
   }
+}
+
+/* =========================
+   Requests modal (creator)
+========================= */
+function initRequestsModal() {
+  const modal = document.getElementById('requests-modal');
+  const closeBtn = document.getElementById('requests-modal-close');
+  closeBtn?.addEventListener('click', closeRequestsModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeRequestsModal();
+  });
+}
+
+function openRequestsModal(teamId) {
+  requestsTeamId = teamId;
+  const modal = document.getElementById('requests-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  renderRequestsModal(teamId);
+}
+
+function closeRequestsModal() {
+  requestsTeamId = null;
+  const modal = document.getElementById('requests-modal');
+  if (modal) modal.style.display = 'none';
+  setHint('requests-modal-hint', '');
+}
+
+function renderRequestsModal(teamId) {
+  const st = computeUserState(teamsCache);
+  if (!st.isCreator || st.teamId !== teamId) return;
+  const team = teamsCache.find(t => t.id === teamId);
+  if (!team) return;
+
+  setText('requests-modal-title', `Requests • ${team.teamName || 'Team'}`);
+  const listEl = document.getElementById('requests-modal-list');
+  const pending = getPending(team);
+
+  if (!listEl) return;
+  listEl.innerHTML = pending.length
+    ? pending.map(r => {
+        return `
+          <div class="request-row">
+            <div class="request-left">
+              <div class="member-pill">${esc(r.name || '—')}</div>
+            </div>
+            <div class="request-actions">
+              <button class="btn primary small" type="button" data-accept="${esc(r.userId)}">Accept</button>
+              <button class="btn danger small" type="button" data-decline="${esc(r.userId)}">Decline</button>
+            </div>
+          </div>
+        `;
+      }).join('')
+    : '<div class="empty-state">No requests</div>';
+
+  listEl.querySelectorAll('[data-accept]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.getAttribute('data-accept');
+      if (!uid) return;
+      await acceptRequest(teamId, uid);
+      // Refresh after action
+      renderRequestsModal(teamId);
+    });
+  });
+
+  listEl.querySelectorAll('[data-decline]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.getAttribute('data-decline');
+      if (!uid) return;
+      await declineRequest(teamId, uid);
+      renderRequestsModal(teamId);
+    });
+  });
 }
 
 /* =========================
@@ -649,6 +623,44 @@ async function kickMember(teamId, userId) {
     });
   } catch (e) {
     console.error(e);
+  }
+}
+
+async function leaveTeam(teamId, userId) {
+  const ref = db.collection('teams').doc(teamId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Team not found.');
+      const t = { id: snap.id, ...snap.data() };
+      const members = getMembers(t).filter(m => m.userId !== userId);
+      // If last member leaves, delete the team
+      if (members.length === 0) {
+        tx.delete(ref);
+      } else {
+        tx.update(ref, { members });
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    setHint('teams-hint', e?.message || 'Could not leave team.');
+  }
+}
+
+async function deleteTeam(teamId) {
+  const st = computeUserState(teamsCache);
+  if (!st.isCreator || st.teamId !== teamId) return;
+  const ref = db.collection('teams').doc(teamId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      tx.delete(ref);
+    });
+    closeRequestsModal();
+  } catch (e) {
+    console.error(e);
+    setHint('teams-hint', e?.message || 'Could not delete team.');
   }
 }
 
