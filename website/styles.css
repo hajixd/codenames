@@ -8,7 +8,8 @@
   --bg: #09090b;
   --surface: #131316;
   --surface2: #1a1a1f;
-  --border: #252529;
+  /* Brighter outlines */
+  --border: #34343d;
   --text: #fff;
   --text-dim: #71717a;
   --accent: #3b82f6;
@@ -419,7 +420,11 @@ body:not(.has-team-color) .team-accent{ color: var(--text-dim); }
 
   .team-owner-controls { margin-top: 14px; }
   .owner-actions-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .team-card.my-team { box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 10px 30px rgba(0,0,0,0.25); }
+  .team-card.my-team {
+    position: relative;
+    overflow: visible;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 10px 30px rgba(0,0,0,0.25);
+  }
 
   .empty-state {
     flex: 1;
@@ -1589,44 +1594,45 @@ body.mode-joiner .only-joiner{ display:block; }
   display:flex;
   flex-direction: column;
   gap: 12px;
+  /* Taller chat like the rest of the UI */
+  height: 72vh;
 }
 
 .chat-messages{
-  max-height: 360px;
+  flex: 1 1 auto;
+  max-height: none;
   overflow: auto;
   display:flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 4px;
+  gap: 6px;
+  padding: 8px 6px;
 }
 
 .chat-msg{
+  /* Minecraft-style: no bubbles, all left aligned */
   align-self: flex-start;
-  max-width: 85%;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 14px;
-  padding: 10px 12px;
+  width: 100%;
+  max-width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
-.chat-msg.mine{
-  align-self: flex-end;
-  background: rgba(59,130,246,0.14);
-  border-color: rgba(59,130,246,0.22);
-}
-
-.chat-who{
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 900;
-  margin-bottom: 4px;
-}
-
-.chat-text{
+.chat-line{
   font-size: 13px;
   line-height: 1.35;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-who{
+  font-weight: 900;
+  color: rgba(255,255,255,0.88);
+}
+
+.chat-text{
+  color: rgba(255,255,255,0.92);
 }
 
 .chat-compose{
@@ -1840,17 +1846,32 @@ button:disabled{
   padding-top: 14px;
   border-top: 1px solid rgba(255,255,255,0.08);
   display:flex;
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
 }
-.myteam-footer .btn{ flex: 1; width: auto; justify-content: center; }
+.myteam-footer .btn{ width: 100%; justify-content: center; }
 .myteam-footer .icon-btn{
   width: 42px;
   height: 42px;
   border-radius: 12px;
 }
 .myteam-footer .icon-btn svg{ width: 18px; height: 18px; }
+
+/* Floating chat button on My Team card */
+.floating-chat{
+  position: absolute;
+  right: 14px;
+  bottom: -22px;
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  background: rgba(59,130,246,0.16);
+  border-color: rgba(59,130,246,0.28);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+}
+.floating-chat:hover{ filter: brightness(1.08); }
+.floating-chat:disabled{ opacity: 0.45; filter: none; }
 
 /* Players directory */
 

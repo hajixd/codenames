@@ -1778,8 +1778,6 @@ function closeChatModal() {
 function renderChatMessages() {
   const list = document.getElementById('chat-messages');
   if (!list) return;
-  const st = computeUserState(teamsCache);
-  const myId = st.userId;
 
   if (!chatMessagesCache?.length) {
     list.innerHTML = '<div class="empty-state">No messages yet</div>';
@@ -1787,11 +1785,9 @@ function renderChatMessages() {
   }
 
   list.innerHTML = chatMessagesCache.map(m => {
-    const mine = String(m?.senderId || '') === String(myId || '');
     return `
-      <div class="chat-msg ${mine ? 'mine' : ''}">
-        <div class="chat-who">${esc(m?.senderName || '—')}</div>
-        <div class="chat-text">${esc(m?.text || '')}</div>
+      <div class="chat-msg">
+        <div class="chat-line"><span class="chat-who">${esc(m?.senderName || '—')}:</span> <span class="chat-text">${esc(m?.text || '')}</span></div>
       </div>
     `;
   }).join('');
