@@ -25,21 +25,16 @@ const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
 
 let teamsCache = [];
-let playersCache = [];
 let openTeamId = null;
-let chatUnsub = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initName();
-  initPlayersTab();
   initTeamModal();
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
-  initChatModal();
   listenToTeams();
-  listenToPlayers();
 });
 
 /* =========================
@@ -77,8 +72,6 @@ function getUserName() {
 function setUserName(name) {
   safeLSSet(LS_USER_NAME, (name || '').trim());
   refreshNameUI();
-  // Persist "signed up" players to Firestore so they can appear in the Players tab.
-  upsertPlayerProfile(getUserId(), getUserName());
   // If user is a member/creator, update their stored display name in their team doc (best-effort)
   const st = computeUserState(teamsCache);
   if (st?.team && st?.teamId) {
@@ -120,11 +113,6 @@ function initName() {
   });
 
   refreshNameUI();
-
-  // If the user already had a saved name, make sure they're in the Players directory.
-  if (getUserName()) {
-    upsertPlayerProfile(getUserId(), getUserName());
-  }
 }
 
 function refreshNameUI() {
@@ -173,8 +161,6 @@ function listenToTeams() {
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
       renderMyTeam(teamsCache);
-      renderPlayers(playersCache, teamsCache);
-      renderInvites(playersCache, teamsCache);
       // If a modal is open, refresh its contents
       if (openTeamId) openTeamModal(openTeamId);
       if (document.getElementById('requests-modal')?.style?.display === 'flex') {
@@ -183,20 +169,6 @@ function listenToTeams() {
     }, (err) => {
       console.error('Team listener error:', err);
       setHint('teams-hint', 'Error loading teams.');
-    });
-}
-
-function listenToPlayers() {
-  // Players = anyone who has entered their name on this device at least once.
-  db.collection('players')
-    .orderBy('name', 'asc')
-    .onSnapshot((snapshot) => {
-      playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderPlayers(playersCache, teamsCache);
-      renderInvites(playersCache, teamsCache);
-    }, (err) => {
-      console.error('Players listener error:', err);
-      setHint('players-hint', 'Error loading players.');
     });
 }
 
@@ -285,286 +257,6 @@ function applyTeamThemeFromState(st) {
     body?.classList.remove('has-team-color');
     root.style.setProperty('--team-accent', 'transparent');
     root.style.setProperty('--team-glow', 'rgba(59,130,246,0)');
-  }
-}
-
-/* =========================
-   Players page (directory + invites)
-========================= */
-function initPlayersTab() {
-  // Nothing to wire yet (render is driven by listeners), but keep hints clean.
-  setHint('players-hint', '');
-}
-
-function buildRosterIndex(teams) {
-  const memberTeamByUserId = new Map();
-  const pendingTeamByUserId = new Map();
-  for (const t of (teams || [])) {
-    for (const m of getMembers(t)) {
-      if (m?.userId) memberTeamByUserId.set(m.userId, t);
-    }
-    for (const r of getPending(t)) {
-      if (r?.userId) pendingTeamByUserId.set(r.userId, t);
-    }
-  }
-  return { memberTeamByUserId, pendingTeamByUserId };
-}
-
-function renderPlayers(players, teams) {
-  const container = document.getElementById('players-list');
-  if (!container) return;
-
-  const st = computeUserState(teams);
-  const roster = buildRosterIndex(teams);
-  const myTeam = st?.team;
-  const canInvite = !!(st.isCreator && st.teamId && myTeam && getMembers(myTeam).length < TEAM_SIZE);
-
-  if (!players || players.length === 0) {
-    container.innerHTML = '<div class="empty-state">No players yet. Set your name on Home.</div>';
-    return;
-  }
-
-  const rows = players
-    .filter(p => (p?.name || '').trim())
-    .map((p) => {
-      const uid = p.id;
-      const name = (p.name || '—').trim();
-
-      const memberTeam = roster.memberTeamByUserId.get(uid);
-      const pendingTeam = roster.pendingTeamByUserId.get(uid);
-
-      let status = 'Available';
-      let statusClass = 'ok';
-      if (memberTeam) {
-        status = `On ${memberTeam.teamName || 'Team'}`;
-        statusClass = 'busy';
-      } else if (pendingTeam) {
-        status = `Pending: ${pendingTeam.teamName || 'Team'}`;
-        statusClass = 'pending';
-      }
-
-      const invites = Array.isArray(p.invites) ? p.invites : [];
-      const alreadyInvitedByMe = !!(st.teamId && invites.some(i => i?.teamId === st.teamId));
-      const showInvite = canInvite && uid !== st.userId && !memberTeam && !pendingTeam;
-      const inviteDisabled = alreadyInvitedByMe || !st.name;
-
-      return `
-        <div class="player-row player-directory-row">
-          <div class="player-left">
-            <span class="player-name">${esc(name)}</span>
-            <span class="player-status ${esc(statusClass)}">${esc(status)}</span>
-          </div>
-          <div class="player-right">
-            ${showInvite ? `
-              <button class="btn primary small" type="button" data-invite="${esc(uid)}" ${inviteDisabled ? 'disabled' : ''}>
-                ${alreadyInvitedByMe ? 'Invited' : 'Invite'}
-              </button>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    });
-
-  container.innerHTML = rows.length
-    ? rows.join('')
-    : '<div class="empty-state">No players yet. Set your name on Home.</div>';
-
-  container.querySelectorAll('[data-invite]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const targetId = btn.getAttribute('data-invite');
-      if (!targetId) return;
-      await sendInviteToPlayer(targetId);
-    });
-  });
-
-  // Helpful hint for leaders
-  if (st.isCreator && st.teamId) {
-    if (!st.name) setHint('players-hint', 'Set your name on Home first.');
-    else if (!canInvite) setHint('players-hint', 'Your team is full — you can’t invite more players.');
-    else setHint('players-hint', 'Tap Invite to send a team invite.');
-  }
-}
-
-function renderInvites(players, teams) {
-  const card = document.getElementById('invites-card');
-  const list = document.getElementById('invites-list');
-  if (!card || !list) return;
-
-  const st = computeUserState(teams);
-  const noName = !st.name;
-
-  // Only show invites if the user isn't on a team (or pending).
-  if (st.teamId || st.pendingTeamId) {
-    card.style.display = 'none';
-    return;
-  }
-
-  const me = (players || []).find(p => p.id === st.userId);
-  const invites = Array.isArray(me?.invites) ? me.invites : [];
-  if (!invites.length) {
-    card.style.display = 'none';
-    return;
-  }
-
-  card.style.display = 'block';
-
-  if (noName) {
-    setHint('invites-hint', 'Set your name on Home first.');
-  } else {
-    setHint('invites-hint', '');
-  }
-
-  list.innerHTML = invites.map(inv => {
-    const teamName = inv?.teamName || 'Team';
-    const teamId = inv?.teamId || '';
-    return `
-      <div class="request-row">
-        <div class="player-left">
-          <span class="player-name">${esc(teamName)}</span>
-        </div>
-        <div class="request-actions">
-          <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
-          <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  list.querySelectorAll('[data-invite-accept]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-invite-accept');
-      if (!teamId) return;
-      await acceptInvite(teamId);
-      renderInvites(playersCache, teamsCache);
-      renderMyTeam(teamsCache);
-    });
-  });
-
-  list.querySelectorAll('[data-invite-decline]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-invite-decline');
-      if (!teamId) return;
-      await declineInvite(teamId);
-      renderInvites(playersCache, teamsCache);
-    });
-  });
-}
-
-async function upsertPlayerProfile(userId, name) {
-  const n = (name || '').trim();
-  if (!userId || !n) return;
-  const ref = db.collection('players').doc(userId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) {
-        tx.set(ref, {
-          name: n,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          invites: []
-        });
-      } else {
-        tx.update(ref, {
-          name: n,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
-    });
-  } catch (e) {
-    // best effort
-    console.warn('Could not upsert player profile', e);
-  }
-}
-
-async function sendInviteToPlayer(targetUserId) {
-  const st = computeUserState(teamsCache);
-  if (!st.isCreator || !st.teamId || !st.team) return;
-  if (getMembers(st.team).length >= TEAM_SIZE) return;
-
-  setHint('players-hint', 'Sending invite…');
-
-  const teamId = st.teamId;
-  const invite = {
-    teamId,
-    teamName: st.team.teamName || 'Team',
-    teamColor: st.team.teamColor || null,
-    inviterUserId: st.userId,
-    inviterName: st.name || '—',
-    invitedAt: firebase.firestore.Timestamp.now(),
-  };
-
-  const playerRef = db.collection('players').doc(targetUserId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const ps = await tx.get(playerRef);
-      if (!ps.exists) throw new Error('Player not found.');
-      const p = { id: ps.id, ...ps.data() };
-      const invites = Array.isArray(p.invites) ? p.invites : [];
-      if (invites.some(i => i?.teamId === teamId)) return;
-      tx.update(playerRef, { invites: invites.concat([invite]), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-    });
-    setHint('players-hint', 'Invite sent.');
-  } catch (e) {
-    console.error(e);
-    setHint('players-hint', e?.message || 'Could not send invite.');
-  }
-}
-
-async function acceptInvite(teamId) {
-  const st = computeUserState(teamsCache);
-  if (!st.name) return;
-  if (st.teamId || st.pendingTeamId) {
-    setHint('invites-hint', 'You are already on a team (or have a pending request).');
-    return;
-  }
-
-  const teamRef = db.collection('teams').doc(teamId);
-  const playerRef = db.collection('players').doc(st.userId);
-  setHint('invites-hint', 'Joining…');
-
-  try {
-    await db.runTransaction(async (tx) => {
-      const [teamSnap, playerSnap] = await Promise.all([tx.get(teamRef), tx.get(playerRef)]);
-      if (!teamSnap.exists) throw new Error('Team not found.');
-      if (!playerSnap.exists) throw new Error('Player not found.');
-
-      const team = { id: teamSnap.id, ...teamSnap.data() };
-      const members = getMembers(team);
-      if (members.length >= TEAM_SIZE) throw new Error('Team is full.');
-      if (members.some(m => m?.userId === st.userId)) return;
-
-      const nextMembers = members.concat([{ userId: st.userId, name: st.name }]);
-
-      const player = { id: playerSnap.id, ...playerSnap.data() };
-      const invites = Array.isArray(player.invites) ? player.invites : [];
-      const nextInvites = invites.filter(i => i?.teamId !== teamId);
-
-      tx.update(teamRef, { members: nextMembers });
-      tx.update(playerRef, { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-    });
-
-    setHint('invites-hint', 'Joined!');
-    activatePanel('panel-myteam');
-  } catch (e) {
-    console.error(e);
-    setHint('invites-hint', e?.message || 'Could not join team.');
-  }
-}
-
-async function declineInvite(teamId) {
-  const st = computeUserState(teamsCache);
-  const playerRef = db.collection('players').doc(st.userId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(playerRef);
-      if (!snap.exists) return;
-      const p = { id: snap.id, ...snap.data() };
-      const invites = Array.isArray(p.invites) ? p.invites : [];
-      tx.update(playerRef, { invites: invites.filter(i => i?.teamId !== teamId), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-    });
-  } catch (e) {
-    console.error(e);
   }
 }
 
@@ -841,14 +533,12 @@ function renderMyTeam(teams) {
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
-  const chatBtn = document.getElementById('open-chat');
   const leaveDeleteBtn = document.getElementById('leave-or-delete');
   const sub = document.getElementById('myteam-subtitle');
   const colorRow = document.getElementById('team-color-row');
   const colorInput = document.getElementById('team-color-input');
 
   const hasTeam = !!st.teamId;
-  if (chatBtn) chatBtn.style.display = hasTeam ? 'inline-flex' : 'none';
   if (createBtn) {
     // Create button is only relevant if you're not on a team.
     const disableCreate = !st.name || hasTeam || !!st.pendingTeamId || teams.length >= MAX_TEAMS;
@@ -996,153 +686,6 @@ function renderRequestsModal() {
       renderMyTeam(teamsCache);
     });
   });
-}
-
-/* =========================
-   Team chat (members)
-========================= */
-function initChatModal() {
-  const modal = document.getElementById('chat-modal');
-  const closeBtn = document.getElementById('chat-modal-close');
-  const openBtn = document.getElementById('open-chat');
-  const sendBtn = document.getElementById('chat-send');
-  const input = document.getElementById('chat-input');
-
-  openBtn?.addEventListener('click', () => openChatModal());
-  closeBtn?.addEventListener('click', closeChatModal);
-  modal?.addEventListener('click', (e) => {
-    if (e.target === modal) closeChatModal();
-  });
-
-  sendBtn?.addEventListener('click', () => sendChatMessage());
-  input?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      sendChatMessage();
-    }
-  });
-}
-
-function openChatModal() {
-  const st = computeUserState(teamsCache);
-  if (!st.teamId) return;
-  const modal = document.getElementById('chat-modal');
-  if (!modal) return;
-
-  modal.style.display = 'flex';
-  setHint('chat-hint', '');
-
-  // Reset listener
-  try { chatUnsub?.(); } catch (_) {}
-  chatUnsub = null;
-
-  const q = db
-    .collection('teams')
-    .doc(st.teamId)
-    .collection('chat')
-    .orderBy('createdAt', 'asc')
-    .limitToLast(100);
-
-  chatUnsub = q.onSnapshot((snap) => {
-    const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderChatMessages(msgs);
-  }, (err) => {
-    console.error('Chat listener error:', err);
-    setHint('chat-hint', 'Error loading chat.');
-  });
-
-  // Focus input on open
-  setTimeout(() => {
-    const input = document.getElementById('chat-input');
-    input?.focus();
-  }, 0);
-}
-
-function closeChatModal() {
-  const modal = document.getElementById('chat-modal');
-  if (modal) modal.style.display = 'none';
-  setHint('chat-hint', '');
-  try { chatUnsub?.(); } catch (_) {}
-  chatUnsub = null;
-}
-
-function formatChatTime(ts) {
-  try {
-    const d = ts?.toDate?.() || ts;
-    if (!(d instanceof Date)) return '';
-    const h = String(d.getHours()).padStart(2, '0');
-    const m = String(d.getMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
-  } catch (_) {
-    return '';
-  }
-}
-
-function renderChatMessages(messages) {
-  const list = document.getElementById('chat-list');
-  if (!list) return;
-  const st = computeUserState(teamsCache);
-
-  if (!messages?.length) {
-    list.innerHTML = '<div class="empty-state">No messages yet</div>';
-    return;
-  }
-
-  list.innerHTML = messages.map(msg => {
-    const mine = msg?.userId && msg.userId === st.userId;
-    const name = (msg?.name || '—').trim();
-    const text = String(msg?.text || '').trim();
-    const time = formatChatTime(msg?.createdAt);
-    return `
-      <div class="chat-msg ${mine ? 'mine' : ''}">
-        <div class="chat-meta">
-          <span class="chat-name">${esc(name)}</span>
-          <span class="chat-time">${esc(time)}</span>
-        </div>
-        <div class="chat-text">${esc(text)}</div>
-      </div>
-    `;
-  }).join('');
-
-  // Scroll to bottom
-  list.scrollTop = list.scrollHeight;
-}
-
-async function sendChatMessage() {
-  const st = computeUserState(teamsCache);
-  if (!st.teamId) return;
-  if (!st.name) {
-    setHint('chat-hint', 'Set your name on Home first.');
-    return;
-  }
-
-  const input = document.getElementById('chat-input');
-  const text = (input?.value || '').trim();
-  if (!text) return;
-
-  const sendBtn = document.getElementById('chat-send');
-  if (sendBtn) sendBtn.disabled = true;
-
-  try {
-    await db
-      .collection('teams')
-      .doc(st.teamId)
-      .collection('chat')
-      .add({
-        userId: st.userId,
-        name: st.name,
-        text,
-        createdAt: firebase.firestore.Timestamp.now(),
-      });
-
-    if (input) input.value = '';
-    setHint('chat-hint', '');
-  } catch (e) {
-    console.error(e);
-    setHint('chat-hint', 'Could not send message.');
-  } finally {
-    if (sendBtn) sendBtn.disabled = false;
-  }
 }
 
 /* =========================
