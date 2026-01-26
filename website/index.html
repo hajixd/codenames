@@ -29,6 +29,8 @@
       <nav class="desktop-tabs" aria-label="Primary">
         <button class="tab active" data-panel="panel-home" type="button" id="tab-home-desktop">Home</button>
         <button class="tab" data-panel="panel-register" type="button" id="tab-register-desktop">Teams</button>
+        <button class="tab owner-only" data-panel="panel-requests" type="button" id="tab-requests-desktop" style="display:none;">Requests</button>
+        <button class="tab owner-only" data-panel="panel-settings" type="button" id="tab-settings-desktop" style="display:none;">Team Settings</button>
         <button class="tab" data-panel="panel-teams" type="button" id="tab-teams-desktop">Roster</button>
       </nav>
 
@@ -168,7 +170,28 @@
         </section>
 
 
-        <!-- Panel 3: Teams -->
+        
+        <!-- Panel 2b: Requests (Owner) -->
+        <section class="panel panel-register owner-only" id="panel-requests" style="display:none;">
+          <div class="panel-inner">
+            <h2>Requests</h2>
+            <p class="subtitle small">Review and approve join requests for your team.</p>
+            <span class="hint" id="requests-hint"></span>
+            <div id="requests-area" class="manage-area"></div>
+          </div>
+        </section>
+
+        <!-- Panel 2c: Team Settings (Owner) -->
+        <section class="panel panel-register owner-only" id="panel-settings" style="display:none;">
+          <div class="panel-inner">
+            <h2>Team Settings</h2>
+            <p class="subtitle small">Rename your team, manage members, and delete your team.</p>
+            <span class="hint" id="settings-hint"></span>
+            <div id="settings-area" class="manage-area"></div>
+          </div>
+        </section>
+
+<!-- Panel 3: Teams -->
         
         <section class="panel panel-teams" id="panel-teams">
           <div class="panel-inner">
@@ -191,6 +214,14 @@
         <button class="tab" data-panel="panel-register" id="tab-register-mobile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           <span>Register</span>
+        </button>
+        <button class="tab owner-only" data-panel="panel-requests" id="tab-requests-mobile" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v14H4z"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M4 10h16"/><path d="M8 14h4"/><path d="M8 18h8"/></svg>
+          <span>Requests</span>
+        </button>
+        <button class="tab owner-only" data-panel="panel-settings" id="tab-settings-mobile" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a7.9 7.9 0 0 0 .1-2l2-1.2-2-3.4-2.3.6a8 8 0 0 0-1.7-1l-.3-2.4h-4l-.3 2.4a8 8 0 0 0-1.7 1l-2.3-.6-2 3.4 2 1.2a7.9 7.9 0 0 0 .1 2l-2 1.2 2 3.4 2.3-.6a8 8 0 0 0 1.7 1l.3 2.4h4l.3-2.4a8 8 0 0 0 1.7-1l2.3.6 2-3.4-2-1.2z"/></svg>
+          <span>Settings</span>
         </button>
         <button class="tab" data-panel="panel-teams" id="tab-teams-mobile">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>

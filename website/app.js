@@ -299,23 +299,10 @@ function initForms() {
     handleJoinRequest();
   });
 
-  // Owner actions delegation
-  document.getElementById('manage-area')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
-
-    const action = btn.dataset.action;
-    const teamId = btn.dataset.teamId;
-    const reqId = btn.dataset.reqId;
-
-    if (!teamId) return;
-
-    if (action === 'accept') acceptRequest(teamId, reqId);
-    if (action === 'decline') declineRequest(teamId, reqId);
-    if (action === 'kick') kickMember(teamId, reqId);
-    if (action === 'rename-team') renameTeam(teamId);
-    if (action === 'delete-team') deleteTeam(teamId);
-  });
+  // Owner actions delegation (Manage / Requests / Settings)
+  bindOwnerActions('manage-area');
+  bindOwnerActions('requests-area');
+  bindOwnerActions('settings-area');
 
   // Member actions (leave team / cancel request)
   document.getElementById('my-status')?.addEventListener('click', (e) => {
@@ -363,6 +350,33 @@ function initForms() {
   }
 }
 
+
+
+function bindOwnerActions(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const teamId = btn.dataset.teamId;
+    const reqId = btn.dataset.reqId;
+    const inputId = btn.dataset.inputId;
+
+    if (!teamId) return;
+
+    const panel = el.closest('.panel');
+    const hintEl = panel ? panel.querySelector('.hint') : null;
+
+    if (action === 'accept') acceptRequest(teamId, reqId, hintEl);
+    if (action === 'decline') declineRequest(teamId, reqId, hintEl);
+    if (action === 'kick') kickMember(teamId, reqId, hintEl);
+    if (action === 'rename-team') renameTeam(teamId, inputId, hintEl);
+    if (action === 'delete-team') deleteTeam(teamId, hintEl);
+  });
+}
 async function handleCreateTeam() {
   const btn = document.getElementById('create-btn');
   const hint = document.getElementById('create-hint');
@@ -554,8 +568,24 @@ function autoLoadManagePanel(teamId) {
     .orderBy('requestedAt', 'asc')
     .onSnapshot((snap) => {
       const freshTeam = teamsCache.find(t => t.id === teamId) || team;
-      renderManageArea(teamId, freshTeam, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      renderOwnerViews(teamId, freshTeam, snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+}
+
+function renderOwnerViews(teamId, teamData, requests) {
+  // Legacy manage accordion area (kept for back-compat)
+  if (document.getElementById('manage-area')) {
+    renderManageArea(teamId, teamData, requests);
+  }
+
+  const team = teamsCache.find(t => t.id === teamId) || teamData;
+  if (!team) return;
+
+  const reqMount = document.getElementById('requests-area');
+  if (reqMount) reqMount.innerHTML = buildOwnerRequestsHTML(teamId, team, requests);
+
+  const setMount = document.getElementById('settings-area');
+  if (setMount) setMount.innerHTML = buildOwnerSettingsHTML(teamId, team, 'settings');
 }
 
 function renderManageArea(teamId, teamData, requests) {
@@ -563,108 +593,131 @@ function renderManageArea(teamId, teamData, requests) {
   if (!area) return;
 
   const team = teamsCache.find(t => t.id === teamId) || teamData;
+  if (!team) return;
+
+  // Remember active tab
+  const activeTab = area.dataset.activeTab || 'requests';
+  const requestsBadge = (requests && requests.length) ? `<span class=\"tab-badge\">${requests.length}</span>` : '';
+
+  const tabsHtml = `
+    <div class=\"manage-tabs\">
+      <button class=\"manage-tab ${activeTab === 'requests' ? 'active' : ''}\" data-tab=\"requests\">Requests${requestsBadge}</button>
+      <button class=\"manage-tab ${activeTab === 'settings' ? 'active' : ''}\" data-tab=\"settings\">Team Settings</button>
+    </div>
+  `;
+
+  const requestsTab = `
+    <div class=\"manage-tab-content ${activeTab === 'requests' ? 'active' : ''}\" data-tab-content=\"requests\">
+      ${buildOwnerRequestsHTML(teamId, team, requests)}
+    </div>
+  `;
+
+  const settingsTab = `
+    <div class=\"manage-tab-content ${activeTab === 'settings' ? 'active' : ''}\" data-tab-content=\"settings\">
+      ${buildOwnerSettingsHTML(teamId, team, 'manage')}
+    </div>
+  `;
+
+  area.innerHTML = tabsHtml + requestsTab + settingsTab;
+  area.dataset.activeTab = activeTab;
+
+  // Add tab click handlers
+  area.querySelectorAll('.manage-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tabName = tab.dataset.tab;
+      area.dataset.activeTab = tabName;
+
+      area.querySelectorAll('.manage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+      area.querySelectorAll('.manage-tab-content').forEach(c => c.classList.toggle('active', c.dataset.tabContent === tabName));
+    });
+  });
+}
+
+function buildOwnerRequestsHTML(teamId, team, requests) {
   const members = getMembers(team);
   const spotsLeft = Math.max(0, TEAM_SIZE - members.length);
 
-  const creatorDiscordLower = String(team.creatorDiscordLower || '').toLowerCase();
+  if (!Array.isArray(requests) || requests.length === 0) {
+    return `
+      <div class=\"tab-empty\">
+        <div class=\"tab-empty-icon\">📭</div>
+        <div class=\"tab-empty-text\">No pending requests</div>
+        <div class=\"tab-empty-sub\">When someone requests to join, they'll appear here</div>
+      </div>
+    `;
+  }
 
-  // Members list (with remove buttons)
+  const list = requests.map(r => {
+    const disabled = spotsLeft <= 0 ? 'disabled' : '';
+    const when = r.requestedAt?.toDate ? r.requestedAt.toDate() : null;
+    const timeAgo = when ? formatTimeAgo(when) : '';
+    return `
+      <div class=\"req-row\">
+        <div class=\"req-left\">
+          <div class=\"req-name\">${esc(r.name || 'Player')}</div>
+          <div class=\"req-meta\">@${esc(r.discord || r.discordLower || '')}${timeAgo ? ` • ${timeAgo}` : ''}</div>
+        </div>
+        <div class=\"req-actions\">
+          <button class=\"btn small success\" type=\"button\" data-action=\"accept\" data-team-id=\"${teamId}\" data-req-id=\"${esc(r.discordLower)}\" ${disabled}>Accept</button>
+          <button class=\"btn small danger\" type=\"button\" data-action=\"decline\" data-team-id=\"${teamId}\" data-req-id=\"${esc(r.discordLower)}\">Decline</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    ${spotsLeft <= 0 ? `<div class=\"tab-warning\">Team is full — decline requests or remove a member to make space.</div>` : ''}
+    <div class=\"req-list\">${list}</div>
+  `;
+}
+
+function buildOwnerSettingsHTML(teamId, team, suffix) {
+  const members = getMembers(team);
+  const spotsLeft = Math.max(0, TEAM_SIZE - members.length);
+  const creatorDiscordLower = String(team.creatorDiscordLower || '').toLowerCase();
+  const inputId = `rename-input-${suffix}`;
+
   const memberRows = members.map(m => {
     const d = sanitizeDiscord(m.discord || '');
     const dl = d.toLowerCase();
     const isOwner = dl === creatorDiscordLower;
     return `
-      <div class="member-row">
-        <div class="member-meta">
-          <div class="member-name">${esc(m.name || 'Player')}${isOwner ? ' <span class="pill">owner</span>' : ''}</div>
-          <div class="member-discord">@${esc(d || '—')}</div>
+      <div class=\"member-row\">
+        <div class=\"member-meta\">
+          <div class=\"member-name\">${esc(m.name || 'Player')}${isOwner ? ' <span class=\\"pill\\">owner</span>' : ''}</div>
+          <div class=\"member-discord\">@${esc(d || '—')}</div>
         </div>
-        ${isOwner ? '' : `<button class="btn small danger" type="button" data-action="kick" data-team-id="${teamId}" data-req-id="${esc(dl)}">Remove</button>`}
+        ${isOwner ? '' : `<button class=\"btn small danger\" type=\"button\" data-action=\"kick\" data-team-id=\"${teamId}\" data-req-id=\"${esc(dl)}\">Remove</button>`}
       </div>
     `;
   }).join('');
 
-  const membersTitle = `Team members <span class="pill">${members.length}/${TEAM_SIZE}</span>`;
-  const membersCard = `
-    <div class="manage-card">
-      <div class="manage-title">${membersTitle}</div>
-      <div class="members-list">${memberRows || '<div class="empty-state">No members found.</div>'}</div>
-      ${spotsLeft > 0 ? `<div class="small-note">${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} available</div>` : '<div class="small-note" style="color: var(--gold);">Team is full</div>'}
-    </div>
-  `;
-
-  // Team settings card (rename)
-  const settingsCard = `
-    <div class="manage-card">
-      <div class="manage-title">Team settings</div>
-      <div class="rename-form">
-        <label class="field">
-          <span class="label">Team name</span>
-          <input type="text" id="rename-input" class="input" value="${esc(team.teamName || '')}" placeholder="Enter team name">
-        </label>
-        <button class="btn small primary" type="button" data-action="rename-team" data-team-id="${teamId}" data-req-id="__">Save</button>
+  return `
+    <div class=\"settings-section\">
+      <div class=\"settings-title\">Team Name</div>
+      <div class=\"rename-form\">
+        <input type=\"text\" id=\"${inputId}\" class=\"input\" value=\"${esc(team.teamName || '')}\" placeholder=\"Enter team name\">
+        <button class=\"btn small primary\" type=\"button\" data-action=\"rename-team\" data-team-id=\"${teamId}\" data-req-id=\"__\" data-input-id=\"${inputId}\">Save</button>
       </div>
     </div>
-  `;
 
-  // Requests card
-  let requestsCard = '';
-  const pendingTitle = requests.length
-    ? `Pending requests <span class="pill pending">${requests.length}</span>`
-    : 'Pending requests';
+    <div class=\"settings-section\">
+      <div class=\"settings-title\">Members <span class=\"pill\">${members.length}/${TEAM_SIZE}</span></div>
+      <div class=\"members-list\">${memberRows}</div>
+      ${spotsLeft > 0 ? `<div class=\"small-note\">${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} available</div>` : '<div class=\"small-note\" style=\"color: var(--gold);\">Team is full</div>'}
+    </div>
 
-  if (!requests.length) {
-    requestsCard = `
-      <div class="manage-card">
-        <div class="manage-title">${pendingTitle}</div>
-        <div class="empty-state">No pending requests yet</div>
-      </div>
-    `;
-  } else {
-    const list = requests.map(r => {
-      const disabled = spotsLeft <= 0 ? 'disabled' : '';
-      const when = r.requestedAt?.toDate ? r.requestedAt.toDate() : null;
-      const timeAgo = when ? formatTimeAgo(when) : '';
-      return `
-        <div class="req-row">
-          <div class="req-left">
-            <div class="req-name">${esc(r.name || 'Player')}</div>
-            <div class="req-meta">@${esc(r.discord || r.discordLower || '')}${timeAgo ? ` • ${timeAgo}` : ''}</div>
-          </div>
-          <div class="req-actions">
-            <button class="btn small success" type="button" data-action="accept" data-team-id="${teamId}" data-req-id="${esc(r.discordLower)}" ${disabled}>Accept</button>
-            <button class="btn small danger" type="button" data-action="decline" data-team-id="${teamId}" data-req-id="${esc(r.discordLower)}">Decline</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    requestsCard = `
-      <div class="manage-card">
-        <div class="manage-title">${pendingTitle}</div>
-        ${spotsLeft <= 0 ? `<div class="small-note" style="margin-bottom:10px;">Team is full — decline requests or remove a member to make space.</div>` : ''}
-        <div class="req-list">${list}</div>
-      </div>
-    `;
-  }
-
-  // Danger zone
-  const dangerCard = `
-    <div class="manage-card danger">
-      <div class="manage-title">Danger zone</div>
-      <div class="danger-actions">
-        <button class="btn small danger" type="button" data-action="delete-team" data-team-id="${teamId}" data-req-id="__">Delete team</button>
-      </div>
-      <div class="small-note">Deleting your team cannot be undone.</div>
+    <div class=\"settings-section danger-section\">
+      <div class=\"settings-title danger-title\">Danger Zone</div>
+      <p class=\"danger-desc\">Once you delete your team, there is no going back. Please be certain.</p>
+      <button class=\"btn danger\" type=\"button\" data-action=\"delete-team\" data-team-id=\"${teamId}\" data-req-id=\"__\">Delete Team</button>
     </div>
   `;
-
-  area.innerHTML = membersCard + settingsCard + requestsCard + dangerCard;
 }
 
 
-async function acceptRequest(teamId, reqId) {
-  const hint = document.getElementById('manage-hint');
+async function acceptRequest(teamId, reqId, hintEl) {
+  const hint = hintEl || document.getElementById('manage-hint');
   hint.textContent = '';
 
   // Only owner can accept requests
@@ -719,8 +772,8 @@ async function acceptRequest(teamId, reqId) {
   }
 }
 
-async function declineRequest(teamId, reqId) {
-  const hint = document.getElementById('manage-hint');
+async function declineRequest(teamId, reqId, hintEl) {
+  const hint = hintEl || document.getElementById('manage-hint');
   hint.textContent = '';
 
   // Only owner can decline requests
@@ -826,6 +879,8 @@ function applyModeUI(mode) {
 
   setModeIndicator(mode);
 
+  updateOwnerNavVisibility();
+
   // Toggle accordions in register panel
   const createAcc = document.getElementById('create-accordion');
   const joinAcc = document.getElementById('join-accordion');
@@ -842,6 +897,20 @@ function applyModeUI(mode) {
   }
 }
 
+
+
+function updateOwnerNavVisibility() {
+  const show = !!(roleState && roleState.isCreator && roleState.creatorTeamId);
+  document.querySelectorAll('.owner-only').forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+
+  // If user is viewing an owner panel but no longer owner, bounce back
+  const active = document.querySelector('.panel.active');
+  if (!show && active && (active.id === 'panel-requests' || active.id === 'panel-settings')) {
+    setActivePanel('panel-register');
+  }
+}
 function computeRoleState(teams) {
   const u = getStoredUser();
   const memberTeam = u.discordLower ? teams.find(t => isMemberOfTeam(t, u.discordLower)) : null;
@@ -910,6 +979,8 @@ function computeRoleState(teams) {
   if (roleState.isCreator && roleState.creatorTeamId) {
     autoLoadManagePanel(roleState.creatorTeamId);
   }
+
+  updateOwnerNavVisibility();
 }
 
 function safeLSGet(key) {
@@ -1104,8 +1175,8 @@ async function leaveTeam(teamId, discordLower) {
 }
 
 
-async function kickMember(teamId, discordLower) {
-  const hint = document.getElementById('manage-hint');
+async function kickMember(teamId, discordLower, hintEl) {
+  const hint = hintEl || document.getElementById('manage-hint');
   if (hint) hint.textContent = '';
 
   // Only owner can kick members
@@ -1144,8 +1215,8 @@ async function kickMember(teamId, discordLower) {
   }
 }
 
-async function deleteTeam(teamId) {
-  const hint = document.getElementById('manage-hint');
+async function deleteTeam(teamId, hintEl) {
+  const hint = hintEl || document.getElementById('manage-hint');
   if (hint) hint.textContent = '';
 
   // Only owner can delete the team
@@ -1184,8 +1255,8 @@ async function deleteTeam(teamId) {
   }
 }
 
-async function renameTeam(teamId) {
-  const hint = document.getElementById('manage-hint');
+async function renameTeam(teamId, inputId, hintEl) {
+  const hint = hintEl || document.getElementById('manage-hint');
   if (hint) hint.textContent = '';
 
   // Only owner can rename the team
@@ -1194,7 +1265,7 @@ async function renameTeam(teamId) {
     return;
   }
 
-  const input = document.getElementById('rename-input');
+  const input = document.getElementById(inputId || 'rename-input-manage') || document.getElementById('rename-input') ;
   const newName = input?.value.trim() || '';
 
   if (!newName) {

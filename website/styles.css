@@ -1224,3 +1224,120 @@ body.mode-joiner .only-joiner{ display:block; }
   font-size: 11px;
   padding: 3px 8px;
 }
+
+/* ==================== OWNER NAV + MANAGE TABS ==================== */
+
+.manage-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px 14px 14px;
+}
+
+.manage-tab {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.manage-tab.active {
+  background: rgba(59,130,246,0.18);
+  border-color: rgba(59,130,246,0.35);
+}
+
+.tab-badge {
+  background: rgba(250,204,21,0.18);
+  border: 1px solid rgba(250,204,21,0.35);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.manage-tab-content { display: none; padding: 0 14px 14px 14px; }
+.manage-tab-content.active { display: block; }
+
+.tab-empty {
+  padding: 18px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.03);
+  text-align: center;
+}
+
+.tab-empty-icon { font-size: 24px; margin-bottom: 6px; }
+.tab-empty-text { font-weight: 900; }
+.tab-empty-sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+
+.tab-warning {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(250,204,21,0.25);
+  background: rgba(250,204,21,0.08);
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.req-left { min-width: 0; }
+.req-meta { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+
+.settings-section {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.settings-title {
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.rename-form { display: flex; gap: 10px; align-items: center; }
+.rename-form .input { flex: 1; }
+
+.members-list { display: flex; flex-direction: column; gap: 10px; }
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.member-name { font-weight: 900; }
+.member-discord { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+.small-note { color: var(--text-dim); font-size: 13px; margin-top: 10px; }
+
+.btn.success {
+  background: rgba(34,197,94,0.14);
+  border-color: rgba(34,197,94,0.28);
+}
+
+.btn.danger,
+.btn.small.danger {
+  background: rgba(248,113,113,0.12);
+  border-color: rgba(248,113,113,0.28);
+}
+
+.danger-section { border-color: rgba(248,113,113,0.28); }
+.danger-title { color: #f87171; }
+.danger-desc { color: var(--text-dim); font-size: 13px; margin: 0 0 10px 0; }
