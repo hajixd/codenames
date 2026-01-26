@@ -30,6 +30,7 @@ const LS_USER_NAME = 'ct_userName_v1';
 let teamsCache = [];
 let playersCache = [];
 let openTeamId = null;
+let mergeNamesInFlight = new Set();
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
@@ -74,6 +75,206 @@ function nameToAccountId(name) {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 64);
+}
+
+function tsToMs(ts) {
+  if (!ts) return Number.POSITIVE_INFINITY;
+  try {
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+  } catch (_) {}
+  return Number.POSITIVE_INFINITY;
+}
+
+function autoMergeDuplicatePlayers(players) {
+  // Best-effort background cleanup: if duplicates exist (multiple docs with same name),
+  // merge them to the earliest-created doc.
+  const groups = new Map();
+  for (const p of (players || [])) {
+    const key = nameToAccountId((p?.name || '').trim());
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+
+  for (const [key, list] of groups.entries()) {
+    if (!list || list.length < 2) continue;
+    if (mergeNamesInFlight.has(key)) continue;
+    mergeNamesInFlight.add(key);
+    // Fire and forget; listener will re-render on changes.
+    mergeDuplicatePlayersForNameKey(key)
+      .catch(e => console.warn('Auto-merge failed (best-effort)', e))
+      .finally(() => mergeNamesInFlight.delete(key));
+  }
+}
+
+async function mergeDuplicatePlayersForName(name) {
+  const key = nameToAccountId((name || '').trim());
+  if (!key) return;
+  return mergeDuplicatePlayersForNameKey(key);
+}
+
+async function mergeDuplicatePlayersForNameKey(nameKey) {
+  const key = String(nameKey || '').trim();
+  if (!key) return;
+
+  // The app is small; simplest robust approach is to fetch all players and filter client-side.
+  const snap = await db.collection('players').get();
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const same = all.filter(p => nameToAccountId((p?.name || '').trim()) === key);
+  if (same.length < 2) return;
+
+  // Pick the earliest-created doc as canonical.
+  same.sort((a, b) => {
+    const ta = tsToMs(a.createdAt);
+    const tb = tsToMs(b.createdAt);
+    if (ta !== tb) return ta - tb;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  const canonical = same[0];
+  const displayName = (canonical?.name || '').trim();
+
+  for (let i = 1; i < same.length; i++) {
+    const dupe = same[i];
+    if (!dupe?.id || dupe.id === canonical.id) continue;
+    await mergePlayerIntoCanonical({
+      nameKey: key,
+      displayName,
+      canonicalId: canonical.id,
+      duplicateId: dupe.id,
+    });
+  }
+}
+
+async function mergePlayerIntoCanonical({ nameKey, displayName, canonicalId, duplicateId }) {
+  const key = String(nameKey || '').trim();
+  const keepId = String(canonicalId || '').trim();
+  const dropId = String(duplicateId || '').trim();
+  if (!key || !keepId || !dropId || keepId === dropId) return;
+
+  const keepRef = db.collection('players').doc(keepId);
+  const dropRef = db.collection('players').doc(dropId);
+  const namesRef = db.collection(NAME_REGISTRY_COLLECTION).doc(key);
+
+  // 1) Merge player docs (invites etc.)
+  try {
+    await db.runTransaction(async (tx) => {
+      const [keepSnap, dropSnap, nameSnap] = await Promise.all([
+        tx.get(keepRef),
+        tx.get(dropRef),
+        tx.get(namesRef),
+      ]);
+      if (!dropSnap.exists) {
+        // Still ensure name registry points to the canonical.
+        tx.set(namesRef, {
+          accountId: keepId,
+          name: (displayName || '').trim(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          ...(nameSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+        }, { merge: true });
+        return;
+      }
+
+      const keep = keepSnap.exists ? ({ id: keepSnap.id, ...keepSnap.data() }) : null;
+      const drop = { id: dropSnap.id, ...dropSnap.data() };
+
+      const mergeInvites = (a, b) => {
+        const out = [];
+        const seen = new Set();
+        for (const x of ([]).concat(a || [], b || [])) {
+          const tid = String(x?.teamId || '');
+          if (!tid) continue;
+          if (seen.has(tid)) continue;
+          seen.add(tid);
+          out.push(x);
+        }
+        return out;
+      };
+
+      const nextName = ((keep?.name || drop?.name || displayName || '').trim() || '—');
+      const nextInvites = mergeInvites(keep?.invites, drop?.invites);
+
+      tx.set(keepRef, {
+        name: nextName,
+        nameKey: key,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ...(keep?.createdAt ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() }),
+        invites: nextInvites,
+      }, { merge: true });
+
+      // Force the registry to point at the earliest account.
+      tx.set(namesRef, {
+        accountId: keepId,
+        name: nextName,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ...(nameSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      }, { merge: true });
+
+      tx.delete(dropRef);
+    });
+  } catch (e) {
+    console.warn('Could not merge player docs', e);
+  }
+
+  // 2) Replace duplicate id with canonical id across all teams (members/pending/creator).
+  for (const t of (teamsCache || [])) {
+    const teamRef = db.collection('teams').doc(t.id);
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(teamRef);
+        if (!snap.exists) return;
+        const team = { id: snap.id, ...snap.data() };
+
+        let changed = false;
+
+        const nextMembers = getMembers(team).map(m => {
+          const mName = (m?.name || '').trim();
+          const mKey = nameToAccountId(mName);
+          if (m?.userId === dropId || (mKey && mKey === key)) {
+            if (m?.userId !== keepId) changed = true;
+            return { userId: keepId, name: mName || displayName || '—' };
+          }
+          return m;
+        });
+
+        const nextPending = getPending(team).map(r => {
+          const rName = (r?.name || '').trim();
+          const rKey = nameToAccountId(rName);
+          if (r?.userId === dropId || (rKey && rKey === key)) {
+            if (r?.userId !== keepId) changed = true;
+            return { ...r, userId: keepId, name: rName || displayName || '—' };
+          }
+          return r;
+        });
+
+        let nextCreatorUserId = team.creatorUserId;
+        let nextCreatorName = team.creatorName;
+        const creatorKey = nameToAccountId((team.creatorName || '').trim());
+        if (team.creatorUserId === dropId || (creatorKey && creatorKey === key)) {
+          if (team.creatorUserId !== keepId) changed = true;
+          nextCreatorUserId = keepId;
+          nextCreatorName = (displayName || team.creatorName || '').trim();
+        }
+
+        if (!changed) return;
+        tx.update(teamRef, {
+          members: dedupeRosterByAccount(nextMembers),
+          pending: dedupeRosterByAccount(nextPending),
+          creatorUserId: nextCreatorUserId,
+          creatorName: nextCreatorName,
+        });
+      });
+    } catch (e) {
+      console.warn('Could not update team during merge', e);
+    }
+  }
+
+  // 3) If this device was on the duplicate account, hop to the canonical one.
+  const myId = getLocalAccountId();
+  const myNameKey = nameToAccountId(getUserName());
+  if (myId === dropId && myNameKey === key) {
+    safeLSSet(LS_USER_ID, keepId);
+  }
 }
 
 function teamNameToKey(name) {
@@ -170,6 +371,14 @@ async function setUserName(name) {
 
   // Persist "signed up" players to Firestore so they can appear in the Players tab.
   await upsertPlayerProfile(getUserId(), getUserName());
+
+  // If older/buggy sessions created multiple player docs with the same name, merge them
+  // to the earliest-created one. This prevents "two accounts with the same name".
+  try {
+    await mergeDuplicatePlayersForName(nextName);
+  } catch (e) {
+    console.warn('Duplicate-player merge failed (best-effort)', e);
+  }
 
   // If user is a member/creator, update their stored display name in their team doc (best-effort)
   const st = computeUserState(teamsCache);
@@ -390,6 +599,9 @@ function listenToPlayers() {
     .orderBy('name', 'asc')
     .onSnapshot((snapshot) => {
       playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Best-effort: if prior versions created duplicate player docs for the same name,
+      // auto-merge them to the earliest-created doc.
+      autoMergeDuplicatePlayers(playersCache);
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
     }, (err) => {
@@ -814,6 +1026,7 @@ async function upsertPlayerProfile(userId, name) {
       if (!snap.exists) {
         tx.set(ref, {
           name: n,
+          nameKey: nameToAccountId(n),
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           invites: []
@@ -821,6 +1034,7 @@ async function upsertPlayerProfile(userId, name) {
       } else {
         tx.update(ref, {
           name: n,
+          nameKey: nameToAccountId(n),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
