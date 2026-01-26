@@ -1642,7 +1642,13 @@ button:disabled{
   backdrop-filter: blur(10px);
 }
 
-.name-dock-saved{ display:flex; align-items: center; justify-content: space-between; gap: 12px; }
+.name-dock-saved{ display:block; }
+.name-saved-stack{
+  display:flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
 .name-dock-label{ color: var(--text-dim); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
 .name-dock-value{ font-size: 16px; font-weight: 700; cursor:pointer; user-select:none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .name-dock-form .input{ margin-bottom: 0; }
@@ -1667,6 +1673,22 @@ button:disabled{
 }
 .name-dock-form .hint{ font-size: 12px; }
 
+/* Logout button sits under the name on Home (matches input width) */
+.btn.logout{
+  width: 100%;
+  justify-content: center;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: rgba(239,68,68,0.18);
+  border: 1px solid rgba(239,68,68,0.28);
+  color: #fff;
+  font-weight: 800;
+}
+.btn.logout:hover{
+  background: rgba(239,68,68,0.26);
+  border-color: rgba(239,68,68,0.36);
+}
+
 
 @media (max-width: 768px){
   /* Keep name always reachable on Home */
@@ -1679,7 +1701,9 @@ button:disabled{
 
 @media (min-width: 769px){
   /* On desktop, rely on top-right header name; keep dock subtle */
-  #panel-home .name-dock{ max-width: 520px; margin-top: auto; }
+  #panel-home .home-hero{ margin-top: 28px; }
+  /* Pull the name card up a bit so it's not hugging the bottom */
+  #panel-home .name-dock{ max-width: 520px; margin-top: 22px; margin-bottom: 6px; }
 }
 
 /* Teams page: sharp clickable list */

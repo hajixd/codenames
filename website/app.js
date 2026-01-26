@@ -497,6 +497,7 @@ function initName() {
   const form = document.getElementById('name-form');
   const input = document.getElementById('name-input');
   const hint = document.getElementById('name-hint');
+  const logoutBtn = document.getElementById('logout-btn');
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -507,6 +508,11 @@ function initName() {
     }
     if (hint) hint.textContent = '';
     await setUserName(v);
+  });
+
+  // Only way to unlink a device from the currently linked name/account.
+  logoutBtn?.addEventListener('click', () => {
+    logoutLocal();
   });
 
   // Double-click editing (works on desktop + mobile)
@@ -2024,4 +2030,13 @@ function safeLSGet(key) {
 
 function safeLSSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
+}
+
+function logoutLocal() {
+  // Local-only "logout": clears this device's saved name + id so it is no longer
+  // linked to any shared name-based account.
+  try { localStorage.removeItem(LS_USER_NAME); } catch (_) {}
+  try { localStorage.removeItem(LS_USER_ID); } catch (_) {}
+  // Full refresh keeps the app state consistent (listeners, cached state, theme).
+  try { window.location.reload(); } catch (_) {}
 }
