@@ -428,19 +428,22 @@ function renderPlayers(players, teams) {
       const inviteDisabled = alreadyInvitedByMe || !st.name;
 
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
+
+      // Right-side status pill: either "Available" or the player's team name styled with the team color.
+      const teamPillStyle = teamColor
+        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
+        : '';
+      const statusPillHtml = memberTeam
+        ? `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`
+        : `<span class="player-tag ok">Available</span>`;
 
       return `
         <div class="player-row player-directory-row">
           <div class="player-left">
             <span class="player-name" ${nameStyle}>${esc(name)}</span>
-            <div class="player-meta">
-              <span class="player-meta-label">Team:</span>
-              <span class="player-team-name" ${teamStyle}>${esc(teamName)}</span>
-            </div>
           </div>
           <div class="player-right">
-            ${showAvailable ? `<span class="player-tag ok">Available</span>` : ''}
+            ${statusPillHtml}
             ${showInvite ? `
               <button class="btn primary small" type="button" data-invite="${esc(uid)}" ${inviteDisabled ? 'disabled' : ''}>
                 ${alreadyInvitedByMe ? 'Invited' : 'Invite'}
