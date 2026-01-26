@@ -5,7 +5,7 @@
   - My Team: create team, rename (creator), kick (creator), requests (creator)
 */
 
-const MAX_TEAMS = 6;
+const MAX_TEAMS = 8;
 const TEAM_SIZE = 3;
 
 // Firebase config
@@ -63,6 +63,7 @@ function initTabs() {
    User identity (device-local)
 ========================= */
 const NAME_REGISTRY_COLLECTION = 'names';
+const TEAMNAME_REGISTRY_COLLECTION = 'teamNames';
 function nameToAccountId(name) {
   const n = String(name || '').trim().toLowerCase();
   if (!n) return '';
@@ -73,6 +74,12 @@ function nameToAccountId(name) {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 64);
+}
+
+function teamNameToKey(name) {
+  // Key used to enforce unique team names (case-insensitive, space/punct normalized).
+  // Same normalization as account ids.
+  return nameToAccountId(name);
 }
 
 function getLocalAccountId() {
@@ -1233,7 +1240,11 @@ function initMyTeamControls() {
     onCommit: async (v) => {
       const st = computeUserState(teamsCache);
       if (!st.isCreator || !st.teamId) return;
-      await db.collection('teams').doc(st.teamId).update({ teamName: v });
+      try {
+      await renameTeamUnique(st.teamId, v);
+    } catch (e) {
+      setHint('teams-hint', e?.message || 'Could not rename team.');
+    }
     }
   });
 
@@ -1480,14 +1491,36 @@ async function handleCreateTeam() {
   setHint('create-team-hint', 'Creating…');
 
   try {
-    await db.collection('teams').add({
-      teamName,
-      teamColor,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      creatorUserId: st.userId,
-      creatorName: st.name,
-      members: [{ userId: st.userId, name: st.name }],
-      pending: []
+    const teamKey = teamNameToKey(teamName);
+    if (!teamKey) throw new Error('Enter a team name.');
+
+    const teamsCol = db.collection('teams');
+    const teamRef = teamsCol.doc(); // pre-generate id for registry
+    const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(teamKey);
+
+    await db.runTransaction(async (tx) => {
+      const nameSnap = await tx.get(nameRef);
+      if (nameSnap.exists) {
+        const existingTeamId = String(nameSnap.data()?.teamId || '').trim();
+        if (existingTeamId) throw new Error('That team name is already taken.');
+      }
+
+      tx.set(teamRef, {
+        teamName,
+        teamColor,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        creatorUserId: st.userId,
+        creatorName: st.name,
+        members: [{ userId: st.userId, name: st.name }],
+        pending: []
+      });
+
+      tx.set(nameRef, {
+        teamId: teamRef.id,
+        teamName,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ...(nameSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      }, { merge: true });
     });
 
     setHint('create-team-hint', 'Created!');
@@ -1496,7 +1529,7 @@ async function handleCreateTeam() {
     activatePanel('panel-myteam');
   } catch (e) {
     console.error(e);
-    setHint('create-team-hint', 'Could not create team.');
+    setHint('create-team-hint', (e && e.message) ? e.message : 'Could not create team.');
   }
 }
 
@@ -1518,14 +1551,75 @@ async function leaveTeam(teamId, userId) {
 }
 
 async function deleteTeam(teamId) {
+  const tid = String(teamId || '').trim();
+  if (!tid) return;
+
+  const teamRef = db.collection('teams').doc(tid);
+
   try {
-    await db.collection('teams').doc(teamId).delete();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(teamRef);
+      if (!snap.exists) return;
+      const t = { id: snap.id, ...snap.data() };
+      const key = teamNameToKey(String(t.teamName || '').trim());
+      if (key) {
+        const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+        const nameSnap = await tx.get(nameRef);
+        const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+        if (mappedId === tid) tx.delete(nameRef);
+      }
+      tx.delete(teamRef);
+    });
+
     closeRequestsModal();
     activatePanel('panel-teams');
   } catch (e) {
     console.error(e);
     setHint('teams-hint', e?.message || 'Could not delete team.');
   }
+}
+
+
+async function renameTeamUnique(teamId, nextName) {
+  const tid = String(teamId || '').trim();
+  const name = (nextName || '').trim();
+  if (!tid || !name) return;
+
+  const teamRef = db.collection('teams').doc(tid);
+  const nextKey = teamNameToKey(name);
+  if (!nextKey) throw new Error('Enter a team name.');
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(teamRef);
+    if (!snap.exists) throw new Error('Team not found.');
+    const t = { id: snap.id, ...snap.data() };
+    const prevName = String(t.teamName || '').trim();
+    const prevKey = teamNameToKey(prevName);
+
+    const nextRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(nextKey);
+    const prevRef = (prevKey && prevKey !== nextKey) ? db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(prevKey) : null;
+
+    const nextSnap = await tx.get(nextRef);
+    if (nextSnap.exists) {
+      const existingTeamId = String(nextSnap.data()?.teamId || '').trim();
+      if (existingTeamId && existingTeamId !== tid) throw new Error('That team name is already taken.');
+    }
+
+    tx.update(teamRef, { teamName: name });
+
+    tx.set(nextRef, {
+      teamId: tid,
+      teamName: name,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      ...(nextSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+    }, { merge: true });
+
+    if (prevRef) {
+      const prevSnap = await tx.get(prevRef);
+      const prevTeamId = prevSnap.exists ? String(prevSnap.data()?.teamId || '').trim() : '';
+      if (prevTeamId === tid) tx.delete(prevRef);
+    }
+  });
 }
 
 /* =========================
