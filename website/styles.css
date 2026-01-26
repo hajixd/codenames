@@ -15,6 +15,8 @@
   --green: #22c55e;
   --gold: #facc15;
   --red: #ef4444;
+  /* Consistent control sizing (matches header name box) */
+  --namebox-w: 160px;
   /* Team theme (set dynamically) */
   --team-accent: transparent;
   --team-glow: rgba(59,130,246,0);
@@ -38,8 +40,9 @@ body {
 body.has-team-color::after{
   content:"";
   position: fixed;
-  inset: 6px;
-  border-radius: 20px;
+  /* Hug the viewport edges with squared corners */
+  inset: 1px;
+  border-radius: 0px;
   border: 1px solid var(--team-glow);
   box-shadow: 0 0 14px var(--team-glow);
   pointer-events:none;
@@ -1226,12 +1229,13 @@ body.mode-joiner .only-joiner{ display:block; }
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  padding: 12px;
+  /* Slightly slimmer + more separation for readability */
+  padding: 9px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
 }
-.member-row + .member-row { margin-top: 8px; }
+.member-row + .member-row { margin-top: 12px; }
 .member-meta{
   display:flex;
   flex-direction:column;
@@ -1475,6 +1479,8 @@ body.mode-joiner .only-joiner{ display:block; }
   border:1px solid var(--border);
   background: rgba(255,255,255,0.04);
   border-radius:999px;
+  min-width: var(--namebox-w);
+  text-align: right;
 }
 
 .header-team{
@@ -1487,10 +1493,10 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 
 .header-user-input{
-  width:150px;
+  width: var(--namebox-w);
   font-size:12px;
-  padding:4px 10px;
-  height: 28px;
+  padding:3px 10px;
+  height: 24px;
 }
 
 .name-card{
@@ -1584,6 +1590,24 @@ button:disabled{
 
 .home-hero{ margin-bottom: 14px; }
 .home-title{ font-size: 30px; letter-spacing: 0.2px; }
+
+/* Member boxes in modals + My Team: give them room and keep them slim */
+.players-list{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.player-row{
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+/* Make team action buttons match the header name box width */
+#team-modal-join{
+  width: var(--namebox-w);
+  justify-content: center;
+}
 
 /* Name dock: bottom on mobile, unobtrusive card on desktop */
 .name-dock{
