@@ -603,7 +603,7 @@ function updateQuickRulesUI(game) {
   // Lobby hint
   if (hintEl) {
     if (!myTeam) {
-      hintEl.textContent = 'Game starts when both teams agree on rules and are fully ready.';
+      hintEl.textContent = '';
     } else if (pending) {
       hintEl.textContent = canAccept
         ? 'New rules offered — accept (or counter-offer) in Settings.'
@@ -611,7 +611,7 @@ function updateQuickRulesUI(game) {
     } else if (!agreed) {
       hintEl.textContent = 'Open Settings and offer rules to the other team.';
     } else {
-      hintEl.textContent = 'Game starts when both teams agree on rules and are fully ready.';
+      hintEl.textContent = '';
     }
   }
 

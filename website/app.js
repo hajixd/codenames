@@ -195,13 +195,6 @@ function initLaunchScreen() {
     logoutLocal();
   });
 
-  wireInlineEdit({
-    displayEl: document.getElementById('launch-name-saved-display'),
-    inputEl: document.getElementById('launch-name-saved-input'),
-    getValue: () => getUserName(),
-    onCommit: (v) => setUserName(v),
-  });
-
   refreshNameUI();
 }
 
@@ -1650,7 +1643,7 @@ function renderTeams(teams) {
       <button class="team-list-item ${isMine ? 'is-mine' : ''}" type="button" data-team="${esc(t.id)}">
         <div class="team-list-left">
           <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(t.teamName || 'Unnamed')}</span></div>
-          <div class="team-list-members">${esc(memberNames)}</div>
+          <div class="team-list-members" ${nameStyle}>${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
           <div class="team-list-count">${members.length}/${TEAM_MAX}</div>
