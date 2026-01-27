@@ -4063,14 +4063,14 @@ button.player-tag.pill-action:disabled{
 }
 
 .name-change-modal-card {
-  position: fixed;
-  top: 45%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: fixed !important;
+  top: 45% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
   z-index: 1000;
   width: 90%;
   max-width: 280px;
-  margin-top: 0;
+  margin: 0 !important;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -4079,13 +4079,11 @@ button.player-tag.pill-action:disabled{
 
 /* Name Change Modal animation positioning fix */
 .name-change-modal.modal-open .name-change-modal-card {
-  transform: translate(-50%, -50%) scale(1);
-  margin-top: 0;
+  transform: translate(-50%, -55%) scale(1) !important;
 }
 
 .name-change-modal:not(.modal-open) .name-change-modal-card {
-  transform: translate(-50%, -50%) scale(0.95);
-  margin-top: 0;
+  transform: translate(-50%, -55%) scale(0.95) !important;
 }
 
 /* Name change form styling */
@@ -4116,14 +4114,14 @@ button.player-tag.pill-action:disabled{
 }
 
 .teammates-modal-card {
-  position: fixed;
-  top: 45%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: fixed !important;
+  top: 45% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
   z-index: 1000;
   width: 90%;
   max-width: 300px;
-  margin-top: 0;
+  margin: 0 !important;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -4132,13 +4130,11 @@ button.player-tag.pill-action:disabled{
 
 /* Teammates Modal animation positioning fix */
 .teammates-modal.modal-open .teammates-modal-card {
-  transform: translate(-50%, -50%) scale(1);
-  margin-top: 0;
+  transform: translate(-50%, -55%) scale(1) !important;
 }
 
 .teammates-modal:not(.modal-open) .teammates-modal-card {
-  transform: translate(-50%, -50%) scale(0.95);
-  margin-top: 0;
+  transform: translate(-50%, -55%) scale(0.95) !important;
 }
 
 .teammates-list {
