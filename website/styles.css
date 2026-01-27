@@ -1487,18 +1487,23 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 
 .header-pill{
+  appearance: none;
+  border: none;
   display:inline-flex;
   align-items:center;
   gap:6px;
   background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 11px;
-  transition: background 0.15s ease;
+  font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .header-pill:hover{
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
 }
 
 .header-pill-label{
@@ -2584,7 +2589,7 @@ body.mode-joiner .only-joiner{ display:block; }
   -webkit-overflow-scrolling: touch;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   padding: 16px 12px;
 }
 .modal-backdrop{
@@ -2596,7 +2601,8 @@ body.mode-joiner .only-joiner{ display:block; }
 .modal-card{
   position: relative;
   width: min(560px, calc(100vw - 24px));
-  margin: 64px 0 16px;
+  margin: 0;
+  margin-top: -5vh;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -2623,6 +2629,7 @@ body.mode-joiner .only-joiner{ display:block; }
 #quick-settings-modal .modal-card{
   background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
   margin: 0;
+  margin-top: -5vh;
 }
 #quick-settings-modal .modal-head{
   background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(168,85,247,0.14));
@@ -2662,7 +2669,8 @@ body.mode-joiner .only-joiner{ display:block; }
   .modal{ padding: 10px 10px; }
   .modal-card{
     width: min(560px, calc(100vw - 16px));
-    margin: 10px 0 14px;
+    margin: 0;
+    margin-top: -5vh;
     max-height: calc(100vh - 24px);
   }
 }
@@ -2674,7 +2682,7 @@ body.mode-joiner .only-joiner{ display:block; }
 
 @media (max-width: 520px){
   .modal{ padding: 10px; }
-  .modal-card{ margin: 54px 0 12px; max-height: calc(100vh - 86px); }
+  .modal-card{ margin: 0; margin-top: -5vh; max-height: calc(100vh - 86px); }
 }
 
 @media (min-width: 901px){
@@ -3885,7 +3893,7 @@ button.player-tag.pill-action:disabled{
 
 .online-modal-card {
   position: fixed;
-  top: 50%;
+  top: 45%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1000;
@@ -4027,15 +4035,65 @@ button.player-tag.pill-action:disabled{
 }
 
 /* Name Change Modal */
+.name-change-modal .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 999;
+}
+
 .name-change-modal-card {
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
   width: 90%;
   max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+/* Name Change Modal animation positioning fix */
+.name-change-modal.modal-open .name-change-modal-card {
+  transform: translate(-50%, -55%) scale(1);
+}
+
+.name-change-modal:not(.modal-open) .name-change-modal-card {
+  transform: translate(-50%, -55%) scale(0.95);
 }
 
 /* Teammates Modal */
+.teammates-modal .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 999;
+}
+
 .teammates-modal-card {
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
   width: 90%;
   max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+/* Teammates Modal animation positioning fix */
+.teammates-modal.modal-open .teammates-modal-card {
+  transform: translate(-50%, -55%) scale(1);
+}
+
+.teammates-modal:not(.modal-open) .teammates-modal-card {
+  transform: translate(-50%, -55%) scale(0.95);
 }
 
 .teammates-list {
@@ -4147,7 +4205,7 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-modal-card {
   position: fixed;
-  top: 50%;
+  top: 45%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1000;
@@ -4431,20 +4489,20 @@ body.tournament.has-team-color .btn.primary:hover {
 
 /* Settings modal specific positioning fix */
 .settings-modal.modal-open .settings-modal-card {
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(-50%, -55%) scale(1);
 }
 
 .settings-modal:not(.modal-open) .settings-modal-card {
-  transform: translate(-50%, -50%) scale(0.95);
+  transform: translate(-50%, -55%) scale(0.95);
 }
 
 /* Online modal specific positioning fix */
 .online-modal.modal-open .online-modal-card {
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(-50%, -55%) scale(1);
 }
 
 .online-modal:not(.modal-open) .online-modal-card {
-  transform: translate(-50%, -50%) scale(0.95);
+  transform: translate(-50%, -55%) scale(0.95);
 }
 
 /* Card hover animations */
