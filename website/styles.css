@@ -2205,7 +2205,7 @@ body.quickplay .main-content {
   width: 100%;
   max-width: 520px;
   /* Slightly lower on the choose screen */
-  margin: 52px auto 0;
+  margin: 84px auto 0;
   align-self: center;
   text-align: center;
 }
@@ -2351,7 +2351,7 @@ button:disabled{
 /* Nudge the Tournament Home hero area up on desktop (better vertical balance) */
 @media (min-width: 769px){
   body.tournament #panel-home .panel-inner{
-    transform: translateY(-34px);
+    transform: translateY(-74px);
   }
 }
 
