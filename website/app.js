@@ -108,12 +108,14 @@ function enterAppFromLaunch(mode) {
 
   // Default: leave launch state.
   document.body.classList.remove('launch');
+  document.body.classList.remove('tournament');
 
   // QUICK PLAY
   // - Full-screen lobby/game
-  // - No app header/tabs visible
+  // - No tabs (top band stays)
   if (mode === 'quick') {
     document.body.classList.add('quickplay');
+    document.body.classList.remove('tournament');
     switchToPanel('panel-game');
     try {
       if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
@@ -125,6 +127,7 @@ function enterAppFromLaunch(mode) {
   // - Go to the tournament home tab
   // - Normal navigation visible
   document.body.classList.remove('quickplay');
+  document.body.classList.add('tournament');
   switchToPanel('panel-home');
 }
 
@@ -922,7 +925,10 @@ function applyTeamThemeFromState(st) {
   const raw = st?.team?.teamColor;
   const color = isValidHexColor(raw) ? raw : (st?.team ? '#3b82f6' : null);
 
-  if (color) {
+  // Only show team chrome (team text + glow outline) while in Tournament.
+  const isTournament = body?.classList.contains('tournament');
+
+  if (color && isTournament) {
     body?.classList.add('has-team-color');
     root.style.setProperty('--team-accent', color);
     // Brighter team outline

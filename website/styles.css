@@ -38,7 +38,7 @@ body {
 }
 
 /* Subtle team glow frame */
-body.has-team-color::after{
+body.tournament.has-team-color::after{
   content:"";
   position: fixed;
   /* Hug the viewport edges with squared corners */
@@ -53,8 +53,11 @@ body.has-team-color::after{
 }
 
 /* Team accent text (only when you're on a team) */
-body.has-team-color .team-accent{ color: var(--team-accent); }
-body:not(.has-team-color) .team-accent{ color: var(--text-dim); }
+body.tournament.has-team-color .team-accent{ color: var(--team-accent); }
+body:not(.tournament) .team-accent{ color: var(--text-dim); }
+
+/* Show team header line only while in Tournament */
+body:not(.tournament) .header-team-line{ display:none !important; }
 
 .app {
   height: 100%;
@@ -2094,8 +2097,7 @@ body.launch .main-content {
   display: none !important;
 }
 
-/* Quick Play should feel like a full-screen experience (no tabs/header) */
-body.quickplay .app-header,
+/* Quick Play: keep the top band, but hide navigation tabs */
 body.quickplay .desktop-tabs,
 body.quickplay .mobile-tabs {
   display: none !important;
