@@ -3757,18 +3757,15 @@ function renderOnlineUsersList() {
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : 'No team';
+      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamPillStyle = teamColor
-        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
-        : '';
+      const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
-          <div class="online-user-name" ${nameStyle}>${esc(displayName)}</div>
-          <div class="online-user-team" ${teamPillStyle}>${esc(teamName)}</div>
+          <div class="online-user-name" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">active</div>
         </div>
       `;
@@ -3783,18 +3780,15 @@ function renderOnlineUsersList() {
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : 'No team';
+      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamPillStyle = teamColor
-        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
-        : '';
+      const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot inactive"></div>
-          <div class="online-user-name" ${nameStyle}>${esc(displayName)}</div>
-          <div class="online-user-team" ${teamPillStyle}>${esc(teamName)}</div>
+          <div class="online-user-name" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">${getTimeSinceActivity(p)}</div>
         </div>
       `;
@@ -3809,18 +3803,15 @@ function renderOnlineUsersList() {
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : 'No team';
+      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamPillStyle = teamColor
-        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
-        : '';
+      const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
-          <div class="online-user-name" ${nameStyle}>${esc(displayName)}</div>
-          <div class="online-user-team" ${teamPillStyle}>${esc(teamName)}</div>
+          <div class="online-user-name" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
         </div>
       `;
