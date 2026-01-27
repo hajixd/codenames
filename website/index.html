@@ -65,11 +65,11 @@
 
         <div class="header-user">
           <div class="header-user-stack">
-            <div class="header-pill" id="header-name-pill">
+            <div class="header-pill clickable" id="header-name-pill" role="button" tabindex="0">
               <span class="header-pill-label">Name:</span>
-              <span class="header-pill-value" id="user-name-display" title="Double click to edit">—</span>
+              <span class="header-pill-value" id="user-name-display" title="Click to change">—</span>
             </div>
-            <div class="header-pill" id="header-team-pill">
+            <div class="header-pill clickable" id="header-team-pill" role="button" tabindex="0">
               <span class="header-pill-label">Team:</span>
               <span class="header-pill-value team-accent" id="user-team-display">No team</span>
             </div>
@@ -719,7 +719,49 @@
             <button class="icon-btn" id="online-modal-close" type="button" aria-label="Close">×</button>
           </div>
           <div class="modal-body online-modal-body">
+            <div class="online-tabs" role="tablist" aria-label="Online users filter">
+              <button class="online-tab active" id="online-tab-everyone" type="button" role="tab" aria-selected="true">Everyone</button>
+              <button class="online-tab" id="online-tab-teammates" type="button" role="tab" aria-selected="false">Teammates</button>
+            </div>
             <div class="online-users-list" id="online-users-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Change Name Modal -->
+      <div class="modal name-change-modal" id="name-change-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="name-change-modal-backdrop"></div>
+        <div class="modal-card name-change-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Change Name</div>
+            <button class="icon-btn" id="name-change-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <form id="name-change-form" class="form">
+              <label class="field">
+                <span class="label">Your name</span>
+                <input type="text" id="name-change-input" class="input" placeholder="Enter your name" required>
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn primary">Save</button>
+                <button type="button" class="btn" id="name-change-cancel">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Teammates Modal -->
+      <div class="modal teammates-modal" id="teammates-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="teammates-modal-backdrop"></div>
+        <div class="modal-card teammates-modal-card">
+          <div class="modal-head">
+            <div class="modal-title" id="teammates-modal-title">My Team</div>
+            <button class="icon-btn" id="teammates-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="teammates-list" id="teammates-modal-list"></div>
+            <div class="hint" id="teammates-modal-hint"></div>
           </div>
         </div>
       </div>

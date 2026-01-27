@@ -547,7 +547,7 @@ function updateQuickRulesUI(game) {
   // Lobby hint
   if (hintEl) {
     if (!myTeam) {
-      hintEl.textContent = 'Join Red or Blue to offer/accept rules.';
+      hintEl.textContent = 'Game starts when both teams agree on rules and are fully ready.';
     } else if (pending) {
       hintEl.textContent = canAccept
         ? 'New rules offered — accept (or counter-offer) in Settings.'
@@ -564,7 +564,7 @@ function updateQuickRulesUI(game) {
   if (acceptBtn) acceptBtn.style.display = canAccept ? 'inline-flex' : 'none';
   if (modalStatus) {
     if (!myTeam) {
-      modalStatus.textContent = 'Join Red or Blue to offer/accept rules.';
+      modalStatus.textContent = 'Join a team to offer or accept rules.';
     } else if (pending) {
       const by = String(pending.by || 'red').toUpperCase();
       modalStatus.textContent = canAccept

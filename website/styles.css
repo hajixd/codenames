@@ -1908,7 +1908,7 @@ body.mode-joiner .only-joiner{ display:block; }
 .qp-setting-deck .setting-label{ padding-left: 12px; }
 .qp-deck-picker{
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
   gap: 10px;
   padding-left: 12px;
 }
@@ -1917,7 +1917,8 @@ body.mode-joiner .only-joiner{ display:block; }
   align-items:center;
   justify-content:flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px 16px;
+  min-width: 130px;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.05);
@@ -3976,6 +3977,125 @@ button.player-tag.pill-action:disabled{
   content: ' (you)';
   color: var(--text-dim);
   font-weight: 400;
+}
+
+/* Online Modal Tabs */
+.online-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+
+.online-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.online-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.online-tab.active {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--text);
+}
+
+/* Clickable Header Pills */
+.header-pill.clickable {
+  cursor: pointer;
+  transition: background 150ms ease, transform 100ms ease;
+}
+
+.header-pill.clickable:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.header-pill.clickable:active {
+  transform: scale(0.98);
+}
+
+/* Name Change Modal */
+.name-change-modal-card {
+  width: 90%;
+  max-width: 360px;
+}
+
+/* Teammates Modal */
+.teammates-modal-card {
+  width: 90%;
+  max-width: 400px;
+}
+
+.teammates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.teammate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+
+.teammate-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--team-color, #3b82f6) 0%, rgba(59, 130, 246, 0.5) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.teammate-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.teammate-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teammate-role {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.teammate-row.is-you {
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.teammate-row.is-owner .teammate-name::after {
+  content: ' (Owner)';
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 11px;
 }
 
 /* ==================== SETTINGS GEAR + MODAL ==================== */

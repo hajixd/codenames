@@ -776,7 +776,7 @@ function initName() {
     logoutLocal();
   });
 
-  // Double-click editing (works on desktop + mobile)
+  // Double-click editing for home page (works on desktop + mobile)
   wireInlineEdit({
     displayEl: document.getElementById('name-saved-display'),
     inputEl: document.getElementById('name-saved-input'),
@@ -784,12 +784,39 @@ function initName() {
     onCommit: (v) => setUserName(v),
   });
 
-  wireInlineEdit({
-    displayEl: document.getElementById('user-name-display'),
-    inputEl: document.getElementById('user-name-input'),
-    getValue: () => getUserName(),
-    onCommit: (v) => setUserName(v),
+  // Header name pill - single click opens modal
+  const headerNamePill = document.getElementById('header-name-pill');
+  headerNamePill?.addEventListener('click', () => {
+    playSound('click');
+    openNameChangeModal();
   });
+  headerNamePill?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      playSound('click');
+      openNameChangeModal();
+    }
+  });
+
+  // Header team pill - single click opens teammates modal
+  const headerTeamPill = document.getElementById('header-team-pill');
+  headerTeamPill?.addEventListener('click', () => {
+    playSound('click');
+    openTeammatesModal();
+  });
+  headerTeamPill?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      playSound('click');
+      openTeammatesModal();
+    }
+  });
+
+  // Initialize name change modal
+  initNameChangeModal();
+
+  // Initialize teammates modal
+  initTeammatesModal();
 
   refreshNameUI();
 
@@ -3677,9 +3704,29 @@ function renderOnlineUsersList() {
 
   const myId = getUserId();
 
+  // Get teammate IDs if filtering by teammates
+  let teammateIds = new Set();
+  if (onlineModalTab === 'teammates') {
+    const st = computeUserState(teamsCache);
+    if (st.team && st.team.members) {
+      for (const m of st.team.members) {
+        if (m.userId) teammateIds.add(m.userId);
+      }
+    }
+  }
+
+  // Filter by tab
+  let filtered = [...presenceCache];
+  if (onlineModalTab === 'teammates') {
+    filtered = filtered.filter(p => {
+      const odId = p.id || p.odId;
+      return teammateIds.has(odId);
+    });
+  }
+
   // Sort users by status: online first, then inactive, then offline
   const statusOrder = { online: 0, inactive: 1, offline: 2 };
-  const sorted = [...presenceCache].sort((a, b) => {
+  const sorted = filtered.sort((a, b) => {
     const statusA = getPresenceStatus(a);
     const statusB = getPresenceStatus(b);
     if (statusOrder[statusA] !== statusOrder[statusB]) {
@@ -3746,7 +3793,209 @@ function renderOnlineUsersList() {
   }
 
   if (!html) {
-    html = '<div class="online-user-row"><div class="online-user-name">No users yet</div></div>';
+    if (onlineModalTab === 'teammates') {
+      html = '<div class="online-user-row"><div class="online-user-name">No teammates online</div></div>';
+    } else {
+      html = '<div class="online-user-row"><div class="online-user-name">No users yet</div></div>';
+    }
+  }
+
+  listEl.innerHTML = html;
+}
+
+// Online modal tab state
+let onlineModalTab = 'everyone';
+
+function initOnlineModalTabs() {
+  const everyoneTab = document.getElementById('online-tab-everyone');
+  const teammatesTab = document.getElementById('online-tab-teammates');
+
+  everyoneTab?.addEventListener('click', () => {
+    playSound('click');
+    onlineModalTab = 'everyone';
+    everyoneTab.classList.add('active');
+    everyoneTab.setAttribute('aria-selected', 'true');
+    teammatesTab?.classList.remove('active');
+    teammatesTab?.setAttribute('aria-selected', 'false');
+    renderOnlineUsersList();
+  });
+
+  teammatesTab?.addEventListener('click', () => {
+    playSound('click');
+    onlineModalTab = 'teammates';
+    teammatesTab.classList.add('active');
+    teammatesTab.setAttribute('aria-selected', 'true');
+    everyoneTab?.classList.remove('active');
+    everyoneTab?.setAttribute('aria-selected', 'false');
+    renderOnlineUsersList();
+  });
+}
+
+// Call this in initOnlineCounterUI
+document.addEventListener('DOMContentLoaded', initOnlineModalTabs);
+
+/* =========================
+   Name Change Modal
+========================= */
+function initNameChangeModal() {
+  const modal = document.getElementById('name-change-modal');
+  const backdrop = document.getElementById('name-change-modal-backdrop');
+  const closeBtn = document.getElementById('name-change-modal-close');
+  const cancelBtn = document.getElementById('name-change-cancel');
+  const form = document.getElementById('name-change-form');
+  const input = document.getElementById('name-change-input');
+
+  if (!modal) return;
+
+  closeBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeNameChangeModal();
+  });
+
+  cancelBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeNameChangeModal();
+  });
+
+  backdrop?.addEventListener('click', () => {
+    playSound('click');
+    closeNameChangeModal();
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newName = (input?.value || '').trim();
+    if (!newName) return;
+
+    playSound('click');
+    await setUserName(newName);
+    closeNameChangeModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'flex') {
+      closeNameChangeModal();
+    }
+  });
+}
+
+function openNameChangeModal() {
+  const modal = document.getElementById('name-change-modal');
+  const input = document.getElementById('name-change-input');
+  if (!modal) return;
+
+  // Pre-fill with current name
+  if (input) input.value = getUserName() || '';
+
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+
+  // Focus the input
+  setTimeout(() => input?.focus(), 100);
+}
+
+function closeNameChangeModal() {
+  const modal = document.getElementById('name-change-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
+}
+
+/* =========================
+   Teammates Modal
+========================= */
+function initTeammatesModal() {
+  const modal = document.getElementById('teammates-modal');
+  const backdrop = document.getElementById('teammates-modal-backdrop');
+  const closeBtn = document.getElementById('teammates-modal-close');
+
+  if (!modal) return;
+
+  closeBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeTeammatesModal();
+  });
+
+  backdrop?.addEventListener('click', () => {
+    playSound('click');
+    closeTeammatesModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'flex') {
+      closeTeammatesModal();
+    }
+  });
+}
+
+function openTeammatesModal() {
+  const modal = document.getElementById('teammates-modal');
+  if (!modal) return;
+
+  renderTeammatesList();
+
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+}
+
+function closeTeammatesModal() {
+  const modal = document.getElementById('teammates-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
+}
+
+function renderTeammatesList() {
+  const listEl = document.getElementById('teammates-modal-list');
+  const titleEl = document.getElementById('teammates-modal-title');
+  const hintEl = document.getElementById('teammates-modal-hint');
+  if (!listEl) return;
+
+  const st = computeUserState(teamsCache);
+  const myId = getUserId();
+
+  if (!st.team) {
+    if (titleEl) titleEl.textContent = 'My Team';
+    if (hintEl) hintEl.textContent = 'You are not on a team yet.';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  const team = st.team;
+  if (titleEl) titleEl.textContent = team.teamName || 'My Team';
+  if (hintEl) hintEl.textContent = '';
+
+  const members = team.members || [];
+  const ownerId = team.creatorUserId;
+
+  let html = '';
+  for (const member of members) {
+    const isYou = member.userId === myId;
+    const isOwner = member.userId === ownerId;
+    const initial = (member.name || '?').charAt(0).toUpperCase();
+
+    html += `
+      <div class="teammate-row${isYou ? ' is-you' : ''}${isOwner ? ' is-owner' : ''}">
+        <div class="teammate-avatar">${esc(initial)}</div>
+        <div class="teammate-info">
+          <div class="teammate-name">${esc(member.name || 'Unknown')}${isYou ? ' (you)' : ''}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (!html) {
+    html = '<div class="hint">No teammates yet.</div>';
   }
 
   listEl.innerHTML = html;
