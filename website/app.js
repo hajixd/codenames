@@ -55,6 +55,7 @@ let lastLocalNameSetAtMs = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   initLaunchScreen();
+  initHeaderLogoNav();
   initTabs();
   initName();
   initPlayersTab();
@@ -66,6 +67,65 @@ document.addEventListener('DOMContentLoaded', () => {
   listenToTeams();
   listenToPlayers();
 });
+
+/* =========================
+   Header navigation
+========================= */
+function initHeaderLogoNav() {
+  const logo = document.querySelector('.app-header .logo');
+  if (!logo) return;
+  logo.style.cursor = 'pointer';
+  logo.setAttribute('role', 'button');
+  logo.setAttribute('tabindex', '0');
+
+  const go = () => {
+    // If you haven't chosen a mode yet (or you want to reset), show the launch screen.
+    if (document.body.classList.contains('launch')) {
+      showLaunchScreen();
+      return;
+    }
+
+    // Quick Play should return to the initial mode chooser.
+    if (document.body.classList.contains('quickplay')) {
+      returnToLaunchScreen();
+      return;
+    }
+
+    // Tournament: logo takes you back to the Tournament Home tab.
+    if (document.body.classList.contains('tournament')) {
+      switchToPanel('panel-home');
+      return;
+    }
+
+    showLaunchScreen();
+  };
+
+  logo.addEventListener('click', go);
+  logo.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      go();
+    }
+  });
+}
+
+function showLaunchScreen() {
+  const screen = document.getElementById('launch-screen');
+  if (screen) screen.style.display = 'block';
+  document.body.classList.add('launch');
+  document.body.classList.remove('quickplay');
+  document.body.classList.remove('tournament');
+  document.body.classList.remove('has-team-color');
+  try { refreshNameUI?.(); } catch (_) {}
+}
+
+function returnToLaunchScreen() {
+  // Alias for callers (e.g., game back button)
+  showLaunchScreen();
+}
+
+// Allow other modules (game.js) to return to the initial screen.
+window.returnToLaunchScreen = returnToLaunchScreen;
 
 /* =========================
    Launch screen (mode-first)
@@ -185,6 +245,19 @@ function switchToPanel(panelId) {
   }
   activePanelId = targetId;
   recomputeUnreadBadges();
+
+  // Ensure the Tournament "Play" tab never shows Quick Play options.
+  // In tournament mode, the Play panel should always render the tournament lobby.
+  if (targetId === 'panel-game') {
+    try {
+      if (document.body.classList.contains('tournament') && typeof window.showTournamentLobby === 'function') {
+        window.showTournamentLobby();
+      }
+      if (document.body.classList.contains('quickplay') && typeof window.showQuickPlayLobby === 'function') {
+        window.showQuickPlayLobby();
+      }
+    } catch (_) {}
+  }
 }
 
 /* =========================

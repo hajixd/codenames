@@ -91,8 +91,24 @@ function initGameUI() {
   document.getElementById('select-tournament')?.addEventListener('click', () => showTournamentLobby());
 
   // Back buttons
-  document.getElementById('quick-back-btn')?.addEventListener('click', () => showModeSelect());
-  document.getElementById('tournament-back-btn')?.addEventListener('click', () => showModeSelect());
+  // Quick Play should always return to the initial mode chooser (launch screen).
+  document.getElementById('quick-back-btn')?.addEventListener('click', () => {
+    if (typeof window.returnToLaunchScreen === 'function') {
+      window.returnToLaunchScreen();
+    } else {
+      showModeSelect();
+    }
+  });
+
+  // Tournament: back returns to Tournament Home tab.
+  document.getElementById('tournament-back-btn')?.addEventListener('click', () => {
+    if (document.body.classList.contains('tournament') && typeof window.switchToPanel === 'function') {
+      window.switchToPanel('panel-home');
+      return;
+    }
+    // Fallback for non-tournament contexts
+    showModeSelect();
+  });
 
   // Quick Play team selection
   document.getElementById('select-team-red')?.addEventListener('click', () => selectQuickTeam('red'));
@@ -117,14 +133,30 @@ function initGameUI() {
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
 
-  // Initial render - show mode selection
-  showModeSelect();
+  // Initial render - defer to current app mode
+  if (document.body.classList.contains('tournament')) {
+    showTournamentLobby();
+  } else if (document.body.classList.contains('quickplay')) {
+    showQuickPlayLobby();
+  } else {
+    showModeSelect();
+  }
 }
 
 /* =========================
    Mode Navigation
 ========================= */
 function showModeSelect() {
+  // Safety: in Tournament mode, the Play tab should never show the mode chooser.
+  if (document.body.classList.contains('tournament')) {
+    showTournamentLobby();
+    return;
+  }
+  // In Quick Play mode, the mode chooser is handled by the launch screen.
+  if (document.body.classList.contains('quickplay')) {
+    showQuickPlayLobby();
+    return;
+  }
   currentPlayMode = 'select';
   document.getElementById('play-mode-select').style.display = 'block';
   document.getElementById('quick-play-lobby').style.display = 'none';

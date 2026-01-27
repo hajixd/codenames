@@ -59,6 +59,12 @@ body:not(.tournament) .team-accent{ color: var(--text-dim); }
 /* Show team header line only while in Tournament */
 body:not(.tournament) .header-team-line{ display:none !important; }
 
+/* Tournament Home should not show the name/logout card (name lives in header + launch screen) */
+body.tournament #panel-home #name-card{ display:none !important; }
+
+/* In Tournament mode, the Play tab should not offer Quick Play selection */
+body.tournament #play-mode-select{ display:none !important; }
+
 .app {
   height: 100%;
   display: flex;
@@ -123,6 +129,8 @@ body:not(.tournament) .header-team-line{ display:none !important; }
     font-weight: 700;
     font-size: 14px;
     letter-spacing: 2px;
+    cursor: pointer;
+    user-select: none;
   }
 
   /* (header-center removed for desktop) */
