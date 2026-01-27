@@ -3050,6 +3050,24 @@ function initSettings() {
     safeLSSet(LS_SETTINGS_VOLUME, String(settingsVolume));
   });
 
+  // Log Out button in settings
+  const settingsLogoutBtn = document.getElementById('settings-logout-btn');
+  settingsLogoutBtn?.addEventListener('click', () => {
+    const ok = window.confirm('Are you sure you want to log out?');
+    if (!ok) return;
+    closeSettingsModal();
+    logoutLocal();
+  });
+
+  // Delete Account button in settings
+  const settingsDeleteBtn = document.getElementById('settings-delete-account-btn');
+  settingsDeleteBtn?.addEventListener('click', () => {
+    const ok = window.confirm('Are you sure you want to delete your account? This cannot be undone.');
+    if (!ok) return;
+    closeSettingsModal();
+    logoutLocal();
+  });
+
   // Test sound button
   testSoundBtn?.addEventListener('click', () => {
     playSound('success');

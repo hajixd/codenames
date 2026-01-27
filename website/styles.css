@@ -3960,13 +3960,13 @@ button.player-tag.pill-action:disabled{
 
 .online-modal-card {
   position: fixed;
-  top: 45%;
+  top: 60%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1000;
   width: 90%;
   max-width: 360px;
-  max-height: 70vh;
+  max-height: 45vh;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -3978,7 +3978,7 @@ button.player-tag.pill-action:disabled{
 .online-modal-body {
   padding: 16px;
   overflow-y: auto;
-  max-height: calc(70vh - 60px);
+  max-height: calc(45vh - 60px);
 }
 
 .online-users-list {
@@ -4482,6 +4482,21 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   min-width: 36px;
 }
 
+/* Settings Account Actions */
+.settings-account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-account-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* Toggle Switch */
 .settings-toggle-row {
   display: flex;
@@ -4731,11 +4746,11 @@ body.tournament.has-team-color .btn.primary:hover {
 
 /* Online modal specific positioning fix */
 .online-modal.modal-open .online-modal-card {
-  transform: translate(-50%, -55%) scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .online-modal:not(.modal-open) .online-modal-card {
-  transform: translate(-50%, -55%) scale(0.95);
+  transform: translate(-50%, -50%) scale(0.95);
 }
 
 /* Card hover animations */
