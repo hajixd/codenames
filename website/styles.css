@@ -3437,6 +3437,95 @@ button.player-tag.pill-action:disabled{
   font-weight: 600;
 }
 
+/* Active game panel in tournament lobby */
+.active-game-panel {
+  background: var(--surface);
+  border: 2px solid var(--primary);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.active-game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.active-game-title {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--primary);
+}
+
+.active-game-status {
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--bg);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.active-game-teams {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.active-game-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  min-width: 140px;
+}
+
+.active-game-team.red {
+  background: var(--game-red-bg);
+  border: 2px solid var(--game-red-border);
+}
+
+.active-game-team.blue {
+  background: var(--game-blue-bg);
+  border: 2px solid var(--game-blue-border);
+}
+
+.active-game-team .team-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.active-game-team .player-count {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.active-game-team .you-badge {
+  background: var(--primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.vs-divider {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.active-game-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
 .game-turn-display {
   display: flex;
   align-items: center;
