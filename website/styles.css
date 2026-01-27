@@ -4318,6 +4318,15 @@ body.tournament.has-team-color .btn.primary:hover {
   transform: translate(-50%, -50%) scale(0.95);
 }
 
+/* Online modal specific positioning fix */
+.online-modal.modal-open .online-modal-card {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.online-modal:not(.modal-open) .online-modal-card {
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
 /* Card hover animations */
 .mode-card {
   transition: background var(--anim-duration) var(--anim-ease),
