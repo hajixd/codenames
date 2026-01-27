@@ -116,9 +116,9 @@ function initGameUI() {
     showModeSelect();
   });
 
-  // Quick Play team selection
   // Quick Play role selector (Red ↔ Spectator ↔ Blue)
-  const roleBox = document.getElementById('quick-role-switcher');
+  // Center (Spectators) box cycles; Red/Blue boxes select directly.
+  const roleBox = document.getElementById('quick-seat-switcher');
   roleBox?.addEventListener('click', () => stepQuickRole(1));
   roleBox?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -133,6 +133,17 @@ function initGameUI() {
       e.preventDefault();
       stepQuickRole(1);
     }
+  });
+
+  const redCol = document.getElementById('quick-red-col');
+  const blueCol = document.getElementById('quick-blue-col');
+  redCol?.addEventListener('click', () => selectQuickRole('red'));
+  blueCol?.addEventListener('click', () => selectQuickRole('blue'));
+  redCol?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectQuickRole('red'); }
+  });
+  blueCol?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectQuickRole('blue'); }
   });
 
   // Arrow keys anywhere in the lobby
@@ -244,19 +255,9 @@ const QUICK_ROLES = ['red', 'spectator', 'blue'];
 function selectQuickRole(role) {
   selectedQuickTeam = role;
 
-  const valueEl = document.getElementById('quick-role-value');
-  const subEl = document.getElementById('quick-role-sub');
-  const card = document.getElementById('quick-role-switcher');
   const hint = document.getElementById('team-select-hint');
 
-  const label = role === 'spectator' ? 'Spectator' : (role === 'red' ? 'Red Team' : 'Blue Team');
-  if (valueEl) valueEl.textContent = label;
-
-  if (card) {
-    card.classList.toggle('role-red', role === 'red');
-    card.classList.toggle('role-blue', role === 'blue');
-    card.classList.toggle('role-spec', role === 'spectator');
-  }
+  applyQuickRoleHighlight(role);
 
   if (hint) {
     hint.textContent = role === 'spectator'
@@ -265,10 +266,17 @@ function selectQuickRole(role) {
     hint.style.color = role === 'red' ? 'var(--game-red)' : role === 'blue' ? 'var(--game-blue)' : '';
   }
 
-  if (subEl) subEl.textContent = 'Click or use ←/→ to switch';
-
   // Join the lobby for the selected role.
   joinQuickLobby(role);
+}
+
+function applyQuickRoleHighlight(role) {
+  const redCol = document.getElementById('quick-red-col');
+  const blueCol = document.getElementById('quick-blue-col');
+  const specCol = document.getElementById('quick-seat-switcher');
+  redCol?.classList.toggle('selected', role === 'red');
+  blueCol?.classList.toggle('selected', role === 'blue');
+  specCol?.classList.toggle('selected', role === 'spectator');
 }
 
 function stepQuickRole(delta) {
@@ -486,14 +494,8 @@ async function leaveQuickLobby() {
   } finally {
     selectedQuickTeam = null;
     quickAutoJoinedSpectator = false;
-    // Update role UI back to spectator label
-    const valueEl = document.getElementById('quick-role-value');
-    if (valueEl) valueEl.textContent = 'Spectator';
-    const card = document.getElementById('quick-role-switcher');
-    if (card) {
-      card.classList.remove('role-red', 'role-blue');
-      card.classList.add('role-spec');
-    }
+    // Update role UI back to spectator highlight
+    applyQuickRoleHighlight('spectator');
   }
 }
 
@@ -570,8 +572,6 @@ function renderQuickLobby(game) {
   const status = document.getElementById('quick-lobby-status');
   const readyBtn = document.getElementById('quick-ready-btn');
   const leaveBtn = document.getElementById('quick-leave-btn');
-  const roleValue = document.getElementById('quick-role-value');
-  const roleCard = document.getElementById('quick-role-switcher');
 
   if (!redList || !blueList || !specList || !redCount || !blueCount || !specCount || !status || !readyBtn || !leaveBtn) return;
 
@@ -638,16 +638,9 @@ function renderQuickLobby(game) {
   blueList.innerHTML = renderTeamList(blue);
   specList.innerHTML = renderSpecList(specs);
 
-  // Update role selector UI
+  // Update role selector UI (highlight the selected column)
   const effectiveRole = role || selectedQuickTeam || 'spectator';
-  if (roleValue) {
-    roleValue.textContent = effectiveRole === 'spectator' ? 'Spectator' : (effectiveRole === 'red' ? 'Red Team' : 'Blue Team');
-  }
-  if (roleCard) {
-    roleCard.classList.toggle('role-red', effectiveRole === 'red');
-    roleCard.classList.toggle('role-blue', effectiveRole === 'blue');
-    roleCard.classList.toggle('role-spec', effectiveRole === 'spectator');
-  }
+  applyQuickRoleHighlight(effectiveRole);
 
   // Button state
   readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');

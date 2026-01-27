@@ -298,7 +298,7 @@
                     <div class="setup-title" style="margin:0;">Lobby</div>
                     <div class="hint" id="team-select-hint">Use the middle box (or ←/→) to choose Red, Spectator, or Blue.</div>
                   </div><div class="quick-lobby-layout">
-                    <div class="quick-team-col red">
+                    <div class="quick-team-col red selectable" id="quick-red-col" role="button" tabindex="0" aria-label="Join Red team">
                       <div class="quick-team-head">
                         <span class="quick-team-dot red"></span>
                         <span class="quick-team-title">Red Lobby</span>
@@ -307,39 +307,16 @@
                       <div class="quick-team-list" id="quick-red-list"></div>
                     </div>
 
-                    <div class="quick-lobby-middle">
-
-                      <div class="quick-role-switcher" id="quick-role-switcher" role="button" tabindex="0" aria-label="Select quick play role">
-                        <div class="quick-role-top">
-                          <div class="quick-role-title">You are</div>
-                          <div class="quick-role-arrows" aria-hidden="true">
-                            <span class="quick-role-arrow">←</span>
-                            <span class="quick-role-arrow">→</span>
-                          </div>
-                        </div>
-                        <div class="quick-role-value" id="quick-role-value">Spectator</div>
-                        <div class="quick-role-sub" id="quick-role-sub">Click or use ←/→ to switch</div>
+                    <div class="quick-team-col spectator selectable" id="quick-seat-switcher" role="button" tabindex="0" aria-label="Switch role (Red, Spectator, Blue)">
+                      <div class="quick-team-head">
+                        <span class="quick-team-dot spectator"></span>
+                        <span class="quick-team-title">Spectators</span>
+                        <span class="quick-team-count" id="quick-spec-count">0</span>
                       </div>
+                      <div class="quick-team-list" id="quick-spec-list"></div>
+                    </div>
 
-                      <div class="quick-spectators">
-                        <div class="quick-spectators-head">
-                          <span>Spectators</span>
-                          <span class="quick-team-count" id="quick-spec-count">0</span>
-                        </div>
-                        <div class="quick-team-list" id="quick-spec-list"></div>
-                      </div>
-
-                      <div class="quick-lobby-status" id="quick-lobby-status">Waiting for players…</div>
-
-                      <div class="quick-lobby-actions">
-                        <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
-                        <button class="btn" id="quick-leave-btn" type="button" disabled>Leave</button>
-                      </div>
-
-                      <div class="hint" style="margin-top:10px;">Game starts when both teams are fully ready.</div>
-</div>
-
-                    <div class="quick-team-col blue">
+                    <div class="quick-team-col blue selectable" id="quick-blue-col" role="button" tabindex="0" aria-label="Join Blue team">
                       <div class="quick-team-head">
                         <span class="quick-team-dot blue"></span>
                         <span class="quick-team-title">Blue Lobby</span>
@@ -348,6 +325,16 @@
                       <div class="quick-team-list" id="quick-blue-list"></div>
                     </div>
                   </div>
+                </div>
+
+                <!-- Lobby controls (moved out of the middle column) -->
+                <div class="quick-lobby-controls">
+                  <div class="quick-lobby-status" id="quick-lobby-status">Waiting for players…</div>
+                  <div class="quick-lobby-actions">
+                    <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
+                    <button class="btn" id="quick-leave-btn" type="button" disabled>Leave</button>
+                  </div>
+                  <div class="hint" style="margin-top:10px;">Game starts when both teams are fully ready.</div>
                 </div>
 
                 <!-- Settings (kept minimal) -->
