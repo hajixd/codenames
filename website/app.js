@@ -4085,5 +4085,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Export presence functions for game.js
 window.getPresenceStatus = getPresenceStatus;
-window.presenceCache = presenceCache;
+Object.defineProperty(window, 'presenceCache', {
+  get: function() { return presenceCache; },
+  configurable: true
+});
 window.updatePresence = updatePresence;
