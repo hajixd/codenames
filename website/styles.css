@@ -1828,6 +1828,76 @@ body.mode-joiner .only-joiner{ display:block; }
   gap: 12px;
 }
 
+/* Quick Play settings: more colorful + card-like rows */
+.qp-settings-open{
+  background: linear-gradient(135deg, rgba(59,130,246,0.28), rgba(168,85,247,0.22));
+  border: 1px solid rgba(255,255,255,0.14);
+}
+.qp-settings-open:hover{
+  background: linear-gradient(135deg, rgba(59,130,246,0.34), rgba(168,85,247,0.28));
+}
+
+.qp-settings-banner{
+  display:flex;
+  gap: 12px;
+  align-items:flex-start;
+  padding: 12px 12px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(239,68,68,0.12));
+  border: 1px solid rgba(255,255,255,0.10);
+  margin-bottom: 14px;
+}
+.qp-settings-emoji{
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  flex: 0 0 auto;
+}
+.qp-settings-title{ font-weight: 900; letter-spacing: 0.2px; }
+.qp-settings-sub{ color: var(--text-dim); font-size: 13px; margin-top: 2px; line-height: 1.35; }
+
+.qp-settings-grid{ gap: 10px; }
+.qp-setting{
+  padding: 12px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  position: relative;
+}
+.qp-setting[data-accent="black"]{ --qp-accent: rgba(148,163,184,0.95); }
+.qp-setting[data-accent="clue"]{ --qp-accent: rgba(168,85,247,0.95); }
+.qp-setting[data-accent="guess"]{ --qp-accent: rgba(20,184,166,0.95); }
+.qp-setting::before{
+  content:"";
+  position:absolute;
+  left: 10px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--qp-accent, rgba(255,255,255,0.18));
+  box-shadow: 0 0 22px rgba(0,0,0,0.25);
+}
+.qp-setting .setting-label{
+  font-weight: 700;
+  padding-left: 12px;
+}
+.qp-setting .setting-select{
+  min-width: 170px;
+}
+
+@media (max-width: 520px){
+  .qp-setting{ flex-direction: column; align-items: stretch; }
+  .qp-setting .setting-select{ width: 100%; min-width: 0; }
+  .qp-setting::before{ left: 12px; top: 14px; bottom: auto; height: 4px; width: calc(100% - 24px); }
+  .qp-setting .setting-label{ padding-left: 0; padding-top: 10px; }
+}
+
 .setting-row {
   display: flex;
   align-items: center;
@@ -2305,6 +2375,16 @@ body.mode-joiner .only-joiner{ display:block; }
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
 }
+
+/* Quick Play settings modal: a bit more pop */
+#quick-settings-modal .modal-card{
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
+}
+#quick-settings-modal .modal-head{
+  background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(168,85,247,0.14));
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+#quick-settings-modal .icon-btn:hover{ background: rgba(0,0,0,0.10); }
 .modal-title{ font-weight: 900; letter-spacing: 0.2px; }
 .modal-body{ padding: 14px 16px 4px; }
 .modal-actions{

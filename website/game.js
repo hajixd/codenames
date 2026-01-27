@@ -35,12 +35,10 @@ let quickAutoJoinedSpectator = false;
 // Quick Play settings / negotiation
 function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
-  const turnTimerSeconds = parseInt(document.getElementById('qp-turn-timer')?.value || '120', 10);
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
-    turnTimerSeconds: Number.isFinite(turnTimerSeconds) ? turnTimerSeconds : 120,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
   };
@@ -51,14 +49,12 @@ function getQuickSettings(game) {
   if (base && typeof base === 'object') {
     return {
       blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
-      turnTimerSeconds: Number.isFinite(+base.turnTimerSeconds) ? +base.turnTimerSeconds : (Number.isFinite(+game?.timerSeconds) ? +game.timerSeconds : 120),
       clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
     };
   }
   return {
     blackCards: 1,
-    turnTimerSeconds: Number.isFinite(+game?.timerSeconds) ? +game.timerSeconds : 120,
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
   };
@@ -75,8 +71,8 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, turnTimerSeconds: 120, clueTimerSeconds: 0, guessTimerSeconds: 0 };
-  return `Assassin: ${s.blackCards} · Turn: ${formatSeconds(s.turnTimerSeconds)} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 };
+  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
 }
 
 function quickRulesAreAgreed(game) {
@@ -378,12 +374,10 @@ function openQuickSettingsModal() {
   const s = g?.settingsPending?.settings ? g.settingsPending.settings : getQuickSettings(g);
   const ids = {
     blackCards: 'qp-black-cards',
-    turnTimerSeconds: 'qp-turn-timer',
     clueTimerSeconds: 'qp-clue-timer',
     guessTimerSeconds: 'qp-guess-timer',
   };
   document.getElementById(ids.blackCards).value = String(s.blackCards ?? 1);
-  document.getElementById(ids.turnTimerSeconds).value = String(s.turnTimerSeconds ?? 120);
   document.getElementById(ids.clueTimerSeconds).value = String(s.clueTimerSeconds ?? 0);
   document.getElementById(ids.guessTimerSeconds).value = String(s.guessTimerSeconds ?? 0);
 
@@ -516,7 +510,6 @@ async function acceptQuickRules(updateOnly = false) {
       if (bothAccepted) {
         tx.update(ref, {
           quickSettings: { ...pending.settings },
-          timerSeconds: pending.settings.turnTimerSeconds,
           settingsPending: null,
           settingsAccepted: { red: true, blue: true },
           redPlayers: nextRed,
@@ -595,7 +588,7 @@ async function startQuickLobbyListener() {
   }, (err) => console.error('Quick Play lobby listener error:', err));
 }
 
-function buildQuickPlayGameData(settings = { blackCards: 1, turnTimerSeconds: 120, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
+function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
   const words = getRandomWords(BOARD_SIZE);
   const keyCard = generateKeyCard(firstTeam, settings.blackCards);
@@ -625,11 +618,8 @@ function buildQuickPlayGameData(settings = { blackCards: 1, turnTimerSeconds: 12
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
     guessesRemaining: 0,
-    // Back-compat: keep timerSeconds for any older UI. Prefer quickSettings.
-    timerSeconds: settings.turnTimerSeconds,
     quickSettings: {
       blackCards: settings.blackCards,
-      turnTimerSeconds: settings.turnTimerSeconds,
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
     },
@@ -665,7 +655,6 @@ async function ensureQuickPlayGameExists() {
   if (!g.quickSettings) {
     updates.quickSettings = {
       blackCards: 1,
-      turnTimerSeconds: Number.isFinite(+g.timerSeconds) ? +g.timerSeconds : uiSettings.turnTimerSeconds,
       clueTimerSeconds: 0,
       guessTimerSeconds: 0,
     };
@@ -739,7 +728,6 @@ async function joinQuickLobby(role) {
       if (prevCount === 0) {
         const ui = readQuickSettingsFromUI();
         updates.quickSettings = { ...ui };
-        updates.timerSeconds = ui.turnTimerSeconds;
         // Reset acceptance for a new lobby
         updates.settingsAccepted = { red: false, blue: false };
         updates.settingsPending = null;
@@ -805,6 +793,13 @@ async function leaveQuickLobby() {
     quickAutoJoinedSpectator = false;
     // Update role UI back to spectator highlight
     applyQuickRoleHighlight('spectator');
+
+    // Return to the initial Choose Mode screen.
+    currentPlayMode = 'select';
+    try {
+      document.getElementById('quick-play-lobby')?.style && (document.getElementById('quick-play-lobby').style.display = 'none');
+    } catch (_) {}
+    try { window.returnToLaunchScreen?.(); } catch (_) {}
   }
 }
 

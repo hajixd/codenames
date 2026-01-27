@@ -333,7 +333,7 @@
                   <div class="quick-rules-bar" id="quick-rules-bar" aria-live="polite">
                     <div class="quick-rules-summary" id="quick-rules-summary">Rules: —</div>
                     <div class="quick-rules-actions">
-                      <button class="btn small" id="quick-settings-btn" type="button">Settings</button>
+                      <button class="btn small qp-settings-open" id="quick-settings-btn" type="button">Settings</button>
                       <button class="btn primary small" id="quick-rules-accept-btn" type="button" style="display:none;">Accept</button>
                     </div>
                   </div>
@@ -354,8 +354,16 @@
                     </div>
 
                     <div class="modal-body">
-                      <div class="settings-grid">
-                        <label class="setting-row">
+                      <div class="qp-settings-banner">
+                        <div class="qp-settings-emoji">⚙️</div>
+                        <div class="qp-settings-copy">
+                          <div class="qp-settings-title">House Rules</div>
+                          <div class="qp-settings-sub">Offer these settings to the other team. When both accept and both teams are ready, the game starts.</div>
+                        </div>
+                      </div>
+
+                      <div class="settings-grid qp-settings-grid">
+                        <label class="setting-row qp-setting" data-accent="black">
                           <span class="setting-label">Assassin (black) cards</span>
                           <select class="input setting-select" id="qp-black-cards">
                             <option value="1" selected>1 (standard)</option>
@@ -364,18 +372,7 @@
                           </select>
                         </label>
 
-                        <label class="setting-row">
-                          <span class="setting-label">Turn timer</span>
-                          <select class="input setting-select" id="qp-turn-timer">
-                            <option value="0">∞ (no limit)</option>
-                            <option value="60">1 minute</option>
-                            <option value="120" selected>2 minutes</option>
-                            <option value="180">3 minutes</option>
-                            <option value="300">5 minutes</option>
-                          </select>
-                        </label>
-
-                        <label class="setting-row">
+                        <label class="setting-row qp-setting" data-accent="clue">
                           <span class="setting-label">Spymaster clue timer</span>
                           <select class="input setting-select" id="qp-clue-timer">
                             <option value="0" selected>∞ (no limit)</option>
@@ -387,7 +384,7 @@
                           </select>
                         </label>
 
-                        <label class="setting-row">
+                        <label class="setting-row qp-setting" data-accent="guess">
                           <span class="setting-label">Guess timer</span>
                           <select class="input setting-select" id="qp-guess-timer">
                             <option value="0" selected>∞ (no limit)</option>
