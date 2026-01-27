@@ -144,56 +144,55 @@ function initLaunchScreen() {
   document.body.classList.add('launch');
   setBrowserTitle('launch');
 
+  const loginView = document.getElementById('launch-login-view');
+  const modeView = document.getElementById('launch-mode-view');
+
   const quickBtn = document.getElementById('launch-quick-play');
   const tournBtn = document.getElementById('launch-tournament');
 
-  const hint = document.getElementById('launch-name-hint');
-  const input = document.getElementById('launch-name-input');
+  const loginForm = document.getElementById('launch-login-form');
+  const loginInput = document.getElementById('launch-login-input');
+  const loginHint = document.getElementById('launch-login-hint');
+
+  const showLogin = () => {
+    if (loginView) loginView.style.display = 'block';
+    if (modeView) modeView.style.display = 'none';
+    try { loginInput?.focus(); } catch (_) {}
+  };
+  const showModeSelect = () => {
+    if (loginView) loginView.style.display = 'none';
+    if (modeView) modeView.style.display = 'block';
+  };
 
   const requireNameThen = (mode) => {
     const name = getUserName();
     if (!name) {
-      if (hint) hint.textContent = 'Enter your name to continue.';
-      try {
-        document.getElementById('launch-name-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (_) {}
-      try { input?.focus(); } catch (_) {}
+      if (loginHint) loginHint.textContent = 'Please enter your name first.';
+      showLogin();
       return;
     }
-    if (hint) hint.textContent = '';
+    if (loginHint) loginHint.textContent = '';
     enterAppFromLaunch(mode);
   };
 
   quickBtn?.addEventListener('click', () => requireNameThen('quick'));
   tournBtn?.addEventListener('click', () => requireNameThen('tournament'));
 
-  // Name + logout on launch (mirrors Tournament Home)
-  const form = document.getElementById('launch-name-form');
-  const logoutBtn = document.getElementById('launch-logout-btn');
-
-  form?.addEventListener('submit', async (e) => {
+  loginForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const v = (input?.value || '').trim();
+    const v = (loginInput?.value || '').trim();
     if (!v) {
-      if (hint) hint.textContent = 'Please enter a name.';
+      if (loginHint) loginHint.textContent = 'Please enter a name.';
       return;
     }
-    if (hint) hint.textContent = '';
+    if (loginHint) loginHint.textContent = '';
     await setUserName(v);
+    showModeSelect();
   });
 
-  logoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out on this device?');
-    if (!ok) return;
-    logoutLocal();
-  });
-
-  wireInlineEdit({
-    displayEl: document.getElementById('launch-name-saved-display'),
-    inputEl: document.getElementById('launch-name-saved-input'),
-    getValue: () => getUserName(),
-    onCommit: (v) => setUserName(v),
-  });
+  // Initial view depends on whether the user is already "logged in" on this device.
+  if (getUserName()) showModeSelect();
+  else showLogin();
 
   refreshNameUI();
 }
@@ -861,26 +860,17 @@ function refreshNameUI() {
   const saved = document.getElementById('name-saved');
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
-  const launchInput = document.getElementById('launch-name-input');
-  const launchForm = document.getElementById('launch-name-form');
-  const launchSaved = document.getElementById('launch-name-saved');
-  const launchSavedDisplay = document.getElementById('launch-name-saved-display');
+  const launchLoginInput = document.getElementById('launch-login-input');
   const launchQuick = document.getElementById('launch-quick-play');
   const launchTourn = document.getElementById('launch-tournament');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
-  if (launchInput) launchInput.value = name || '';
-  if (launchSavedDisplay) launchSavedDisplay.textContent = name || '—';
+  if (launchLoginInput) launchLoginInput.value = name || '';
 
   if (cardForm && saved) {
     cardForm.style.display = name ? 'none' : 'block';
     saved.style.display = name ? 'block' : 'none';
-  }
-
-  if (launchForm && launchSaved) {
-    launchForm.style.display = name ? 'none' : 'block';
-    launchSaved.style.display = name ? 'block' : 'none';
   }
 
   // Launch mode buttons are disabled until the user has a saved name ("logged in").
@@ -2992,6 +2982,7 @@ function initSettings() {
   const volumeSlider = document.getElementById('settings-volume-slider');
   const volumeValue = document.getElementById('settings-volume-value');
   const testSoundBtn = document.getElementById('settings-test-sound');
+  const logoutBtn = document.getElementById('settings-logout-btn');
 
   if (!gearBtn || !modal) return;
 
@@ -3042,6 +3033,22 @@ function initSettings() {
   // Test sound button
   testSoundBtn?.addEventListener('click', () => {
     playSound('success');
+  });
+
+  // Log out
+  logoutBtn?.addEventListener('click', () => {
+    playSound('click');
+    const ok = window.confirm('Log out on this device?');
+    if (!ok) return;
+    logoutLocal();
+  });
+
+  // Log out (returns to login screen)
+  logoutBtn?.addEventListener('click', () => {
+    playSound('click');
+    const ok = window.confirm('Log out on this device?');
+    if (!ok) return;
+    logoutLocal();
   });
 
   // Keyboard escape to close

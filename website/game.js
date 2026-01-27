@@ -830,6 +830,7 @@ async function checkAndEndInactiveGame(game) {
 }
 
 // Remove inactive players from lobby
+// Also: if a player becomes inactive, make them unready so the lobby can't auto-start with stale readiness.
 const LOBBY_INACTIVE_MS = 5 * 60 * 1000; // 5 minutes (same as presence inactive threshold)
 let lastInactivePlayerCheck = 0;
 
@@ -860,18 +861,20 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
   const bluePlayers = game.bluePlayers || [];
   const spectators = game.spectators || [];
 
-  // Find inactive/offline players
-  const inactivePlayers = [];
+  // Find players who should be un-readied and/or removed.
+  const toUnready = new Set();
+  const toRemove = new Set();
 
   for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
     const status = presenceMap.get(p.odId);
-    // Remove players who are inactive or offline (or not in presence at all)
+    if (status !== 'online') toUnready.add(p.odId);
+    // Remove players who are inactive/offline (or not in presence at all)
     if (!status || status === 'inactive' || status === 'offline') {
-      inactivePlayers.push(p.odId);
+      toRemove.add(p.odId);
     }
   }
 
-  if (inactivePlayers.length === 0) return;
+  if (toUnready.size === 0 && toRemove.size === 0) return;
 
   // Remove inactive players from the lobby
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
@@ -884,15 +887,22 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
       const g = snap.data();
       if (g.currentPhase !== 'waiting') return;
 
-      const nextRed = (g.redPlayers || []).filter(p => !inactivePlayers.includes(p.odId));
-      const nextBlue = (g.bluePlayers || []).filter(p => !inactivePlayers.includes(p.odId));
-      const nextSpec = (g.spectators || []).filter(p => !inactivePlayers.includes(p.odId));
+      const unreadyIfNeeded = (arr) => (arr || []).map(p => {
+        if (!p || !p.odId) return p;
+        if (toUnready.has(p.odId) && p.ready) return { ...p, ready: false };
+        return p;
+      });
+
+      const cleaned = (arr) => (arr || []).filter(p => !toRemove.has(p.odId));
+
+      const nextRed = cleaned(unreadyIfNeeded(g.redPlayers));
+      const nextBlue = cleaned(unreadyIfNeeded(g.bluePlayers));
+      const nextSpec = cleaned(unreadyIfNeeded(g.spectators));
 
       // Only update if something changed
-      const beforeCount = (g.redPlayers?.length || 0) + (g.bluePlayers?.length || 0) + (g.spectators?.length || 0);
-      const afterCount = nextRed.length + nextBlue.length + nextSpec.length;
-
-      if (beforeCount === afterCount) return;
+      const beforeJson = JSON.stringify({ r: g.redPlayers || [], b: g.bluePlayers || [], s: g.spectators || [] });
+      const afterJson = JSON.stringify({ r: nextRed, b: nextBlue, s: nextSpec });
+      if (beforeJson === afterJson) return;
 
       tx.update(ref, {
         redPlayers: nextRed,
@@ -901,7 +911,11 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby`);
+      const beforeCount = (g.redPlayers?.length || 0) + (g.bluePlayers?.length || 0) + (g.spectators?.length || 0);
+      const afterCount = nextRed.length + nextBlue.length + nextSpec.length;
+      if (beforeCount !== afterCount) {
+        console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby`);
+      }
     });
   } catch (e) {
     console.warn('Failed to remove inactive players:', e);
@@ -918,8 +932,27 @@ async function checkAndEndEmptyQuickPlayGame(game) {
   if (!game) return;
   if (game.id && game.id !== QUICKPLAY_DOC_ID) return;
 
-  const totalPlayers = (game.redPlayers?.length || 0) + (game.bluePlayers?.length || 0) + (game.spectators?.length || 0);
-  if (totalPlayers !== 0) return;
+  // "0 players" means 0 *active* players. Presence is maintained by app.js.
+  const presenceData = window.presenceCache || [];
+  const presenceMap = new Map();
+  for (const pr of presenceData) {
+    const st = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
+    presenceMap.set(pr.odId || pr.id, st);
+  }
+  const isActive = (id) => {
+    if (!presenceData.length) return null; // unknown
+    return presenceMap.get(id) === 'online';
+  };
+
+  const all = [...(game.redPlayers || []), ...(game.bluePlayers || []), ...(game.spectators || [])];
+  const activeKnown = all.map(p => isActive(p.odId)).filter(v => v !== null);
+
+  // If presence isn't available yet, fall back to raw player count.
+  const activeCount = presenceData.length
+    ? all.filter(p => isActive(p.odId)).length
+    : all.length;
+
+  if (activeCount !== 0) return;
 
   // An empty lobby is already "ended" (waiting). Only reset if a game was in progress.
   if (!game.currentPhase || game.currentPhase === 'waiting') return;
@@ -935,8 +968,20 @@ async function checkAndEndEmptyQuickPlayGame(game) {
       if (!snap.exists) return;
       const g = snap.data();
 
-      const total = (g.redPlayers?.length || 0) + (g.bluePlayers?.length || 0) + (g.spectators?.length || 0);
-      if (total !== 0) return;
+      const pd = window.presenceCache || [];
+      const pm = new Map();
+      for (const pr of pd) {
+        const st = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
+        pm.set(pr.odId || pr.id, st);
+      }
+      const isOn = (id) => {
+        if (!pd.length) return null;
+        return pm.get(id) === 'online';
+      };
+
+      const everyone = [...(g.redPlayers || []), ...(g.bluePlayers || []), ...(g.spectators || [])];
+      const active = pd.length ? everyone.filter(p => isOn(p.odId)).length : everyone.length;
+      if (active !== 0) return;
       if (!g.currentPhase || g.currentPhase === 'waiting') return;
 
       const uiSettings = readQuickSettingsFromUI();

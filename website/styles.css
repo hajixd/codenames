@@ -2645,10 +2645,11 @@ body.mode-joiner .only-joiner{ display:block; }
   padding: 12px 14px;
 }
 #quick-settings-modal .modal-body{
-  padding: 12px 14px 14px;
+  padding: 10px 12px 12px;
 }
 #quick-settings-modal .qp-settings-banner{
-  padding: 10px 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
 }
 #quick-settings-modal .qp-settings-emoji{
   width: 38px;
@@ -2656,8 +2657,22 @@ body.mode-joiner .only-joiner{ display:block; }
   border-radius: 12px;
 }
 #quick-settings-modal .qp-settings-sub{
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.3;
 }
+
+/* Quick Play settings: shorter + slightly smaller typography */
+#quick-settings-modal .qp-settings-title{ font-size: 14px; }
+#quick-settings-modal .settings-grid{ gap: 9px; }
+#quick-settings-modal .qp-setting{ padding: 10px 10px; border-radius: 14px; }
+#quick-settings-modal .setting-label{ font-size: 13px; }
+#quick-settings-modal .qp-deck-picker{ gap: 6px; }
+#quick-settings-modal .qp-deck-card{ padding: 8px 12px; border-radius: 12px; }
+#quick-settings-modal .qp-deck-emoji{ width: 30px; height: 30px; border-radius: 10px; }
+#quick-settings-modal .qp-deck-name{ font-size: 13px; }
+#quick-settings-modal .qp-deck-sub{ font-size: 11.5px; }
+#quick-settings-modal .qp-negotiation{ margin-top: 10px; padding: 10px 12px; border-radius: 16px; }
+#quick-settings-modal .qp-neg-chip{ padding: 5px 9px; font-size: 11.5px; }
 
 .modal-title{ font-weight: 900; letter-spacing: 0.2px; }
 .modal-body{
@@ -2730,6 +2745,11 @@ body.launch .app-header{
   left: 0;
   right: 0;
   z-index: 100;
+}
+
+/* Launch: keep the logo bar, but hide identity controls (name/team/settings) */
+body.launch .header-user{
+  display: none !important;
 }
 
 /* Quick Play: keep the top band, but hide navigation tabs */

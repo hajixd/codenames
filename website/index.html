@@ -14,48 +14,50 @@
   <body>
     <div class="app">
       <!-- Launch Screen (first thing shown on app open) -->
-      <div class="launch-screen" id="launch-screen" aria-label="Choose play mode">
+      <div class="launch-screen" id="launch-screen" aria-label="Login and choose play mode">
         <div class="launch-card">
-          <div class="launch-hero">
-            <h1 class="launch-h1">Play Codenames</h1>
-            <p class="launch-sub">Choose how you want to play</p>
-          </div>
 
-          <div class="launch-mode-row">
-            <button class="mode-card" id="launch-quick-play" type="button">
-              <div class="mode-card-icon">⚡</div>
-              <div class="mode-card-title">Quick Play</div>
-              <div class="mode-card-desc">Jump into a casual live game.</div>
-            </button>
+          <!-- Login view (first page): enter name -->
+          <div id="launch-login-view">
+            <div class="launch-hero">
+              <h1 class="launch-h1">Codenames</h1>
+              <p class="launch-sub">Enter your name to continue</p>
+            </div>
 
-            <button class="mode-card" id="launch-tournament" type="button">
-              <div class="mode-card-icon">🏆</div>
-              <div class="mode-card-title">Tournament</div>
-              <div class="mode-card-desc">Challenge teams and climb ranks.</div>
-            </button>
-          </div>
-
-          <!-- Name + logout (same UI as Tournament Home) -->
-          <div class="name-dock launch-name-dock" id="launch-name-card">
-            <form id="launch-name-form" class="form name-dock-form" autocomplete="off">
+            <form id="launch-login-form" class="form launch-login-form" autocomplete="off">
               <label class="field" style="margin:0;">
                 <span class="label">Your name</span>
-                <input type="text" id="launch-name-input" class="input" placeholder="Name" required>
+                <input type="text" id="launch-login-input" class="input" placeholder="Name" required>
               </label>
               <div class="form-actions" style="margin:0;">
-                <button type="submit" class="btn primary">Save</button>
-                <span class="hint" id="launch-name-hint"></span>
+                <button type="submit" class="btn primary">Continue</button>
+                <span class="hint" id="launch-login-hint"></span>
               </div>
             </form>
+          </div>
 
-            <div id="launch-name-saved" class="name-dock-saved" style="display:none;">
-              <div class="name-saved-stack">
-                <div class="name-dock-value" id="launch-name-saved-display" title="Double click to edit">—</div>
-                <input class="input" id="launch-name-saved-input" type="text" style="display:none;" />
-                <button class="btn logout" id="launch-logout-btn" type="button">Log out</button>
-              </div>
+          <!-- Mode select view (after login): Quick Play vs Tournament (no name shown here) -->
+          <div id="launch-mode-view" style="display:none;">
+            <div class="launch-hero">
+              <h1 class="launch-h1">Choose Mode</h1>
+              <p class="launch-sub">Quick Play or Tournament</p>
+            </div>
+
+            <div class="launch-mode-row">
+              <button class="mode-card" id="launch-quick-play" type="button">
+                <div class="mode-card-icon">⚡</div>
+                <div class="mode-card-title">Quick Play</div>
+                <div class="mode-card-desc">Jump into a casual live game.</div>
+              </button>
+
+              <button class="mode-card" id="launch-tournament" type="button">
+                <div class="mode-card-icon">🏆</div>
+                <div class="mode-card-title">Tournament</div>
+                <div class="mode-card-desc">Challenge teams and climb ranks.</div>
+              </button>
             </div>
           </div>
+
         </div>
       </div>
 
@@ -819,6 +821,16 @@
                 <span class="settings-volume-value" id="settings-volume-value">70%</span>
               </div>
               <button class="btn small settings-test-sound" id="settings-test-sound" type="button">Test Sound</button>
+            </div>
+
+            <!-- Log out -->
+            <div class="settings-section settings-logout-section">
+              <div class="settings-section-title">
+                <span class="settings-icon">🚪</span>
+                Account
+              </div>
+              <button class="btn logout settings-logout-btn" id="settings-logout-btn" type="button">Log Out</button>
+              <p class="settings-hint">Returns you to the login screen on this device.</p>
             </div>
           </div>
         </div>
