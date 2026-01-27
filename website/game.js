@@ -20,6 +20,8 @@ let wordsBank = [];
 let currentGame = null;
 let gameUnsub = null;
 let challengesUnsub = null;
+let spectatorMode = false;
+let spectatingGameId = null;
 
 // Load words on init
 document.addEventListener('DOMContentLoaded', async () => {
@@ -80,6 +82,29 @@ function generateKeyCard(firstTeam) {
    Game UI Initialization
 ========================= */
 function initGameUI() {
+  // Play mode switcher (Quick Play vs Tournament)
+  const quickBtn = document.getElementById('play-mode-quick');
+  const tourBtn = document.getElementById('play-mode-tournament');
+  if (quickBtn && tourBtn) {
+    quickBtn.addEventListener('click', () => {
+      quickBtn.classList.add('active');
+      tourBtn.classList.remove('active');
+      quickBtn.setAttribute('aria-selected', 'true');
+      tourBtn.setAttribute('aria-selected', 'false');
+      // Stay on the Play tab
+    });
+    tourBtn.addEventListener('click', () => {
+      tourBtn.classList.add('active');
+      quickBtn.classList.remove('active');
+      tourBtn.setAttribute('aria-selected', 'true');
+      quickBtn.setAttribute('aria-selected', 'false');
+      // Tournament info lives on Home
+      if (typeof switchToPanel === 'function') {
+        switchToPanel('panel-home');
+      }
+    });
+  }
+
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
   document.getElementById('role-operative')?.addEventListener('click', () => selectRole('operative'));
@@ -116,22 +141,37 @@ function listenToChallenges() {
 }
 
 async function renderGameLobby() {
+  // Ensure Quick Play is highlighted when viewing the Play tab
+  const quickBtn = document.getElementById('play-mode-quick');
+  const tourBtn = document.getElementById('play-mode-tournament');
+  if (quickBtn && tourBtn) {
+    quickBtn.classList.add('active');
+    tourBtn.classList.remove('active');
+    quickBtn.setAttribute('aria-selected', 'true');
+    tourBtn.setAttribute('aria-selected', 'false');
+  }
+
   const myTeam = getMyTeam();
   const statusEl = document.getElementById('game-team-status');
   const challengesSec = document.getElementById('challenges-section');
   const challengeTeamsSec = document.getElementById('challenge-teams-section');
   const pendingSec = document.getElementById('pending-challenges-section');
   const activeBanner = document.getElementById('game-active-banner');
+  const activeGamesSec = document.getElementById('active-games-section');
 
   if (!statusEl) return;
 
-  // Check if user is on a team
+  // If user isn't on a team, they can still spectate active games
   if (!myTeam) {
-    statusEl.innerHTML = '<div class="hint">You need to be on a team to play.</div>';
+    statusEl.innerHTML = '<div class="hint">You need to be on a team to challenge another team, but you can spectate active games.</div>';
     if (challengesSec) challengesSec.style.display = 'none';
     if (challengeTeamsSec) challengeTeamsSec.style.display = 'none';
     if (pendingSec) pendingSec.style.display = 'none';
     if (activeBanner) activeBanner.style.display = 'none';
+
+    // Render active games list for spectating
+    if (activeGamesSec) activeGamesSec.style.display = 'none';
+    await renderActiveGamesList(null, null);
     return;
   }
 
@@ -155,6 +195,9 @@ async function renderGameLobby() {
     if (challengesSec) challengesSec.style.display = 'none';
     if (challengeTeamsSec) challengeTeamsSec.style.display = 'none';
     if (pendingSec) pendingSec.style.display = 'none';
+
+    // Still show active games list (for spectating other matches)
+    await renderActiveGamesList(myTeam, activeGame.id);
     return;
   } else {
     if (activeBanner) activeBanner.style.display = 'none';
@@ -229,7 +272,7 @@ async function renderGameLobby() {
             <span class="challenge-meta">${getMembers(t).length} players</span>
           </div>
           <div class="challenge-actions">
-            <button class="btn primary small" onclick="sendChallenge('${t.id}')">Quick Play</button>
+            <button class="btn primary small" onclick="sendChallenge('${t.id}')">Challenge</button>
           </div>
         </div>
       `).join('');
@@ -237,6 +280,95 @@ async function renderGameLobby() {
   } else {
     if (challengeTeamsSec) challengeTeamsSec.style.display = 'none';
   }
+
+  // Active games list (spectate / join)
+  await renderActiveGamesList(myTeam, null);
+}
+
+async function renderActiveGamesList(myTeam, myActiveGameId) {
+  const activeGamesSec = document.getElementById('active-games-section');
+  const list = document.getElementById('active-games-list');
+  if (!activeGamesSec || !list) return;
+
+  const games = await getActiveGames(25);
+  if (!games.length) {
+    activeGamesSec.style.display = 'none';
+    return;
+  }
+
+  activeGamesSec.style.display = 'block';
+
+  list.innerHTML = games.map(g => {
+    const redName = escapeHtml(g.redTeamName || 'Red Team');
+    const blueName = escapeHtml(g.blueTeamName || 'Blue Team');
+    const status = escapeHtml(describeGameStatus(g));
+
+    const isMyGame = !!(myTeam && (g.redTeamId === myTeam.id || g.blueTeamId === myTeam.id));
+    const primaryLabel = isMyGame ? (myActiveGameId === g.id ? 'Rejoin' : 'Join') : 'Spectate';
+    const primaryAction = isMyGame ? `joinGame('${g.id}')` : `spectateGame('${g.id}')`;
+
+    return `
+      <div class="challenge-row">
+        <div class="challenge-info">
+          <span class="challenge-team-name">${redName} vs ${blueName}</span>
+          <span class="challenge-meta">${status}</span>
+        </div>
+        <div class="challenge-actions">
+          <button class="btn primary small" onclick="${primaryAction}">${primaryLabel}</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function describeGameStatus(game) {
+  if (!game) return 'In progress';
+  if (game.winner) return 'Finished';
+
+  const teamName = (game.currentTeam === 'red')
+    ? (game.redTeamName || 'Red Team')
+    : (game.blueTeamName || 'Blue Team');
+
+  if (game.currentPhase === 'role-selection') return 'Selecting roles';
+  if (game.currentPhase === 'spymaster') return `${teamName} (Spymaster)`;
+  if (game.currentPhase === 'operatives') return `${teamName} (Operatives)`;
+  return 'In progress';
+}
+
+async function getActiveGames(limit = 25) {
+  try {
+    const snap = await db.collection('games')
+      .where('winner', '==', null)
+      .limit(limit)
+      .get();
+
+    const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Best-effort sort by updatedAt / createdAt (client-side so we avoid Firestore index requirements)
+    games.sort((a, b) => {
+      const at = (a.updatedAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0);
+      const bt = (b.updatedAt?.toMillis?.() ?? b.createdAt?.toMillis?.() ?? 0);
+      return bt - at;
+    });
+
+    return games;
+  } catch (e) {
+    console.error('Failed to get active games:', e);
+    return [];
+  }
+}
+
+// Public helpers for inline onclick
+function spectateGame(gameId) {
+  spectatorMode = true;
+  spectatingGameId = gameId;
+  startGameListener(gameId, { spectator: true });
+}
+
+function joinGame(gameId) {
+  spectatorMode = false;
+  spectatingGameId = null;
+  startGameListener(gameId, { spectator: false });
 }
 
 async function getChallenges() {
@@ -367,7 +499,9 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
   const docRef = await db.collection('games').add(gameData);
 
   // Start listening to this game
-  startGameListener(docRef.id);
+  spectatorMode = false;
+  spectatingGameId = null;
+  startGameListener(docRef.id, { spectator: false });
 
   return docRef.id;
 }
@@ -409,15 +543,20 @@ async function rejoinCurrentGame() {
 
   const activeGame = await getActiveGameForTeam(myTeam.id);
   if (activeGame) {
-    startGameListener(activeGame.id);
+    spectatorMode = false;
+    spectatingGameId = null;
+    startGameListener(activeGame.id, { spectator: false });
   }
 }
 
 /* =========================
    Game Listener
 ========================= */
-function startGameListener(gameId) {
+function startGameListener(gameId, options = {}) {
   if (gameUnsub) gameUnsub();
+
+  spectatorMode = !!options.spectator;
+  spectatingGameId = spectatorMode ? gameId : null;
 
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
     if (!snap.exists) {
@@ -437,6 +576,8 @@ function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
   currentGame = null;
+  spectatorMode = false;
+  spectatingGameId = null;
 }
 
 /* =========================
@@ -463,7 +604,12 @@ function renderGame() {
 
   const myTeam = getMyTeam();
   const myTeamColor = getMyTeamColor();
-  const isSpymaster = isCurrentUserSpymaster();
+  const spectator = isSpectating();
+  const isSpymaster = !spectator && isCurrentUserSpymaster();
+
+  // Leave button label
+  const leaveBtn = document.getElementById('leave-game-btn');
+  if (leaveBtn) leaveBtn.textContent = spectator ? 'Stop Spectating' : 'Leave Game';
 
   // Update header
   document.getElementById('game-red-team').textContent = currentGame.redTeamName || 'Red Team';
@@ -482,12 +628,16 @@ function renderGame() {
   } else {
     turnTeamEl.textContent = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
     turnTeamEl.className = `turn-team ${currentGame.currentTeam}`;
-    turnRoleEl.textContent = currentGame.currentPhase === 'spymaster' ? '(Spymaster)' : '(Operatives)';
+    if (spectator) {
+      turnRoleEl.textContent = '(Spectating)';
+    } else {
+      turnRoleEl.textContent = currentGame.currentPhase === 'spymaster' ? '(Spymaster)' : '(Operatives)';
+    }
   }
 
   // Role selection
   const roleSelectionEl = document.getElementById('role-selection');
-  if (currentGame.currentPhase === 'role-selection' && myTeamColor) {
+  if (!spectator && currentGame.currentPhase === 'role-selection' && myTeamColor) {
     const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
     if (!mySpymaster) {
       roleSelectionEl.style.display = 'block';
@@ -503,7 +653,7 @@ function renderGame() {
   renderBoard(isSpymaster);
 
   // Clue area
-  renderClueArea(isSpymaster, myTeamColor);
+  renderClueArea(isSpymaster, myTeamColor, spectator);
 
   // Game log
   renderGameLog();
@@ -519,7 +669,8 @@ function renderBoard(isSpymaster) {
   if (!boardEl || !currentGame?.cards) return;
 
   const myTeamColor = getMyTeamColor();
-  const isMyTurn = currentGame.currentTeam === myTeamColor;
+  const spectator = isSpectating();
+  const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuess = isMyTurn && currentGame.currentPhase === 'operatives' && !isSpymaster && !currentGame.winner;
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
@@ -528,7 +679,7 @@ function renderBoard(isSpymaster) {
     if (card.revealed) {
       classes.push('revealed');
       classes.push(`card-${card.type}`);
-    } else if (isSpymaster) {
+    } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
       classes.push(`card-${card.type}`);
       classes.push('disabled');
@@ -546,7 +697,7 @@ function renderBoard(isSpymaster) {
   }).join('');
 }
 
-function renderClueArea(isSpymaster, myTeamColor) {
+function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const currentClueEl = document.getElementById('current-clue');
   const clueFormEl = document.getElementById('clue-form');
   const operativeActionsEl = document.getElementById('operative-actions');
@@ -560,7 +711,7 @@ function renderClueArea(isSpymaster, myTeamColor) {
 
   if (currentGame.winner) return;
 
-  const isMyTurn = currentGame.currentTeam === myTeamColor;
+  const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
 
   if (currentGame.currentPhase === 'role-selection') {
     waitingEl.style.display = 'block';
@@ -569,7 +720,7 @@ function renderClueArea(isSpymaster, myTeamColor) {
   }
 
   if (currentGame.currentPhase === 'spymaster') {
-    if (isMyTurn && isSpymaster) {
+    if (!spectator && isMyTurn && isSpymaster) {
       // Show clue input
       clueFormEl.style.display = 'flex';
     } else {
@@ -590,7 +741,7 @@ function renderClueArea(isSpymaster, myTeamColor) {
       document.getElementById('guesses-left').textContent = `(${currentGame.guessesRemaining} guesses left)`;
     }
 
-    if (isMyTurn && !isSpymaster) {
+    if (!spectator && isMyTurn && !isSpymaster) {
       // Show end turn button
       operativeActionsEl.style.display = 'flex';
     } else if (!isMyTurn) {
@@ -640,6 +791,7 @@ function updateRoleButtons() {
 ========================= */
 async function selectRole(role) {
   if (!currentGame) return;
+  if (isSpectating()) return;
 
   const myTeamColor = getMyTeamColor();
   const userName = getUserName();
@@ -681,6 +833,8 @@ async function selectRole(role) {
 ========================= */
 async function handleClueSubmit(e) {
   e.preventDefault();
+
+  if (isSpectating()) return;
 
   if (!currentGame || currentGame.currentPhase !== 'spymaster') return;
   if (!isCurrentUserSpymaster()) return;
@@ -731,6 +885,7 @@ async function handleClueSubmit(e) {
 ========================= */
 async function handleCardClick(cardIndex) {
   if (!currentGame || currentGame.currentPhase !== 'operatives') return;
+  if (isSpectating()) return;
   if (currentGame.winner) return;
 
   const myTeamColor = getMyTeamColor();
@@ -820,6 +975,7 @@ async function handleCardClick(cardIndex) {
 
 async function handleEndTurn() {
   if (!currentGame || currentGame.currentPhase !== 'operatives') return;
+  if (isSpectating()) return;
   if (currentGame.winner) return;
 
   const myTeamColor = getMyTeamColor();
@@ -894,6 +1050,13 @@ async function handleLeaveGame() {
 
   stopGameListener();
   showGameLobby();
+}
+
+function isSpectating() {
+  if (!currentGame) return false;
+  if (spectatorMode) return true;
+  // If you're not on either team in this game, you're effectively a spectator
+  return !getMyTeamColor();
 }
 
 /* =========================

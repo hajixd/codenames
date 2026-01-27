@@ -1608,6 +1608,13 @@ body.mode-joiner .only-joiner{ display:block; }
   margin-bottom: 10px;
 }
 
+/* Play tab */
+.play-mode-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-bottom: 10px;
+}
+
 .segmented{
   display:flex;
   gap: 6px;
@@ -2218,7 +2225,8 @@ button.player-tag.pill-action:disabled{
 
 .challenges-list,
 .challenge-teams-list,
-.pending-challenges-list {
+.pending-challenges-list,
+.active-games-list {
   display: flex;
   flex-direction: column;
   gap: 10px;

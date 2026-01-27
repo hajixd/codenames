@@ -209,8 +209,14 @@
           <div class="panel-inner">
             <!-- Game Lobby View (shown when not in a game) -->
             <div id="game-lobby">
+              <div class="play-mode-row">
+                <div class="segmented" role="tablist" aria-label="Play mode">
+                  <button class="seg-btn active" id="play-mode-quick" type="button" role="tab" aria-selected="true">Quick Play</button>
+                  <button class="seg-btn" id="play-mode-tournament" type="button" role="tab" aria-selected="false">Tournament</button>
+                </div>
+              </div>
               <h2>Play Codenames</h2>
-              <p class="subtitle small">Quick play with another team or accept incoming requests.</p>
+              <p class="subtitle small">Challenge another team or accept incoming challenges.</p>
 
               <!-- Your Team Status -->
               <div class="game-team-status" id="game-team-status">
@@ -226,21 +232,27 @@
                 <button class="btn primary" id="rejoin-game-btn" type="button">Rejoin Game</button>
               </div>
 
-              <!-- Incoming Quick Play Requests -->
+              <!-- Active Games (Spectate / Join) -->
+              <div class="game-section" id="active-games-section" style="display:none;">
+                <div class="game-section-title">Active Games</div>
+                <div class="active-games-list" id="active-games-list"></div>
+              </div>
+
+              <!-- Incoming Challenges -->
               <div class="game-section" id="challenges-section" style="display:none;">
-                <div class="game-section-title">Incoming Quick Play Requests</div>
+                <div class="game-section-title">Incoming Challenges</div>
                 <div class="challenges-list" id="challenges-list"></div>
               </div>
 
-              <!-- Quick Play -->
+              <!-- Challenge -->
               <div class="game-section" id="challenge-teams-section" style="display:none;">
-                <div class="game-section-title">Quick Play</div>
+                <div class="game-section-title">Challenge</div>
                 <div class="challenge-teams-list" id="challenge-teams-list"></div>
               </div>
 
-              <!-- Pending Quick Plays You Sent -->
+              <!-- Pending Challenges You Sent -->
               <div class="game-section" id="pending-challenges-section" style="display:none;">
-                <div class="game-section-title">Pending Quick Plays</div>
+                <div class="game-section-title">Pending Challenges</div>
                 <div class="pending-challenges-list" id="pending-challenges-list"></div>
               </div>
             </div>
