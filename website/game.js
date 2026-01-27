@@ -108,9 +108,37 @@ function formatQuickRules(settings) {
 
 function quickRulesAreAgreed(game) {
   const accepted = game?.settingsAccepted || {};
-  const bothAccepted = !!accepted.red && !!accepted.blue;
   const hasPending = !!game?.settingsPending;
-  return bothAccepted && !hasPending;
+
+  // Check if teams are empty - empty teams auto-agree
+  const redPlayers = Array.isArray(game?.redPlayers) ? game.redPlayers : [];
+  const bluePlayers = Array.isArray(game?.bluePlayers) ? game.bluePlayers : [];
+  const redEmpty = redPlayers.length === 0;
+  const blueEmpty = bluePlayers.length === 0;
+
+  // A team is considered "agreed" if they explicitly accepted OR if they're empty
+  const redAgreed = !!accepted.red || redEmpty;
+  const blueAgreed = !!accepted.blue || blueEmpty;
+
+  return redAgreed && blueAgreed && !hasPending;
+}
+
+// Check if a specific team has agreed to the current rules
+function teamHasAgreed(game, team) {
+  const accepted = game?.settingsAccepted || {};
+  const hasPending = !!game?.settingsPending;
+  const players = Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
+  const isEmpty = players.length === 0;
+
+  // A team is "agreed" if they explicitly accepted OR if they're empty, and there's no pending offer
+  return (!!accepted[team] || isEmpty) && !hasPending;
+}
+
+// Check if a team is fully ready (all players ready)
+function teamIsFullyReady(game, team) {
+  const players = Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
+  if (players.length === 0) return false;
+  return players.every(p => !!p.ready);
 }
 
 // Load words on init
@@ -1213,10 +1241,6 @@ async function toggleQuickReady() {
       const game = snap.data();
       if (game.currentPhase && game.currentPhase !== 'waiting') return;
 
-      if (!quickRulesAreAgreed(game)) {
-        throw new Error('Agree on rules first (open Settings).');
-      }
-
       const role = getQuickPlayerRole(game, odId);
       if (!role || role === 'spectator') throw new Error('Switch to Red or Blue to ready up.');
 
@@ -1388,6 +1412,37 @@ function renderQuickLobby(game) {
   blueList.innerHTML = renderTeamList(blue);
   specList.innerHTML = renderSpecList(specs);
 
+  // Update team status indicators
+  const redStatus = document.getElementById('quick-red-status');
+  const blueStatus = document.getElementById('quick-blue-status');
+
+  const renderTeamStatus = (team, players) => {
+    const chips = [];
+    const agreed = teamHasAgreed(game, team);
+    const allReady = teamIsFullyReady(game, team);
+
+    // Agreement status (subtle)
+    if (players.length > 0) {
+      if (agreed) {
+        chips.push('<span class="quick-status-chip agreed">Rules OK</span>');
+      } else {
+        chips.push('<span class="quick-status-chip not-agreed">Awaiting rules</span>');
+      }
+    }
+
+    // Ready status (more prominent when all ready)
+    if (players.length > 0) {
+      if (allReady) {
+        chips.push('<span class="quick-status-chip all-ready">All Ready</span>');
+      }
+    }
+
+    return chips.join('');
+  };
+
+  if (redStatus) redStatus.innerHTML = renderTeamStatus('red', red);
+  if (blueStatus) blueStatus.innerHTML = renderTeamStatus('blue', blue);
+
   // Update role selector UI (highlight the selected column)
   const effectiveRole = role || selectedQuickTeam || 'spectator';
   applyQuickRoleHighlight(effectiveRole);
@@ -1395,9 +1450,8 @@ function renderQuickLobby(game) {
   // Rules UI
   updateQuickRulesUI(game);
 
-  // Button state
-  const agreedRules = quickRulesAreAgreed(game);
-  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue') || !agreedRules;
+  // Button state - allow ready up even if rules aren't agreed yet
+  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
   leaveBtn.disabled = !effectiveRole;
 
   const youObj = effectiveRole === 'red'

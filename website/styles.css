@@ -2435,6 +2435,44 @@ body.mode-joiner .only-joiner{ display:block; }
   font-size: 12px;
 }
 
+.quick-team-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+  min-height: 22px;
+}
+.quick-team-status:empty {
+  display: none;
+}
+.quick-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.quick-status-chip.agreed {
+  background: rgba(80, 200, 120, 0.18);
+  color: #50c878;
+}
+.quick-status-chip.not-agreed {
+  background: rgba(255, 180, 50, 0.15);
+  color: #ffb432;
+}
+.quick-status-chip.all-ready {
+  background: rgba(80, 200, 120, 0.22);
+  color: #50c878;
+  font-weight: 600;
+}
+.quick-status-chip.not-ready {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.5);
+}
+
 .quick-team-list{
   display:flex;
   flex-direction: column;
