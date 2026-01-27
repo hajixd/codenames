@@ -2587,6 +2587,13 @@ body.mode-joiner .only-joiner{ display:block; }
 .qp-rules-badge[data-state="agreed"]{ background: rgba(45,210,120,0.12); border-color: rgba(45,210,120,0.22); }
 .qp-rules-badge[data-state="agreed"]::before{ background: rgba(45,210,120,0.95); box-shadow: 0 0 16px rgba(45,210,120,0.50); }
 .qp-rules-text{ color: var(--text); opacity: 0.92; }
+.qp-rules-text.rules-agreed{
+  background: linear-gradient(90deg, #2dd87a 0%, #50c878 50%, #7deb9a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  opacity: 1;
+}
 
 .quick-rules-actions{
   display:flex;

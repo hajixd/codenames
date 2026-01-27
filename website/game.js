@@ -110,15 +110,15 @@ function quickRulesAreAgreed(game) {
   const accepted = game?.settingsAccepted || {};
   const hasPending = !!game?.settingsPending;
 
-  // Check if teams are empty - empty teams auto-agree
+  // Check if teams are empty - empty teams auto-DISAGREE (can't agree if no one is there)
   const redPlayers = Array.isArray(game?.redPlayers) ? game.redPlayers : [];
   const bluePlayers = Array.isArray(game?.bluePlayers) ? game.bluePlayers : [];
   const redEmpty = redPlayers.length === 0;
   const blueEmpty = bluePlayers.length === 0;
 
-  // A team is considered "agreed" if they explicitly accepted OR if they're empty
-  const redAgreed = !!accepted.red || redEmpty;
-  const blueAgreed = !!accepted.blue || blueEmpty;
+  // A team must have players AND have explicitly accepted to be considered "agreed"
+  const redAgreed = !!accepted.red && !redEmpty;
+  const blueAgreed = !!accepted.blue && !blueEmpty;
 
   return redAgreed && blueAgreed && !hasPending;
 }
@@ -130,8 +130,9 @@ function teamHasAgreed(game, team) {
   const players = Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
   const isEmpty = players.length === 0;
 
-  // A team is "agreed" if they explicitly accepted OR if they're empty, and there's no pending offer
-  return (!!accepted[team] || isEmpty) && !hasPending;
+  // A team must have players AND have explicitly accepted to be "agreed"
+  // Empty teams auto-disagree
+  return !!accepted[team] && !isEmpty && !hasPending;
 }
 
 // Check if a team is fully ready (all players ready)
@@ -579,8 +580,10 @@ function updateQuickRulesUI(game) {
     : `Rules: ${formatQuickRules(getQuickSettings(game))}${agreed ? ' (Agreed)' : ' (Needs agreement)'}`;
   if (summaryTextEl) {
     summaryTextEl.textContent = summaryText;
+    summaryTextEl.classList.toggle('rules-agreed', agreed);
   } else if (summaryEl) {
     summaryEl.textContent = summaryText;
+    summaryEl.classList.toggle('rules-agreed', agreed);
   }
 
   // Summary badge
