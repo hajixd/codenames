@@ -270,7 +270,6 @@ function initGameUI() {
   // Quick Play settings & rule negotiation
   document.getElementById('quick-settings-btn')?.addEventListener('click', openQuickSettingsModal);
   document.getElementById('quick-settings-close')?.addEventListener('click', closeQuickSettingsModal);
-  document.getElementById('quick-settings-done')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-backdrop')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-offer')?.addEventListener('click', offerQuickRulesFromModal);
   document.getElementById('quick-settings-accept')?.addEventListener('click', acceptQuickRulesFromModal);
@@ -746,6 +745,9 @@ async function startQuickLobbyListener() {
     // Check for inactive players in lobby and remove them
     checkAndRemoveInactiveLobbyPlayers(quickLobbyGame);
 
+    // If the game has zero players, end/reset it.
+    checkAndEndEmptyQuickPlayGame(quickLobbyGame);
+
     // If a Quick Play game is in-progress, jump into it if you're a participant.
     if (quickLobbyGame.currentPhase && quickLobbyGame.currentPhase !== 'waiting' && quickLobbyGame.winner == null) {
       const odId = getUserId();
@@ -903,6 +905,49 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
     });
   } catch (e) {
     console.warn('Failed to remove inactive players:', e);
+  }
+}
+
+
+
+// If everyone leaves Quick Play, end/reset the game so the next person gets a fresh lobby.
+const EMPTY_QUICK_GAME_THROTTLE_MS = 15000;
+let lastEmptyQuickGameCheck = 0;
+
+async function checkAndEndEmptyQuickPlayGame(game) {
+  if (!game) return;
+  if (game.id && game.id !== QUICKPLAY_DOC_ID) return;
+
+  const totalPlayers = (game.redPlayers?.length || 0) + (game.bluePlayers?.length || 0) + (game.spectators?.length || 0);
+  if (totalPlayers !== 0) return;
+
+  // An empty lobby is already "ended" (waiting). Only reset if a game was in progress.
+  if (!game.currentPhase || game.currentPhase === 'waiting') return;
+
+  const now = Date.now();
+  if (now - lastEmptyQuickGameCheck < EMPTY_QUICK_GAME_THROTTLE_MS) return;
+  lastEmptyQuickGameCheck = now;
+
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+
+      const total = (g.redPlayers?.length || 0) + (g.bluePlayers?.length || 0) + (g.spectators?.length || 0);
+      if (total !== 0) return;
+      if (!g.currentPhase || g.currentPhase === 'waiting') return;
+
+      const uiSettings = readQuickSettingsFromUI();
+      const newGameData = buildQuickPlayGameData(uiSettings);
+      tx.set(ref, {
+        ...newGameData,
+        log: ['Previous game ended because all players left.']
+      });
+    });
+  } catch (e) {
+    console.warn('Failed to end empty Quick Play game:', e);
   }
 }
 
@@ -1258,9 +1303,26 @@ function renderQuickLobby(game) {
     joinQuickLobby('spectator');
   }
 
-  const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
-  const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
-  const specs = Array.isArray(game.spectators) ? game.spectators : [];
+  const redAll = Array.isArray(game.redPlayers) ? game.redPlayers : [];
+  const blueAll = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
+  const specsAll = Array.isArray(game.spectators) ? game.spectators : [];
+
+  // Only show active players in the lobby.
+  // Presence is maintained by app.js; if presence hasn't loaded yet, fall back to showing everyone.
+  const presenceData = window.presenceCache || [];
+  const presenceMap = new Map();
+  for (const pr of presenceData) {
+    const status = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
+    presenceMap.set(pr.odId || pr.id, status);
+  }
+  const isActive = (id) => {
+    if (!presenceData.length) return true;
+    return presenceMap.get(id) === 'online';
+  };
+
+  const red = redAll.filter(p => isActive(p.odId));
+  const blue = blueAll.filter(p => isActive(p.odId));
+  const specs = specsAll.filter(p => isActive(p.odId));
 
   redCount.textContent = String(red.length);
   blueCount.textContent = String(blue.length);
@@ -1850,6 +1912,12 @@ function startGameListener(gameId, options = {}) {
     }
 
     currentGame = { id: snap.id, ...snap.data() };
+
+    // If a game ever reaches 0 players, end it.
+    if (currentGame?.type === 'quick') {
+      checkAndEndEmptyQuickPlayGame(currentGame);
+    }
+
     renderGame();
   }, (err) => {
     console.error('Game listener error:', err);
