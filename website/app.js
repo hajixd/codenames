@@ -3463,3 +3463,315 @@ document.addEventListener('DOMContentLoaded', initGlobalSoundEffects);
 
 // Export for game.js to use
 window.playSound = playSound;
+
+/* =========================
+   Online Presence System
+========================= */
+
+const PRESENCE_COLLECTION = 'presence';
+const PRESENCE_INACTIVE_MS = 5 * 60 * 1000;  // 5 minutes
+const PRESENCE_OFFLINE_MS = 15 * 60 * 1000;  // 15 minutes
+const PRESENCE_UPDATE_INTERVAL_MS = 60 * 1000; // Update every 1 minute
+
+let presenceUnsub = null;
+let presenceCache = [];
+let presenceUpdateInterval = null;
+let lastActivityTime = Date.now();
+
+function initPresence() {
+  const name = getUserName();
+  if (!name) return;
+
+  // Update presence immediately
+  updatePresence();
+
+  // Set up periodic presence updates
+  if (presenceUpdateInterval) clearInterval(presenceUpdateInterval);
+  presenceUpdateInterval = setInterval(updatePresence, PRESENCE_UPDATE_INTERVAL_MS);
+
+  // Track user activity
+  const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+  const throttledActivity = throttle(() => {
+    lastActivityTime = Date.now();
+  }, 10000); // Throttle to once per 10 seconds
+
+  activityEvents.forEach(evt => {
+    document.addEventListener(evt, throttledActivity, { passive: true });
+  });
+
+  // Update presence on visibility change
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      lastActivityTime = Date.now();
+      updatePresence();
+    }
+  });
+
+  // Update presence before unload
+  window.addEventListener('beforeunload', () => {
+    // Mark as going offline
+    const userId = getUserId();
+    if (userId) {
+      // Use sendBeacon for reliable delivery on page close
+      const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+      presenceRef.update({
+        lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(() => {});
+    }
+  });
+
+  // Start listening to all presence docs
+  startPresenceListener();
+
+  // Initialize online counter UI
+  initOnlineCounterUI();
+}
+
+function throttle(fn, wait) {
+  let last = 0;
+  return function(...args) {
+    const now = Date.now();
+    if (now - last >= wait) {
+      last = now;
+      fn.apply(this, args);
+    }
+  };
+}
+
+async function updatePresence() {
+  const userId = getUserId();
+  const name = getUserName();
+  if (!userId || !name) return;
+
+  try {
+    const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+    await presenceRef.set({
+      odId: userId,
+      name: name,
+      lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    console.warn('Presence update failed:', e);
+  }
+}
+
+function startPresenceListener() {
+  if (presenceUnsub) return;
+
+  presenceUnsub = db.collection(PRESENCE_COLLECTION)
+    .orderBy('lastActivity', 'desc')
+    .onSnapshot(snap => {
+      presenceCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderOnlineCounter();
+    }, err => {
+      console.warn('Presence listener error:', err);
+    });
+}
+
+function stopPresenceListener() {
+  if (presenceUnsub) {
+    presenceUnsub();
+    presenceUnsub = null;
+  }
+}
+
+function getPresenceStatus(presence) {
+  if (!presence?.lastActivity) return 'offline';
+
+  const lastMs = typeof presence.lastActivity.toMillis === 'function'
+    ? presence.lastActivity.toMillis()
+    : (presence.lastActivity.seconds ? presence.lastActivity.seconds * 1000 : 0);
+
+  const now = Date.now();
+  const diff = now - lastMs;
+
+  if (diff < PRESENCE_INACTIVE_MS) return 'online';
+  if (diff < PRESENCE_OFFLINE_MS) return 'inactive';
+  return 'offline';
+}
+
+function getTimeSinceActivity(presence) {
+  if (!presence?.lastActivity) return '';
+
+  const lastMs = typeof presence.lastActivity.toMillis === 'function'
+    ? presence.lastActivity.toMillis()
+    : (presence.lastActivity.seconds ? presence.lastActivity.seconds * 1000 : 0);
+
+  const now = Date.now();
+  const diff = now - lastMs;
+  const minutes = Math.floor(diff / 60000);
+
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return '1 hour ago';
+  if (hours < 24) return `${hours} hours ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+
+function renderOnlineCounter() {
+  const countEl = document.getElementById('online-count');
+  if (!countEl) return;
+
+  const online = presenceCache.filter(p => getPresenceStatus(p) === 'online');
+  countEl.textContent = online.length;
+}
+
+function initOnlineCounterUI() {
+  const btn = document.getElementById('online-counter-btn');
+  const modal = document.getElementById('online-modal');
+  const backdrop = document.getElementById('online-modal-backdrop');
+  const closeBtn = document.getElementById('online-modal-close');
+
+  if (!btn || !modal) return;
+
+  btn.addEventListener('click', () => {
+    playSound('click');
+    openOnlineModal();
+  });
+
+  closeBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeOnlineModal();
+  });
+
+  backdrop?.addEventListener('click', () => {
+    playSound('click');
+    closeOnlineModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'block') {
+      closeOnlineModal();
+    }
+  });
+}
+
+function openOnlineModal() {
+  const modal = document.getElementById('online-modal');
+  if (!modal) return;
+  modal.style.display = 'block';
+  renderOnlineUsersList();
+}
+
+function closeOnlineModal() {
+  const modal = document.getElementById('online-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+}
+
+function renderOnlineUsersList() {
+  const listEl = document.getElementById('online-users-list');
+  if (!listEl) return;
+
+  const myId = getUserId();
+
+  // Sort users by status: online first, then inactive, then offline
+  const statusOrder = { online: 0, inactive: 1, offline: 2 };
+  const sorted = [...presenceCache].sort((a, b) => {
+    const statusA = getPresenceStatus(a);
+    const statusB = getPresenceStatus(b);
+    if (statusOrder[statusA] !== statusOrder[statusB]) {
+      return statusOrder[statusA] - statusOrder[statusB];
+    }
+    // Within same status, sort by lastActivity descending
+    const aMs = a.lastActivity?.toMillis?.() || 0;
+    const bMs = b.lastActivity?.toMillis?.() || 0;
+    return bMs - aMs;
+  });
+
+  // Group by status
+  const groups = { online: [], inactive: [], offline: [] };
+  for (const p of sorted) {
+    const status = getPresenceStatus(p);
+    groups[status].push(p);
+  }
+
+  let html = '';
+
+  // Online users
+  if (groups.online.length > 0) {
+    html += `<div class="online-section-title">Online (${groups.online.length})</div>`;
+    for (const p of groups.online) {
+      const isYou = p.id === myId || p.odId === myId;
+      html += `
+        <div class="online-user-row${isYou ? ' is-you' : ''}">
+          <div class="online-user-dot online"></div>
+          <div class="online-user-name">${esc(p.name || 'Unknown')}</div>
+          <div class="online-user-status">active</div>
+        </div>
+      `;
+    }
+  }
+
+  // Inactive users
+  if (groups.inactive.length > 0) {
+    html += `<div class="online-section-title">Inactive (${groups.inactive.length})</div>`;
+    for (const p of groups.inactive) {
+      const isYou = p.id === myId || p.odId === myId;
+      html += `
+        <div class="online-user-row${isYou ? ' is-you' : ''}">
+          <div class="online-user-dot inactive"></div>
+          <div class="online-user-name">${esc(p.name || 'Unknown')}</div>
+          <div class="online-user-status">${getTimeSinceActivity(p)}</div>
+        </div>
+      `;
+    }
+  }
+
+  // Offline users
+  if (groups.offline.length > 0) {
+    html += `<div class="online-section-title">Offline (${groups.offline.length})</div>`;
+    for (const p of groups.offline) {
+      const isYou = p.id === myId || p.odId === myId;
+      html += `
+        <div class="online-user-row${isYou ? ' is-you' : ''}">
+          <div class="online-user-dot offline"></div>
+          <div class="online-user-name">${esc(p.name || 'Unknown')}</div>
+          <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
+        </div>
+      `;
+    }
+  }
+
+  if (!html) {
+    html = '<div class="online-user-row"><div class="online-user-name">No users yet</div></div>';
+  }
+
+  listEl.innerHTML = html;
+}
+
+// Initialize presence when name is set
+const originalSetUserName = setUserName;
+window.setUserNameWithPresence = async function(name, opts) {
+  await originalSetUserName(name, opts);
+  if (getUserName()) {
+    initPresence();
+  }
+};
+
+// Override setUserName to also init presence
+setUserName = async function(name, opts) {
+  await originalSetUserName.call(this, name, opts);
+  if (getUserName()) {
+    initPresence();
+  }
+};
+
+// Initialize presence on DOMContentLoaded if user already has a name
+document.addEventListener('DOMContentLoaded', () => {
+  if (getUserName()) {
+    initPresence();
+  }
+});
+
+// Export presence functions for game.js
+window.getPresenceStatus = getPresenceStatus;
+window.presenceCache = presenceCache;
+window.updatePresence = updatePresence;

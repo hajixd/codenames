@@ -73,6 +73,13 @@
               <span class="header-k">Team:</span>
               <span class="header-v team-accent" id="user-team-display">No team</span>
             </div>
+            <div class="header-line header-online-line" id="header-online-line">
+              <button class="online-counter-btn" id="online-counter-btn" type="button">
+                <span class="online-dot"></span>
+                <span class="online-count" id="online-count">0</span>
+                <span class="online-label">online</span>
+              </button>
+            </div>
           </div>
           <input class="input header-user-input" id="user-name-input" type="text" placeholder="Your name" style="display:none;" />
           <button class="settings-gear-btn" id="settings-gear-btn" type="button" aria-label="Settings">
@@ -703,6 +710,20 @@
                 <span class="hint" id="create-team-hint"></span>
               </div>
             </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Online Users Modal -->
+      <div class="modal online-modal" id="online-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="online-modal-backdrop"></div>
+        <div class="modal-card online-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Who's Online</div>
+            <button class="icon-btn" id="online-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body online-modal-body">
+            <div class="online-users-list" id="online-users-list"></div>
           </div>
         </div>
       </div>

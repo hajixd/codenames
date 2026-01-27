@@ -447,26 +447,36 @@ function setModalVisible(id, visible) {
 }
 
 function openQuickSettingsModal() {
-  setModalVisible('quick-settings-modal', true);
+  const modal = document.getElementById('quick-settings-modal');
+  if (!modal) {
+    console.error('Quick settings modal not found');
+    return;
+  }
+
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+
   // Fill current values from the live lobby if we have it.
   const g = quickLobbyGame;
   const s = g?.settingsPending?.settings ? g.settingsPending.settings : getQuickSettings(g);
-  const ids = {
-    blackCards: 'qp-black-cards',
-    clueTimerSeconds: 'qp-clue-timer',
-    guessTimerSeconds: 'qp-guess-timer',
-    deckId: 'qp-deck',
-  };
-  document.getElementById(ids.blackCards).value = String(s.blackCards ?? 1);
-  document.getElementById(ids.clueTimerSeconds).value = String(s.clueTimerSeconds ?? 0);
-  document.getElementById(ids.guessTimerSeconds).value = String(s.guessTimerSeconds ?? 0);
+
+  const blackCardsEl = document.getElementById('qp-black-cards');
+  const clueTimerEl = document.getElementById('qp-clue-timer');
+  const guessTimerEl = document.getElementById('qp-guess-timer');
+
+  if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
+  if (clueTimerEl) clueTimerEl.value = String(s.clueTimerSeconds ?? 0);
+  if (guessTimerEl) guessTimerEl.value = String(s.guessTimerSeconds ?? 0);
   setQuickDeckSelectionUI(s.deckId || 'standard');
 
   updateQuickRulesUI(g);
 }
 
 function closeQuickSettingsModal() {
-  setModalVisible('quick-settings-modal', false);
+  const modal = document.getElementById('quick-settings-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
 }
 
 function updateQuickRulesUI(game) {
@@ -723,6 +733,12 @@ async function startQuickLobbyListener() {
     }
     quickLobbyGame = { id: snap.id, ...snap.data() };
 
+    // Check for game inactivity (30+ minutes) - end the game
+    checkAndEndInactiveGame(quickLobbyGame);
+
+    // Check for inactive players in lobby and remove them
+    checkAndRemoveInactiveLobbyPlayers(quickLobbyGame);
+
     // If a Quick Play game is in-progress, jump into it if you're a participant.
     if (quickLobbyGame.currentPhase && quickLobbyGame.currentPhase !== 'waiting' && quickLobbyGame.winner == null) {
       const odId = getUserId();
@@ -741,6 +757,146 @@ async function startQuickLobbyListener() {
       maybeAutoStartQuickPlay(quickLobbyGame);
     }
   }, (err) => console.error('Quick Play lobby listener error:', err));
+}
+
+// Game inactivity timeout: end games that have been inactive for 30+ minutes
+const GAME_INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
+let lastInactiveGameCheck = 0;
+
+async function checkAndEndInactiveGame(game) {
+  if (!game) return;
+
+  // Only check in-progress games
+  if (!game.currentPhase || game.currentPhase === 'waiting' || game.winner != null) return;
+
+  // Throttle checks to once per minute
+  const now = Date.now();
+  if (now - lastInactiveGameCheck < 60000) return;
+  lastInactiveGameCheck = now;
+
+  // Check last update time
+  const updatedAt = game.updatedAt;
+  if (!updatedAt) return;
+
+  const lastMs = typeof updatedAt.toMillis === 'function'
+    ? updatedAt.toMillis()
+    : (updatedAt.seconds ? updatedAt.seconds * 1000 : 0);
+
+  if (!lastMs) return;
+
+  const diff = now - lastMs;
+  if (diff < GAME_INACTIVITY_MS) return;
+
+  // Game has been inactive for 30+ minutes, end it
+  console.log('Game inactive for 30+ minutes, ending...');
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+
+      const g = snap.data();
+      // Double-check the game is still inactive
+      if (g.winner != null || g.currentPhase === 'waiting') return;
+
+      const gUpdatedAt = g.updatedAt;
+      const gLastMs = typeof gUpdatedAt?.toMillis === 'function'
+        ? gUpdatedAt.toMillis()
+        : (gUpdatedAt?.seconds ? gUpdatedAt.seconds * 1000 : 0);
+
+      if (Date.now() - gLastMs < GAME_INACTIVITY_MS) return;
+
+      // Reset the game (end due to inactivity)
+      const uiSettings = readQuickSettingsFromUI();
+      const newGameData = buildQuickPlayGameData(uiSettings);
+      tx.set(ref, {
+        ...newGameData,
+        log: ['Previous game ended due to inactivity (30+ minutes).']
+      });
+    });
+  } catch (e) {
+    console.warn('Failed to end inactive game:', e);
+  }
+}
+
+// Remove inactive players from lobby
+const LOBBY_INACTIVE_MS = 5 * 60 * 1000; // 5 minutes (same as presence inactive threshold)
+let lastInactivePlayerCheck = 0;
+
+async function checkAndRemoveInactiveLobbyPlayers(game) {
+  if (!game) return;
+
+  // Only check lobby (waiting state)
+  if (game.currentPhase !== 'waiting') return;
+
+  // Throttle checks to once per 30 seconds
+  const now = Date.now();
+  if (now - lastInactivePlayerCheck < 30000) return;
+  lastInactivePlayerCheck = now;
+
+  // Get presence data from app.js
+  const presenceData = window.presenceCache || [];
+  if (!presenceData.length) return;
+
+  // Create a map of odId to presence status
+  const presenceMap = new Map();
+  for (const p of presenceData) {
+    const status = window.getPresenceStatus ? window.getPresenceStatus(p) : 'online';
+    presenceMap.set(p.odId || p.id, status);
+  }
+
+  // Check all players in the lobby
+  const redPlayers = game.redPlayers || [];
+  const bluePlayers = game.bluePlayers || [];
+  const spectators = game.spectators || [];
+
+  // Find inactive/offline players
+  const inactivePlayers = [];
+
+  for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
+    const status = presenceMap.get(p.odId);
+    // Remove players who are inactive or offline (or not in presence at all)
+    if (!status || status === 'inactive' || status === 'offline') {
+      inactivePlayers.push(p.odId);
+    }
+  }
+
+  if (inactivePlayers.length === 0) return;
+
+  // Remove inactive players from the lobby
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+
+      const g = snap.data();
+      if (g.currentPhase !== 'waiting') return;
+
+      const nextRed = (g.redPlayers || []).filter(p => !inactivePlayers.includes(p.odId));
+      const nextBlue = (g.bluePlayers || []).filter(p => !inactivePlayers.includes(p.odId));
+      const nextSpec = (g.spectators || []).filter(p => !inactivePlayers.includes(p.odId));
+
+      // Only update if something changed
+      const beforeCount = (g.redPlayers?.length || 0) + (g.bluePlayers?.length || 0) + (g.spectators?.length || 0);
+      const afterCount = nextRed.length + nextBlue.length + nextSpec.length;
+
+      if (beforeCount === afterCount) return;
+
+      tx.update(ref, {
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        spectators: nextSpec,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby`);
+    });
+  } catch (e) {
+    console.warn('Failed to remove inactive players:', e);
+  }
 }
 
 function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
