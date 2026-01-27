@@ -892,7 +892,8 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
   for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
     const status = presenceMap.get(p.odId);
     // Remove players who are inactive or offline (or not in presence at all)
-    if (!status || status === 'inactive' || status === 'offline') {
+    // Remove players who are idle or offline (or not in presence at all)
+    if (!status || status === 'idle' || status === 'offline') {
       inactivePlayers.push(p.odId);
     }
   }
@@ -1707,6 +1708,97 @@ function describeGameStatus(game) {
   return 'In progress';
 }
 
+/* =========================
+   Abandoned game cleanup
+   - End a tournament game only when there are no players online OR idle.
+   - Also end games that have no rostered players (e.g., teams deleted/empty).
+========================= */
+
+const ABANDONED_GAME_GRACE_MS = 2 * 60 * 1000; // Don't auto-end games created in the last 2 minutes
+
+function buildPresenceStatusMap() {
+  const presenceData = window.presenceCache || [];
+  const m = new Map();
+  for (const p of presenceData) {
+    const id = String(p.odId || p.id || '').trim();
+    if (!id) continue;
+    const st = window.getPresenceStatus ? window.getPresenceStatus(p) : 'offline';
+    m.set(id, st);
+  }
+  return m;
+}
+
+function getGameParticipantIds(game) {
+  // Tournament games don't store per-game player arrays, so we infer participants from team rosters.
+  const ids = new Set();
+  if (!game) return ids;
+
+  const redTeam = teamsCache?.find?.(t => t.id === game.redTeamId);
+  const blueTeam = teamsCache?.find?.(t => t.id === game.blueTeamId);
+
+  const addTeam = (team) => {
+    if (!team) return;
+    const members = (typeof getMembers === 'function') ? getMembers(team) : (team.members || []);
+    for (const m of (members || [])) {
+      const aid = (typeof entryAccountId === 'function')
+        ? entryAccountId(m)
+        : String(m?.userId || '').trim();
+      if (aid) ids.add(aid);
+    }
+  };
+
+  addTeam(redTeam);
+  addTeam(blueTeam);
+  return ids;
+}
+
+function isBeyondGracePeriod(game) {
+  const now = Date.now();
+  const createdAt = game?.createdAt;
+  const createdMs = typeof createdAt?.toMillis === 'function'
+    ? createdAt.toMillis()
+    : (createdAt?.seconds ? createdAt.seconds * 1000 : 0);
+  if (!createdMs) return true;
+  return (now - createdMs) > ABANDONED_GAME_GRACE_MS;
+}
+
+function shouldEndAbandonedTournamentGame(game, presenceMap) {
+  if (!game) return false;
+  if (game.winner != null) return false;
+  if (game.type === 'quick') return false;
+  if (!isBeyondGracePeriod(game)) return false;
+
+  const participants = getGameParticipantIds(game);
+  if (participants.size === 0) {
+    // No rostered players exist for this match.
+    return true;
+  }
+
+  for (const id of participants) {
+    const st = presenceMap.get(id);
+    if (st === 'online' || st === 'idle') {
+      return false;
+    }
+  }
+  // Everyone is offline or missing presence.
+  return true;
+}
+
+async function endAbandonedTournamentGame(gameId, reason) {
+  if (!gameId) return;
+  try {
+    await db.collection('games').doc(gameId).update({
+      winner: 'abandoned',
+      currentPhase: 'ended',
+      endedReason: reason || 'abandoned',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      log: firebase.firestore.FieldValue.arrayUnion(`Game ended (${reason || 'abandoned'}).`)
+    });
+  } catch (e) {
+    console.warn('Failed to end abandoned game:', e);
+  }
+}
+
 async function getActiveGames(limit = 25) {
   try {
     const snap = await db.collection('games')
@@ -1714,7 +1806,20 @@ async function getActiveGames(limit = 25) {
       .limit(limit)
       .get();
 
-    const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Auto-end abandoned tournament games (no online/idle participants).
+    // This also cleans up orphaned matches with no rostered players.
+    const presenceMap = buildPresenceStatusMap();
+    const stillActive = [];
+    for (const g of games) {
+      if (shouldEndAbandonedTournamentGame(g, presenceMap)) {
+        await endAbandonedTournamentGame(g.id, 'no active or idle players');
+        continue;
+      }
+      stillActive.push(g);
+    }
+    games = stillActive;
 
     // Best-effort sort by updatedAt / createdAt (client-side so we avoid Firestore index requirements)
     games.sort((a, b) => {

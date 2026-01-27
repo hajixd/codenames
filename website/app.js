@@ -3623,7 +3623,8 @@ function getPresenceStatus(presence) {
   const diff = now - lastMs;
 
   if (diff < PRESENCE_INACTIVE_MS) return 'online';
-  if (diff < PRESENCE_OFFLINE_MS) return 'inactive';
+  // Rename "inactive" to "idle" in the UI/status model.
+  if (diff < PRESENCE_OFFLINE_MS) return 'idle';
   return 'offline';
 }
 
@@ -3737,8 +3738,8 @@ function renderOnlineUsersList() {
     });
   }
 
-  // Sort users by status: online first, then inactive, then offline
-  const statusOrder = { online: 0, inactive: 1, offline: 2 };
+  // Sort users by status: online first, then idle, then offline
+  const statusOrder = { online: 0, idle: 1, offline: 2 };
   const sorted = filtered.sort((a, b) => {
     const statusA = getPresenceStatus(a);
     const statusB = getPresenceStatus(b);
@@ -3752,7 +3753,7 @@ function renderOnlineUsersList() {
   });
 
   // Group by status
-  const groups = { online: [], inactive: [], offline: [] };
+  const groups = { online: [], idle: [], offline: [] };
   for (const p of sorted) {
     const status = getPresenceStatus(p);
     groups[status].push(p);
@@ -3783,10 +3784,10 @@ function renderOnlineUsersList() {
     }
   }
 
-  // Inactive users
-  if (groups.inactive.length > 0) {
-    html += `<div class="online-section-title">Inactive (${groups.inactive.length})</div>`;
-    for (const p of groups.inactive) {
+  // Idle users
+  if (groups.idle.length > 0) {
+    html += `<div class="online-section-title">Idle (${groups.idle.length})</div>`;
+    for (const p of groups.idle) {
       const isYou = p.id === myId || p.odId === myId;
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
