@@ -382,42 +382,18 @@
                     </div>
 
                     <div class="modal-body">
-                      <div class="qp-settings-banner">
-                        <div class="qp-settings-emoji">⚙️</div>
-                        <div class="qp-settings-copy">
-                          <div class="qp-settings-title">House Rules</div>
-                          <div class="qp-settings-sub">Offer these settings to the other team. When both accept and both teams are ready, the game starts.</div>
-                        </div>
-                      </div>
-
                       <div class="settings-grid qp-settings-grid">
-                        <div class="qp-setting qp-setting-deck" data-accent="deck">
-                          <div class="setting-label">Word deck</div>
-                          <div class="qp-deck-picker" id="qp-deck-picker" role="radiogroup" aria-label="Word deck">
-                            <button class="qp-deck-card selected" type="button" data-deck="standard" role="radio" aria-checked="true">
-                              <span class="qp-deck-emoji">🌍</span>
-                              <span class="qp-deck-name">Standard</span>
-                            </button>
-                            <button class="qp-deck-card" type="button" data-deck="family" role="radio" aria-checked="false">
-                              <span class="qp-deck-emoji">🧸</span>
-                              <span class="qp-deck-name">Family</span>
-                            </button>
-                            <button class="qp-deck-card" type="button" data-deck="pop" role="radio" aria-checked="false">
-                              <span class="qp-deck-emoji">🎬</span>
-                              <span class="qp-deck-name">Pop</span>
-                            </button>
-                            <button class="qp-deck-card" type="button" data-deck="sports" role="radio" aria-checked="false">
-                              <span class="qp-deck-emoji">🏟️</span>
-                              <span class="qp-deck-name">Sports</span>
-                            </button>
-                            <button class="qp-deck-card" type="button" data-deck="tech" role="radio" aria-checked="false">
-                              <span class="qp-deck-emoji">💻</span>
-                              <span class="qp-deck-name">Tech</span>
-                            </button>
-                          </div>
-                          <div class="hint" style="margin-top:8px; padding-left:12px;">Your deck is included in your rules offer.</div>
+                        <label class="setting-row qp-setting" data-accent="deck">
+                          <span class="setting-label">Word deck</span>
+                          <select class="input setting-select" id="qp-deck-select" aria-label="Word deck">
+                            <option value="standard" selected>Standard</option>
+                            <option value="family">Family</option>
+                            <option value="pop">Pop</option>
+                            <option value="sports">Sports</option>
+                            <option value="tech">Tech</option>
+                          </select>
                           <input type="hidden" id="qp-deck" value="standard" />
-                        </div>
+                        </label>
 
                         <label class="setting-row qp-setting" data-accent="black">
                           <span class="setting-label">Assassin (black) cards</span>
@@ -459,26 +435,6 @@
                           <div class="qp-neg-title">Rule Agreement</div>
                           <div class="qp-neg-chip" id="qp-neg-chip">Needs agreement</div>
                         </div>
-                        <div class="qp-neg-rail" aria-label="Rules agreement status">
-                          <div class="qp-neg-team red" id="qp-neg-red">
-                            <div class="qp-neg-team-top">
-                              <span class="qp-neg-dot red"></span>
-                              <span class="qp-neg-team-name">Red</span>
-                            </div>
-                            <div class="qp-neg-team-state" id="qp-neg-red-state">—</div>
-                          </div>
-                          <div class="qp-neg-vs">🤝</div>
-                          <div class="qp-neg-team blue" id="qp-neg-blue">
-                            <div class="qp-neg-team-top">
-                              <span class="qp-neg-dot blue"></span>
-                              <span class="qp-neg-team-name">Blue</span>
-                            </div>
-                            <div class="qp-neg-team-state" id="qp-neg-blue-state">—</div>
-                          </div>
-                        </div>
-
-                        <div class="qp-neg-preview" id="qp-neg-preview" aria-label="Offered rules preview"></div>
-
                         <div class="qp-neg-copy hint" id="quick-settings-status">Offer rules from your team. The other team must accept before you can ready up.</div>
 
                         <div class="qp-neg-actions">

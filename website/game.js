@@ -400,6 +400,11 @@ function setQuickDeckSelectionUI(deckId) {
   const id = normalizeDeckId(deckId);
   const hidden = document.getElementById('qp-deck');
   if (hidden) hidden.value = id;
+
+  // New compact UI (dropdown)
+  const sel = document.getElementById('qp-deck-select');
+  if (sel) sel.value = id;
+
   const picker = document.getElementById('qp-deck-picker');
   if (!picker) return;
   const cards = [...picker.querySelectorAll('.qp-deck-card')];
@@ -411,6 +416,27 @@ function setQuickDeckSelectionUI(deckId) {
 }
 
 function initQuickDeckPicker() {
+  // Preferred compact UI: dropdown
+  const sel = document.getElementById('qp-deck-select');
+  if (sel) {
+    // Disable any decks that aren't present in words.json
+    [...sel.querySelectorAll('option')].forEach((opt) => {
+      const id = opt.value;
+      const ok = (id === 'standard') || (wordsDecks && wordsDecks[id] && Array.isArray(wordsDecks[id]) && wordsDecks[id].length >= 25);
+      opt.disabled = !ok;
+    });
+
+    sel.addEventListener('change', () => {
+      setQuickDeckSelectionUI(sel.value || 'standard');
+      if (quickLobbyGame) updateQuickRulesUI(quickLobbyGame);
+    });
+
+    // default
+    setQuickDeckSelectionUI(document.getElementById('qp-deck')?.value || sel.value || 'standard');
+    return;
+  }
+
+  // Backward-compatible UI: card picker
   const picker = document.getElementById('qp-deck-picker');
   if (!picker) return;
   const cards = [...picker.querySelectorAll('.qp-deck-card')];
