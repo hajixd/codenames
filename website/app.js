@@ -3704,6 +3704,8 @@ function renderOnlineUsersList() {
 
   const myId = getUserId();
 
+  const roster = buildRosterIndex(teamsCache);
+
   // Get teammate IDs if filtering by teammates
   let teammateIds = new Set();
   if (onlineModalTab === 'teammates') {
@@ -3752,10 +3754,21 @@ function renderOnlineUsersList() {
     html += `<div class="online-section-title">Online (${groups.online.length})</div>`;
     for (const p of groups.online) {
       const isYou = p.id === myId || p.odId === myId;
+      const uid = String(p.id || p.odId || '').trim();
+      const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
+      const memberTeam = roster.memberTeamByUserId.get(uid);
+      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : 'No team';
+      const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+      const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
+      const teamPillStyle = teamColor
+        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
+        : '';
+
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
-          <div class="online-user-name">${esc(p.name || 'Unknown')}</div>
+          <div class="online-user-name" ${nameStyle}>${esc(displayName)}</div>
+          <div class="online-user-team" ${teamPillStyle}>${esc(teamName)}</div>
           <div class="online-user-status">active</div>
         </div>
       `;
@@ -3767,10 +3780,21 @@ function renderOnlineUsersList() {
     html += `<div class="online-section-title">Inactive (${groups.inactive.length})</div>`;
     for (const p of groups.inactive) {
       const isYou = p.id === myId || p.odId === myId;
+      const uid = String(p.id || p.odId || '').trim();
+      const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
+      const memberTeam = roster.memberTeamByUserId.get(uid);
+      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : 'No team';
+      const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+      const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
+      const teamPillStyle = teamColor
+        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
+        : '';
+
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot inactive"></div>
-          <div class="online-user-name">${esc(p.name || 'Unknown')}</div>
+          <div class="online-user-name" ${nameStyle}>${esc(displayName)}</div>
+          <div class="online-user-team" ${teamPillStyle}>${esc(teamName)}</div>
           <div class="online-user-status">${getTimeSinceActivity(p)}</div>
         </div>
       `;
@@ -3782,10 +3806,21 @@ function renderOnlineUsersList() {
     html += `<div class="online-section-title">Offline (${groups.offline.length})</div>`;
     for (const p of groups.offline) {
       const isYou = p.id === myId || p.odId === myId;
+      const uid = String(p.id || p.odId || '').trim();
+      const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
+      const memberTeam = roster.memberTeamByUserId.get(uid);
+      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : 'No team';
+      const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+      const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
+      const teamPillStyle = teamColor
+        ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
+        : '';
+
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
-          <div class="online-user-name">${esc(p.name || 'Unknown')}</div>
+          <div class="online-user-name" ${nameStyle}>${esc(displayName)}</div>
+          <div class="online-user-team" ${teamPillStyle}>${esc(teamName)}</div>
           <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
         </div>
       `;
@@ -3963,6 +3998,8 @@ function renderTeammatesList() {
 
   const st = computeUserState(teamsCache);
   const myId = getUserId();
+
+  const roster = buildRosterIndex(teamsCache);
 
   if (!st.team) {
     if (titleEl) titleEl.textContent = 'My Team';

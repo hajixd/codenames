@@ -779,7 +779,7 @@
         </div>
       </div>
 
-      <!-- Settings Modal -->
+            <!-- Settings Modal -->
       <div class="modal settings-modal" id="settings-modal" style="display:none;" role="dialog" aria-modal="true">
         <div class="modal-backdrop" id="settings-modal-backdrop"></div>
         <div class="modal-card settings-modal-card">
@@ -788,45 +788,33 @@
             <button class="icon-btn" id="settings-modal-close" type="button" aria-label="Close">×</button>
           </div>
           <div class="modal-body settings-modal-body">
-            <!-- Animations Toggle -->
-            <div class="settings-section">
-              <div class="settings-section-title">
-                <span class="settings-icon">✨</span>
-                Animations
-              </div>
-              <label class="settings-toggle-row">
-                <span class="settings-toggle-label">Enable animations</span>
+            <div class="settings-simple">
+              <label class="settings-row">
+                <span class="settings-row-label">Animations</span>
                 <div class="toggle-switch">
                   <input type="checkbox" id="settings-animations-toggle" checked />
                   <span class="toggle-slider"></span>
                 </div>
               </label>
-              <p class="settings-hint">Smooth transitions and visual effects throughout the app.</p>
-            </div>
 
-            <!-- Sound Effects -->
-            <div class="settings-section">
-              <div class="settings-section-title">
-                <span class="settings-icon">🔊</span>
-                Sound Effects
-              </div>
-              <label class="settings-toggle-row">
-                <span class="settings-toggle-label">Enable sounds</span>
+              <label class="settings-row">
+                <span class="settings-row-label">Sounds</span>
                 <div class="toggle-switch">
                   <input type="checkbox" id="settings-sounds-toggle" checked />
                   <span class="toggle-slider"></span>
                 </div>
               </label>
-              <div class="settings-volume-row">
-                <span class="settings-volume-label">Volume</span>
+
+              <div class="settings-row settings-row-volume">
+                <span class="settings-row-label">Volume</span>
                 <input type="range" id="settings-volume-slider" class="settings-volume-slider" min="0" max="100" value="70" />
                 <span class="settings-volume-value" id="settings-volume-value">70%</span>
               </div>
-              <button class="btn small settings-test-sound" id="settings-test-sound" type="button">Test Sound</button>
             </div>
           </div>
         </div>
       </div>
+
 
 
     </div>

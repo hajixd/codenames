@@ -3790,7 +3790,7 @@ button.player-tag.pill-action:disabled{
   border-radius: 20px;
   padding: 30px;
   text-align: center;
-  max-width: 400px;
+  max-width: 340px;
   width: 100%;
 }
 
@@ -4033,6 +4033,21 @@ button.player-tag.pill-action:disabled{
   color: var(--text);
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-user-team {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  flex-shrink: 0;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4358,7 +4373,7 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   transform: translate(-50%, -50%);
   z-index: 1000;
   width: 90%;
-  max-width: 400px;
+  max-width: 340px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -4366,11 +4381,49 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 }
 
 .settings-modal-body {
-  padding: 20px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
 }
+
+/* Simplified Settings UI */
+.settings-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.settings-row-volume {
+  cursor: default;
+}
+
+.settings-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.settings-row-volume .settings-volume-slider {
+  flex: 1;
+}
+
+.settings-row-volume .settings-volume-value {
+  min-width: 38px;
+}
+
 
 .settings-section {
   display: flex;
@@ -4395,6 +4448,34 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   font-size: 12px;
   color: var(--text-dim);
   margin-top: -4px;
+}
+
+
+/* Simplified Settings (compact) */
+.settings-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-radius: 12px;
+}
+
+.settings-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-row-volume .settings-volume-value {
+  min-width: 36px;
 }
 
 /* Toggle Switch */
