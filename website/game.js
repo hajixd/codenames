@@ -390,12 +390,23 @@ function closeQuickSettingsModal() {
 
 function updateQuickRulesUI(game) {
   const summaryEl = document.getElementById('quick-rules-summary');
+  const summaryTextEl = document.getElementById('quick-rules-text');
+  const summaryBadgeEl = document.getElementById('quick-rules-badge');
   const acceptInline = document.getElementById('quick-rules-accept-btn');
   const hintEl = document.getElementById('quick-lobby-hint');
 
   const modalStatus = document.getElementById('quick-settings-status');
   const offerBtn = document.getElementById('quick-settings-offer');
   const acceptBtn = document.getElementById('quick-settings-accept');
+
+  // Negotiation UI (inside settings modal)
+  const negWrap = document.getElementById('qp-negotiation');
+  const negChip = document.getElementById('qp-neg-chip');
+  const negRed = document.getElementById('qp-neg-red');
+  const negBlue = document.getElementById('qp-neg-blue');
+  const negRedState = document.getElementById('qp-neg-red-state');
+  const negBlueState = document.getElementById('qp-neg-blue-state');
+  const negPreview = document.getElementById('qp-neg-preview');
 
   const odId = getUserId();
   const myRole = game ? getQuickPlayerRole(game, odId) : null;
@@ -404,14 +415,31 @@ function updateQuickRulesUI(game) {
   const pending = game?.settingsPending || null;
   const agreed = quickRulesAreAgreed(game);
 
+  // Determine a UI state string we can reuse across multiple widgets
+  let uiState = 'needs';
+  if (!myTeam) uiState = 'no-team';
+  else if (agreed) uiState = 'agreed';
+  else if (pending && pending.by === 'red') uiState = 'pending-red';
+  else if (pending && pending.by === 'blue') uiState = 'pending-blue';
+
   // Summary line
-  if (summaryEl) {
-    if (pending && pending.settings) {
-      const by = String(pending.by || 'red');
-      summaryEl.textContent = `Offer from ${by.toUpperCase()}: ${formatQuickRules(pending.settings)}`;
-    } else {
-      summaryEl.textContent = `Rules: ${formatQuickRules(getQuickSettings(game))}${agreed ? ' (Agreed)' : ' (Needs agreement)'}`;
-    }
+  const summaryText = (pending && pending.settings)
+    ? `Offer from ${(String(pending.by || 'red')).toUpperCase()}: ${formatQuickRules(pending.settings)}`
+    : `Rules: ${formatQuickRules(getQuickSettings(game))}${agreed ? ' (Agreed)' : ' (Needs agreement)'}`;
+  if (summaryTextEl) {
+    summaryTextEl.textContent = summaryText;
+  } else if (summaryEl) {
+    summaryEl.textContent = summaryText;
+  }
+
+  // Summary badge
+  if (summaryBadgeEl) {
+    summaryBadgeEl.dataset.state = uiState;
+    if (uiState === 'agreed') summaryBadgeEl.textContent = 'Agreed';
+    else if (uiState === 'no-team') summaryBadgeEl.textContent = 'Pick a team';
+    else if (uiState === 'pending-red') summaryBadgeEl.textContent = 'Offer: Red';
+    else if (uiState === 'pending-blue') summaryBadgeEl.textContent = 'Offer: Blue';
+    else summaryBadgeEl.textContent = 'Needs OK';
   }
 
   // Inline accept button
@@ -449,6 +477,50 @@ function updateQuickRulesUI(game) {
     } else {
       modalStatus.textContent = 'Rules are agreed. If you change anything, send a new offer.';
     }
+  }
+
+  // Negotiation widget in modal
+  if (negWrap) negWrap.dataset.state = uiState;
+  if (negChip) {
+    if (uiState === 'agreed') negChip.textContent = 'Agreed';
+    else if (uiState === 'no-team') negChip.textContent = 'Join a team';
+    else if (uiState === 'pending-red') negChip.textContent = canAccept ? 'Incoming offer (Red)' : 'Offer pending (Red)';
+    else if (uiState === 'pending-blue') negChip.textContent = canAccept ? 'Incoming offer (Blue)' : 'Offer pending (Blue)';
+    else negChip.textContent = 'Needs agreement';
+  }
+
+  const redAccepted = !!accepted.red;
+  const blueAccepted = !!accepted.blue;
+  if (negRed) negRed.dataset.accepted = redAccepted ? 'true' : 'false';
+  if (negBlue) negBlue.dataset.accepted = blueAccepted ? 'true' : 'false';
+  if (negRedState) negRedState.textContent = !myTeam && !pending && !agreed ? '—' : (redAccepted ? 'Accepted' : 'Waiting');
+  if (negBlueState) negBlueState.textContent = !myTeam && !pending && !agreed ? '—' : (blueAccepted ? 'Accepted' : 'Waiting');
+
+  // Preview pills
+  if (negPreview) {
+    const s = (pending && pending.settings) ? pending.settings : getQuickSettings(game);
+    const pills = [];
+    if (pending && pending.by) {
+      const by = String(pending.by);
+      pills.push(`<span class="qp-neg-pill ${by === 'red' ? 'red' : 'blue'}">Offered by ${by.toUpperCase()}</span>`);
+    } else if (agreed) {
+      pills.push('<span class="qp-neg-pill teal">Locked in</span>');
+    }
+    const black = Number(s.blackCards ?? 1);
+    pills.push(`<span class="qp-neg-pill slate">Assassins: ${black}</span>`);
+    const clue = Number(s.clueTimerSeconds ?? 0);
+    const guess = Number(s.guessTimerSeconds ?? 0);
+    pills.push(`<span class="qp-neg-pill purple">Clue: ${clue === 0 ? '∞' : `${clue}s`}</span>`);
+    pills.push(`<span class="qp-neg-pill teal">Guess: ${guess === 0 ? '∞' : `${guess}s`}</span>`);
+    negPreview.innerHTML = pills.join('');
+  }
+
+  // Button copy tweaks to make the offer/accept flow feel more intentional
+  if (offerBtn) {
+    if (!myTeam) offerBtn.textContent = 'Join a team to offer';
+    else if (pending && pending.by === myTeam) offerBtn.textContent = 'Offer sent';
+    else if (pending && pending.by && pending.by !== myTeam) offerBtn.textContent = canAccept ? 'Counter-offer' : 'Send offer';
+    else offerBtn.textContent = 'Send offer';
   }
 }
 
