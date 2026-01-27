@@ -1440,51 +1440,42 @@ async function renderSpectateGames() {
 
     const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // 1) Quick games waiting for players (joinable)
-    // Quick Play is a single shared lobby.
-    const waitingQuick = games
-      .filter(g => g.type === 'quick' && g.id === QUICKPLAY_DOC_ID && g.currentPhase === 'waiting')
-      .slice(0, 1);
-
-    // 2) All games already in progress (watchable)
+    // Only show games that have actually started (not in waiting phase)
+    // Games in 'waiting' phase are still in lobby/setup and shouldn't be visible
     const activeGames = games
-      .filter(g => g.currentPhase !== 'waiting')
+      .filter(g => g.currentPhase && g.currentPhase !== 'waiting')
       .slice(0, 10);
 
-    if (waitingQuick.length === 0 && activeGames.length === 0) {
+    if (activeGames.length === 0) {
       section.style.display = 'none';
       return;
     }
 
     section.style.display = 'block';
 
-    const waitingHtml = waitingQuick.map(g => {
-      const redCount = (g.redPlayers || []).length;
-      const blueCount = (g.bluePlayers || []).length;
-      return `
-        <div class="challenge-row">
-          <div class="challenge-info">
-            <span class="challenge-team-name">Open Quick Game</span>
-            <span class="challenge-meta">Red: ${redCount} | Blue: ${blueCount}</span>
-          </div>
-          <div class="challenge-actions">
-            <button class="btn small" style="background: var(--game-red-bg); border-color: var(--game-red-border);" onclick="joinQuickGame('${g.id}', 'red')">Join Red</button>
-            <button class="btn small" style="background: var(--game-blue-bg); border-color: var(--game-blue-border);" onclick="joinQuickGame('${g.id}', 'blue')">Join Blue</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-
     const activeHtml = activeGames.map(g => {
       const redName = escapeHtml(g.redTeamName || 'Red Team');
       const blueName = escapeHtml(g.blueTeamName || 'Blue Team');
       const status = escapeHtml(describeGameStatus(g));
 
-      // If this is a tournament game and the user is on one of the teams, let them join directly.
+      // Tournament games: only team members can join, others can only watch
+      // Quick Play games: anyone in the game can rejoin
       const myTeam = getMyTeam?.() || null;
-      const isMyTournamentGame = !!(myTeam && g.type !== 'quick' && (g.redTeamId === myTeam.id || g.blueTeamId === myTeam.id));
-      const primaryLabel = isMyTournamentGame ? 'Join' : 'Watch';
-      const primaryAction = isMyTournamentGame ? `joinGame('${g.id}')` : `spectateGame('${g.id}')`;
+      const odId = getUserId?.() || null;
+
+      let canJoin = false;
+      if (g.type === 'tournament') {
+        // Tournament: only if user's team is participating
+        canJoin = !!(myTeam && (g.redTeamId === myTeam.id || g.blueTeamId === myTeam.id));
+      } else if (g.type === 'quick') {
+        // Quick Play: only if user is already in the game
+        const inRed = (g.redPlayers || []).some(p => p.odId === odId);
+        const inBlue = (g.bluePlayers || []).some(p => p.odId === odId);
+        canJoin = inRed || inBlue;
+      }
+
+      const primaryLabel = canJoin ? 'Rejoin' : 'Watch';
+      const primaryAction = canJoin ? `joinGame('${g.id}')` : `spectateGame('${g.id}')`;
 
       return `
         <div class="challenge-row">
@@ -1499,7 +1490,7 @@ async function renderSpectateGames() {
       `;
     }).join('');
 
-    list.innerHTML = `${waitingHtml}${activeHtml}`;
+    list.innerHTML = activeHtml;
   } catch (e) {
     console.error('Failed to render spectate games:', e);
   }
@@ -1534,59 +1525,7 @@ async function renderTournamentLobby() {
 
   if (!statusEl) return;
 
-  // Check for any active tournament game (limit to 1)
-  const activeTournamentGame = await getActiveTournamentGame();
-
-  // If there's an active game, show it prominently with join options
-  if (activeTournamentGame) {
-    const odId = getUserId();
-    const inRed = (activeTournamentGame.redPlayers || []).some(p => p.odId === odId);
-    const inBlue = (activeTournamentGame.bluePlayers || []).some(p => p.odId === odId);
-    const isInGame = inRed || inBlue;
-    const redCount = (activeTournamentGame.redPlayers || []).length;
-    const blueCount = (activeTournamentGame.bluePlayers || []).length;
-    const gameStatus = escapeHtml(describeGameStatus(activeTournamentGame));
-
-    statusEl.innerHTML = `
-      <div class="active-game-panel">
-        <div class="active-game-header">
-          <span class="active-game-title">Game In Progress</span>
-          <span class="active-game-status">${gameStatus}</span>
-        </div>
-        <div class="active-game-teams">
-          <div class="active-game-team red">
-            <span class="team-name">${escapeHtml(activeTournamentGame.redTeamName || 'Red Team')}</span>
-            <span class="player-count">${redCount} player${redCount !== 1 ? 's' : ''}</span>
-            ${!isInGame ? `<button class="btn primary small" onclick="joinTournamentGameTeam('${activeTournamentGame.id}', 'red')">Join Red</button>` : ''}
-            ${inRed ? '<span class="you-badge">You</span>' : ''}
-          </div>
-          <span class="vs-divider">vs</span>
-          <div class="active-game-team blue">
-            <span class="team-name">${escapeHtml(activeTournamentGame.blueTeamName || 'Blue Team')}</span>
-            <span class="player-count">${blueCount} player${blueCount !== 1 ? 's' : ''}</span>
-            ${!isInGame ? `<button class="btn primary small" onclick="joinTournamentGameTeam('${activeTournamentGame.id}', 'blue')">Join Blue</button>` : ''}
-            ${inBlue ? '<span class="you-badge">You</span>' : ''}
-          </div>
-        </div>
-        <div class="active-game-actions">
-          ${isInGame ? `<button class="btn success" onclick="joinGame('${activeTournamentGame.id}')">Rejoin Game</button>` : ''}
-          <button class="btn secondary small" onclick="spectateGame('${activeTournamentGame.id}')">Spectate</button>
-        </div>
-      </div>
-    `;
-
-    // Hide challenge sections when a game is active
-    if (challengesSec) challengesSec.style.display = 'none';
-    if (challengeTeamsSec) challengeTeamsSec.style.display = 'none';
-    if (pendingSec) pendingSec.style.display = 'none';
-    if (activeBanner) activeBanner.style.display = 'none';
-    if (activeGamesSec) activeGamesSec.style.display = 'none';
-    return;
-  }
-
-  // No active game - show normal lobby
-
-  // If user isn't on a team, they can still spectate active games
+  // If user isn't on a team, they can spectate active games
   if (!myTeam) {
     statusEl.innerHTML = '<div class="hint">You need to be on a team to challenge another team, but you can spectate active games.</div>';
     if (challengesSec) challengesSec.style.display = 'none';
@@ -1860,6 +1799,10 @@ async function getActiveGames(limit = 25) {
 
     let games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    // Filter out games that haven't actually started (waiting phase)
+    // These are Quick Play lobbies where rules aren't agreed / players not ready
+    games = games.filter(g => g.currentPhase && g.currentPhase !== 'waiting');
+
     // Auto-end abandoned tournament games (no online/idle participants).
     // This also cleans up orphaned matches with no rostered players.
     const presenceMap = buildPresenceStatusMap();
@@ -1884,73 +1827,6 @@ async function getActiveGames(limit = 25) {
   } catch (e) {
     console.error('Failed to get active games:', e);
     return [];
-  }
-}
-
-// Get the single active tournament game (non-quick play)
-async function getActiveTournamentGame() {
-  try {
-    const games = await getActiveGames(10);
-    // Find a non-quick game that's in progress
-    return games.find(g => g.type !== 'quick') || null;
-  } catch (e) {
-    console.error('Failed to get active tournament game:', e);
-    return null;
-  }
-}
-
-// Join a tournament game team (red or blue)
-async function joinTournamentGameTeam(gameId, team) {
-  const odId = getUserId();
-  const userName = getUserName();
-  if (!odId || !userName) return;
-
-  try {
-    const ref = db.collection('games').doc(gameId);
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Game not found');
-
-      const game = snap.data();
-      if (game.winner) throw new Error('Game already ended');
-
-      const redPlayers = Array.isArray(game.redPlayers) ? [...game.redPlayers] : [];
-      const bluePlayers = Array.isArray(game.bluePlayers) ? [...game.bluePlayers] : [];
-
-      // Check if already in a team
-      const inRed = redPlayers.some(p => p.odId === odId);
-      const inBlue = bluePlayers.some(p => p.odId === odId);
-
-      if (team === 'red') {
-        if (inRed) return; // Already on red
-        // Remove from blue if there
-        const blueIdx = bluePlayers.findIndex(p => p.odId === odId);
-        if (blueIdx !== -1) bluePlayers.splice(blueIdx, 1);
-        // Add to red
-        redPlayers.push({ odId, name: userName });
-      } else if (team === 'blue') {
-        if (inBlue) return; // Already on blue
-        // Remove from red if there
-        const redIdx = redPlayers.findIndex(p => p.odId === odId);
-        if (redIdx !== -1) redPlayers.splice(redIdx, 1);
-        // Add to blue
-        bluePlayers.push({ odId, name: userName });
-      }
-
-      tx.update(ref, {
-        redPlayers,
-        bluePlayers,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-
-    // Join the game view
-    spectatorMode = false;
-    spectatingGameId = null;
-    startGameListener(gameId, { spectator: false });
-  } catch (e) {
-    console.error('Failed to join tournament game:', e);
-    alert('Failed to join game: ' + e.message);
   }
 }
 
@@ -2022,10 +1898,11 @@ async function acceptChallenge(challengeId) {
   if (!myTeam) return;
 
   try {
-    // Check if there's already an active tournament game
-    const existingGame = await getActiveTournamentGame();
-    if (existingGame) {
-      alert('A game is already in progress. Please wait for it to finish or join that game.');
+    // Check if there's already an active tournament game (limit to 1 at a time)
+    const activeGames = await getActiveGames(5);
+    const existingTournamentGame = activeGames.find(g => g.type === 'tournament');
+    if (existingTournamentGame) {
+      alert('A tournament game is already in progress. Please wait for it to finish.');
       return;
     }
 
@@ -2085,8 +1962,6 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
     redTeamName,
     blueTeamId,
     blueTeamName,
-    redPlayers: [],
-    bluePlayers: [],
     cards,
     currentTeam: firstTeam,
     currentPhase: 'role-selection', // role-selection, spymaster, operatives, ended
@@ -2751,21 +2626,21 @@ function getMyTeamColor() {
 
   const odId = getUserId();
 
-  // Check player arrays first (works for both quick and tournament games)
-  const inRed = (currentGame.redPlayers || []).some(p => p.odId === odId);
-  const inBlue = (currentGame.bluePlayers || []).some(p => p.odId === odId);
-  if (inRed) return 'red';
-  if (inBlue) return 'blue';
-
-  // For Tournament games, also check team membership
-  if (currentGame.type !== 'quick') {
-    const myTeam = getMyTeam();
-    if (myTeam) {
-      if (currentGame.redTeamId === myTeam.id) return 'red';
-      if (currentGame.blueTeamId === myTeam.id) return 'blue';
-    }
+  // For Quick Play games, check player arrays
+  if (currentGame.type === 'quick') {
+    const inRed = (currentGame.redPlayers || []).some(p => p.odId === odId);
+    const inBlue = (currentGame.bluePlayers || []).some(p => p.odId === odId);
+    if (inRed) return 'red';
+    if (inBlue) return 'blue';
+    return null;
   }
 
+  // For Tournament games, check team membership
+  const myTeam = getMyTeam();
+  if (!myTeam) return null;
+
+  if (currentGame.redTeamId === myTeam.id) return 'red';
+  if (currentGame.blueTeamId === myTeam.id) return 'blue';
   return null;
 }
 
