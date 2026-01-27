@@ -2819,7 +2819,7 @@ body.quickplay .main-content {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
-  margin-top: 10px;
+  margin-top: 30px;
 }
 
 /* Bigger, more spacious mode buttons on the launch screen */
@@ -2850,7 +2850,7 @@ body.quickplay .main-content {
   margin-left: auto;
   margin-right: auto;
   /* Near the middle of the screen on desktop (not pinned to the bottom) */
-  margin-top: clamp(90px, 12vh, 190px) !important;
+  margin-top: clamp(50px, 8vh, 120px) !important;
   margin-bottom: 0;
   align-self: center;
   text-align: center;

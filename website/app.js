@@ -878,7 +878,7 @@ function refreshNameUI() {
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
   if (launchInput) launchInput.value = name || '';
-  if (launchSavedDisplay) launchSavedDisplay.textContent = name || '—';
+  if (launchSavedDisplay) launchSavedDisplay.textContent = name ? `Signed in as ${name}` : '—';
 
   if (cardForm && saved) {
     cardForm.style.display = name ? 'none' : 'block';
