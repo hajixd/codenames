@@ -2649,6 +2649,7 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 #quick-settings-modal .qp-settings-banner{
   padding: 10px 10px;
+  margin-bottom: 10px;
 }
 #quick-settings-modal .qp-settings-emoji{
   width: 38px;
@@ -2658,6 +2659,25 @@ body.mode-joiner .only-joiner{ display:block; }
 #quick-settings-modal .qp-settings-sub{
   font-size: 12px;
 }
+
+/* Make Quick Play settings less tall (fit more above the fold) */
+#quick-settings-modal .qp-settings-grid{ gap: 8px; }
+#quick-settings-modal .qp-setting{ padding: 10px 10px; border-radius: 14px; }
+
+/* Deck picker: use a compact grid instead of a tall column list */
+#quick-settings-modal .qp-setting-deck{ gap: 8px; }
+#quick-settings-modal .qp-setting-deck .setting-label{ padding-left: 0; }
+#quick-settings-modal .qp-deck-picker{
+  padding-left: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+#quick-settings-modal .qp-deck-card{ padding: 8px 10px; border-radius: 12px; gap: 8px; }
+#quick-settings-modal .qp-deck-emoji{ width: 28px; height: 28px; border-radius: 10px; }
+
+#quick-settings-modal .qp-negotiation{ margin-top: 10px; padding: 10px 10px; border-radius: 16px; }
+#quick-settings-modal .qp-neg-rail{ margin-top: 10px; }
 
 .modal-title{ font-weight: 900; letter-spacing: 0.2px; }
 .modal-body{
@@ -4292,9 +4312,9 @@ button.player-tag.pill-action:disabled{
   border: none;
   background: transparent;
   color: var(--text-dim);
-  width: 36px;
-  height: 36px;
-  padding: 6px;
+  width: 30px;
+  height: 30px;
+  padding: 4px;
   border-radius: 10px;
   cursor: pointer;
   display: flex;
@@ -4305,8 +4325,8 @@ button.player-tag.pill-action:disabled{
 }
 
 .settings-gear-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .settings-gear-btn:hover {
@@ -4807,14 +4827,14 @@ body.tournament.has-team-color .input:focus {
   animation: countPulse var(--anim-duration-slow) var(--anim-ease);
 }
 
-/* Settings gear rotation on hover */
+/* Settings icon hover animation */
 .settings-gear-btn svg {
   transition: transform var(--anim-duration-slow) var(--anim-ease),
               color var(--anim-duration) var(--anim-ease);
 }
 
 .settings-gear-btn:hover svg {
-  transform: rotate(45deg);
+  transform: scale(1.06);
 }
 
 /* Game turn indicator pulse */
