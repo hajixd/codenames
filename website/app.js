@@ -47,7 +47,7 @@ let unreadTeamCache = [];
 let unreadGlobalCount = 0;
 let unreadTeamCount = 0;
 let lastReadWriteAtMs = 0;
-let activePanelId = 'panel-home';
+let activePanelId = 'panel-game';
 
 // Profile sync
 let profileUnsub = null;
@@ -73,7 +73,7 @@ function initTabs() {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
 
-  activePanelId = document.querySelector('.panel.active')?.id || 'panel-home';
+  activePanelId = document.querySelector('.panel.active')?.id || 'panel-game';
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -89,11 +89,10 @@ function switchToPanel(panelId) {
   const panels = document.querySelectorAll('.panel');
   const targetId = String(panelId || '').trim();
   if (!targetId) return;
-
-  const targetTab = Array.from(tabs).find(t => t.dataset.panel === targetId) || null;
   const prev = activePanelId;
 
-  tabs.forEach(t => t.classList.toggle('active', t === targetTab));
+  // Mark *all* tabs that point at the target panel as active (desktop + mobile)
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === targetId));
   panels.forEach(p => p.classList.toggle('active', p.id === targetId));
 
   // Panel lifecycle hooks
@@ -2698,11 +2697,10 @@ function setHint(id, value) {
 function activatePanel(panelId) {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
-  const tab = Array.from(tabs).find(t => t.dataset.panel === panelId);
-  if (tab) {
-    tabs.forEach(t => t.classList.toggle('active', t === tab));
-    panels.forEach(p => p.classList.toggle('active', p.id === panelId));
-  }
+  const targetId = String(panelId || '').trim();
+  if (!targetId) return;
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === targetId));
+  panels.forEach(p => p.classList.toggle('active', p.id === targetId));
 }
 
 function esc(s) {

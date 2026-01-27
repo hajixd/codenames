@@ -98,9 +98,8 @@ function initGameUI() {
   document.getElementById('select-team-red')?.addEventListener('click', () => selectQuickTeam('red'));
   document.getElementById('select-team-blue')?.addEventListener('click', () => selectQuickTeam('blue'));
 
-  // Quick Play room actions
+  // Quick Play game actions
   document.getElementById('create-quick-game')?.addEventListener('click', createQuickGame);
-  document.getElementById('join-quick-game')?.addEventListener('click', joinQuickGameByCode);
 
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
@@ -188,15 +187,6 @@ function selectQuickTeam(team) {
 /* =========================
    Quick Play Game Management
 ========================= */
-function generateRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
 async function createQuickGame() {
   const userName = getUserName();
   if (!userName) {
@@ -210,7 +200,6 @@ async function createQuickGame() {
   }
 
   const timerSetting = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
-  const roomCode = generateRoomCode();
 
   // Red always goes first
   const firstTeam = 'red';
@@ -225,7 +214,8 @@ async function createQuickGame() {
 
   const gameData = {
     type: 'quick',
-    roomCode,
+    // roomCode was previously used for manual joins; we now show live games directly.
+    roomCode: null,
     redTeamId: null,
     redTeamName: 'Red Team',
     blueTeamId: null,
@@ -256,44 +246,6 @@ async function createQuickGame() {
   } catch (e) {
     console.error('Failed to create quick game:', e);
     alert('Failed to create game. Please try again.');
-  }
-}
-
-async function joinQuickGameByCode() {
-  const codeInput = document.getElementById('join-room-code');
-  const code = (codeInput?.value || '').trim().toUpperCase();
-
-  if (!code || code.length !== 6) {
-    alert('Please enter a valid 6-character room code.');
-    return;
-  }
-
-  const userName = getUserName();
-  if (!userName) {
-    alert('Please enter your name on the Home tab first.');
-    return;
-  }
-
-  try {
-    const snap = await db.collection('games')
-      .where('roomCode', '==', code)
-      .where('winner', '==', null)
-      .limit(1)
-      .get();
-
-    if (snap.empty) {
-      alert('Game not found. Check the room code and try again.');
-      return;
-    }
-
-    const gameDoc = snap.docs[0];
-    const game = { id: gameDoc.id, ...gameDoc.data() };
-
-    // Join the game
-    await joinQuickGame(game.id);
-  } catch (e) {
-    console.error('Failed to join game:', e);
-    alert('Failed to join game. Please try again.');
   }
 }
 
@@ -411,12 +363,11 @@ async function renderQuickGames() {
     list.innerHTML = waitingGames.map(g => {
       const redCount = (g.redPlayers || []).length;
       const blueCount = (g.bluePlayers || []).length;
-      const code = g.roomCode || '???';
 
       return `
         <div class="challenge-row">
           <div class="challenge-info">
-            <span class="challenge-team-name">Room: ${escapeHtml(code)}</span>
+            <span class="challenge-team-name">Open Quick Game</span>
             <span class="challenge-meta">Red: ${redCount} | Blue: ${blueCount}</span>
           </div>
           <div class="challenge-actions">
@@ -439,23 +390,55 @@ async function renderSpectateGames() {
   try {
     const snap = await db.collection('games')
       .where('winner', '==', null)
-      .limit(10)
+      .limit(25)
       .get();
 
     const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const activeGames = games.filter(g => g.currentPhase !== 'waiting');
 
-    if (activeGames.length === 0) {
+    // 1) Quick games waiting for players (joinable)
+    const waitingQuick = games
+      .filter(g => g.type === 'quick' && g.currentPhase === 'waiting')
+      .slice(0, 6);
+
+    // 2) All games already in progress (watchable)
+    const activeGames = games
+      .filter(g => g.currentPhase !== 'waiting')
+      .slice(0, 10);
+
+    if (waitingQuick.length === 0 && activeGames.length === 0) {
       section.style.display = 'none';
       return;
     }
 
     section.style.display = 'block';
 
-    list.innerHTML = activeGames.map(g => {
+    const waitingHtml = waitingQuick.map(g => {
+      const redCount = (g.redPlayers || []).length;
+      const blueCount = (g.bluePlayers || []).length;
+      return `
+        <div class="challenge-row">
+          <div class="challenge-info">
+            <span class="challenge-team-name">Open Quick Game</span>
+            <span class="challenge-meta">Red: ${redCount} | Blue: ${blueCount}</span>
+          </div>
+          <div class="challenge-actions">
+            <button class="btn small" style="background: var(--game-red-bg); border-color: var(--game-red-border);" onclick="joinQuickGame('${g.id}', 'red')">Join Red</button>
+            <button class="btn small" style="background: var(--game-blue-bg); border-color: var(--game-blue-border);" onclick="joinQuickGame('${g.id}', 'blue')">Join Blue</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const activeHtml = activeGames.map(g => {
       const redName = escapeHtml(g.redTeamName || 'Red Team');
       const blueName = escapeHtml(g.blueTeamName || 'Blue Team');
       const status = escapeHtml(describeGameStatus(g));
+
+      // If this is a tournament game and the user is on one of the teams, let them join directly.
+      const myTeam = getMyTeam?.() || null;
+      const isMyTournamentGame = !!(myTeam && g.type !== 'quick' && (g.redTeamId === myTeam.id || g.blueTeamId === myTeam.id));
+      const primaryLabel = isMyTournamentGame ? 'Join' : 'Watch';
+      const primaryAction = isMyTournamentGame ? `joinGame('${g.id}')` : `spectateGame('${g.id}')`;
 
       return `
         <div class="challenge-row">
@@ -464,11 +447,13 @@ async function renderSpectateGames() {
             <span class="challenge-meta">${status}</span>
           </div>
           <div class="challenge-actions">
-            <button class="btn primary small" onclick="spectateGame('${g.id}')">Watch</button>
+            <button class="btn primary small" onclick="${primaryAction}">${primaryLabel}</button>
           </div>
         </div>
       `;
     }).join('');
+
+    list.innerHTML = `${waitingHtml}${activeHtml}`;
   } catch (e) {
     console.error('Failed to render spectate games:', e);
   }
@@ -976,9 +961,9 @@ function renderGame() {
 
   if (currentGame.currentPhase === 'waiting') {
     // Waiting for players
-    turnTeamEl.textContent = currentGame.roomCode || 'ROOM';
+    turnTeamEl.textContent = 'Waiting';
     turnTeamEl.className = 'turn-team';
-    turnRoleEl.textContent = '(Waiting for players)';
+    turnRoleEl.textContent = '(Players joining)';
   } else if (currentGame.winner) {
     turnTeamEl.textContent = currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue');
     turnTeamEl.className = `turn-team ${currentGame.winner}`;
@@ -1081,9 +1066,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const waitingFor = document.getElementById('waiting-for');
 
     if (!myTeamColor) {
-      waitingFor.innerHTML = `players to join. Room code: <strong>${currentGame.roomCode || '???'}</strong>`;
+      waitingFor.textContent = 'players to join.';
     } else if (!hasPlayers) {
-      waitingFor.innerHTML = `at least 1 player on each team. Share code: <strong>${currentGame.roomCode || '???'}</strong>`;
+      waitingFor.textContent = 'at least 1 player on each team.';
     } else {
       // Show start button
       waitingFor.innerHTML = `

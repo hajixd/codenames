@@ -34,7 +34,7 @@
 
       <!-- Desktop Tabs -->
       <nav class="desktop-tabs" aria-label="Primary">
-        <button class="tab active" data-panel="panel-home" type="button">Home</button>
+        <button class="tab" data-panel="panel-home" type="button">Home</button>
         <button class="tab" data-panel="panel-teams" type="button">Teams</button>
         <button class="tab" data-panel="panel-players" type="button">Players</button>
         <button class="tab" data-panel="panel-myteam" type="button">
@@ -45,7 +45,7 @@
           Chat
           <span class="badge tab-badge" id="badge-chat-desktop" aria-label="Unread chat messages" style="display:none;"></span>
         </button>
-        <button class="tab" data-panel="panel-game" type="button">
+        <button class="tab active" data-panel="panel-game" type="button">
           Play
           <span class="badge tab-badge" id="badge-game-desktop" aria-label="Active games" style="display:none;"></span>
         </button>
@@ -53,7 +53,7 @@
 
       <main class="main-content">
         <!-- Home -->
-        <section class="panel panel-info active" id="panel-home">
+        <section class="panel panel-info" id="panel-home">
           <div class="panel-inner">
             <div class="home-hero">
               <h1 class="home-title">Codenames Tournament</h1>
@@ -205,7 +205,7 @@
         </section>
 
         <!-- Game Page -->
-        <section class="panel panel-game" id="panel-game">
+        <section class="panel panel-game active" id="panel-game">
           <div class="panel-inner">
             <!-- Mode Selection Screen -->
             <div id="play-mode-select">
@@ -228,7 +228,7 @@
 
               <!-- Active Games to Spectate -->
               <div class="game-section" id="spectate-games-section" style="display:none;">
-                <div class="game-section-title">Watch Live Games</div>
+                <div class="game-section-title">Live Games</div>
                 <div class="active-games-list" id="spectate-games-list"></div>
               </div>
             </div>
@@ -284,15 +284,11 @@
 
                 <!-- Room Code / Join -->
                 <div class="setup-section">
-                  <div class="setup-title">Game Room</div>
-                  <div class="room-actions">
-                    <button class="btn primary" id="create-quick-game" type="button">Create New Game</button>
-                    <div class="room-divider"><span>or</span></div>
-                    <div class="join-room-row">
-                      <input type="text" class="input" id="join-room-code" placeholder="Enter room code" maxlength="6" />
-                      <button class="btn" id="join-quick-game" type="button">Join</button>
-                    </div>
-                  </div>
+                <div class="setup-title">Games</div>
+                <div class="room-actions">
+                  <button class="btn primary" id="create-quick-game" type="button">Create New Game</button>
+                  <div class="hint" style="margin-top:10px;">Or join an open game below.</div>
+                </div>
                 </div>
 
                 <!-- Available Quick Games -->
@@ -440,7 +436,7 @@
 
       <!-- Mobile Tabs -->
       <nav class="mobile-tabs">
-        <button class="tab active" data-panel="panel-home" type="button">
+        <button class="tab" data-panel="panel-home" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           <span>Home</span>
         </button>
@@ -463,7 +459,7 @@
           <span>Chat</span>
           <span class="badge tab-badge" id="badge-chat-mobile" aria-label="Unread chat messages" style="display:none;"></span>
         </button>
-        <button class="tab" data-panel="panel-game" type="button">
+        <button class="tab active" data-panel="panel-game" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>
           <span>Play</span>
           <span class="badge tab-badge" id="badge-game-mobile" aria-label="Active games" style="display:none;"></span>
