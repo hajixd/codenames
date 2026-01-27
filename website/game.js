@@ -1292,7 +1292,8 @@ async function maybeAutoStartQuickPlay(game) {
 
       const s = getQuickSettings(g);
       const firstTeam = 'red';
-      const words = getRandomWords(BOARD_SIZE, settings.deckId);
+      // Use the agreed Quick Play deck settings (s), not an undefined variable.
+      const words = getRandomWords(BOARD_SIZE, s.deckId);
       const keyCard = generateKeyCard(firstTeam, s.blackCards);
       const cards = words.map((word, i) => ({
         word,
@@ -2007,7 +2008,9 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
   const firstTeam = 'red';
 
   // Generate board
-  const words = getRandomWords(BOARD_SIZE, settings.deckId);
+  // Tournament games currently use the standard deck.
+  // (Quick Play has a deck picker; tournament can be extended similarly later.)
+  const words = getRandomWords(BOARD_SIZE, 'standard');
   const keyCard = generateKeyCard(firstTeam);
 
   const cards = words.map((word, i) => ({
