@@ -4069,7 +4069,8 @@ button.player-tag.pill-action:disabled{
   transform: translate(-50%, -50%);
   z-index: 1000;
   width: 90%;
-  max-width: 360px;
+  max-width: 280px;
+  margin-top: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -4078,11 +4079,32 @@ button.player-tag.pill-action:disabled{
 
 /* Name Change Modal animation positioning fix */
 .name-change-modal.modal-open .name-change-modal-card {
-  transform: translate(-50%, -55%) scale(1);
+  transform: translate(-50%, -50%) scale(1);
+  margin-top: 0;
 }
 
 .name-change-modal:not(.modal-open) .name-change-modal-card {
-  transform: translate(-50%, -55%) scale(0.95);
+  transform: translate(-50%, -50%) scale(0.95);
+  margin-top: 0;
+}
+
+/* Name change form styling */
+.name-change-modal .form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.name-change-modal .field {
+  margin: 0;
+}
+
+.name-change-modal .form-actions {
+  margin: 0;
+}
+
+.name-change-modal .btn.primary {
+  width: 100%;
 }
 
 /* Teammates Modal */
@@ -4100,7 +4122,8 @@ button.player-tag.pill-action:disabled{
   transform: translate(-50%, -50%);
   z-index: 1000;
   width: 90%;
-  max-width: 400px;
+  max-width: 300px;
+  margin-top: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -4109,11 +4132,13 @@ button.player-tag.pill-action:disabled{
 
 /* Teammates Modal animation positioning fix */
 .teammates-modal.modal-open .teammates-modal-card {
-  transform: translate(-50%, -55%) scale(1);
+  transform: translate(-50%, -50%) scale(1);
+  margin-top: 0;
 }
 
 .teammates-modal:not(.modal-open) .teammates-modal-card {
-  transform: translate(-50%, -55%) scale(0.95);
+  transform: translate(-50%, -50%) scale(0.95);
+  margin-top: 0;
 }
 
 .teammates-list {
