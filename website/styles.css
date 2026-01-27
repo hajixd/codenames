@@ -2204,8 +2204,8 @@ body.quickplay .main-content {
 .launch-name-dock{
   width: 100%;
   max-width: 520px;
-  /* Slightly lower on the choose screen */
-  margin: 84px auto 0;
+  /* Much lower on the choose screen */
+  margin: clamp(160px, 22vh, 320px) auto 0;
   align-self: center;
   text-align: center;
 }
