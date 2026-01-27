@@ -83,12 +83,11 @@ function initLaunchScreen() {
   quickBtn?.addEventListener('click', () => enterAppFromLaunch('quick'));
   tournBtn?.addEventListener('click', () => enterAppFromLaunch('tournament'));
 
-  // Name input on launch
+  // Name + logout on launch (mirrors Tournament Home)
   const form = document.getElementById('launch-name-form');
   const input = document.getElementById('launch-name-input');
   const hint = document.getElementById('launch-name-hint');
-
-  if (input) input.value = getUserName() || '';
+  const logoutBtn = document.getElementById('launch-logout-btn');
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -100,6 +99,21 @@ function initLaunchScreen() {
     if (hint) hint.textContent = '';
     await setUserName(v);
   });
+
+  logoutBtn?.addEventListener('click', () => {
+    const ok = window.confirm('Are you sure you want to log out on this device?');
+    if (!ok) return;
+    logoutLocal();
+  });
+
+  wireInlineEdit({
+    displayEl: document.getElementById('launch-name-saved-display'),
+    inputEl: document.getElementById('launch-name-saved-input'),
+    getValue: () => getUserName(),
+    onCommit: (v) => setUserName(v),
+  });
+
+  refreshNameUI();
 }
 
 function enterAppFromLaunch(mode) {
@@ -720,14 +734,23 @@ function refreshNameUI() {
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
   const launchInput = document.getElementById('launch-name-input');
+  const launchForm = document.getElementById('launch-name-form');
+  const launchSaved = document.getElementById('launch-name-saved');
+  const launchSavedDisplay = document.getElementById('launch-name-saved-display');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
   if (launchInput) launchInput.value = name || '';
+  if (launchSavedDisplay) launchSavedDisplay.textContent = name || '—';
 
   if (cardForm && saved) {
     cardForm.style.display = name ? 'none' : 'block';
     saved.style.display = name ? 'block' : 'none';
+  }
+
+  if (launchForm && launchSaved) {
+    launchForm.style.display = name ? 'none' : 'block';
+    launchSaved.style.display = name ? 'block' : 'none';
   }
 
   // Also update UI that depends on name (join buttons etc)

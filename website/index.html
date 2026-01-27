@@ -16,8 +16,10 @@
       <!-- Launch Screen (first thing shown on app open) -->
       <div class="launch-screen" id="launch-screen" aria-label="Choose play mode">
         <div class="launch-card">
-          <div class="launch-logo">CODENAMES</div>
-          <div class="launch-title">Choose a mode</div>
+          <div class="launch-hero">
+            <h1 class="launch-h1">Play Codenames</h1>
+            <p class="launch-sub">Choose how you want to play</p>
+          </div>
 
           <div class="launch-mode-row">
             <button class="mode-card" id="launch-quick-play" type="button">
@@ -33,16 +35,27 @@
             </button>
           </div>
 
-          <form id="launch-name-form" class="form launch-name-form" autocomplete="off">
-            <label class="field" style="margin:0;">
-              <span class="label">Your name</span>
-              <input type="text" id="launch-name-input" class="input" placeholder="Name" required>
-            </label>
-            <div class="form-actions" style="margin:10px 0 0;">
-              <button type="submit" class="btn primary">Save</button>
-              <span class="hint" id="launch-name-hint"></span>
+          <!-- Name + logout (same UI as Tournament Home) -->
+          <div class="name-dock launch-name-dock" id="launch-name-card">
+            <form id="launch-name-form" class="form name-dock-form" autocomplete="off">
+              <label class="field" style="margin:0;">
+                <span class="label">Your name</span>
+                <input type="text" id="launch-name-input" class="input" placeholder="Name" required>
+              </label>
+              <div class="form-actions" style="margin:0;">
+                <button type="submit" class="btn primary">Save</button>
+                <span class="hint" id="launch-name-hint"></span>
+              </div>
+            </form>
+
+            <div id="launch-name-saved" class="name-dock-saved" style="display:none;">
+              <div class="name-saved-stack">
+                <div class="name-dock-value" id="launch-name-saved-display" title="Double click to edit">—</div>
+                <input class="input" id="launch-name-saved-input" type="text" style="display:none;" />
+                <button class="btn logout" id="launch-logout-btn" type="button">Log out</button>
+              </div>
             </div>
-          </form>
+          </div>
         </div>
       </div>
 

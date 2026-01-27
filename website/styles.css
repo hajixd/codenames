@@ -2090,11 +2090,20 @@ body.mode-joiner .only-joiner{ display:block; }
 /* =========================
    Launch screen
 ========================= */
-body.launch .app-header,
 body.launch .desktop-tabs,
 body.launch .mobile-tabs,
 body.launch .main-content {
   display: none !important;
+}
+
+/* On launch, keep the top band visible and pin it to the top */
+body.launch .app-header{
+  display: flex !important;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 
 /* Quick Play: keep the top band, but hide navigation tabs */
@@ -2107,7 +2116,13 @@ body.quickplay .main-content {
 }
 
 .launch-screen{
-  min-height: 100vh;
+  position: fixed;
+  top: 64px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   align-items: stretch;
   justify-content: center;
@@ -2117,8 +2132,6 @@ body.quickplay .main-content {
 .launch-card{
   width: 100%;
   max-width: 1100px;
-  /* fill the viewport minus the outer padding on .launch-screen (kept simple for broad browser support) */
-  min-height: calc(100vh - 88px);
   border-radius: 28px;
   padding: clamp(22px, 3vw, 48px);
   background: rgba(255,255,255,0.06);
@@ -2126,21 +2139,29 @@ body.quickplay .main-content {
   box-shadow: 0 20px 60px rgba(0,0,0,0.35);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 18px;
+  margin: 0 auto;
 }
 
-.launch-logo{
-  font-weight: 900;
-  letter-spacing: 1px;
-  font-size: 18px;
-  color: rgba(255,255,255,0.9);
+.launch-hero{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
 }
 
-.launch-title{
-  margin-top: 10px;
-  font-size: 30px;
+.launch-h1{
+  margin: 0;
+  font-size: 34px;
   font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+.launch-sub{
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
 }
 
 .launch-mode-row{
@@ -2169,9 +2190,14 @@ body.quickplay .main-content {
   font-size: 14px;
 }
 
-.launch-name-form{
-  margin-top: 0;
+/* Name dock on launch mirrors the Home name dock */
+.launch-name-dock{
   max-width: 520px;
+  margin: 18px auto 0;
+}
+
+@media (max-width: 768px){
+  .launch-screen{ top: 56px; }
 }
 
 @media (max-width: 640px){
@@ -2179,7 +2205,7 @@ body.quickplay .main-content {
   .launch-mode-row{ grid-template-columns: 1fr; }
   .launch-screen .mode-card{ min-height: 140px; padding: 22px 18px; }
   .launch-screen .mode-card-icon{ font-size: 44px; }
-  .launch-title{ font-size: 26px; }
+  .launch-h1{ font-size: 28px; }
 }
 
 .btn.disabled,
