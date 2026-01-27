@@ -330,29 +330,86 @@
                 <!-- Lobby controls (moved out of the middle column) -->
                 <div class="quick-lobby-controls">
                   <div class="quick-lobby-status" id="quick-lobby-status">Waiting for players…</div>
+                  <div class="quick-rules-bar" id="quick-rules-bar" aria-live="polite">
+                    <div class="quick-rules-summary" id="quick-rules-summary">Rules: —</div>
+                    <div class="quick-rules-actions">
+                      <button class="btn small" id="quick-settings-btn" type="button">Settings</button>
+                      <button class="btn primary small" id="quick-rules-accept-btn" type="button" style="display:none;">Accept</button>
+                    </div>
+                  </div>
                   <div class="quick-lobby-actions">
                     <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
                     <button class="btn" id="quick-leave-btn" type="button" disabled>Leave</button>
                   </div>
-                  <div class="hint" style="margin-top:10px;">Game starts when both teams are fully ready.</div>
+                  <div class="hint" id="quick-lobby-hint" style="margin-top:10px;">Game starts when both teams agree on rules and are fully ready.</div>
                 </div>
 
-                <!-- Settings (kept minimal) -->
-                <div class="setup-section" style="margin-top:18px;">
-                  <div class="setup-title">Settings</div>
-                  <div class="settings-grid">
-                    <label class="setting-row">
-                      <span class="setting-label">Timer per turn</span>
-                      <select class="input setting-select" id="setting-timer">
-                        <option value="0">No timer</option>
-                        <option value="60">1 minute</option>
-                        <option value="120" selected>2 minutes</option>
-                        <option value="180">3 minutes</option>
-                        <option value="300">5 minutes</option>
-                      </select>
-                    </label>
+                <!-- Settings modal -->
+                <div class="modal" id="quick-settings-modal" aria-hidden="true" style="display:none;">
+                  <div class="modal-backdrop" id="quick-settings-backdrop"></div>
+                  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Quick Play Settings">
+                    <div class="modal-head">
+                      <div class="modal-title">Quick Play Settings</div>
+                      <button class="icon-btn" id="quick-settings-close" type="button" aria-label="Close settings">✕</button>
+                    </div>
+
+                    <div class="modal-body">
+                      <div class="settings-grid">
+                        <label class="setting-row">
+                          <span class="setting-label">Assassin (black) cards</span>
+                          <select class="input setting-select" id="qp-black-cards">
+                            <option value="1" selected>1 (standard)</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                          </select>
+                        </label>
+
+                        <label class="setting-row">
+                          <span class="setting-label">Turn timer</span>
+                          <select class="input setting-select" id="qp-turn-timer">
+                            <option value="0">∞ (no limit)</option>
+                            <option value="60">1 minute</option>
+                            <option value="120" selected>2 minutes</option>
+                            <option value="180">3 minutes</option>
+                            <option value="300">5 minutes</option>
+                          </select>
+                        </label>
+
+                        <label class="setting-row">
+                          <span class="setting-label">Spymaster clue timer</span>
+                          <select class="input setting-select" id="qp-clue-timer">
+                            <option value="0" selected>∞ (no limit)</option>
+                            <option value="30">30 seconds</option>
+                            <option value="45">45 seconds</option>
+                            <option value="60">1 minute</option>
+                            <option value="90">1.5 minutes</option>
+                            <option value="120">2 minutes</option>
+                          </select>
+                        </label>
+
+                        <label class="setting-row">
+                          <span class="setting-label">Guess timer</span>
+                          <select class="input setting-select" id="qp-guess-timer">
+                            <option value="0" selected>∞ (no limit)</option>
+                            <option value="30">30 seconds</option>
+                            <option value="45">45 seconds</option>
+                            <option value="60">1 minute</option>
+                            <option value="90">1.5 minutes</option>
+                            <option value="120">2 minutes</option>
+                            <option value="180">3 minutes</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div class="hint" id="quick-settings-status" style="margin-top:12px;">Offer rules from your team. The other team must accept before you can ready up.</div>
+                    </div>
+
+                    <div class="modal-actions">
+                      <button class="btn" id="quick-settings-offer" type="button" disabled>Offer to other team</button>
+                      <button class="btn primary" id="quick-settings-accept" type="button" style="display:none;">Accept offer</button>
+                      <button class="btn" id="quick-settings-done" type="button">Done</button>
+                    </div>
                   </div>
-                  <div class="hint" style="margin-top:10px;">The timer applies to the next Quick Play game.</div>
                 </div>
               </div>
             </div>

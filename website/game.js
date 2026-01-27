@@ -32,6 +32,60 @@ let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
 
+// Quick Play settings / negotiation
+function readQuickSettingsFromUI() {
+  const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
+  const turnTimerSeconds = parseInt(document.getElementById('qp-turn-timer')?.value || '120', 10);
+  const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
+  const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
+  return {
+    blackCards: Number.isFinite(blackCards) ? blackCards : 1,
+    turnTimerSeconds: Number.isFinite(turnTimerSeconds) ? turnTimerSeconds : 120,
+    clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
+    guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
+  };
+}
+
+function getQuickSettings(game) {
+  const base = game?.quickSettings || null;
+  if (base && typeof base === 'object') {
+    return {
+      blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
+      turnTimerSeconds: Number.isFinite(+base.turnTimerSeconds) ? +base.turnTimerSeconds : (Number.isFinite(+game?.timerSeconds) ? +game.timerSeconds : 120),
+      clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
+      guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
+    };
+  }
+  return {
+    blackCards: 1,
+    turnTimerSeconds: Number.isFinite(+game?.timerSeconds) ? +game.timerSeconds : 120,
+    clueTimerSeconds: 0,
+    guessTimerSeconds: 0,
+  };
+}
+
+function formatSeconds(sec) {
+  const s = parseInt(sec || 0, 10);
+  if (!s) return '∞';
+  if (s % 60 === 0) {
+    const m = s / 60;
+    return `${m}m`;
+  }
+  return `${s}s`;
+}
+
+function formatQuickRules(settings) {
+  const s = settings || { blackCards: 1, turnTimerSeconds: 120, clueTimerSeconds: 0, guessTimerSeconds: 0 };
+  return `Assassin: ${s.blackCards} · Turn: ${formatSeconds(s.turnTimerSeconds)} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
+}
+
+function quickRulesAreAgreed(game) {
+  const accepted = game?.settingsAccepted || {};
+  const bothAccepted = !!accepted.red && !!accepted.blue;
+  const hasPending = !!game?.settingsPending;
+  return bothAccepted && !hasPending;
+}
+
 // Load words on init
 document.addEventListener('DOMContentLoaded', async () => {
   await loadWords();
@@ -71,9 +125,9 @@ function getRandomWords(count) {
 /* =========================
    Key Card Generation
 ========================= */
-function generateKeyCard(firstTeam) {
+function generateKeyCard(firstTeam, assassinCards = 1) {
   // firstTeam gets 9 cards, other team gets 8
-  // 7 neutral, 1 assassin
+  // Neutral cards fill the remainder, plus N assassins
   const types = [];
 
   const first = firstTeam === 'red' ? 'red' : 'blue';
@@ -81,8 +135,9 @@ function generateKeyCard(firstTeam) {
 
   for (let i = 0; i < FIRST_TEAM_CARDS; i++) types.push(first);
   for (let i = 0; i < SECOND_TEAM_CARDS; i++) types.push(second);
-  for (let i = 0; i < NEUTRAL_CARDS; i++) types.push('neutral');
-  for (let i = 0; i < ASSASSIN_CARDS; i++) types.push('assassin');
+  const neutralCards = BOARD_SIZE - FIRST_TEAM_CARDS - SECOND_TEAM_CARDS - Math.max(1, assassinCards);
+  for (let i = 0; i < neutralCards; i++) types.push('neutral');
+  for (let i = 0; i < Math.max(1, assassinCards); i++) types.push('assassin');
 
   // Shuffle
   return types.sort(() => Math.random() - 0.5);
@@ -117,26 +172,26 @@ function initGameUI() {
   });
 
   // Quick Play role selector (Red ↔ Spectator ↔ Blue)
-  // Center (Spectators) box cycles; Red/Blue boxes select directly.
+  // Click on a column selects that role. Arrow keys still cycle.
   const roleBox = document.getElementById('quick-seat-switcher');
-  // Use capture + pointer events so clicks on any inner element (player rows, etc.) still cycle reliably.
-  const cycleQuickRole = (e) => {
-    // Don't hijack keyboard interaction here; key handling is below.
-    if (e && (e.type === 'keydown')) return;
-    // Avoid stealing clicks from actual controls if any are added later.
+  roleBox?.addEventListener('click', (e) => {
     const t = e?.target;
     if (t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea'))) {
       return;
     }
-    stepQuickRole(1);
-  };
-
-  roleBox?.addEventListener('click', cycleQuickRole, { capture: true });
-  roleBox?.addEventListener('pointerup', cycleQuickRole, { capture: true });
+    selectQuickRole('spectator');
+  }, { capture: true });
+  roleBox?.addEventListener('pointerup', (e) => {
+    const t = e?.target;
+    if (t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea'))) {
+      return;
+    }
+    selectQuickRole('spectator');
+  }, { capture: true });
   roleBox?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      stepQuickRole(1);
+      selectQuickRole('spectator');
     }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
@@ -179,6 +234,15 @@ function initGameUI() {
   // Quick Play is a single lobby; no "create game" button.
   document.getElementById('quick-ready-btn')?.addEventListener('click', toggleQuickReady);
   document.getElementById('quick-leave-btn')?.addEventListener('click', leaveQuickLobby);
+
+  // Quick Play settings & rule negotiation
+  document.getElementById('quick-settings-btn')?.addEventListener('click', openQuickSettingsModal);
+  document.getElementById('quick-settings-close')?.addEventListener('click', closeQuickSettingsModal);
+  document.getElementById('quick-settings-done')?.addEventListener('click', closeQuickSettingsModal);
+  document.getElementById('quick-settings-backdrop')?.addEventListener('click', closeQuickSettingsModal);
+  document.getElementById('quick-settings-offer')?.addEventListener('click', offerQuickRulesFromModal);
+  document.getElementById('quick-settings-accept')?.addEventListener('click', acceptQuickRulesFromModal);
+  document.getElementById('quick-rules-accept-btn')?.addEventListener('click', acceptQuickRulesInline);
 
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
@@ -300,6 +364,191 @@ function stepQuickRole(delta) {
   selectQuickRole(QUICK_ROLES[idx]);
 }
 
+function setModalVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = visible ? 'block' : 'none';
+  el.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function openQuickSettingsModal() {
+  setModalVisible('quick-settings-modal', true);
+  // Fill current values from the live lobby if we have it.
+  const g = quickLobbyGame;
+  const s = g?.settingsPending?.settings ? g.settingsPending.settings : getQuickSettings(g);
+  const ids = {
+    blackCards: 'qp-black-cards',
+    turnTimerSeconds: 'qp-turn-timer',
+    clueTimerSeconds: 'qp-clue-timer',
+    guessTimerSeconds: 'qp-guess-timer',
+  };
+  document.getElementById(ids.blackCards).value = String(s.blackCards ?? 1);
+  document.getElementById(ids.turnTimerSeconds).value = String(s.turnTimerSeconds ?? 120);
+  document.getElementById(ids.clueTimerSeconds).value = String(s.clueTimerSeconds ?? 0);
+  document.getElementById(ids.guessTimerSeconds).value = String(s.guessTimerSeconds ?? 0);
+
+  updateQuickRulesUI(g);
+}
+
+function closeQuickSettingsModal() {
+  setModalVisible('quick-settings-modal', false);
+}
+
+function updateQuickRulesUI(game) {
+  const summaryEl = document.getElementById('quick-rules-summary');
+  const acceptInline = document.getElementById('quick-rules-accept-btn');
+  const hintEl = document.getElementById('quick-lobby-hint');
+
+  const modalStatus = document.getElementById('quick-settings-status');
+  const offerBtn = document.getElementById('quick-settings-offer');
+  const acceptBtn = document.getElementById('quick-settings-accept');
+
+  const odId = getUserId();
+  const myRole = game ? getQuickPlayerRole(game, odId) : null;
+  const myTeam = (myRole === 'red' || myRole === 'blue') ? myRole : null;
+  const accepted = (game?.settingsAccepted && typeof game.settingsAccepted === 'object') ? game.settingsAccepted : { red: false, blue: false };
+  const pending = game?.settingsPending || null;
+  const agreed = quickRulesAreAgreed(game);
+
+  // Summary line
+  if (summaryEl) {
+    if (pending && pending.settings) {
+      const by = String(pending.by || 'red');
+      summaryEl.textContent = `Offer from ${by.toUpperCase()}: ${formatQuickRules(pending.settings)}`;
+    } else {
+      summaryEl.textContent = `Rules: ${formatQuickRules(getQuickSettings(game))}${agreed ? ' (Agreed)' : ' (Needs agreement)'}`;
+    }
+  }
+
+  // Inline accept button
+  const canAccept = !!(pending && myTeam && pending.by && pending.by !== myTeam && !accepted[myTeam]);
+  if (acceptInline) acceptInline.style.display = canAccept ? 'inline-flex' : 'none';
+
+  // Lobby hint
+  if (hintEl) {
+    if (!myTeam) {
+      hintEl.textContent = 'Join Red or Blue to offer/accept rules.';
+    } else if (pending) {
+      hintEl.textContent = canAccept
+        ? 'New rules offered — accept (or counter-offer) in Settings.'
+        : 'Waiting for the other team to accept rules…';
+    } else if (!agreed) {
+      hintEl.textContent = 'Open Settings and offer rules to the other team.';
+    } else {
+      hintEl.textContent = 'Game starts when both teams agree on rules and are fully ready.';
+    }
+  }
+
+  // Modal controls
+  if (offerBtn) offerBtn.disabled = !myTeam;
+  if (acceptBtn) acceptBtn.style.display = canAccept ? 'inline-flex' : 'none';
+  if (modalStatus) {
+    if (!myTeam) {
+      modalStatus.textContent = 'Join Red or Blue to offer/accept rules.';
+    } else if (pending) {
+      const by = String(pending.by || 'red').toUpperCase();
+      modalStatus.textContent = canAccept
+        ? `Rules offered by ${by}. Accept, or change settings and send a counter-offer.`
+        : `Your team has an offer active. Waiting for the other team to accept.`;
+    } else if (!agreed) {
+      modalStatus.textContent = 'Send an offer from your team. The other team must accept before you can ready up.';
+    } else {
+      modalStatus.textContent = 'Rules are agreed. If you change anything, send a new offer.';
+    }
+  }
+}
+
+async function offerQuickRulesFromModal() {
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const odId = getUserId();
+  const settings = readQuickSettingsFromUI();
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Lobby not found');
+      const game = snap.data();
+      if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
+      const role = getQuickPlayerRole(game, odId);
+      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to offer rules.');
+
+      const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
+      const nextBlue = (game.bluePlayers || []).map(p => ({ ...p, ready: false }));
+
+      tx.update(ref, {
+        settingsPending: { by: role, settings, createdAt: firebase.firestore.FieldValue.serverTimestamp() },
+        settingsAccepted: { red: role === 'red', blue: role === 'blue' },
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        log: firebase.firestore.FieldValue.arrayUnion(`${role.toUpperCase()} offered rules: ${formatQuickRules(settings)}`)
+      });
+    });
+  } catch (e) {
+    console.error('Offer rules failed:', e);
+    alert(e.message || 'Failed to offer rules.');
+  }
+}
+
+async function acceptQuickRules(updateOnly = false) {
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const odId = getUserId();
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Lobby not found');
+      const game = snap.data();
+      if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
+
+      const role = getQuickPlayerRole(game, odId);
+      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to accept rules.');
+
+      const pending = game.settingsPending;
+      if (!pending || !pending.settings) throw new Error('No rules to accept.');
+      if (pending.by === role) throw new Error('Your team already offered these rules.');
+
+      const accepted = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? { ...game.settingsAccepted } : { red: false, blue: false };
+      accepted[role] = true;
+
+      const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
+      const nextBlue = (game.bluePlayers || []).map(p => ({ ...p, ready: false }));
+
+      const bothAccepted = !!accepted.red && !!accepted.blue;
+      if (bothAccepted) {
+        tx.update(ref, {
+          quickSettings: { ...pending.settings },
+          timerSeconds: pending.settings.turnTimerSeconds,
+          settingsPending: null,
+          settingsAccepted: { red: true, blue: true },
+          redPlayers: nextRed,
+          bluePlayers: nextBlue,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          log: firebase.firestore.FieldValue.arrayUnion('Rules agreed. Everyone must ready up.')
+        });
+      } else {
+        tx.update(ref, {
+          settingsAccepted: accepted,
+          redPlayers: nextRed,
+          bluePlayers: nextBlue,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          log: firebase.firestore.FieldValue.arrayUnion(`${role.toUpperCase()} accepted the rules offer.`)
+        });
+      }
+    });
+    if (!updateOnly) closeQuickSettingsModal();
+  } catch (e) {
+    console.error('Accept rules failed:', e);
+    alert(e.message || 'Failed to accept rules.');
+  }
+}
+
+function acceptQuickRulesInline() {
+  acceptQuickRules(true);
+}
+
+function acceptQuickRulesFromModal() {
+  acceptQuickRules(false);
+}
+
 /* =========================
    Quick Play Game Management
 ========================= */
@@ -346,10 +595,10 @@ async function startQuickLobbyListener() {
   }, (err) => console.error('Quick Play lobby listener error:', err));
 }
 
-function buildQuickPlayGameData(timerSetting = 120) {
+function buildQuickPlayGameData(settings = { blackCards: 1, turnTimerSeconds: 120, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
   const words = getRandomWords(BOARD_SIZE);
-  const keyCard = generateKeyCard(firstTeam);
+  const keyCard = generateKeyCard(firstTeam, settings.blackCards);
 
   const cards = words.map((word, i) => ({
     word,
@@ -376,7 +625,17 @@ function buildQuickPlayGameData(timerSetting = 120) {
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
     guessesRemaining: 0,
-    timerSeconds: timerSetting,
+    // Back-compat: keep timerSeconds for any older UI. Prefer quickSettings.
+    timerSeconds: settings.turnTimerSeconds,
+    quickSettings: {
+      blackCards: settings.blackCards,
+      turnTimerSeconds: settings.turnTimerSeconds,
+      clueTimerSeconds: settings.clueTimerSeconds,
+      guessTimerSeconds: settings.guessTimerSeconds,
+    },
+    // Negotiation state: one team offers rules, the other accepts.
+    settingsPending: null,
+    settingsAccepted: { red: false, blue: false },
     log: [],
     winner: null,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -385,19 +644,36 @@ function buildQuickPlayGameData(timerSetting = 120) {
 }
 
 async function ensureQuickPlayGameExists() {
-  const timerSetting = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
+  const uiSettings = readQuickSettingsFromUI();
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   const snap = await ref.get();
 
   if (!snap.exists) {
-    await ref.set(buildQuickPlayGameData(timerSetting));
+    await ref.set(buildQuickPlayGameData(uiSettings));
     return;
   }
 
   const g = snap.data();
   const shouldReset = !!g.winner || g.currentPhase === 'ended' || !Array.isArray(g.cards) || g.cards.length !== BOARD_SIZE;
   if (shouldReset) {
-    await ref.set(buildQuickPlayGameData(timerSetting));
+    await ref.set(buildQuickPlayGameData(uiSettings));
+    return;
+  }
+
+  // Backfill settings fields if this doc predates the settings system.
+  const updates = {};
+  if (!g.quickSettings) {
+    updates.quickSettings = {
+      blackCards: 1,
+      turnTimerSeconds: Number.isFinite(+g.timerSeconds) ? +g.timerSeconds : uiSettings.turnTimerSeconds,
+      clueTimerSeconds: 0,
+      guessTimerSeconds: 0,
+    };
+  }
+  if (!g.settingsAccepted) updates.settingsAccepted = { red: false, blue: false };
+  if (typeof g.settingsPending === 'undefined') updates.settingsPending = null;
+  if (Object.keys(updates).length) {
+    await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
   }
 }
 
@@ -452,10 +728,30 @@ async function joinQuickLobby(role) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
-      // Let the first person to enter set the timer for this round.
+      // Rule negotiation: a team offers settings, the other team accepts.
+      // If the lobby is fresh (or has no agreed rules yet), auto-create a default offer
+      // from the first team member to join.
       const prevCount = redPlayers.length + bluePlayers.length + spectators.length;
-      if (prevCount == 0) {
-        updates.timerSeconds = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
+      const myTeam = (role === 'red' || role === 'blue') ? role : null;
+      const accepted = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? game.settingsAccepted : { red: false, blue: false };
+      const hasPending = !!game.settingsPending;
+
+      if (prevCount === 0) {
+        const ui = readQuickSettingsFromUI();
+        updates.quickSettings = { ...ui };
+        updates.timerSeconds = ui.turnTimerSeconds;
+        // Reset acceptance for a new lobby
+        updates.settingsAccepted = { red: false, blue: false };
+        updates.settingsPending = null;
+      }
+
+      // If there is no pending offer and both teams haven't accepted rules yet,
+      // have the first team member create an offer (using current rules as the base).
+      if (myTeam && !hasPending && !(accepted.red && accepted.blue)) {
+        const base = (prevCount === 0) ? readQuickSettingsFromUI() : getQuickSettings(game);
+        const offer = { by: myTeam, settings: base, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+        updates.settingsPending = offer;
+        updates.settingsAccepted = { red: myTeam === 'red', blue: myTeam === 'blue' };
       }
 
       tx.update(ref, updates);
@@ -522,6 +818,10 @@ async function toggleQuickReady() {
       const game = snap.data();
       if (game.currentPhase && game.currentPhase !== 'waiting') return;
 
+      if (!quickRulesAreAgreed(game)) {
+        throw new Error('Agree on rules first (open Settings).');
+      }
+
       const role = getQuickPlayerRole(game, odId);
       if (!role || role === 'spectator') throw new Error('Switch to Red or Blue to ready up.');
 
@@ -553,6 +853,7 @@ function bothTeamsFullyReady(game) {
 
 async function maybeAutoStartQuickPlay(game) {
   if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
+  if (!quickRulesAreAgreed(game)) return;
   if (!bothTeamsFullyReady(game)) return;
 
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
@@ -562,10 +863,30 @@ async function maybeAutoStartQuickPlay(game) {
       if (!snap.exists) return;
       const g = snap.data();
       if (g.currentPhase !== 'waiting' || g.winner != null) return;
+      if (!quickRulesAreAgreed(g)) return;
       if (!bothTeamsFullyReady(g)) return;
 
+      const s = getQuickSettings(g);
+      const firstTeam = 'red';
+      const words = getRandomWords(BOARD_SIZE);
+      const keyCard = generateKeyCard(firstTeam, s.blackCards);
+      const cards = words.map((word, i) => ({
+        word,
+        type: keyCard[i],
+        revealed: false
+      }));
+
       tx.update(ref, {
+        cards,
+        currentTeam: firstTeam,
         currentPhase: 'role-selection',
+        redSpymaster: null,
+        blueSpymaster: null,
+        redCardsLeft: FIRST_TEAM_CARDS,
+        blueCardsLeft: SECOND_TEAM_CARDS,
+        currentClue: null,
+        guessesRemaining: 0,
+        winner: null,
         log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -655,8 +976,12 @@ function renderQuickLobby(game) {
   const effectiveRole = role || selectedQuickTeam || 'spectator';
   applyQuickRoleHighlight(effectiveRole);
 
+  // Rules UI
+  updateQuickRulesUI(game);
+
   // Button state
-  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
+  const agreedRules = quickRulesAreAgreed(game);
+  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue') || !agreedRules;
   leaveBtn.disabled = !effectiveRole;
 
   const youObj = effectiveRole === 'red'
@@ -669,6 +994,8 @@ function renderQuickLobby(game) {
 
   if (game.currentPhase !== 'waiting' && game.winner == null) {
     status.textContent = 'Game in progress…';
+  } else if (!quickRulesAreAgreed(game)) {
+    status.textContent = 'Waiting for rule agreement…';
   } else if (bothTeamsFullyReady(game)) {
     status.textContent = 'Everyone is ready — starting…';
   } else if (red.length === 0 || blue.length === 0) {
