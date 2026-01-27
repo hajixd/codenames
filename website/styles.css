@@ -2124,19 +2124,20 @@ body.quickplay .main-content {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   justify-content: center;
-  padding: clamp(16px, 3vw, 44px);
+  padding: clamp(22px, 4vw, 64px);
 }
 
 .launch-card{
   width: 100%;
-  max-width: 1100px;
-  border-radius: 28px;
-  padding: clamp(22px, 3vw, 48px);
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  /* Match the reference: content sits directly on the background (no giant outer card) */
+  max-width: 980px;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -2153,7 +2154,7 @@ body.quickplay .main-content {
 
 .launch-h1{
   margin: 0;
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 900;
   letter-spacing: 0.2px;
 }
@@ -2161,7 +2162,7 @@ body.quickplay .main-content {
 .launch-sub{
   margin: 0;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .launch-mode-row{
@@ -2173,28 +2174,29 @@ body.quickplay .main-content {
 
 /* Bigger, more spacious mode buttons on the launch screen */
 .launch-screen .mode-card{
-  border-radius: 22px;
-  padding: 34px 26px;
-  min-height: 220px;
+  /* Reference sizing */
+  border-radius: 20px;
+  padding: 26px 22px;
+  min-height: 180px;
 }
 
 .launch-screen .mode-card-icon{
-  font-size: 56px;
+  font-size: 52px;
 }
 
 .launch-screen .mode-card-title{
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .launch-screen .mode-card-desc{
-  font-size: 14px;
+  font-size: 13px;
 }
 
 /* Name dock on launch mirrors the Home name dock */
 .launch-name-dock{
   width: 100%;
   max-width: 520px;
-  margin: 18px auto 0;
+  margin: 20px auto 0;
   align-self: center;
   text-align: center;
 }
@@ -2219,7 +2221,7 @@ body.quickplay .main-content {
 }
 
 @media (max-width: 640px){
-  .launch-card{ padding: 20px; }
+  .launch-card{ padding: 0; }
   .launch-mode-row{ grid-template-columns: 1fr; }
   .launch-screen .mode-card{ min-height: 140px; padding: 22px 18px; }
   .launch-screen .mode-card-icon{ font-size: 44px; }
