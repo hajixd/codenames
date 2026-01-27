@@ -2204,7 +2204,8 @@ body.quickplay .main-content {
 .launch-name-dock{
   width: 100%;
   max-width: 520px;
-  margin: 20px auto 0;
+  /* Slightly lower on the choose screen */
+  margin: 34px auto 0;
   align-self: center;
   text-align: center;
 }
@@ -2336,9 +2337,14 @@ button:disabled{
 
 @media (min-width: 769px){
   /* On desktop, rely on top-right header name; keep dock subtle */
-  #panel-home .home-hero{ margin-top: 28px; }
+  #panel-home .home-hero{ margin-top: 18px; }
   /* Pull the name card up a bit so it's not hugging the bottom */
   #panel-home .name-dock{ max-width: 520px; margin-top: 22px; margin-bottom: 6px; }
+}
+
+/* Nudge the Tournament Home hero area up slightly (better vertical balance) */
+body.tournament #panel-home .panel-inner{
+  transform: translateY(-16px);
 }
 
 /* Teams page: sharp clickable list */
@@ -2389,7 +2395,8 @@ button:disabled{
 /* In Tournament, outline your team row using your team's color */
 body.tournament.has-team-color .team-list-item.is-mine{
   border-color: var(--team-accent);
-  box-shadow: 0 0 0 2px var(--team-glow), 0 0 18px var(--team-glow);
+  /* Slightly softer glow on the Teams tab */
+  box-shadow: 0 0 0 2px var(--team-glow), 0 0 6px var(--team-glow);
 }
 
 .team-list-left{ min-width: 0; }
