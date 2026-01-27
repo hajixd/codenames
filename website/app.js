@@ -105,21 +105,27 @@ function initLaunchScreen() {
 function enterAppFromLaunch(mode) {
   const screen = document.getElementById('launch-screen');
   if (screen) screen.style.display = 'none';
+
+  // Default: leave launch state.
   document.body.classList.remove('launch');
 
-  // Ensure the app starts in Play.
-  switchToPanel('panel-game');
-
-  // Jump directly into the chosen mode (skip the in-tab mode picker).
-  try {
-    if (mode === 'tournament' && typeof window.showTournamentLobby === 'function') {
-      window.showTournamentLobby();
-    } else if (typeof window.showQuickPlayLobby === 'function') {
-      window.showQuickPlayLobby();
-    }
-  } catch (_) {
-    // best-effort
+  // QUICK PLAY
+  // - Full-screen lobby/game
+  // - No app header/tabs visible
+  if (mode === 'quick') {
+    document.body.classList.add('quickplay');
+    switchToPanel('panel-game');
+    try {
+      if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
+    } catch (_) {}
+    return;
   }
+
+  // TOURNAMENT
+  // - Go to the tournament home tab
+  // - Normal navigation visible
+  document.body.classList.remove('quickplay');
+  switchToPanel('panel-home');
 }
 
 /* =========================
