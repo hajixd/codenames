@@ -288,6 +288,17 @@ function initGameUI() {
       if (e?.type === 'keydown' && !(e.key === 'Enter' || e.key === ' ')) return;
       e?.preventDefault?.();
       e?.stopPropagation?.();
+
+      // Requested UX:
+      // - If you're already on Red/Blue, clicking the header "box" toggles between
+      //   Operative <-> Spymaster (regardless of which header you clicked).
+      // - If you're not on this team yet, clicking picks that specific role.
+      if (selectedQuickTeam === team && (team === 'red' || team === 'blue')) {
+        const next = (selectedQuickSeatRole === 'spymaster') ? 'operative' : 'spymaster';
+        selectQuickSeat(team, next);
+        return;
+      }
+
       selectQuickSeat(team, seatRole);
     };
     el.addEventListener('click', go);
