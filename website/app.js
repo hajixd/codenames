@@ -54,6 +54,7 @@ let profileUnsub = null;
 let lastLocalNameSetAtMs = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
+  initLaunchScreen();
   initTabs();
   initName();
   initPlayersTab();
@@ -65,6 +66,61 @@ document.addEventListener('DOMContentLoaded', () => {
   listenToTeams();
   listenToPlayers();
 });
+
+/* =========================
+   Launch screen (mode-first)
+========================= */
+function initLaunchScreen() {
+  const screen = document.getElementById('launch-screen');
+  if (!screen) return;
+
+  // Hide the rest of the app until a mode is chosen.
+  document.body.classList.add('launch');
+
+  const quickBtn = document.getElementById('launch-quick-play');
+  const tournBtn = document.getElementById('launch-tournament');
+
+  quickBtn?.addEventListener('click', () => enterAppFromLaunch('quick'));
+  tournBtn?.addEventListener('click', () => enterAppFromLaunch('tournament'));
+
+  // Name input on launch
+  const form = document.getElementById('launch-name-form');
+  const input = document.getElementById('launch-name-input');
+  const hint = document.getElementById('launch-name-hint');
+
+  if (input) input.value = getUserName() || '';
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = (input?.value || '').trim();
+    if (!v) {
+      if (hint) hint.textContent = 'Please enter a name.';
+      return;
+    }
+    if (hint) hint.textContent = '';
+    await setUserName(v);
+  });
+}
+
+function enterAppFromLaunch(mode) {
+  const screen = document.getElementById('launch-screen');
+  if (screen) screen.style.display = 'none';
+  document.body.classList.remove('launch');
+
+  // Ensure the app starts in Play.
+  switchToPanel('panel-game');
+
+  // Jump directly into the chosen mode (skip the in-tab mode picker).
+  try {
+    if (mode === 'tournament' && typeof window.showTournamentLobby === 'function') {
+      window.showTournamentLobby();
+    } else if (typeof window.showQuickPlayLobby === 'function') {
+      window.showQuickPlayLobby();
+    }
+  } catch (_) {
+    // best-effort
+  }
+}
 
 /* =========================
    Tabs
@@ -654,9 +710,11 @@ function refreshNameUI() {
   const saved = document.getElementById('name-saved');
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
+  const launchInput = document.getElementById('launch-name-input');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
+  if (launchInput) launchInput.value = name || '';
 
   if (cardForm && saved) {
     cardForm.style.display = name ? 'none' : 'block';

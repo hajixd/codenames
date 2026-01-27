@@ -13,6 +13,39 @@
   </head>
   <body>
     <div class="app">
+      <!-- Launch Screen (first thing shown on app open) -->
+      <div class="launch-screen" id="launch-screen" aria-label="Choose play mode">
+        <div class="launch-card">
+          <div class="launch-logo">CODENAMES</div>
+          <div class="launch-title">Choose a mode</div>
+
+          <div class="launch-mode-row">
+            <button class="mode-card" id="launch-quick-play" type="button">
+              <div class="mode-card-icon">⚡</div>
+              <div class="mode-card-title">Quick Play</div>
+              <div class="mode-card-desc">Jump into a casual live game.</div>
+            </button>
+
+            <button class="mode-card" id="launch-tournament" type="button">
+              <div class="mode-card-icon">🏆</div>
+              <div class="mode-card-title">Tournament</div>
+              <div class="mode-card-desc">Challenge teams and climb ranks.</div>
+            </button>
+          </div>
+
+          <form id="launch-name-form" class="form launch-name-form" autocomplete="off">
+            <label class="field" style="margin:0;">
+              <span class="label">Your name</span>
+              <input type="text" id="launch-name-input" class="input" placeholder="Name" required>
+            </label>
+            <div class="form-actions" style="margin:10px 0 0;">
+              <button type="submit" class="btn primary">Save</button>
+              <span class="hint" id="launch-name-hint"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- App Header (desktop + mobile) -->
       <header class="app-header">
         <div class="logo">CODENAMES</div>
