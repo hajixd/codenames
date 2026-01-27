@@ -904,6 +904,8 @@ async function joinQuickLobby(role) {
 
     selectedQuickTeam = role;
     quickAutoJoinedSpectator = true;
+    // Play join sound
+    if (window.playSound) window.playSound('join');
   } catch (e) {
     console.error('Failed to join Quick Play lobby:', e);
     alert(e.message || 'Failed to join lobby.');
@@ -951,6 +953,9 @@ async function leaveQuickLobby() {
     // Update role UI back to spectator highlight
     applyQuickRoleHighlight('spectator');
 
+    // Play leave sound
+    if (window.playSound) window.playSound('leave');
+
     // Return to the initial Choose Mode screen.
     currentPlayMode = 'select';
     try {
@@ -990,6 +995,8 @@ async function toggleQuickReady() {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
+    // Play ready sound
+    if (window.playSound) window.playSound('ready');
   } catch (e) {
     console.error('Failed to toggle ready:', e);
     alert(e.message || 'Failed to ready up.');
@@ -1043,6 +1050,8 @@ async function maybeAutoStartQuickPlay(game) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
+    // Play game start sound
+    if (window.playSound) window.playSound('gameStart');
   } catch (e) {
     console.error('Auto-start Quick Play failed:', e);
   }
@@ -2026,6 +2035,9 @@ async function handleClueSubmit(e) {
 
     wordInput.value = '';
     numInput.value = '';
+
+    // Play clue given sound
+    if (window.playSound) window.playSound('clueGiven');
   } catch (e) {
     console.error('Failed to give clue:', e);
   }
@@ -2060,14 +2072,21 @@ async function handleCardClick(cardIndex) {
   let endTurn = false;
   let winner = null;
 
+  // Play card reveal sound
+  if (window.playSound) window.playSound('cardReveal');
+
   // Determine result
   if (card.type === 'assassin') {
     // Game over - other team wins
     winner = currentGame.currentTeam === 'red' ? 'blue' : 'red';
     logEntry += 'ASSASSIN! Game over.';
+    // Play assassin sound after a brief delay
+    setTimeout(() => { if (window.playSound) window.playSound('cardAssassin'); }, 200);
   } else if (card.type === currentGame.currentTeam) {
     // Correct guess
     logEntry += 'Correct!';
+    // Play correct sound
+    setTimeout(() => { if (window.playSound) window.playSound('cardCorrect'); }, 200);
 
     // Update cards left
     if (currentGame.currentTeam === 'red') {
@@ -2087,9 +2106,13 @@ async function handleCardClick(cardIndex) {
     // Neutral - end turn
     logEntry += 'Neutral. Turn ends.';
     endTurn = true;
+    // Play wrong/neutral sound
+    setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
   } else {
     // Other team's card - end turn and give them a point
     logEntry += `Wrong! (${card.type === 'red' ? currentGame.redTeamName : currentGame.blueTeamName}'s card)`;
+    // Play wrong sound
+    setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
 
     if (card.type === 'red') {
       updates.redCardsLeft = currentGame.redCardsLeft - 1;
@@ -2134,6 +2157,9 @@ async function handleEndTurn() {
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
 
+  // Play end turn sound
+  if (window.playSound) window.playSound('endTurn');
+
   try {
     await db.collection('games').doc(currentGame.id).update({
       currentTeam: currentGame.currentTeam === 'red' ? 'blue' : 'red',
@@ -2161,6 +2187,13 @@ function showGameEndOverlay() {
   const myTeamColor = getMyTeamColor();
   const isWinner = currentGame.winner === myTeamColor;
   const winnerName = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+
+  // Play win or lose sound
+  if (window.playSound) {
+    setTimeout(() => {
+      window.playSound(isWinner ? 'gameWin' : 'gameLose');
+    }, 300);
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'game-end-overlay';

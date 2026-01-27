@@ -25,6 +25,9 @@ const db = firebase.firestore();
 
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
+const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
+const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
+const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 // Account model:
 // - Accounts are keyed by normalized player name so "same name" = same account across devices.
 // - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
@@ -54,6 +57,7 @@ let profileUnsub = null;
 let lastLocalNameSetAtMs = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
+  initSettings();
   initLaunchScreen();
   initHeaderLogoNav();
   initTabs();
@@ -2419,9 +2423,13 @@ async function sendChatTabMessage() {
     }
     if (input) input.value = '';
     setHint('chat-panel-hint', '');
+    // Play message sent sound
+    if (window.playSound) window.playSound('message');
   } catch (e) {
     console.warn('Could not send chat message', e);
     setHint('chat-panel-hint', 'Could not send message.');
+    // Play error sound
+    if (window.playSound) window.playSound('error');
   }
 }
 
@@ -2920,3 +2928,538 @@ function logoutLocal() {
   // Full refresh keeps the app state consistent (listeners, cached state, theme).
   try { window.location.reload(); } catch (_) {}
 }
+
+/* =========================
+   Settings & Sound Effects
+========================= */
+
+// Settings state
+let settingsAnimations = true;
+let settingsSounds = true;
+let settingsVolume = 70;
+
+// Audio context for sound effects
+let audioCtx = null;
+
+function initSettings() {
+  // Load saved settings from localStorage
+  const savedAnimations = safeLSGet(LS_SETTINGS_ANIMATIONS);
+  const savedSounds = safeLSGet(LS_SETTINGS_SOUNDS);
+  const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
+
+  settingsAnimations = savedAnimations !== 'false';
+  settingsSounds = savedSounds !== 'false';
+  settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
+
+  // Apply initial state
+  applyAnimationsSetting();
+
+  // Get UI elements
+  const gearBtn = document.getElementById('settings-gear-btn');
+  const modal = document.getElementById('settings-modal');
+  const backdrop = document.getElementById('settings-modal-backdrop');
+  const closeBtn = document.getElementById('settings-modal-close');
+  const animToggle = document.getElementById('settings-animations-toggle');
+  const soundToggle = document.getElementById('settings-sounds-toggle');
+  const volumeSlider = document.getElementById('settings-volume-slider');
+  const volumeValue = document.getElementById('settings-volume-value');
+  const testSoundBtn = document.getElementById('settings-test-sound');
+
+  if (!gearBtn || !modal) return;
+
+  // Set initial values
+  if (animToggle) animToggle.checked = settingsAnimations;
+  if (soundToggle) soundToggle.checked = settingsSounds;
+  if (volumeSlider) volumeSlider.value = settingsVolume;
+  if (volumeValue) volumeValue.textContent = settingsVolume + '%';
+
+  // Open modal
+  gearBtn.addEventListener('click', () => {
+    playSound('click');
+    openSettingsModal();
+  });
+
+  // Close modal
+  closeBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeSettingsModal();
+  });
+  backdrop?.addEventListener('click', () => {
+    playSound('click');
+    closeSettingsModal();
+  });
+
+  // Animations toggle
+  animToggle?.addEventListener('change', () => {
+    settingsAnimations = animToggle.checked;
+    safeLSSet(LS_SETTINGS_ANIMATIONS, settingsAnimations ? 'true' : 'false');
+    applyAnimationsSetting();
+    playSound('toggle');
+  });
+
+  // Sounds toggle
+  soundToggle?.addEventListener('change', () => {
+    settingsSounds = soundToggle.checked;
+    safeLSSet(LS_SETTINGS_SOUNDS, settingsSounds ? 'true' : 'false');
+    if (settingsSounds) playSound('toggle');
+  });
+
+  // Volume slider
+  volumeSlider?.addEventListener('input', () => {
+    settingsVolume = parseInt(volumeSlider.value, 10);
+    if (volumeValue) volumeValue.textContent = settingsVolume + '%';
+    safeLSSet(LS_SETTINGS_VOLUME, String(settingsVolume));
+  });
+
+  // Test sound button
+  testSoundBtn?.addEventListener('click', () => {
+    playSound('success');
+  });
+
+  // Keyboard escape to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('modal-open')) {
+      closeSettingsModal();
+    }
+  });
+}
+
+function openSettingsModal() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
+  modal.style.display = 'block';
+  // Trigger reflow for animation
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+}
+
+function closeSettingsModal() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
+}
+
+function applyAnimationsSetting() {
+  if (settingsAnimations) {
+    document.body.classList.remove('no-animations');
+  } else {
+    document.body.classList.add('no-animations');
+  }
+}
+
+// Sound Effects System using Web Audio API
+function getAudioContext() {
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      console.warn('Web Audio API not supported');
+      return null;
+    }
+  }
+  // Resume if suspended (required for autoplay policies)
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+// Sound definitions using Web Audio synthesis
+const SOUNDS = {
+  click: { type: 'click', freq: 800, duration: 0.05 },
+  toggle: { type: 'toggle', freq: 600, duration: 0.08 },
+  success: { type: 'success', freqs: [523, 659, 784], duration: 0.15 },
+  error: { type: 'error', freq: 200, duration: 0.2 },
+  hover: { type: 'hover', freq: 1200, duration: 0.03 },
+  tabSwitch: { type: 'click', freq: 900, duration: 0.04 },
+  modalOpen: { type: 'swoosh', freq: 400, duration: 0.15 },
+  modalClose: { type: 'swoosh', freq: 300, duration: 0.1 },
+  message: { type: 'message', freq: 880, duration: 0.1 },
+  notification: { type: 'notification', freqs: [659, 784], duration: 0.12 },
+  cardReveal: { type: 'reveal', freq: 440, duration: 0.2 },
+  cardCorrect: { type: 'success', freqs: [523, 659, 784], duration: 0.2 },
+  cardWrong: { type: 'error', freq: 180, duration: 0.3 },
+  cardAssassin: { type: 'assassin', freq: 100, duration: 0.5 },
+  turnStart: { type: 'turn', freq: 660, duration: 0.15 },
+  clueGiven: { type: 'clue', freqs: [440, 554, 659], duration: 0.2 },
+  gameStart: { type: 'fanfare', freqs: [523, 659, 784, 1047], duration: 0.3 },
+  gameWin: { type: 'victory', freqs: [523, 659, 784, 1047, 1319], duration: 0.4 },
+  gameLose: { type: 'defeat', freqs: [392, 330, 262], duration: 0.5 },
+  timerTick: { type: 'tick', freq: 1000, duration: 0.02 },
+  timerWarning: { type: 'warning', freq: 880, duration: 0.1 },
+  buttonHover: { type: 'hover', freq: 1100, duration: 0.025 },
+  ready: { type: 'ready', freqs: [440, 554], duration: 0.15 },
+  join: { type: 'join', freq: 523, duration: 0.12 },
+  leave: { type: 'leave', freq: 330, duration: 0.15 },
+  invite: { type: 'notification', freqs: [784, 988], duration: 0.15 },
+  endTurn: { type: 'endTurn', freq: 350, duration: 0.12 },
+};
+
+function playSound(soundName) {
+  if (!settingsSounds) return;
+
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const sound = SOUNDS[soundName];
+  if (!sound) return;
+
+  const volume = settingsVolume / 100;
+  const masterGain = ctx.createGain();
+  masterGain.gain.value = volume * 0.3; // Base volume adjustment
+  masterGain.connect(ctx.destination);
+
+  const now = ctx.currentTime;
+
+  switch (sound.type) {
+    case 'click':
+    case 'hover':
+    case 'toggle':
+    case 'tick':
+      playSingleTone(ctx, masterGain, sound.freq, sound.duration, now, 'sine');
+      break;
+
+    case 'success':
+    case 'notification':
+    case 'ready':
+    case 'clue':
+      playArpeggio(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+
+    case 'error':
+      playErrorSound(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+
+    case 'swoosh':
+      playSwoosh(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+
+    case 'message':
+      playMessageSound(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+
+    case 'reveal':
+      playRevealSound(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+
+    case 'assassin':
+      playAssassinSound(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+
+    case 'turn':
+    case 'join':
+      playSingleTone(ctx, masterGain, sound.freq, sound.duration, now, 'triangle');
+      break;
+
+    case 'leave':
+    case 'endTurn':
+      playSingleTone(ctx, masterGain, sound.freq, sound.duration, now, 'sawtooth', true);
+      break;
+
+    case 'warning':
+      playWarningSound(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+
+    case 'fanfare':
+    case 'victory':
+      playFanfare(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+
+    case 'defeat':
+      playDefeatSound(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+
+    default:
+      playSingleTone(ctx, masterGain, sound.freq || 440, sound.duration || 0.1, now, 'sine');
+  }
+}
+
+function playSingleTone(ctx, destination, freq, duration, startTime, waveType = 'sine', fadeDown = false) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = waveType;
+  osc.frequency.value = freq;
+
+  gain.gain.setValueAtTime(0.5, startTime);
+  if (fadeDown) {
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  } else {
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration * 0.8);
+  }
+
+  osc.connect(gain);
+  gain.connect(destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playArpeggio(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+
+    const noteStart = startTime + i * noteDuration * 0.5;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.4, noteStart + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration);
+
+    osc.connect(gain);
+    gain.connect(destination);
+
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration);
+  });
+}
+
+function playErrorSound(ctx, destination, freq, duration, startTime) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, startTime + duration);
+
+  gain.gain.setValueAtTime(0.3, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+  osc.connect(gain);
+  gain.connect(destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playSwoosh(ctx, destination, freq, duration, startTime) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq * 0.5, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 2, startTime + duration);
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(freq, startTime);
+  filter.frequency.exponentialRampToValueAtTime(freq * 4, startTime + duration);
+
+  gain.gain.setValueAtTime(0.2, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playMessageSound(ctx, destination, freq, duration, startTime) {
+  [1, 1.25].forEach((mult, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.value = freq * mult;
+
+    const noteStart = startTime + i * 0.05;
+    gain.gain.setValueAtTime(0.3, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + duration);
+
+    osc.connect(gain);
+    gain.connect(destination);
+
+    osc.start(noteStart);
+    osc.stop(noteStart + duration);
+  });
+}
+
+function playRevealSound(ctx, destination, freq, duration, startTime) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq * 0.8, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 1.2, startTime + duration * 0.5);
+  osc.frequency.exponentialRampToValueAtTime(freq, startTime + duration);
+
+  gain.gain.setValueAtTime(0.4, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+  osc.connect(gain);
+  gain.connect(destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playAssassinSound(ctx, destination, freq, duration, startTime) {
+  // Low rumble
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+
+  osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(freq, startTime);
+  osc1.frequency.exponentialRampToValueAtTime(freq * 0.3, startTime + duration);
+
+  gain1.gain.setValueAtTime(0.4, startTime);
+  gain1.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+  osc1.connect(gain1);
+  gain1.connect(destination);
+
+  osc1.start(startTime);
+  osc1.stop(startTime + duration);
+
+  // Noise burst
+  const bufferSize = ctx.sampleRate * duration;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+  }
+
+  const noise = ctx.createBufferSource();
+  const noiseGain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+
+  noise.buffer = buffer;
+  filter.type = 'lowpass';
+  filter.frequency.value = 200;
+
+  noiseGain.gain.setValueAtTime(0.3, startTime);
+  noiseGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(destination);
+
+  noise.start(startTime);
+}
+
+function playWarningSound(ctx, destination, freq, duration, startTime) {
+  [0, 0.08].forEach((offset) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.value = freq;
+
+    const noteStart = startTime + offset;
+    gain.gain.setValueAtTime(0.15, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + duration * 0.5);
+
+    osc.connect(gain);
+    gain.connect(destination);
+
+    osc.start(noteStart);
+    osc.stop(noteStart + duration);
+  });
+}
+
+function playFanfare(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+
+    const noteStart = startTime + i * noteDuration * 0.4;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.35, noteStart + 0.03);
+    gain.gain.setValueAtTime(0.35, noteStart + noteDuration * 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration * 1.5);
+
+    osc.connect(gain);
+    gain.connect(destination);
+
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration * 1.5);
+  });
+}
+
+function playDefeatSound(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+
+    const noteStart = startTime + i * noteDuration * 0.6;
+    gain.gain.setValueAtTime(0.25, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration);
+
+    osc.connect(gain);
+    gain.connect(destination);
+
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration);
+  });
+}
+
+// Add ripple effect to buttons
+function addRippleEffect(element) {
+  if (!element) return;
+  element.addEventListener('click', function() {
+    this.classList.remove('ripple');
+    void this.offsetWidth; // Trigger reflow
+    this.classList.add('ripple');
+    setTimeout(() => this.classList.remove('ripple'), 300);
+  });
+}
+
+// Initialize sound effects on common interactions
+function initGlobalSoundEffects() {
+  // Tab clicks
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => playSound('tabSwitch'));
+  });
+
+  // All buttons
+  document.querySelectorAll('.btn').forEach(btn => {
+    btn.addEventListener('click', () => playSound('click'));
+    addRippleEffect(btn);
+  });
+
+  // Mode cards
+  document.querySelectorAll('.mode-card').forEach(card => {
+    card.addEventListener('click', () => playSound('click'));
+  });
+
+  // Input focus
+  document.querySelectorAll('.input').forEach(input => {
+    input.addEventListener('focus', () => playSound('hover'));
+  });
+
+  // Toggle switches
+  document.querySelectorAll('.toggle-switch input').forEach(toggle => {
+    toggle.addEventListener('change', () => playSound('toggle'));
+  });
+
+  // Select changes
+  document.querySelectorAll('select').forEach(select => {
+    select.addEventListener('change', () => playSound('click'));
+  });
+
+  // Deck picker cards
+  document.querySelectorAll('.qp-deck-card').forEach(card => {
+    card.addEventListener('click', () => playSound('click'));
+  });
+}
+
+// Call this after DOM is ready
+document.addEventListener('DOMContentLoaded', initGlobalSoundEffects);
+
+// Export for game.js to use
+window.playSound = playSound;

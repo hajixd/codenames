@@ -3808,3 +3808,697 @@ button.player-tag.pill-action:disabled{
 .invite-sub{ color: var(--text-dim); font-size: 12px; margin-top: 2px; }
 .invite-actions{ display:flex; gap: 8px; flex: 0 0 auto; }
 
+/* ==================== SETTINGS GEAR + MODAL ==================== */
+
+/* Settings Gear Button */
+.settings-gear-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.settings-gear-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.settings-gear-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.settings-gear-btn:active {
+  transform: scale(0.95);
+}
+
+/* Team-colored gear when in tournament with team */
+body.tournament.has-team-color .settings-gear-btn:hover {
+  color: var(--team-accent);
+}
+
+/* Settings Modal */
+.settings-modal .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 999;
+}
+
+.settings-modal-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  width: 90%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.settings-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-icon {
+  font-size: 16px;
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: -4px;
+}
+
+/* Toggle Switch */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.settings-toggle-label {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--border);
+  border-radius: 26px;
+}
+
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--text);
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(22px);
+}
+
+/* Team-colored toggle when in tournament */
+body.tournament.has-team-color .toggle-switch input:checked + .toggle-slider {
+  background: var(--team-accent);
+}
+
+/* Volume Slider */
+.settings-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border-radius: 12px;
+}
+
+.settings-volume-label {
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.settings-volume-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.settings-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--surface);
+}
+
+.settings-volume-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--surface);
+}
+
+body.tournament.has-team-color .settings-volume-slider::-webkit-slider-thumb {
+  background: var(--team-accent);
+}
+
+body.tournament.has-team-color .settings-volume-slider::-moz-range-thumb {
+  background: var(--team-accent);
+}
+
+.settings-volume-value {
+  font-size: 13px;
+  color: var(--text-dim);
+  min-width: 40px;
+  text-align: right;
+}
+
+.settings-test-sound {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* ==================== ANIMATIONS ==================== */
+
+/* Animation CSS Variables */
+:root {
+  --anim-duration-fast: 150ms;
+  --anim-duration: 200ms;
+  --anim-duration-slow: 300ms;
+  --anim-duration-slower: 400ms;
+  --anim-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --anim-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --anim-ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* Disable animations when preference is off */
+body.no-animations,
+body.no-animations * {
+  animation-duration: 0ms !important;
+  transition-duration: 0ms !important;
+}
+
+/* Base transitions for interactive elements */
+.btn {
+  transition: background var(--anim-duration-fast) var(--anim-ease),
+              border-color var(--anim-duration-fast) var(--anim-ease),
+              color var(--anim-duration-fast) var(--anim-ease),
+              transform var(--anim-duration-fast) var(--anim-ease),
+              box-shadow var(--anim-duration-fast) var(--anim-ease);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn.primary:hover {
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+body.tournament.has-team-color .btn.primary:hover {
+  box-shadow: 0 4px 12px var(--team-glow);
+}
+
+/* Tab transitions */
+.desktop-tabs .tab,
+.mobile-tabs .tab {
+  transition: background var(--anim-duration) var(--anim-ease),
+              border-color var(--anim-duration) var(--anim-ease),
+              color var(--anim-duration) var(--anim-ease),
+              transform var(--anim-duration-fast) var(--anim-ease);
+}
+
+.mobile-tabs .tab:active {
+  transform: scale(0.95);
+}
+
+/* Panel/Page transitions */
+.panel {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.panel.active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity var(--anim-duration-slow) var(--anim-ease),
+              transform var(--anim-duration-slow) var(--anim-ease);
+}
+
+/* Modal animations */
+.modal {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.modal.modal-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--anim-duration) var(--anim-ease),
+              visibility 0ms;
+}
+
+.modal:not(.modal-open) {
+  transition: opacity var(--anim-duration) var(--anim-ease),
+              visibility 0ms var(--anim-duration);
+}
+
+.modal-card {
+  transform: scale(0.95) translateY(10px);
+  opacity: 0;
+}
+
+.modal.modal-open .modal-card {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  transition: transform var(--anim-duration-slow) var(--anim-ease-bounce),
+              opacity var(--anim-duration) var(--anim-ease);
+}
+
+.modal:not(.modal-open) .modal-card {
+  transition: transform var(--anim-duration) var(--anim-ease),
+              opacity var(--anim-duration) var(--anim-ease);
+}
+
+.modal-backdrop {
+  opacity: 0;
+}
+
+.modal.modal-open .modal-backdrop {
+  opacity: 1;
+  transition: opacity var(--anim-duration) var(--anim-ease);
+}
+
+/* Settings modal specific positioning fix */
+.settings-modal.modal-open .settings-modal-card {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.settings-modal:not(.modal-open) .settings-modal-card {
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
+/* Card hover animations */
+.mode-card {
+  transition: background var(--anim-duration) var(--anim-ease),
+              border-color var(--anim-duration) var(--anim-ease),
+              transform var(--anim-duration) var(--anim-ease),
+              box-shadow var(--anim-duration) var(--anim-ease);
+}
+
+.mode-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.mode-card:active {
+  transform: translateY(-2px);
+}
+
+/* Team card animations */
+.team-card {
+  transition: border-color var(--anim-duration) var(--anim-ease),
+              box-shadow var(--anim-duration) var(--anim-ease);
+}
+
+/* Quick Play team column hover */
+.quick-team-col.selectable {
+  transition: background var(--anim-duration) var(--anim-ease),
+              border-color var(--anim-duration) var(--anim-ease),
+              transform var(--anim-duration) var(--anim-ease);
+}
+
+.quick-team-col.selectable:hover {
+  transform: translateY(-2px);
+}
+
+.quick-team-col.selectable:active {
+  transform: translateY(0);
+}
+
+/* Game card animations */
+.game-card {
+  transition: transform var(--anim-duration) var(--anim-ease),
+              box-shadow var(--anim-duration) var(--anim-ease),
+              background var(--anim-duration) var(--anim-ease),
+              border-color var(--anim-duration) var(--anim-ease);
+}
+
+.game-card:not(.revealed):hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.game-card:not(.revealed):active {
+  transform: translateY(-1px) scale(1);
+}
+
+/* Card reveal animation */
+@keyframes cardReveal {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(90deg);
+  }
+  100% {
+    transform: rotateY(0deg);
+  }
+}
+
+.game-card.revealing {
+  animation: cardReveal var(--anim-duration-slower) var(--anim-ease);
+}
+
+/* Card pulse animation for hints */
+@keyframes cardPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+  }
+}
+
+.game-card.pulse {
+  animation: cardPulse 1.5s ease infinite;
+}
+
+/* Input focus animations */
+.input {
+  transition: border-color var(--anim-duration) var(--anim-ease),
+              box-shadow var(--anim-duration) var(--anim-ease),
+              background var(--anim-duration) var(--anim-ease);
+}
+
+.input:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+body.tournament.has-team-color .input:focus {
+  box-shadow: 0 0 0 3px var(--team-glow);
+}
+
+/* Toggle switch animation */
+.toggle-slider {
+  transition: background var(--anim-duration) var(--anim-ease);
+}
+
+.toggle-slider::before {
+  transition: transform var(--anim-duration) var(--anim-ease-bounce);
+}
+
+/* Badge pulse animation */
+@keyframes badgePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.badge:not(:empty) {
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* Chat message slide in */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-msg {
+  animation: messageSlideIn var(--anim-duration) var(--anim-ease);
+}
+
+/* Launch screen animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.launch-card {
+  animation: fadeInUp var(--anim-duration-slower) var(--anim-ease);
+}
+
+/* Spots counter animation */
+@keyframes countPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.spots-number {
+  transition: transform var(--anim-duration) var(--anim-ease);
+}
+
+.spots-number.updated {
+  animation: countPulse var(--anim-duration-slow) var(--anim-ease);
+}
+
+/* Settings gear rotation on hover */
+.settings-gear-btn svg {
+  transition: transform var(--anim-duration-slow) var(--anim-ease),
+              color var(--anim-duration) var(--anim-ease);
+}
+
+.settings-gear-btn:hover svg {
+  transform: rotate(45deg);
+}
+
+/* Game turn indicator pulse */
+@keyframes turnPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.game-turn-display {
+  transition: background var(--anim-duration) var(--anim-ease),
+              color var(--anim-duration) var(--anim-ease);
+}
+
+.game-turn-display.your-turn {
+  animation: turnPulse 1.5s ease-in-out infinite;
+}
+
+/* Timer urgency animation */
+@keyframes timerUrgent {
+  0%, 100% {
+    color: var(--red);
+    transform: scale(1);
+  }
+  50% {
+    color: #ff6b6b;
+    transform: scale(1.05);
+  }
+}
+
+.timer-display.urgent {
+  animation: timerUrgent 0.5s ease infinite;
+}
+
+/* Role button hover */
+.role-btn {
+  transition: background var(--anim-duration) var(--anim-ease),
+              border-color var(--anim-duration) var(--anim-ease),
+              transform var(--anim-duration) var(--anim-ease),
+              box-shadow var(--anim-duration) var(--anim-ease);
+}
+
+.role-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.role-btn:active {
+  transform: translateY(-2px);
+}
+
+/* Deck card picker animation */
+.qp-deck-card {
+  transition: background var(--anim-duration) var(--anim-ease),
+              border-color var(--anim-duration) var(--anim-ease),
+              transform var(--anim-duration) var(--anim-ease);
+}
+
+.qp-deck-card:hover {
+  transform: translateY(-2px);
+}
+
+.qp-deck-card:active {
+  transform: translateY(0);
+}
+
+/* Win/Lose celebration animation */
+@keyframes celebrationBounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  75% {
+    transform: scale(1.05);
+  }
+}
+
+.game-end-title.win {
+  animation: celebrationBounce 0.6s var(--anim-ease-bounce);
+}
+
+@keyframes defeatShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.game-end-title.lose {
+  animation: defeatShake 0.4s var(--anim-ease);
+}
+
+/* Ripple effect for buttons */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.btn.ripple::after {
+  animation: rippleEffect var(--anim-duration-slow) var(--anim-ease-out);
+}
+
+@keyframes rippleEffect {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Skeleton loading animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* Notification pop animation */
+@keyframes notificationPop {
+  0% {
+    transform: scale(0) translateY(20px);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1) translateY(-5px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.notification-toast {
+  animation: notificationPop var(--anim-duration-slow) var(--anim-ease-bounce);
+}
+
