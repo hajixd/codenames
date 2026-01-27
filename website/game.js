@@ -925,10 +925,13 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
         redPlayers: nextRed,
         bluePlayers: nextBlue,
         spectators: nextSpec,
+        // Reset rule agreement when someone goes offline
+        settingsAccepted: { red: false, blue: false },
+        settingsPending: null,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby`);
+      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby. Rules reset.`);
     });
   } catch (e) {
     console.warn('Failed to remove inactive players:', e);

@@ -71,6 +71,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initOnlineCounterUI();
   listenToTeams();
   listenToPlayers();
+
+  // If user already has a name, proactively merge any case-insensitive duplicates
+  if (getUserName()) {
+    mergeDuplicatePlayersForName(getUserName()).catch(e => {
+      console.warn('Initial duplicate-player merge failed (best-effort)', e);
+    });
+  }
 });
 
 /* =========================
