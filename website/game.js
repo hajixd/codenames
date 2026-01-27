@@ -1323,9 +1323,9 @@ function renderQuickLobby(game) {
   } else if (bothTeamsFullyReady(game)) {
     status.textContent = 'Everyone is ready — starting…';
   } else if (red.length === 0 || blue.length === 0) {
-    status.textContent = 'Waiting for both teams to join…';
+    status.textContent = '';
   } else {
-    status.textContent = 'Waiting for both teams to ready up…';
+    status.textContent = '';
   }
 }
 

@@ -1951,17 +1951,6 @@ body.mode-joiner .only-joiner{ display:block; }
 @media (min-width: 900px){
   .qp-deck-picker{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
-.qp-setting::before{
-  content:"";
-  position:absolute;
-  left: 10px;
-  top: 12px;
-  bottom: 12px;
-  width: 4px;
-  border-radius: 4px;
-  background: var(--qp-accent, rgba(255,255,255,0.18));
-  box-shadow: 0 0 22px rgba(0,0,0,0.25);
-}
 .qp-setting .setting-label{
   font-weight: 700;
   padding-left: 12px;
@@ -2081,7 +2070,6 @@ body.mode-joiner .only-joiner{ display:block; }
 @media (max-width: 520px){
   .qp-setting{ flex-direction: column; align-items: stretch; }
   .qp-setting .setting-select{ width: 100%; min-width: 0; }
-  .qp-setting::before{ left: 12px; top: 14px; bottom: auto; height: 4px; width: calc(100% - 24px); }
   .qp-setting .setting-label{ padding-left: 0; padding-top: 10px; }
 }
 
@@ -2628,8 +2616,12 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 
 /* Quick Play settings modal: a bit more pop */
+#quick-settings-modal {
+  align-items: center;
+}
 #quick-settings-modal .modal-card{
   background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
+  margin: 0;
 }
 #quick-settings-modal .modal-head{
   background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(168,85,247,0.14));
