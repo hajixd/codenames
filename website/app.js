@@ -1698,13 +1698,17 @@ function openTeamModal(teamId) {
   const modal = document.getElementById('team-modal');
   if (!modal) return;
   modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
   renderTeamModal(teamId);
 }
 
 function closeTeamModal() {
   openTeamId = null;
   const modal = document.getElementById('team-modal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.classList.remove('modal-open');
+    setTimeout(() => { modal.style.display = 'none'; }, 200);
+  }
   setHint('team-modal-hint', '');
 }
 
