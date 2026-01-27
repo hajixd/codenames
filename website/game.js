@@ -26,12 +26,17 @@ let spectatingGameId = null;
 let selectedQuickTeam = null; // 'red' or 'blue'
 let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
+// Quick Play is a single shared lobby/game.
+const QUICKPLAY_DOC_ID = 'quickplay';
+let quickLobbyUnsub = null;
+let quickLobbyGame = null;
+
 // Load words on init
 document.addEventListener('DOMContentLoaded', async () => {
   await loadWords();
   initGameUI();
   listenToChallenges();
-  listenToQuickGames();
+  listenToQuickPlayDoc();
 });
 
 /* =========================
@@ -115,7 +120,9 @@ function initGameUI() {
   document.getElementById('select-team-blue')?.addEventListener('click', () => selectQuickTeam('blue'));
 
   // Quick Play game actions
-  document.getElementById('create-quick-game')?.addEventListener('click', createQuickGame);
+  // Quick Play is a single lobby; no "create game" button.
+  document.getElementById('quick-ready-btn')?.addEventListener('click', toggleQuickReady);
+  document.getElementById('quick-leave-btn')?.addEventListener('click', leaveQuickLobby);
 
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
@@ -180,12 +187,12 @@ function showQuickPlayLobby() {
   if (!userName) {
     if (nameCheck) nameCheck.style.display = 'block';
     if (setup) setup.style.display = 'none';
+    stopQuickLobbyListener();
   } else {
     if (nameCheck) nameCheck.style.display = 'none';
     if (setup) setup.style.display = 'block';
+    startQuickLobbyListener();
   }
-
-  renderQuickGames();
 }
 
 function showTournamentLobby() {
@@ -214,26 +221,58 @@ function selectQuickTeam(team) {
     hint.textContent = team === 'red' ? 'You will play as Red Team' : 'You will play as Blue Team';
     hint.style.color = team === 'red' ? 'var(--game-red)' : 'var(--game-blue)';
   }
+
+  // Immediately join the lobby for the selected team.
+  joinQuickLobby(team);
 }
 
 /* =========================
    Quick Play Game Management
 ========================= */
-async function createQuickGame() {
-  const userName = getUserName();
-  if (!userName) {
-    alert('Please enter your name on the Home tab first.');
-    return;
-  }
+function listenToQuickPlayDoc() {
+  // Pre-warm the Quick Play singleton doc so the lobby is ready.
+  ensureQuickPlayGameExists().catch((e) => console.warn('Quick Play prewarm failed', e));
+}
 
-  if (!selectedQuickTeam) {
-    alert('Please select a team (Red or Blue) first.');
-    return;
-  }
+function stopQuickLobbyListener() {
+  if (quickLobbyUnsub) quickLobbyUnsub();
+  quickLobbyUnsub = null;
+  quickLobbyGame = null;
+  renderQuickLobby(null);
+}
 
-  const timerSetting = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
+async function startQuickLobbyListener() {
+  if (quickLobbyUnsub) return;
+  await ensureQuickPlayGameExists();
+  quickLobbyUnsub = db.collection('games').doc(QUICKPLAY_DOC_ID).onSnapshot((snap) => {
+    if (!snap.exists) {
+      quickLobbyGame = null;
+      renderQuickLobby(null);
+      return;
+    }
+    quickLobbyGame = { id: snap.id, ...snap.data() };
 
-  // Red always goes first
+    // If a Quick Play game is in-progress, jump into it if you're a participant.
+    if (quickLobbyGame.currentPhase && quickLobbyGame.currentPhase !== 'waiting' && quickLobbyGame.winner == null) {
+      const odId = getUserId();
+      const inRed = (quickLobbyGame.redPlayers || []).some(p => p.odId === odId);
+      const inBlue = (quickLobbyGame.bluePlayers || []).some(p => p.odId === odId);
+      if (inRed || inBlue) {
+        spectatorMode = false;
+        spectatingGameId = null;
+        startGameListener(quickLobbyGame.id, { spectator: false });
+        return;
+      }
+    }
+
+    if (currentPlayMode === 'quick') {
+      renderQuickLobby(quickLobbyGame);
+      maybeAutoStartQuickPlay(quickLobbyGame);
+    }
+  }, (err) => console.error('Quick Play lobby listener error:', err));
+}
+
+function buildQuickPlayGameData(timerSetting = 120) {
   const firstTeam = 'red';
   const words = getRandomWords(BOARD_SIZE);
   const keyCard = generateKeyCard(firstTeam);
@@ -244,19 +283,18 @@ async function createQuickGame() {
     revealed: false
   }));
 
-  const gameData = {
+  return {
     type: 'quick',
-    // roomCode was previously used for manual joins; we now show live games directly.
     roomCode: null,
     redTeamId: null,
     redTeamName: 'Red Team',
     blueTeamId: null,
     blueTeamName: 'Blue Team',
-    redPlayers: selectedQuickTeam === 'red' ? [{ odId: getUserId(), name: userName }] : [],
-    bluePlayers: selectedQuickTeam === 'blue' ? [{ odId: getUserId(), name: userName }] : [],
+    redPlayers: [],
+    bluePlayers: [],
     cards,
     currentTeam: firstTeam,
-    currentPhase: 'waiting', // waiting, role-selection, spymaster, operatives, ended
+    currentPhase: 'waiting',
     redSpymaster: null,
     blueSpymaster: null,
     redCardsLeft: FIRST_TEAM_CARDS,
@@ -269,149 +307,266 @@ async function createQuickGame() {
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
-
-  try {
-    const docRef = await db.collection('games').add(gameData);
-    spectatorMode = false;
-    spectatingGameId = null;
-    startGameListener(docRef.id, { spectator: false });
-  } catch (e) {
-    console.error('Failed to create quick game:', e);
-    alert('Failed to create game. Please try again.');
-  }
 }
 
-async function joinQuickGame(gameId, preferredTeam = null) {
-  const userName = getUserName();
-  const odId = getUserId();
+async function ensureQuickPlayGameExists() {
+  const timerSetting = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const snap = await ref.get();
 
-  if (!userName) {
-    alert('Please enter your name on the Home tab first.');
+  if (!snap.exists) {
+    await ref.set(buildQuickPlayGameData(timerSetting));
     return;
   }
 
+  const g = snap.data();
+  const shouldReset = !!g.winner || g.currentPhase === 'ended' || !Array.isArray(g.cards) || g.cards.length !== BOARD_SIZE;
+  if (shouldReset) {
+    await ref.set(buildQuickPlayGameData(timerSetting));
+  }
+}
+
+function getQuickPlayerTeam(game, odId) {
+  const inRed = (game.redPlayers || []).some(p => p.odId === odId);
+  const inBlue = (game.bluePlayers || []).some(p => p.odId === odId);
+  if (inRed) return 'red';
+  if (inBlue) return 'blue';
+  return null;
+}
+
+async function joinQuickLobby(team) {
+  const userName = getUserName();
+  const odId = getUserId();
+  if (!userName) return;
+
+  await ensureQuickPlayGameExists();
+
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Quick Play lobby not found');
+
+      const game = snap.data();
+
+      // If a game is already in progress, do not allow new joins.
+      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null) {
+        throw new Error('Quick Play is in progress. Please wait for the next game.');
+      }
+
+      const redPlayers = Array.isArray(game.redPlayers) ? [...game.redPlayers] : [];
+      const bluePlayers = Array.isArray(game.bluePlayers) ? [...game.bluePlayers] : [];
+
+      // Remove from both teams (team-switching / rejoin).
+      const nextRed = redPlayers.filter(p => p.odId !== odId);
+      const nextBlue = bluePlayers.filter(p => p.odId !== odId);
+
+      const player = { odId, name: userName, ready: false };
+      if (team === 'red') nextRed.push(player);
+      else nextBlue.push(player);
+
+      const updates = {
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      // Let the first player set the timer for this round.
+      const prevCount = redPlayers.length + bluePlayers.length;
+      if (prevCount === 0) {
+        updates.timerSeconds = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
+      }
+
+      tx.update(ref, updates);
+    });
+
+    selectedQuickTeam = team;
+  } catch (e) {
+    console.error('Failed to join Quick Play lobby:', e);
+    alert(e.message || 'Failed to join lobby.');
+  }
+}
+
+// Back-compat for any older UI that still calls joinQuickGame(gameId, team).
+// Quick Play is a single lobby/game, so we ignore gameId.
+function joinQuickGame(_gameId, preferredTeam = null) {
   const team = preferredTeam || selectedQuickTeam;
   if (!team) {
     alert('Please select a team first.');
     return;
   }
+  joinQuickLobby(team);
+}
 
+async function leaveQuickLobby() {
+  const odId = getUserId();
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   try {
-    const gameRef = db.collection('games').doc(gameId);
-
     await db.runTransaction(async (tx) => {
-      const snap = await tx.get(gameRef);
-      if (!snap.exists) throw new Error('Game not found');
-
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
       const game = snap.data();
 
-      // Check if already in game
-      const inRed = (game.redPlayers || []).some(p => p.odId === odId);
-      const inBlue = (game.bluePlayers || []).some(p => p.odId === odId);
-
-      if (inRed || inBlue) {
-        // Already in game, just join
+      // If game is in progress, use normal leave-game flow.
+      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null) {
         return;
       }
 
-      const player = { odId, name: userName };
-
-      if (team === 'red') {
-        tx.update(gameRef, {
-          redPlayers: firebase.firestore.FieldValue.arrayUnion(player),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } else {
-        tx.update(gameRef, {
-          bluePlayers: firebase.firestore.FieldValue.arrayUnion(player),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
+      const nextRed = (game.redPlayers || []).filter(p => p.odId !== odId);
+      const nextBlue = (game.bluePlayers || []).filter(p => p.odId !== odId);
+      tx.update(ref, {
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
-
-    spectatorMode = false;
-    spectatingGameId = null;
-    startGameListener(gameId, { spectator: false });
-  } catch (e) {
-    console.error('Failed to join game:', e);
-    alert('Failed to join game. Please try again.');
+  } finally {
+    selectedQuickTeam = null;
+    // Reset button UI state.
+    document.getElementById('select-team-red')?.classList.remove('selected');
+    document.getElementById('select-team-blue')?.classList.remove('selected');
   }
 }
 
-async function startQuickGame(gameId) {
+async function toggleQuickReady() {
+  const odId = getUserId();
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   try {
-    await db.collection('games').doc(gameId).update({
-      currentPhase: 'role-selection',
-      log: firebase.firestore.FieldValue.arrayUnion('Game started! Waiting for teams to select roles.'),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Lobby not found');
+      const game = snap.data();
+      if (game.currentPhase && game.currentPhase !== 'waiting') return;
+
+      const team = getQuickPlayerTeam(game, odId);
+      if (!team) throw new Error('Join a team first.');
+
+      const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+      const players = Array.isArray(game[key]) ? [...game[key]] : [];
+      const idx = players.findIndex(p => p.odId === odId);
+      if (idx === -1) throw new Error('Join a team first.');
+
+      const current = players[idx];
+      players[idx] = { ...current, ready: !current.ready };
+
+      tx.update(ref, {
+        [key]: players,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
   } catch (e) {
-    console.error('Failed to start game:', e);
-    alert('Failed to start game. Please try again.');
+    console.error('Failed to toggle ready:', e);
+    alert(e.message || 'Failed to ready up.');
   }
 }
 
-function listenToQuickGames() {
-  if (quickGamesUnsub) quickGamesUnsub();
-
-  quickGamesUnsub = db.collection('games')
-    .where('type', '==', 'quick')
-    .where('winner', '==', null)
-    .limit(20)
-    .onSnapshot((snapshot) => {
-      if (currentPlayMode === 'quick') {
-        renderQuickGames();
-      }
-      if (currentPlayMode === 'select') {
-        renderSpectateGames();
-      }
-    }, (err) => {
-      console.error('Quick games listener error:', err);
-    });
+function bothTeamsFullyReady(game) {
+  const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
+  const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
+  if (red.length === 0 || blue.length === 0) return false;
+  return red.every(p => p.ready) && blue.every(p => p.ready);
 }
 
-async function renderQuickGames() {
-  const section = document.getElementById('quick-games-section');
-  const list = document.getElementById('quick-games-list');
-  if (!section || !list) return;
+async function maybeAutoStartQuickPlay(game) {
+  if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
+  if (!bothTeamsFullyReady(game)) return;
 
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   try {
-    const snap = await db.collection('games')
-      .where('type', '==', 'quick')
-      .where('winner', '==', null)
-      .limit(20)
-      .get();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (g.currentPhase !== 'waiting' || g.winner != null) return;
+      if (!bothTeamsFullyReady(g)) return;
 
-    const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const waitingGames = games.filter(g => g.currentPhase === 'waiting');
+      tx.update(ref, {
+        currentPhase: 'role-selection',
+        log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch (e) {
+    console.error('Auto-start Quick Play failed:', e);
+  }
+}
 
-    if (waitingGames.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
+function renderQuickLobby(game) {
+  const redList = document.getElementById('quick-red-list');
+  const blueList = document.getElementById('quick-blue-list');
+  const redCount = document.getElementById('quick-red-count');
+  const blueCount = document.getElementById('quick-blue-count');
+  const status = document.getElementById('quick-lobby-status');
+  const readyBtn = document.getElementById('quick-ready-btn');
+  const leaveBtn = document.getElementById('quick-leave-btn');
+  if (!redList || !blueList || !redCount || !blueCount || !status || !readyBtn || !leaveBtn) return;
 
-    section.style.display = 'block';
+  if (!game) {
+    redList.innerHTML = '';
+    blueList.innerHTML = '';
+    redCount.textContent = '0';
+    blueCount.textContent = '0';
+    status.textContent = 'Loading lobby…';
+    readyBtn.disabled = true;
+    leaveBtn.disabled = true;
+    return;
+  }
 
-    list.innerHTML = waitingGames.map(g => {
-      const redCount = (g.redPlayers || []).length;
-      const blueCount = (g.bluePlayers || []).length;
+  const odId = getUserId();
+  const team = getQuickPlayerTeam(game, odId);
+  const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
+  const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
 
+  redCount.textContent = String(red.length);
+  blueCount.textContent = String(blue.length);
+
+  const renderList = (players) => {
+    if (!players.length) return '<div class="quick-empty">No one yet</div>';
+    return players.map(p => {
+      const isYou = p.odId === odId;
+      const ready = !!p.ready;
       return `
-        <div class="challenge-row">
-          <div class="challenge-info">
-            <span class="challenge-team-name">Open Quick Game</span>
-            <span class="challenge-meta">Red: ${redCount} | Blue: ${blueCount}</span>
-          </div>
-          <div class="challenge-actions">
-            <button class="btn small" style="background: var(--game-red-bg); border-color: var(--game-red-border);" onclick="joinQuickGame('${g.id}', 'red')">Join Red</button>
-            <button class="btn small" style="background: var(--game-blue-bg); border-color: var(--game-blue-border);" onclick="joinQuickGame('${g.id}', 'blue')">Join Blue</button>
-          </div>
+        <div class="quick-player ${ready ? 'ready' : ''}">
+          <span class="quick-player-name">${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         </div>
       `;
     }).join('');
-  } catch (e) {
-    console.error('Failed to render quick games:', e);
+  };
+
+  redList.innerHTML = renderList(red);
+  blueList.innerHTML = renderList(blue);
+
+  // Button state
+  readyBtn.disabled = !team;
+  leaveBtn.disabled = !team;
+
+  const youObj = team === 'red'
+    ? red.find(p => p.odId === odId)
+    : team === 'blue'
+      ? blue.find(p => p.odId === odId)
+      : null;
+  const youReady = !!youObj?.ready;
+  readyBtn.textContent = youReady ? 'Unready' : 'Ready Up';
+
+  if (game.currentPhase !== 'waiting' && game.winner == null) {
+    status.textContent = 'Game in progress…';
+  } else if (bothTeamsFullyReady(game)) {
+    status.textContent = 'Everyone is ready — starting…';
+  } else if (red.length === 0 || blue.length === 0) {
+    status.textContent = 'Waiting for both teams to join…';
+  } else {
+    status.textContent = 'Waiting for both teams to ready up…';
   }
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 async function renderSpectateGames() {
@@ -428,9 +583,10 @@ async function renderSpectateGames() {
     const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     // 1) Quick games waiting for players (joinable)
+    // Quick Play is a single shared lobby.
     const waitingQuick = games
-      .filter(g => g.type === 'quick' && g.currentPhase === 'waiting')
-      .slice(0, 6);
+      .filter(g => g.type === 'quick' && g.id === QUICKPLAY_DOC_ID && g.currentPhase === 'waiting')
+      .slice(0, 1);
 
     // 2) All games already in progress (watchable)
     const activeGames = games

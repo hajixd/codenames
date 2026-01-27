@@ -284,7 +284,7 @@
               <div class="lobby-header">
                 <h2>Quick Play</h2>
               </div>
-              <p class="subtitle small">Set up your game and start playing</p>
+              <p class="subtitle small">Join the lobby, pick a team, and ready up.</p>
 
               <!-- Player Name Check -->
               <div class="lobby-name-check" id="quick-name-check" style="display:none;">
@@ -293,9 +293,12 @@
 
               <!-- Quick Play Setup -->
               <div class="quick-setup" id="quick-setup">
-                <!-- Team Selection -->
-                <div class="setup-section">
-                  <div class="setup-title">Choose Your Team</div>
+                <div class="quick-lobby-card">
+                  <div class="quick-lobby-top">
+                    <div class="setup-title" style="margin:0;">Choose Your Team</div>
+                    <div class="hint" id="team-select-hint">Select a team to join the lobby.</div>
+                  </div>
+
                   <div class="team-select-row">
                     <button class="team-select-btn red" id="select-team-red" type="button">
                       <span class="team-select-color"></span>
@@ -307,12 +310,38 @@
                       <span class="team-select-name">Blue Team</span>
                     </button>
                   </div>
-                  <div class="team-select-hint" id="team-select-hint">Select a team to join</div>
+
+                  <div class="quick-lobby-layout">
+                    <div class="quick-team-col red">
+                      <div class="quick-team-head">
+                        <span class="quick-team-dot red"></span>
+                        <span class="quick-team-title">Red Lobby</span>
+                        <span class="quick-team-count" id="quick-red-count">0</span>
+                      </div>
+                      <div class="quick-team-list" id="quick-red-list"></div>
+                    </div>
+
+                    <div class="quick-lobby-middle">
+                      <div class="quick-lobby-status" id="quick-lobby-status">Waiting for players…</div>
+                      <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
+                      <button class="btn" id="quick-leave-btn" type="button" style="margin-top:10px;" disabled>Leave Lobby</button>
+                      <div class="hint" style="margin-top:10px;">Game starts when both teams are fully ready.</div>
+                    </div>
+
+                    <div class="quick-team-col blue">
+                      <div class="quick-team-head">
+                        <span class="quick-team-dot blue"></span>
+                        <span class="quick-team-title">Blue Lobby</span>
+                        <span class="quick-team-count" id="quick-blue-count">0</span>
+                      </div>
+                      <div class="quick-team-list" id="quick-blue-list"></div>
+                    </div>
+                  </div>
                 </div>
 
-                <!-- Game Settings -->
-                <div class="setup-section">
-                  <div class="setup-title">Game Settings</div>
+                <!-- Settings (kept minimal) -->
+                <div class="setup-section" style="margin-top:18px;">
+                  <div class="setup-title">Settings</div>
                   <div class="settings-grid">
                     <label class="setting-row">
                       <span class="setting-label">Timer per turn</span>
@@ -325,21 +354,7 @@
                       </select>
                     </label>
                   </div>
-                </div>
-
-                <!-- Room Code / Join -->
-                <div class="setup-section">
-                <div class="setup-title">Games</div>
-                <div class="room-actions">
-                  <button class="btn primary" id="create-quick-game" type="button">Create New Game</button>
-                  <div class="hint" style="margin-top:10px;">Or join an open game below.</div>
-                </div>
-                </div>
-
-                <!-- Available Quick Games -->
-                <div class="game-section" id="quick-games-section" style="display:none;">
-                  <div class="game-section-title">Open Games</div>
-                  <div class="active-games-list" id="quick-games-list"></div>
+                  <div class="hint" style="margin-top:10px;">The timer applies to the next Quick Play game.</div>
                 </div>
               </div>
             </div>
