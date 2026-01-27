@@ -65,14 +65,26 @@
 
         <div class="header-user">
           <div class="header-user-stack">
-            <div class="header-pill clickable" id="header-name-pill" role="button" tabindex="0">
-              <span class="header-pill-label">Name:</span>
-              <span class="header-pill-value" id="user-name-display" title="Click to change">—</span>
-            </div>
-            <div class="header-pill clickable" id="header-team-pill" role="button" tabindex="0">
-              <span class="header-pill-label">Team:</span>
-              <span class="header-pill-value team-accent" id="user-team-display">No team</span>
-            </div>
+            <button class="online-counter-btn" id="header-name-pill" type="button">
+              <span class="name-icon">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="8" r="5"/>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                </svg>
+              </span>
+              <span class="online-count" id="user-name-display" title="Click to change">—</span>
+            </button>
+            <button class="online-counter-btn" id="header-team-pill" type="button">
+              <span class="team-icon">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </span>
+              <span class="online-count team-accent" id="user-team-display">No team</span>
+            </button>
             <button class="online-counter-btn" id="online-counter-btn" type="button">
               <span class="online-dot"></span>
               <span class="online-count" id="online-count">0</span>

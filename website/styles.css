@@ -3883,6 +3883,26 @@ button.player-tag.pill-action:disabled{
   color: var(--text-dim);
 }
 
+/* Name and Team pill icons */
+.name-icon,
+.team-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.name-icon svg,
+.team-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+#header-name-pill:hover .name-icon,
+#header-team-pill:hover .team-icon {
+  color: var(--text);
+}
+
 /* Online Users Modal */
 .online-modal .modal-backdrop {
   position: fixed;
