@@ -2192,9 +2192,27 @@ body.quickplay .main-content {
 
 /* Name dock on launch mirrors the Home name dock */
 .launch-name-dock{
+  width: 100%;
   max-width: 520px;
   margin: 18px auto 0;
+  align-self: center;
+  text-align: center;
 }
+
+/* Center the entire name UI on the launch screen (matches Home) */
+.launch-name-dock .field{
+  align-items: center;
+}
+.launch-name-dock .label{
+  text-align: center;
+}
+.launch-name-dock .input{
+  text-align: center;
+}
+.launch-name-dock .name-dock-value{
+  text-align: center;
+}
+
 
 @media (max-width: 768px){
   .launch-screen{ top: 56px; }
