@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMyTeamControls();
   initRequestsModal();
   initChatTab();
+  initOnlineCounterUI();
   listenToTeams();
   listenToPlayers();
 });
@@ -3522,9 +3523,6 @@ function initPresence() {
 
   // Start listening to all presence docs
   startPresenceListener();
-
-  // Initialize online counter UI
-  initOnlineCounterUI();
 }
 
 function throttle(fn, wait) {
@@ -3656,14 +3654,21 @@ function initOnlineCounterUI() {
 function openOnlineModal() {
   const modal = document.getElementById('online-modal');
   if (!modal) return;
-  modal.style.display = 'block';
+  modal.style.display = 'flex';
+  void modal.offsetWidth; // Trigger reflow for animation
+  modal.classList.add('modal-open');
   renderOnlineUsersList();
 }
 
 function closeOnlineModal() {
   const modal = document.getElementById('online-modal');
   if (!modal) return;
-  modal.style.display = 'none';
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
 }
 
 function renderOnlineUsersList() {

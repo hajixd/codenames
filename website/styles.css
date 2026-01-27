@@ -58,8 +58,8 @@ body.tournament.has-team-color::after{
 body.tournament.has-team-color .team-accent{ color: var(--team-accent); }
 body:not(.tournament) .team-accent{ color: var(--text-dim); }
 
-/* Show team header line only while in Tournament */
-body:not(.tournament) .header-team-line{ display:none !important; }
+/* Show team header pill only while in Tournament */
+body:not(.tournament) #header-team-pill{ display:none !important; }
 
 /* Tournament Home should not show the name/logout card (name lives in header + launch screen) */
 body.tournament #panel-home #name-card{ display:none !important; }
@@ -1480,11 +1480,41 @@ body.mode-joiner .only-joiner{ display:block; }
 
 .header-user-stack{
   display:flex;
-  flex-direction:column;
-  align-items:flex-end;
-  gap:2px;
+  flex-direction:row;
+  align-items:center;
+  gap:6px;
   min-width:0;
 }
+
+.header-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  transition: background 0.15s ease;
+}
+
+.header-pill:hover{
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.header-pill-label{
+  color: var(--text-dim);
+}
+
+.header-pill-value{
+  font-weight: 600;
+  color: var(--text);
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#user-name-display{ cursor:pointer; }
 
 .header-line{
   display:flex;
@@ -1512,8 +1542,6 @@ body.mode-joiner .only-joiner{ display:block; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-#user-name-display{ cursor:pointer; }
 
 .header-user-input{
   width: var(--namebox-w);
@@ -3809,10 +3837,6 @@ button.player-tag.pill-action:disabled{
 .invite-actions{ display:flex; gap: 8px; flex: 0 0 auto; }
 
 /* ==================== ONLINE COUNTER + MODAL ==================== */
-
-.header-online-line {
-  margin-top: 2px;
-}
 
 .online-counter-btn {
   appearance: none;

@@ -454,6 +454,8 @@ function openQuickSettingsModal() {
   }
 
   modal.style.display = 'flex';
+  void modal.offsetWidth; // Trigger reflow for animation
+  modal.classList.add('modal-open');
   modal.setAttribute('aria-hidden', 'false');
 
   // Fill current values from the live lobby if we have it.
@@ -475,7 +477,12 @@ function openQuickSettingsModal() {
 function closeQuickSettingsModal() {
   const modal = document.getElementById('quick-settings-modal');
   if (!modal) return;
-  modal.style.display = 'none';
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
   modal.setAttribute('aria-hidden', 'true');
 }
 

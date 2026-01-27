@@ -65,21 +65,19 @@
 
         <div class="header-user">
           <div class="header-user-stack">
-            <div class="header-line">
-              <span class="header-k">Name:</span>
-              <span class="header-v" id="user-name-display" title="Double click to edit">—</span>
+            <div class="header-pill" id="header-name-pill">
+              <span class="header-pill-label">Name:</span>
+              <span class="header-pill-value" id="user-name-display" title="Double click to edit">—</span>
             </div>
-            <div class="header-line header-team-line" id="header-team-line">
-              <span class="header-k">Team:</span>
-              <span class="header-v team-accent" id="user-team-display">No team</span>
+            <div class="header-pill" id="header-team-pill">
+              <span class="header-pill-label">Team:</span>
+              <span class="header-pill-value team-accent" id="user-team-display">No team</span>
             </div>
-            <div class="header-line header-online-line" id="header-online-line">
-              <button class="online-counter-btn" id="online-counter-btn" type="button">
-                <span class="online-dot"></span>
-                <span class="online-count" id="online-count">0</span>
-                <span class="online-label">online</span>
-              </button>
-            </div>
+            <button class="online-counter-btn" id="online-counter-btn" type="button">
+              <span class="online-dot"></span>
+              <span class="online-count" id="online-count">0</span>
+              <span class="online-label">online</span>
+            </button>
           </div>
           <input class="input header-user-input" id="user-name-input" type="text" placeholder="Your name" style="display:none;" />
           <button class="settings-gear-btn" id="settings-gear-btn" type="button" aria-label="Settings">
