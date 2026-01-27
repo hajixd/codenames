@@ -119,7 +119,20 @@ function initGameUI() {
   // Quick Play role selector (Red ↔ Spectator ↔ Blue)
   // Center (Spectators) box cycles; Red/Blue boxes select directly.
   const roleBox = document.getElementById('quick-seat-switcher');
-  roleBox?.addEventListener('click', () => stepQuickRole(1));
+  // Use capture + pointer events so clicks on any inner element (player rows, etc.) still cycle reliably.
+  const cycleQuickRole = (e) => {
+    // Don't hijack keyboard interaction here; key handling is below.
+    if (e && (e.type === 'keydown')) return;
+    // Avoid stealing clicks from actual controls if any are added later.
+    const t = e?.target;
+    if (t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea'))) {
+      return;
+    }
+    stepQuickRole(1);
+  };
+
+  roleBox?.addEventListener('click', cycleQuickRole, { capture: true });
+  roleBox?.addEventListener('pointerup', cycleQuickRole, { capture: true });
   roleBox?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
