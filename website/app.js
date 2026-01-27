@@ -79,25 +79,9 @@ function initHeaderLogoNav() {
   logo.setAttribute('tabindex', '0');
 
   const go = () => {
-    // If you haven't chosen a mode yet (or you want to reset), show the launch screen.
-    if (document.body.classList.contains('launch')) {
-      showLaunchScreen();
-      return;
-    }
-
-    // Quick Play should return to the initial mode chooser.
-    if (document.body.classList.contains('quickplay')) {
-      returnToLaunchScreen();
-      return;
-    }
-
-    // Tournament: logo takes you back to the Tournament Home tab.
-    if (document.body.classList.contains('tournament')) {
-      switchToPanel('panel-home');
-      return;
-    }
-
-    showLaunchScreen();
+    // Always reset to the initial Choose Mode screen.
+    // This keeps the mental model simple: the logo is "start over".
+    returnToLaunchScreen();
   };
 
   logo.addEventListener('click', go);

@@ -2386,6 +2386,12 @@ button:disabled{
   box-shadow: 0 0 0 2px var(--team-glow);
 }
 
+/* In Tournament, outline your team row using your team's color */
+body.tournament.has-team-color .team-list-item.is-mine{
+  border-color: var(--team-accent);
+  box-shadow: 0 0 0 2px var(--team-glow), 0 0 18px var(--team-glow);
+}
+
 .team-list-left{ min-width: 0; }
 .team-list-name{ font-size: 14px; font-weight: 700; letter-spacing: 0.1px; }
 .team-list-members{
