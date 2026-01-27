@@ -138,7 +138,6 @@ async function renderGameLobby() {
   // Show team status
   statusEl.innerHTML = `
     <div class="team-info">
-      <span class="team-color-dot" style="--dot-color: ${myTeam.color || '#3b82f6'}"></span>
       <span class="team-name">${escapeHtml(myTeam.teamName || 'My Team')}</span>
     </div>
   `;
@@ -226,12 +225,11 @@ async function renderGameLobby() {
       list.innerHTML = otherTeams.map(t => `
         <div class="challenge-row">
           <div class="challenge-info">
-            <span class="team-color-dot" style="--dot-color: ${t.color || '#3b82f6'}"></span>
             <span class="challenge-team-name">${escapeHtml(t.teamName || 'Team')}</span>
             <span class="challenge-meta">${getMembers(t).length} players</span>
           </div>
           <div class="challenge-actions">
-            <button class="btn primary small" onclick="sendChallenge('${t.id}')">Challenge</button>
+            <button class="btn primary small" onclick="sendChallenge('${t.id}')">Quick Play</button>
           </div>
         </div>
       `).join('');
