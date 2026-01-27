@@ -93,6 +93,22 @@ function initHeaderLogoNav() {
   });
 }
 
+function setBrowserTitle(mode) {
+  // Controls the Chrome tab title.
+  // - Choose screen: "Codenames"
+  // - Quick Play:   "Codenames QuickPlay"
+  // - Tournament:   "Codenames Tournament"
+  if (mode === 'quick') {
+    document.title = 'Codenames QuickPlay';
+    return;
+  }
+  if (mode === 'tournament') {
+    document.title = 'Codenames Tournament';
+    return;
+  }
+  document.title = 'Codenames';
+}
+
 function showLaunchScreen() {
   const screen = document.getElementById('launch-screen');
   if (screen) screen.style.display = 'block';
@@ -100,6 +116,7 @@ function showLaunchScreen() {
   document.body.classList.remove('quickplay');
   document.body.classList.remove('tournament');
   document.body.classList.remove('has-team-color');
+  setBrowserTitle('launch');
   try { refreshNameUI?.(); } catch (_) {}
 }
 
@@ -120,6 +137,7 @@ function initLaunchScreen() {
 
   // Hide the rest of the app until a mode is chosen.
   document.body.classList.add('launch');
+  setBrowserTitle('launch');
 
   const quickBtn = document.getElementById('launch-quick-play');
   const tournBtn = document.getElementById('launch-tournament');
@@ -174,6 +192,9 @@ function enterAppFromLaunch(mode) {
   if (mode === 'quick') {
     document.body.classList.add('quickplay');
     document.body.classList.remove('tournament');
+    // Ensure any tournament-only chrome (team glow/text) is off.
+    try { refreshHeaderIdentity?.(); } catch (_) {}
+    setBrowserTitle('quick');
     switchToPanel('panel-game');
     try {
       if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
@@ -186,6 +207,9 @@ function enterAppFromLaunch(mode) {
   // - Normal navigation visible
   document.body.classList.remove('quickplay');
   document.body.classList.add('tournament');
+  // Apply team color/theme immediately on entry (no need to edit color).
+  try { refreshHeaderIdentity?.(); } catch (_) {}
+  setBrowserTitle('tournament');
   switchToPanel('panel-home');
 }
 
