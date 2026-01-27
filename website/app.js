@@ -142,13 +142,28 @@ function initLaunchScreen() {
   const quickBtn = document.getElementById('launch-quick-play');
   const tournBtn = document.getElementById('launch-tournament');
 
-  quickBtn?.addEventListener('click', () => enterAppFromLaunch('quick'));
-  tournBtn?.addEventListener('click', () => enterAppFromLaunch('tournament'));
+  const hint = document.getElementById('launch-name-hint');
+  const input = document.getElementById('launch-name-input');
+
+  const requireNameThen = (mode) => {
+    const name = getUserName();
+    if (!name) {
+      if (hint) hint.textContent = 'Enter your name to continue.';
+      try {
+        document.getElementById('launch-name-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (_) {}
+      try { input?.focus(); } catch (_) {}
+      return;
+    }
+    if (hint) hint.textContent = '';
+    enterAppFromLaunch(mode);
+  };
+
+  quickBtn?.addEventListener('click', () => requireNameThen('quick'));
+  tournBtn?.addEventListener('click', () => requireNameThen('tournament'));
 
   // Name + logout on launch (mirrors Tournament Home)
   const form = document.getElementById('launch-name-form');
-  const input = document.getElementById('launch-name-input');
-  const hint = document.getElementById('launch-name-hint');
   const logoutBtn = document.getElementById('launch-logout-btn');
 
   form?.addEventListener('submit', async (e) => {
@@ -818,6 +833,8 @@ function refreshNameUI() {
   const launchForm = document.getElementById('launch-name-form');
   const launchSaved = document.getElementById('launch-name-saved');
   const launchSavedDisplay = document.getElementById('launch-name-saved-display');
+  const launchQuick = document.getElementById('launch-quick-play');
+  const launchTourn = document.getElementById('launch-tournament');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
@@ -833,6 +850,12 @@ function refreshNameUI() {
     launchForm.style.display = name ? 'none' : 'block';
     launchSaved.style.display = name ? 'block' : 'none';
   }
+
+  // Launch mode buttons are disabled until the user has a saved name ("logged in").
+  // This prevents users entering Quick Play / Tournament without identity.
+  const canEnter = !!name;
+  if (launchQuick) launchQuick.disabled = !canEnter;
+  if (launchTourn) launchTourn.disabled = !canEnter;
 
   // Also update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);

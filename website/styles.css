@@ -2205,9 +2205,15 @@ body.quickplay .main-content {
   width: 100%;
   max-width: 520px;
   /* Slightly lower on the choose screen */
-  margin: 34px auto 0;
+  margin: 52px auto 0;
   align-self: center;
   text-align: center;
+}
+
+/* Give the Save button more breathing room from the input (matches reference) */
+.launch-name-dock .name-dock-form .form-actions{
+  margin-top: 16px !important; /* overrides inline margin:0 in HTML */
+  gap: 10px;
 }
 
 /* Center the entire name UI on the launch screen (matches Home) */
@@ -2342,9 +2348,11 @@ button:disabled{
   #panel-home .name-dock{ max-width: 520px; margin-top: 22px; margin-bottom: 6px; }
 }
 
-/* Nudge the Tournament Home hero area up slightly (better vertical balance) */
-body.tournament #panel-home .panel-inner{
-  transform: translateY(-16px);
+/* Nudge the Tournament Home hero area up on desktop (better vertical balance) */
+@media (min-width: 769px){
+  body.tournament #panel-home .panel-inner{
+    transform: translateY(-34px);
+  }
 }
 
 /* Teams page: sharp clickable list */
