@@ -207,20 +207,113 @@
         <!-- Game Page -->
         <section class="panel panel-game" id="panel-game">
           <div class="panel-inner">
-            <!-- Game Lobby View (shown when not in a game) -->
-            <div id="game-lobby">
-              <div class="play-mode-row">
-                <div class="segmented" role="tablist" aria-label="Play mode">
-                  <button class="seg-btn active" id="play-mode-quick" type="button" role="tab" aria-selected="true">Quick Play</button>
-                  <button class="seg-btn" id="play-mode-tournament" type="button" role="tab" aria-selected="false">Tournament</button>
+            <!-- Mode Selection Screen -->
+            <div id="play-mode-select">
+              <h2>Play Codenames</h2>
+              <p class="subtitle small">Choose how you want to play</p>
+
+              <div class="mode-cards">
+                <button class="mode-card" id="select-quick-play" type="button">
+                  <div class="mode-card-icon">⚡</div>
+                  <div class="mode-card-title">Quick Play</div>
+                  <div class="mode-card-desc">Jump into a casual game. Pick your team color, customize settings, and play instantly.</div>
+                </button>
+
+                <button class="mode-card" id="select-tournament" type="button">
+                  <div class="mode-card-icon">🏆</div>
+                  <div class="mode-card-title">Tournament</div>
+                  <div class="mode-card-desc">Competitive team-based play. Challenge other teams and climb the ranks.</div>
+                </button>
+              </div>
+
+              <!-- Active Games to Spectate -->
+              <div class="game-section" id="spectate-games-section" style="display:none;">
+                <div class="game-section-title">Watch Live Games</div>
+                <div class="active-games-list" id="spectate-games-list"></div>
+              </div>
+            </div>
+
+            <!-- Quick Play Lobby -->
+            <div id="quick-play-lobby" style="display:none;">
+              <div class="lobby-header">
+                <button class="btn icon-btn back-btn" id="quick-back-btn" type="button" aria-label="Back">←</button>
+                <h2>Quick Play</h2>
+              </div>
+              <p class="subtitle small">Set up your game and start playing</p>
+
+              <!-- Player Name Check -->
+              <div class="lobby-name-check" id="quick-name-check" style="display:none;">
+                <div class="hint">Enter your name on the Home tab to play.</div>
+              </div>
+
+              <!-- Quick Play Setup -->
+              <div class="quick-setup" id="quick-setup">
+                <!-- Team Selection -->
+                <div class="setup-section">
+                  <div class="setup-title">Choose Your Team</div>
+                  <div class="team-select-row">
+                    <button class="team-select-btn red" id="select-team-red" type="button">
+                      <span class="team-select-color"></span>
+                      <span class="team-select-name">Red Team</span>
+                    </button>
+                    <span class="team-select-vs">vs</span>
+                    <button class="team-select-btn blue" id="select-team-blue" type="button">
+                      <span class="team-select-color"></span>
+                      <span class="team-select-name">Blue Team</span>
+                    </button>
+                  </div>
+                  <div class="team-select-hint" id="team-select-hint">Select a team to join</div>
+                </div>
+
+                <!-- Game Settings -->
+                <div class="setup-section">
+                  <div class="setup-title">Game Settings</div>
+                  <div class="settings-grid">
+                    <label class="setting-row">
+                      <span class="setting-label">Timer per turn</span>
+                      <select class="input setting-select" id="setting-timer">
+                        <option value="0">No timer</option>
+                        <option value="60">1 minute</option>
+                        <option value="120" selected>2 minutes</option>
+                        <option value="180">3 minutes</option>
+                        <option value="300">5 minutes</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Room Code / Join -->
+                <div class="setup-section">
+                  <div class="setup-title">Game Room</div>
+                  <div class="room-actions">
+                    <button class="btn primary" id="create-quick-game" type="button">Create New Game</button>
+                    <div class="room-divider"><span>or</span></div>
+                    <div class="join-room-row">
+                      <input type="text" class="input" id="join-room-code" placeholder="Enter room code" maxlength="6" />
+                      <button class="btn" id="join-quick-game" type="button">Join</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Available Quick Games -->
+                <div class="game-section" id="quick-games-section" style="display:none;">
+                  <div class="game-section-title">Open Games</div>
+                  <div class="active-games-list" id="quick-games-list"></div>
                 </div>
               </div>
-              <h2>Play Codenames</h2>
+            </div>
+
+            <!-- Tournament Lobby -->
+            <div id="tournament-lobby" style="display:none;">
+              <div class="lobby-header">
+                <button class="btn icon-btn back-btn" id="tournament-back-btn" type="button" aria-label="Back">←</button>
+                <h2>Tournament</h2>
+              </div>
               <p class="subtitle small">Challenge another team or accept incoming challenges.</p>
 
               <!-- Your Team Status -->
               <div class="game-team-status" id="game-team-status">
-                <div class="hint">You need to be on a team to play.</div>
+                <div class="hint">You need to be on a team to play in tournaments.</div>
               </div>
 
               <!-- Active Game Banner -->
@@ -246,7 +339,7 @@
 
               <!-- Challenge -->
               <div class="game-section" id="challenge-teams-section" style="display:none;">
-                <div class="game-section-title">Challenge</div>
+                <div class="game-section-title">Challenge a Team</div>
                 <div class="challenge-teams-list" id="challenge-teams-list"></div>
               </div>
 

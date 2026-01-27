@@ -20,14 +20,18 @@ let wordsBank = [];
 let currentGame = null;
 let gameUnsub = null;
 let challengesUnsub = null;
+let quickGamesUnsub = null;
 let spectatorMode = false;
 let spectatingGameId = null;
+let selectedQuickTeam = null; // 'red' or 'blue'
+let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
 // Load words on init
 document.addEventListener('DOMContentLoaded', async () => {
   await loadWords();
   initGameUI();
   listenToChallenges();
+  listenToQuickGames();
 });
 
 /* =========================
@@ -82,28 +86,21 @@ function generateKeyCard(firstTeam) {
    Game UI Initialization
 ========================= */
 function initGameUI() {
-  // Play mode switcher (Quick Play vs Tournament)
-  const quickBtn = document.getElementById('play-mode-quick');
-  const tourBtn = document.getElementById('play-mode-tournament');
-  if (quickBtn && tourBtn) {
-    quickBtn.addEventListener('click', () => {
-      quickBtn.classList.add('active');
-      tourBtn.classList.remove('active');
-      quickBtn.setAttribute('aria-selected', 'true');
-      tourBtn.setAttribute('aria-selected', 'false');
-      // Stay on the Play tab
-    });
-    tourBtn.addEventListener('click', () => {
-      tourBtn.classList.add('active');
-      quickBtn.classList.remove('active');
-      tourBtn.setAttribute('aria-selected', 'true');
-      quickBtn.setAttribute('aria-selected', 'false');
-      // Tournament info lives on Home
-      if (typeof switchToPanel === 'function') {
-        switchToPanel('panel-home');
-      }
-    });
-  }
+  // Mode selection buttons
+  document.getElementById('select-quick-play')?.addEventListener('click', () => showQuickPlayLobby());
+  document.getElementById('select-tournament')?.addEventListener('click', () => showTournamentLobby());
+
+  // Back buttons
+  document.getElementById('quick-back-btn')?.addEventListener('click', () => showModeSelect());
+  document.getElementById('tournament-back-btn')?.addEventListener('click', () => showModeSelect());
+
+  // Quick Play team selection
+  document.getElementById('select-team-red')?.addEventListener('click', () => selectQuickTeam('red'));
+  document.getElementById('select-team-blue')?.addEventListener('click', () => selectQuickTeam('blue'));
+
+  // Quick Play room actions
+  document.getElementById('create-quick-game')?.addEventListener('click', createQuickGame);
+  document.getElementById('join-quick-game')?.addEventListener('click', joinQuickGameByCode);
 
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
@@ -121,8 +118,360 @@ function initGameUI() {
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
 
-  // Initial render
-  renderGameLobby();
+  // Initial render - show mode selection
+  showModeSelect();
+}
+
+/* =========================
+   Mode Navigation
+========================= */
+function showModeSelect() {
+  currentPlayMode = 'select';
+  document.getElementById('play-mode-select').style.display = 'block';
+  document.getElementById('quick-play-lobby').style.display = 'none';
+  document.getElementById('tournament-lobby').style.display = 'none';
+  document.getElementById('game-board-container').style.display = 'none';
+  renderSpectateGames();
+}
+
+function showQuickPlayLobby() {
+  currentPlayMode = 'quick';
+  document.getElementById('play-mode-select').style.display = 'none';
+  document.getElementById('quick-play-lobby').style.display = 'block';
+  document.getElementById('tournament-lobby').style.display = 'none';
+  document.getElementById('game-board-container').style.display = 'none';
+
+  // Check if user has a name
+  const userName = getUserName();
+  const nameCheck = document.getElementById('quick-name-check');
+  const setup = document.getElementById('quick-setup');
+
+  if (!userName) {
+    if (nameCheck) nameCheck.style.display = 'block';
+    if (setup) setup.style.display = 'none';
+  } else {
+    if (nameCheck) nameCheck.style.display = 'none';
+    if (setup) setup.style.display = 'block';
+  }
+
+  renderQuickGames();
+}
+
+function showTournamentLobby() {
+  currentPlayMode = 'tournament';
+  document.getElementById('play-mode-select').style.display = 'none';
+  document.getElementById('quick-play-lobby').style.display = 'none';
+  document.getElementById('tournament-lobby').style.display = 'block';
+  document.getElementById('game-board-container').style.display = 'none';
+  renderTournamentLobby();
+}
+
+/* =========================
+   Quick Play Team Selection
+========================= */
+function selectQuickTeam(team) {
+  selectedQuickTeam = team;
+
+  const redBtn = document.getElementById('select-team-red');
+  const blueBtn = document.getElementById('select-team-blue');
+  const hint = document.getElementById('team-select-hint');
+
+  redBtn?.classList.toggle('selected', team === 'red');
+  blueBtn?.classList.toggle('selected', team === 'blue');
+
+  if (hint) {
+    hint.textContent = team === 'red' ? 'You will play as Red Team' : 'You will play as Blue Team';
+    hint.style.color = team === 'red' ? 'var(--game-red)' : 'var(--game-blue)';
+  }
+}
+
+/* =========================
+   Quick Play Game Management
+========================= */
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+async function createQuickGame() {
+  const userName = getUserName();
+  if (!userName) {
+    alert('Please enter your name on the Home tab first.');
+    return;
+  }
+
+  if (!selectedQuickTeam) {
+    alert('Please select a team (Red or Blue) first.');
+    return;
+  }
+
+  const timerSetting = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
+  const roomCode = generateRoomCode();
+
+  // Red always goes first
+  const firstTeam = 'red';
+  const words = getRandomWords(BOARD_SIZE);
+  const keyCard = generateKeyCard(firstTeam);
+
+  const cards = words.map((word, i) => ({
+    word,
+    type: keyCard[i],
+    revealed: false
+  }));
+
+  const gameData = {
+    type: 'quick',
+    roomCode,
+    redTeamId: null,
+    redTeamName: 'Red Team',
+    blueTeamId: null,
+    blueTeamName: 'Blue Team',
+    redPlayers: selectedQuickTeam === 'red' ? [{ odId: getUserId(), name: userName }] : [],
+    bluePlayers: selectedQuickTeam === 'blue' ? [{ odId: getUserId(), name: userName }] : [],
+    cards,
+    currentTeam: firstTeam,
+    currentPhase: 'waiting', // waiting, role-selection, spymaster, operatives, ended
+    redSpymaster: null,
+    blueSpymaster: null,
+    redCardsLeft: FIRST_TEAM_CARDS,
+    blueCardsLeft: SECOND_TEAM_CARDS,
+    currentClue: null,
+    guessesRemaining: 0,
+    timerSeconds: timerSetting,
+    log: [],
+    winner: null,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    const docRef = await db.collection('games').add(gameData);
+    spectatorMode = false;
+    spectatingGameId = null;
+    startGameListener(docRef.id, { spectator: false });
+  } catch (e) {
+    console.error('Failed to create quick game:', e);
+    alert('Failed to create game. Please try again.');
+  }
+}
+
+async function joinQuickGameByCode() {
+  const codeInput = document.getElementById('join-room-code');
+  const code = (codeInput?.value || '').trim().toUpperCase();
+
+  if (!code || code.length !== 6) {
+    alert('Please enter a valid 6-character room code.');
+    return;
+  }
+
+  const userName = getUserName();
+  if (!userName) {
+    alert('Please enter your name on the Home tab first.');
+    return;
+  }
+
+  try {
+    const snap = await db.collection('games')
+      .where('roomCode', '==', code)
+      .where('winner', '==', null)
+      .limit(1)
+      .get();
+
+    if (snap.empty) {
+      alert('Game not found. Check the room code and try again.');
+      return;
+    }
+
+    const gameDoc = snap.docs[0];
+    const game = { id: gameDoc.id, ...gameDoc.data() };
+
+    // Join the game
+    await joinQuickGame(game.id);
+  } catch (e) {
+    console.error('Failed to join game:', e);
+    alert('Failed to join game. Please try again.');
+  }
+}
+
+async function joinQuickGame(gameId, preferredTeam = null) {
+  const userName = getUserName();
+  const odId = getUserId();
+
+  if (!userName) {
+    alert('Please enter your name on the Home tab first.');
+    return;
+  }
+
+  const team = preferredTeam || selectedQuickTeam;
+  if (!team) {
+    alert('Please select a team first.');
+    return;
+  }
+
+  try {
+    const gameRef = db.collection('games').doc(gameId);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(gameRef);
+      if (!snap.exists) throw new Error('Game not found');
+
+      const game = snap.data();
+
+      // Check if already in game
+      const inRed = (game.redPlayers || []).some(p => p.odId === odId);
+      const inBlue = (game.bluePlayers || []).some(p => p.odId === odId);
+
+      if (inRed || inBlue) {
+        // Already in game, just join
+        return;
+      }
+
+      const player = { odId, name: userName };
+
+      if (team === 'red') {
+        tx.update(gameRef, {
+          redPlayers: firebase.firestore.FieldValue.arrayUnion(player),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        tx.update(gameRef, {
+          bluePlayers: firebase.firestore.FieldValue.arrayUnion(player),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    });
+
+    spectatorMode = false;
+    spectatingGameId = null;
+    startGameListener(gameId, { spectator: false });
+  } catch (e) {
+    console.error('Failed to join game:', e);
+    alert('Failed to join game. Please try again.');
+  }
+}
+
+async function startQuickGame(gameId) {
+  try {
+    await db.collection('games').doc(gameId).update({
+      currentPhase: 'role-selection',
+      log: firebase.firestore.FieldValue.arrayUnion('Game started! Waiting for teams to select roles.'),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.error('Failed to start game:', e);
+    alert('Failed to start game. Please try again.');
+  }
+}
+
+function listenToQuickGames() {
+  if (quickGamesUnsub) quickGamesUnsub();
+
+  quickGamesUnsub = db.collection('games')
+    .where('type', '==', 'quick')
+    .where('winner', '==', null)
+    .limit(20)
+    .onSnapshot((snapshot) => {
+      if (currentPlayMode === 'quick') {
+        renderQuickGames();
+      }
+      if (currentPlayMode === 'select') {
+        renderSpectateGames();
+      }
+    }, (err) => {
+      console.error('Quick games listener error:', err);
+    });
+}
+
+async function renderQuickGames() {
+  const section = document.getElementById('quick-games-section');
+  const list = document.getElementById('quick-games-list');
+  if (!section || !list) return;
+
+  try {
+    const snap = await db.collection('games')
+      .where('type', '==', 'quick')
+      .where('winner', '==', null)
+      .limit(20)
+      .get();
+
+    const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const waitingGames = games.filter(g => g.currentPhase === 'waiting');
+
+    if (waitingGames.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+
+    list.innerHTML = waitingGames.map(g => {
+      const redCount = (g.redPlayers || []).length;
+      const blueCount = (g.bluePlayers || []).length;
+      const code = g.roomCode || '???';
+
+      return `
+        <div class="challenge-row">
+          <div class="challenge-info">
+            <span class="challenge-team-name">Room: ${escapeHtml(code)}</span>
+            <span class="challenge-meta">Red: ${redCount} | Blue: ${blueCount}</span>
+          </div>
+          <div class="challenge-actions">
+            <button class="btn small" style="background: var(--game-red-bg); border-color: var(--game-red-border);" onclick="joinQuickGame('${g.id}', 'red')">Join Red</button>
+            <button class="btn small" style="background: var(--game-blue-bg); border-color: var(--game-blue-border);" onclick="joinQuickGame('${g.id}', 'blue')">Join Blue</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to render quick games:', e);
+  }
+}
+
+async function renderSpectateGames() {
+  const section = document.getElementById('spectate-games-section');
+  const list = document.getElementById('spectate-games-list');
+  if (!section || !list) return;
+
+  try {
+    const snap = await db.collection('games')
+      .where('winner', '==', null)
+      .limit(10)
+      .get();
+
+    const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const activeGames = games.filter(g => g.currentPhase !== 'waiting');
+
+    if (activeGames.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+
+    list.innerHTML = activeGames.map(g => {
+      const redName = escapeHtml(g.redTeamName || 'Red Team');
+      const blueName = escapeHtml(g.blueTeamName || 'Blue Team');
+      const status = escapeHtml(describeGameStatus(g));
+
+      return `
+        <div class="challenge-row">
+          <div class="challenge-info">
+            <span class="challenge-team-name">${redName} vs ${blueName}</span>
+            <span class="challenge-meta">${status}</span>
+          </div>
+          <div class="challenge-actions">
+            <button class="btn primary small" onclick="spectateGame('${g.id}')">Watch</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to render spectate games:', e);
+  }
 }
 
 /* =========================
@@ -134,23 +483,16 @@ function listenToChallenges() {
   challengesUnsub = db.collection('challenges')
     .orderBy('createdAt', 'desc')
     .onSnapshot((snapshot) => {
-      renderGameLobby();
+      if (currentPlayMode === 'tournament') {
+        renderTournamentLobby();
+      }
+      updateGameTabBadge();
     }, (err) => {
       console.error('Challenges listener error:', err);
     });
 }
 
-async function renderGameLobby() {
-  // Ensure Quick Play is highlighted when viewing the Play tab
-  const quickBtn = document.getElementById('play-mode-quick');
-  const tourBtn = document.getElementById('play-mode-tournament');
-  if (quickBtn && tourBtn) {
-    quickBtn.classList.add('active');
-    tourBtn.classList.remove('active');
-    quickBtn.setAttribute('aria-selected', 'true');
-    tourBtn.setAttribute('aria-selected', 'false');
-  }
-
+async function renderTournamentLobby() {
   const myTeam = getMyTeam();
   const statusEl = document.getElementById('game-team-status');
   const challengesSec = document.getElementById('challenges-section');
@@ -397,7 +739,7 @@ async function sendChallenge(toTeamId) {
       status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    renderGameLobby();
+    renderTournamentLobby();
   } catch (e) {
     console.error('Failed to send challenge:', e);
   }
@@ -406,7 +748,7 @@ async function sendChallenge(toTeamId) {
 async function cancelChallenge(challengeId) {
   try {
     await db.collection('challenges').doc(challengeId).delete();
-    renderGameLobby();
+    renderTournamentLobby();
   } catch (e) {
     console.error('Failed to cancel challenge:', e);
   }
@@ -415,7 +757,7 @@ async function cancelChallenge(challengeId) {
 async function declineChallenge(challengeId) {
   try {
     await db.collection('challenges').doc(challengeId).delete();
-    renderGameLobby();
+    renderTournamentLobby();
   } catch (e) {
     console.error('Failed to decline challenge:', e);
   }
@@ -446,7 +788,7 @@ async function acceptChallenge(challengeId) {
       }
     }
 
-    renderGameLobby();
+    renderTournamentLobby();
   } catch (e) {
     console.error('Failed to accept challenge:', e);
   }
@@ -584,13 +926,14 @@ function stopGameListener() {
    Game Rendering
 ========================= */
 function showGameLobby() {
-  document.getElementById('game-lobby').style.display = 'block';
-  document.getElementById('game-board-container').style.display = 'none';
-  renderGameLobby();
+  // Go back to mode selection
+  showModeSelect();
 }
 
 function showGameBoard() {
-  document.getElementById('game-lobby').style.display = 'none';
+  document.getElementById('play-mode-select').style.display = 'none';
+  document.getElementById('quick-play-lobby').style.display = 'none';
+  document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'block';
 }
 
@@ -602,7 +945,6 @@ function renderGame() {
 
   showGameBoard();
 
-  const myTeam = getMyTeam();
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
   const isSpymaster = !spectator && isCurrentUserSpymaster();
@@ -611,9 +953,20 @@ function renderGame() {
   const leaveBtn = document.getElementById('leave-game-btn');
   if (leaveBtn) leaveBtn.textContent = spectator ? 'Stop Spectating' : 'Leave Game';
 
-  // Update header
-  document.getElementById('game-red-team').textContent = currentGame.redTeamName || 'Red Team';
-  document.getElementById('game-blue-team').textContent = currentGame.blueTeamName || 'Blue Team';
+  // Update header with team names and player counts for quick play
+  const redTeamEl = document.getElementById('game-red-team');
+  const blueTeamEl = document.getElementById('game-blue-team');
+
+  if (currentGame.type === 'quick') {
+    const redCount = (currentGame.redPlayers || []).length;
+    const blueCount = (currentGame.bluePlayers || []).length;
+    if (redTeamEl) redTeamEl.textContent = `Red (${redCount})`;
+    if (blueTeamEl) blueTeamEl.textContent = `Blue (${blueCount})`;
+  } else {
+    if (redTeamEl) redTeamEl.textContent = currentGame.redTeamName || 'Red Team';
+    if (blueTeamEl) blueTeamEl.textContent = currentGame.blueTeamName || 'Blue Team';
+  }
+
   document.getElementById('game-red-left').textContent = currentGame.redCardsLeft;
   document.getElementById('game-blue-left').textContent = currentGame.blueCardsLeft;
 
@@ -621,12 +974,17 @@ function renderGame() {
   const turnTeamEl = document.getElementById('game-turn-team');
   const turnRoleEl = document.getElementById('game-turn-role');
 
-  if (currentGame.winner) {
-    turnTeamEl.textContent = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+  if (currentGame.currentPhase === 'waiting') {
+    // Waiting for players
+    turnTeamEl.textContent = currentGame.roomCode || 'ROOM';
+    turnTeamEl.className = 'turn-team';
+    turnRoleEl.textContent = '(Waiting for players)';
+  } else if (currentGame.winner) {
+    turnTeamEl.textContent = currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue');
     turnTeamEl.className = `turn-team ${currentGame.winner}`;
     turnRoleEl.textContent = 'WINS!';
   } else {
-    turnTeamEl.textContent = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+    turnTeamEl.textContent = currentGame.currentTeam === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue');
     turnTeamEl.className = `turn-team ${currentGame.currentTeam}`;
     if (spectator) {
       turnRoleEl.textContent = '(Spectating)';
@@ -652,7 +1010,7 @@ function renderGame() {
   // Render board
   renderBoard(isSpymaster);
 
-  // Clue area
+  // Clue area - handle waiting phase
   renderClueArea(isSpymaster, myTeamColor, spectator);
 
   // Game log
@@ -712,6 +1070,29 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   if (currentGame.winner) return;
 
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
+
+  // Quick Play waiting phase
+  if (currentGame.currentPhase === 'waiting') {
+    const redCount = (currentGame.redPlayers || []).length;
+    const blueCount = (currentGame.bluePlayers || []).length;
+    const hasPlayers = redCount > 0 && blueCount > 0;
+
+    waitingEl.style.display = 'block';
+    const waitingFor = document.getElementById('waiting-for');
+
+    if (!myTeamColor) {
+      waitingFor.innerHTML = `players to join. Room code: <strong>${currentGame.roomCode || '???'}</strong>`;
+    } else if (!hasPlayers) {
+      waitingFor.innerHTML = `at least 1 player on each team. Share code: <strong>${currentGame.roomCode || '???'}</strong>`;
+    } else {
+      // Show start button
+      waitingFor.innerHTML = `
+        <span>Ready to start!</span>
+        <button class="btn primary small" style="margin-left: 12px;" onclick="startQuickGame('${currentGame.id}')">Start Game</button>
+      `;
+    }
+    return;
+  }
 
   if (currentGame.currentPhase === 'role-selection') {
     waitingEl.style.display = 'block';
@@ -1074,6 +1455,18 @@ function getMyTeam() {
 function getMyTeamColor() {
   if (!currentGame) return null;
 
+  const odId = getUserId();
+
+  // For Quick Play games, check player arrays
+  if (currentGame.type === 'quick') {
+    const inRed = (currentGame.redPlayers || []).some(p => p.odId === odId);
+    const inBlue = (currentGame.bluePlayers || []).some(p => p.odId === odId);
+    if (inRed) return 'red';
+    if (inBlue) return 'blue';
+    return null;
+  }
+
+  // For Tournament games, check team IDs
   const myTeam = getMyTeam();
   if (!myTeam) return null;
 
@@ -1137,21 +1530,6 @@ function updateGameTabBadge() {
     if (mobileBadge) mobileBadge.style.display = 'none';
   }
 }
-
-// Update badge when challenges change
-const originalListenToChallenges = listenToChallenges;
-listenToChallenges = function() {
-  if (challengesUnsub) challengesUnsub();
-
-  challengesUnsub = db.collection('challenges')
-    .orderBy('createdAt', 'desc')
-    .onSnapshot((snapshot) => {
-      renderGameLobby();
-      updateGameTabBadge();
-    }, (err) => {
-      console.error('Challenges listener error:', err);
-    });
-};
 
 // Call badge update on init
 setTimeout(updateGameTabBadge, 1000);
