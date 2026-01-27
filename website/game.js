@@ -17,6 +17,32 @@ const ASSASSIN_CARDS = 1;
 
 // Game state
 let wordsBank = [];
+let wordsDecks = {}; // loaded from words.json
+const DECK_CATALOG = [
+  { id: 'standard', label: 'Standard', emoji: '🌍', tone: 'slate' },
+  { id: 'family', label: 'Family', emoji: '🧸', tone: 'teal' },
+  { id: 'pop', label: 'Pop', emoji: '🎬', tone: 'purple' },
+  { id: 'sports', label: 'Sports', emoji: '🏟️', tone: 'blue' },
+  { id: 'tech', label: 'Tech', emoji: '💻', tone: 'slate' },
+];
+
+function normalizeDeckId(deckId) {
+  const id = String(deckId || 'standard');
+  return (wordsDecks && wordsDecks[id] && Array.isArray(wordsDecks[id]) && wordsDecks[id].length >= 25) ? id : 'standard';
+}
+
+function getDeckMeta(deckId) {
+  const id = normalizeDeckId(deckId);
+  return DECK_CATALOG.find(d => d.id === id) || DECK_CATALOG[0];
+}
+
+function getWordsForDeck(deckId) {
+  const id = normalizeDeckId(deckId);
+  const bank = (wordsDecks && wordsDecks[id]) || wordsBank;
+  if (Array.isArray(bank) && bank.length >= 25) return bank;
+  return wordsBank;
+}
+
 let currentGame = null;
 let gameUnsub = null;
 let challengesUnsub = null;
@@ -37,10 +63,12 @@ function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
+  const deckId = String(document.getElementById('qp-deck')?.value || 'standard');
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
+    deckId: normalizeDeckId(deckId),
   };
 }
 
@@ -51,12 +79,14 @@ function getQuickSettings(game) {
       blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
       clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
+      deckId: normalizeDeckId(base.deckId || 'standard'),
     };
   }
   return {
     blackCards: 1,
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
+    deckId: 'standard',
   };
 }
 
@@ -71,8 +101,9 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 };
-  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, deckId: 'standard' };
+  const d = getDeckMeta(s.deckId || 'standard');
+  return `Deck: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
 }
 
 function quickRulesAreAgreed(game) {
@@ -97,9 +128,12 @@ async function loadWords() {
   try {
     const res = await fetch('words.json');
     const data = await res.json();
-    wordsBank = data.standard || [];
+    wordsDecks = (data && typeof data === 'object') ? data : {};
+    wordsBank = (wordsDecks.standard && Array.isArray(wordsDecks.standard)) ? wordsDecks.standard : (data.standard || []);
+    initQuickDeckPicker();
   } catch (e) {
     console.error('Failed to load words:', e);
+    wordsDecks = {};
     wordsBank = generateFallbackWords();
   }
 }
@@ -113,8 +147,10 @@ function generateFallbackWords() {
   return words;
 }
 
-function getRandomWords(count) {
-  const shuffled = [...wordsBank].sort(() => Math.random() - 0.5);
+function getRandomWords(count, deckId) {
+  const bank = deckId ? getWordsForDeck(deckId) : wordsBank;
+  const source = Array.isArray(bank) && bank.length >= count ? bank : wordsBank;
+  const shuffled = [...source].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 }
 
@@ -360,6 +396,49 @@ function stepQuickRole(delta) {
   selectQuickRole(QUICK_ROLES[idx]);
 }
 
+
+function setQuickDeckSelectionUI(deckId) {
+  const id = normalizeDeckId(deckId);
+  const hidden = document.getElementById('qp-deck');
+  if (hidden) hidden.value = id;
+  const picker = document.getElementById('qp-deck-picker');
+  if (!picker) return;
+  const cards = [...picker.querySelectorAll('.qp-deck-card')];
+  cards.forEach(btn => {
+    const match = btn.getAttribute('data-deck') === id;
+    btn.classList.toggle('selected', match);
+    btn.setAttribute('aria-checked', match ? 'true' : 'false');
+  });
+}
+
+function initQuickDeckPicker() {
+  const picker = document.getElementById('qp-deck-picker');
+  if (!picker) return;
+  const cards = [...picker.querySelectorAll('.qp-deck-card')];
+  if (!cards.length) return;
+
+  // Disable any decks that aren't present in words.json
+  cards.forEach(btn => {
+    const id = btn.getAttribute('data-deck');
+    const ok = (id === 'standard') || (wordsDecks && wordsDecks[id] && Array.isArray(wordsDecks[id]) && wordsDecks[id].length >= 25);
+    btn.disabled = !ok;
+    btn.classList.toggle('disabled', !ok);
+  });
+
+  cards.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const id = btn.getAttribute('data-deck') || 'standard';
+      setQuickDeckSelectionUI(id);
+      // Update any previews immediately
+      if (quickLobbyGame) updateQuickRulesUI(quickLobbyGame);
+    });
+  });
+
+  // default
+  setQuickDeckSelectionUI(document.getElementById('qp-deck')?.value || 'standard');
+}
+
 function setModalVisible(id, visible) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -376,10 +455,12 @@ function openQuickSettingsModal() {
     blackCards: 'qp-black-cards',
     clueTimerSeconds: 'qp-clue-timer',
     guessTimerSeconds: 'qp-guess-timer',
+    deckId: 'qp-deck',
   };
   document.getElementById(ids.blackCards).value = String(s.blackCards ?? 1);
   document.getElementById(ids.clueTimerSeconds).value = String(s.clueTimerSeconds ?? 0);
   document.getElementById(ids.guessTimerSeconds).value = String(s.guessTimerSeconds ?? 0);
+  setQuickDeckSelectionUI(s.deckId || 'standard');
 
   updateQuickRulesUI(g);
 }
@@ -506,6 +587,8 @@ function updateQuickRulesUI(game) {
     } else if (agreed) {
       pills.push('<span class="qp-neg-pill teal">Locked in</span>');
     }
+    const deckMeta = getDeckMeta(s.deckId || 'standard');
+    pills.push(`<span class="qp-neg-pill ${deckMeta.tone}">${deckMeta.emoji} ${deckMeta.label}</span>`);
     const black = Number(s.blackCards ?? 1);
     pills.push(`<span class="qp-neg-pill slate">Assassins: ${black}</span>`);
     const clue = Number(s.clueTimerSeconds ?? 0);
@@ -662,7 +745,7 @@ async function startQuickLobbyListener() {
 
 function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
-  const words = getRandomWords(BOARD_SIZE);
+  const words = getRandomWords(BOARD_SIZE, settings.deckId);
   const keyCard = generateKeyCard(firstTeam, settings.blackCards);
 
   const cards = words.map((word, i) => ({
@@ -694,6 +777,7 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
       blackCards: settings.blackCards,
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
+      deckId: normalizeDeckId(settings.deckId || 'standard'),
     },
     // Negotiation state: one team offers rules, the other accepts.
     settingsPending: null,
@@ -729,6 +813,7 @@ async function ensureQuickPlayGameExists() {
       blackCards: 1,
       clueTimerSeconds: 0,
       guessTimerSeconds: 0,
+      deckId: 'standard',
     };
   }
   if (!g.settingsAccepted) updates.settingsAccepted = { red: false, blue: false };
@@ -935,7 +1020,7 @@ async function maybeAutoStartQuickPlay(game) {
 
       const s = getQuickSettings(g);
       const firstTeam = 'red';
-      const words = getRandomWords(BOARD_SIZE);
+      const words = getRandomWords(BOARD_SIZE, settings.deckId);
       const keyCard = generateKeyCard(firstTeam, s.blackCards);
       const cards = words.map((word, i) => ({
         word,
@@ -1494,7 +1579,7 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
   const firstTeam = 'red';
 
   // Generate board
-  const words = getRandomWords(BOARD_SIZE);
+  const words = getRandomWords(BOARD_SIZE, settings.deckId);
   const keyCard = generateKeyCard(firstTeam);
 
   const cards = words.map((word, i) => ({

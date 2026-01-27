@@ -8,6 +8,8 @@
   --bg: #09090b;
   --surface: #131316;
   --surface2: #1a1a1f;
+  /* Solid card surface used for modals + elevated panels */
+  --card: #141418;
   /* Default (neutral) outlines. Team color outline is handled separately via --team-glow. */
   --border: #34343d;
   --text: #fff;
@@ -1872,6 +1874,55 @@ body.mode-joiner .only-joiner{ display:block; }
 .qp-setting[data-accent="black"]{ --qp-accent: rgba(148,163,184,0.95); }
 .qp-setting[data-accent="clue"]{ --qp-accent: rgba(168,85,247,0.95); }
 .qp-setting[data-accent="guess"]{ --qp-accent: rgba(20,184,166,0.95); }
+.qp-setting[data-accent="deck"]{ --qp-accent: rgba(59,130,246,0.95); }
+
+.qp-setting-deck{ display:flex; flex-direction:column; gap: 10px; }
+.qp-setting-deck .setting-label{ padding-left: 12px; }
+.qp-deck-picker{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-left: 12px;
+}
+.qp-deck-card{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 120ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  text-align:left;
+}
+.qp-deck-card:hover{ transform: translateY(-1px); background: rgba(255,255,255,0.07); }
+.qp-deck-card:active{ transform: translateY(0px); }
+.qp-deck-card.disabled, .qp-deck-card:disabled{ opacity: 0.45; cursor: not-allowed; transform: none; }
+.qp-deck-card[aria-checked="true"], .qp-deck-card.selected{
+  border-color: rgba(59,130,246,0.55);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.18), 0 14px 30px rgba(0,0,0,0.26);
+  background: linear-gradient(135deg, rgba(59,130,246,0.16), rgba(168,85,247,0.12));
+}
+.qp-deck-emoji{
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  flex: 0 0 auto;
+}
+.qp-deck-name{ font-weight: 800; }
+.qp-deck-sub{ font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+@media (min-width: 900px){
+  .qp-deck-picker{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .qp-setting::before{
   content:"";
   position:absolute;
@@ -2507,21 +2558,38 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 
 /* Modal */
-.modal{ position: fixed; inset: 0; z-index: 2000; }
+.modal{
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  /* Let the modal itself scroll on small screens */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px 12px;
+}
 .modal-backdrop{
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.55);
+  /* Opaque enough that the app behind doesn't bleed through on mobile */
+  background: rgba(0,0,0,0.80);
 }
 .modal-card{
   position: relative;
   width: min(560px, calc(100vw - 24px));
-  margin: 84px auto 20px;
+  margin: 64px 0 16px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: 0 20px 70px rgba(0,0,0,0.45);
   overflow: hidden;
+  /* Ensure the card is fully opaque and scrolls internally when needed */
+  opacity: 1;
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
 }
 .modal-head{
   display:flex;
@@ -2541,7 +2609,12 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 #quick-settings-modal .icon-btn:hover{ background: rgba(0,0,0,0.10); }
 .modal-title{ font-weight: 900; letter-spacing: 0.2px; }
-.modal-body{ padding: 14px 16px 4px; }
+.modal-body{
+  padding: 14px 16px 4px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+}
 .modal-actions{
   display:flex;
   gap: 10px;
@@ -2564,9 +2637,23 @@ body.mode-joiner .only-joiner{ display:block; }
 }
 .icon-btn:hover{ background: rgba(255,255,255,0.06); }
 
+@media (max-width: 520px){
+  .modal{ padding: 10px 10px; }
+  .modal-card{
+    width: min(560px, calc(100vw - 16px));
+    margin: 10px 0 14px;
+    max-height: calc(100vh - 24px);
+  }
+}
+
 @media (max-width: 900px){
   .quick-lobby-layout{ flex-direction: column; }
   .quick-team-col{ min-width: 0; }
+}
+
+@media (max-width: 520px){
+  .modal{ padding: 10px; }
+  .modal-card{ margin: 54px 0 12px; max-height: calc(100vh - 86px); }
 }
 
 @media (min-width: 901px){

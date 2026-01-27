@@ -366,6 +366,34 @@
                       </div>
 
                       <div class="settings-grid qp-settings-grid">
+                        <div class="qp-setting qp-setting-deck" data-accent="deck">
+                          <div class="setting-label">Word deck</div>
+                          <div class="qp-deck-picker" id="qp-deck-picker" role="radiogroup" aria-label="Word deck">
+                            <button class="qp-deck-card selected" type="button" data-deck="standard" role="radio" aria-checked="true">
+                              <span class="qp-deck-emoji">🌍</span>
+                              <span class="qp-deck-name">Standard</span>
+                            </button>
+                            <button class="qp-deck-card" type="button" data-deck="family" role="radio" aria-checked="false">
+                              <span class="qp-deck-emoji">🧸</span>
+                              <span class="qp-deck-name">Family</span>
+                            </button>
+                            <button class="qp-deck-card" type="button" data-deck="pop" role="radio" aria-checked="false">
+                              <span class="qp-deck-emoji">🎬</span>
+                              <span class="qp-deck-name">Pop</span>
+                            </button>
+                            <button class="qp-deck-card" type="button" data-deck="sports" role="radio" aria-checked="false">
+                              <span class="qp-deck-emoji">🏟️</span>
+                              <span class="qp-deck-name">Sports</span>
+                            </button>
+                            <button class="qp-deck-card" type="button" data-deck="tech" role="radio" aria-checked="false">
+                              <span class="qp-deck-emoji">💻</span>
+                              <span class="qp-deck-name">Tech</span>
+                            </button>
+                          </div>
+                          <div class="hint" style="margin-top:8px; padding-left:12px;">Your deck is included in your rules offer.</div>
+                          <input type="hidden" id="qp-deck" value="standard" />
+                        </div>
+
                         <label class="setting-row qp-setting" data-accent="black">
                           <span class="setting-label">Assassin (black) cards</span>
                           <select class="input setting-select" id="qp-black-cards">
