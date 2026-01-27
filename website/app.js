@@ -2480,7 +2480,12 @@ function initCreateTeamModal() {
 function openCreateTeamModal() {
   setHint('create-team-hint', '');
   const modal = document.getElementById('create-team-modal');
-  if (modal) modal.style.display = 'flex';
+  if (modal) {
+    modal.style.display = 'flex';
+    // Trigger reflow for animation
+    void modal.offsetWidth;
+    modal.classList.add('modal-open');
+  }
   const input = document.getElementById('create-teamName');
   if (input) {
     input.value = '';
@@ -2490,7 +2495,13 @@ function openCreateTeamModal() {
 
 function closeCreateTeamModal() {
   const modal = document.getElementById('create-team-modal');
-  if (modal) modal.style.display = 'none';
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
 }
 
 async function handleCreateTeam() {
