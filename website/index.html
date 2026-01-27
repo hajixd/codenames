@@ -284,7 +284,7 @@
               <div class="lobby-header">
                 <h2>Quick Play</h2>
               </div>
-              <p class="subtitle small">Join the lobby, pick a team, and ready up.</p>
+              <p class="subtitle small">Join the lobby and choose a seat. Both teams must ready up to start.</p>
 
               <!-- Player Name Check -->
               <div class="lobby-name-check" id="quick-name-check" style="display:none;">
@@ -295,23 +295,9 @@
               <div class="quick-setup" id="quick-setup">
                 <div class="quick-lobby-card">
                   <div class="quick-lobby-top">
-                    <div class="setup-title" style="margin:0;">Choose Your Team</div>
-                    <div class="hint" id="team-select-hint">Select a team to join the lobby.</div>
-                  </div>
-
-                  <div class="team-select-row">
-                    <button class="team-select-btn red" id="select-team-red" type="button">
-                      <span class="team-select-color"></span>
-                      <span class="team-select-name">Red Team</span>
-                    </button>
-                    <span class="team-select-vs">vs</span>
-                    <button class="team-select-btn blue" id="select-team-blue" type="button">
-                      <span class="team-select-color"></span>
-                      <span class="team-select-name">Blue Team</span>
-                    </button>
-                  </div>
-
-                  <div class="quick-lobby-layout">
+                    <div class="setup-title" style="margin:0;">Lobby</div>
+                    <div class="hint" id="team-select-hint">Use the middle box (or ←/→) to choose Red, Spectator, or Blue.</div>
+                  </div><div class="quick-lobby-layout">
                     <div class="quick-team-col red">
                       <div class="quick-team-head">
                         <span class="quick-team-dot red"></span>
@@ -322,11 +308,36 @@
                     </div>
 
                     <div class="quick-lobby-middle">
+
+                      <div class="quick-role-switcher" id="quick-role-switcher" role="button" tabindex="0" aria-label="Select quick play role">
+                        <div class="quick-role-top">
+                          <div class="quick-role-title">You are</div>
+                          <div class="quick-role-arrows" aria-hidden="true">
+                            <span class="quick-role-arrow">←</span>
+                            <span class="quick-role-arrow">→</span>
+                          </div>
+                        </div>
+                        <div class="quick-role-value" id="quick-role-value">Spectator</div>
+                        <div class="quick-role-sub" id="quick-role-sub">Click or use ←/→ to switch</div>
+                      </div>
+
+                      <div class="quick-spectators">
+                        <div class="quick-spectators-head">
+                          <span>Spectators</span>
+                          <span class="quick-team-count" id="quick-spec-count">0</span>
+                        </div>
+                        <div class="quick-team-list" id="quick-spec-list"></div>
+                      </div>
+
                       <div class="quick-lobby-status" id="quick-lobby-status">Waiting for players…</div>
-                      <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
-                      <button class="btn" id="quick-leave-btn" type="button" style="margin-top:10px;" disabled>Leave Lobby</button>
+
+                      <div class="quick-lobby-actions">
+                        <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
+                        <button class="btn" id="quick-leave-btn" type="button" disabled>Leave</button>
+                      </div>
+
                       <div class="hint" style="margin-top:10px;">Game starts when both teams are fully ready.</div>
-                    </div>
+</div>
 
                     <div class="quick-team-col blue">
                       <div class="quick-team-head">

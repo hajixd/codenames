@@ -23,13 +23,14 @@ let challengesUnsub = null;
 let quickGamesUnsub = null;
 let spectatorMode = false;
 let spectatingGameId = null;
-let selectedQuickTeam = null; // 'red' or 'blue'
+let selectedQuickTeam = null; // 'red' | 'spectator' | 'blue'
 let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
 // Quick Play is a single shared lobby/game.
 const QUICKPLAY_DOC_ID = 'quickplay';
 let quickLobbyUnsub = null;
 let quickLobbyGame = null;
+let quickAutoJoinedSpectator = false;
 
 // Load words on init
 document.addEventListener('DOMContentLoaded', async () => {
@@ -116,8 +117,39 @@ function initGameUI() {
   });
 
   // Quick Play team selection
-  document.getElementById('select-team-red')?.addEventListener('click', () => selectQuickTeam('red'));
-  document.getElementById('select-team-blue')?.addEventListener('click', () => selectQuickTeam('blue'));
+  // Quick Play role selector (Red ↔ Spectator ↔ Blue)
+  const roleBox = document.getElementById('quick-role-switcher');
+  roleBox?.addEventListener('click', () => stepQuickRole(1));
+  roleBox?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      stepQuickRole(1);
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      stepQuickRole(-1);
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      stepQuickRole(1);
+    }
+  });
+
+  // Arrow keys anywhere in the lobby
+  document.addEventListener('keydown', (e) => {
+    if (currentPlayMode !== 'quick') return;
+    const lobby = document.getElementById('quick-play-lobby');
+    if (!lobby || lobby.style.display === 'none') return;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      stepQuickRole(-1);
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      stepQuickRole(1);
+    }
+  });
+
 
   // Quick Play game actions
   // Quick Play is a single lobby; no "create game" button.
@@ -205,25 +237,46 @@ function showTournamentLobby() {
 }
 
 /* =========================
-   Quick Play Team Selection
+   Quick Play Role Selection
 ========================= */
-function selectQuickTeam(team) {
-  selectedQuickTeam = team;
+const QUICK_ROLES = ['red', 'spectator', 'blue'];
 
-  const redBtn = document.getElementById('select-team-red');
-  const blueBtn = document.getElementById('select-team-blue');
+function selectQuickRole(role) {
+  selectedQuickTeam = role;
+
+  const valueEl = document.getElementById('quick-role-value');
+  const subEl = document.getElementById('quick-role-sub');
+  const card = document.getElementById('quick-role-switcher');
   const hint = document.getElementById('team-select-hint');
 
-  redBtn?.classList.toggle('selected', team === 'red');
-  blueBtn?.classList.toggle('selected', team === 'blue');
+  const label = role === 'spectator' ? 'Spectator' : (role === 'red' ? 'Red Team' : 'Blue Team');
+  if (valueEl) valueEl.textContent = label;
 
-  if (hint) {
-    hint.textContent = team === 'red' ? 'You will play as Red Team' : 'You will play as Blue Team';
-    hint.style.color = team === 'red' ? 'var(--game-red)' : 'var(--game-blue)';
+  if (card) {
+    card.classList.toggle('role-red', role === 'red');
+    card.classList.toggle('role-blue', role === 'blue');
+    card.classList.toggle('role-spec', role === 'spectator');
   }
 
-  // Immediately join the lobby for the selected team.
-  joinQuickLobby(team);
+  if (hint) {
+    hint.textContent = role === 'spectator'
+      ? 'Spectating — switch to Red or Blue to play.'
+      : (role === 'red' ? 'You will play as Red Team' : 'You will play as Blue Team');
+    hint.style.color = role === 'red' ? 'var(--game-red)' : role === 'blue' ? 'var(--game-blue)' : '';
+  }
+
+  if (subEl) subEl.textContent = 'Click or use ←/→ to switch';
+
+  // Join the lobby for the selected role.
+  joinQuickLobby(role);
+}
+
+function stepQuickRole(delta) {
+  const current = selectedQuickTeam || 'spectator';
+  let idx = QUICK_ROLES.indexOf(current);
+  if (idx === -1) idx = 1;
+  idx = (idx + delta + QUICK_ROLES.length) % QUICK_ROLES.length;
+  selectQuickRole(QUICK_ROLES[idx]);
 }
 
 /* =========================
@@ -292,6 +345,7 @@ function buildQuickPlayGameData(timerSetting = 120) {
     blueTeamName: 'Blue Team',
     redPlayers: [],
     bluePlayers: [],
+    spectators: [],
     cards,
     currentTeam: firstTeam,
     currentPhase: 'waiting',
@@ -326,15 +380,17 @@ async function ensureQuickPlayGameExists() {
   }
 }
 
-function getQuickPlayerTeam(game, odId) {
+function getQuickPlayerRole(game, odId) {
   const inRed = (game.redPlayers || []).some(p => p.odId === odId);
   const inBlue = (game.bluePlayers || []).some(p => p.odId === odId);
+  const inSpec = (game.spectators || []).some(p => p.odId === odId);
   if (inRed) return 'red';
   if (inBlue) return 'blue';
+  if (inSpec) return 'spectator';
   return null;
 }
 
-async function joinQuickLobby(team) {
+async function joinQuickLobby(role) {
   const userName = getUserName();
   const odId = getUserId();
   if (!userName) return;
@@ -356,31 +412,36 @@ async function joinQuickLobby(team) {
 
       const redPlayers = Array.isArray(game.redPlayers) ? [...game.redPlayers] : [];
       const bluePlayers = Array.isArray(game.bluePlayers) ? [...game.bluePlayers] : [];
+      const spectators = Array.isArray(game.spectators) ? [...game.spectators] : [];
 
-      // Remove from both teams (team-switching / rejoin).
+      // Remove from all seats (team-switching / rejoin).
       const nextRed = redPlayers.filter(p => p.odId !== odId);
       const nextBlue = bluePlayers.filter(p => p.odId !== odId);
+      const nextSpec = spectators.filter(p => p.odId !== odId);
 
       const player = { odId, name: userName, ready: false };
-      if (team === 'red') nextRed.push(player);
-      else nextBlue.push(player);
+      if (role === 'red') nextRed.push(player);
+      else if (role === 'blue') nextBlue.push(player);
+      else nextSpec.push(player);
 
       const updates = {
         redPlayers: nextRed,
         bluePlayers: nextBlue,
+        spectators: nextSpec,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
-      // Let the first player set the timer for this round.
-      const prevCount = redPlayers.length + bluePlayers.length;
-      if (prevCount === 0) {
+      // Let the first person to enter set the timer for this round.
+      const prevCount = redPlayers.length + bluePlayers.length + spectators.length;
+      if (prevCount == 0) {
         updates.timerSeconds = parseInt(document.getElementById('setting-timer')?.value || '120', 10);
       }
 
       tx.update(ref, updates);
     });
 
-    selectedQuickTeam = team;
+    selectedQuickTeam = role;
+    quickAutoJoinedSpectator = true;
   } catch (e) {
     console.error('Failed to join Quick Play lobby:', e);
     alert(e.message || 'Failed to join lobby.');
@@ -414,17 +475,25 @@ async function leaveQuickLobby() {
 
       const nextRed = (game.redPlayers || []).filter(p => p.odId !== odId);
       const nextBlue = (game.bluePlayers || []).filter(p => p.odId !== odId);
+      const nextSpec = (game.spectators || []).filter(p => p.odId !== odId);
       tx.update(ref, {
         redPlayers: nextRed,
         bluePlayers: nextBlue,
+        spectators: nextSpec,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
   } finally {
     selectedQuickTeam = null;
-    // Reset button UI state.
-    document.getElementById('select-team-red')?.classList.remove('selected');
-    document.getElementById('select-team-blue')?.classList.remove('selected');
+    quickAutoJoinedSpectator = false;
+    // Update role UI back to spectator label
+    const valueEl = document.getElementById('quick-role-value');
+    if (valueEl) valueEl.textContent = 'Spectator';
+    const card = document.getElementById('quick-role-switcher');
+    if (card) {
+      card.classList.remove('role-red', 'role-blue');
+      card.classList.add('role-spec');
+    }
   }
 }
 
@@ -438,10 +507,10 @@ async function toggleQuickReady() {
       const game = snap.data();
       if (game.currentPhase && game.currentPhase !== 'waiting') return;
 
-      const team = getQuickPlayerTeam(game, odId);
-      if (!team) throw new Error('Join a team first.');
+      const role = getQuickPlayerRole(game, odId);
+      if (!role || role === 'spectator') throw new Error('Switch to Red or Blue to ready up.');
 
-      const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+      const key = role === 'red' ? 'redPlayers' : 'bluePlayers';
       const players = Array.isArray(game[key]) ? [...game[key]] : [];
       const idx = players.findIndex(p => p.odId === odId);
       if (idx === -1) throw new Error('Join a team first.');
@@ -494,18 +563,25 @@ async function maybeAutoStartQuickPlay(game) {
 function renderQuickLobby(game) {
   const redList = document.getElementById('quick-red-list');
   const blueList = document.getElementById('quick-blue-list');
+  const specList = document.getElementById('quick-spec-list');
   const redCount = document.getElementById('quick-red-count');
   const blueCount = document.getElementById('quick-blue-count');
+  const specCount = document.getElementById('quick-spec-count');
   const status = document.getElementById('quick-lobby-status');
   const readyBtn = document.getElementById('quick-ready-btn');
   const leaveBtn = document.getElementById('quick-leave-btn');
-  if (!redList || !blueList || !redCount || !blueCount || !status || !readyBtn || !leaveBtn) return;
+  const roleValue = document.getElementById('quick-role-value');
+  const roleCard = document.getElementById('quick-role-switcher');
+
+  if (!redList || !blueList || !specList || !redCount || !blueCount || !specCount || !status || !readyBtn || !leaveBtn) return;
 
   if (!game) {
     redList.innerHTML = '';
     blueList.innerHTML = '';
+    specList.innerHTML = '';
     redCount.textContent = '0';
     blueCount.textContent = '0';
+    specCount.textContent = '0';
     status.textContent = 'Loading lobby…';
     readyBtn.disabled = true;
     leaveBtn.disabled = true;
@@ -513,14 +589,26 @@ function renderQuickLobby(game) {
   }
 
   const odId = getUserId();
-  const team = getQuickPlayerTeam(game, odId);
+  const userName = getUserName();
+  const role = getQuickPlayerRole(game, odId);
+
+  // Auto-join as spectator when opening Quick Play (so you can see who is here).
+  if (!role && userName && !quickAutoJoinedSpectator) {
+    quickAutoJoinedSpectator = true;
+    selectedQuickTeam = 'spectator';
+    // Fire and forget; render will update from snapshot.
+    joinQuickLobby('spectator');
+  }
+
   const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
   const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
+  const specs = Array.isArray(game.spectators) ? game.spectators : [];
 
   redCount.textContent = String(red.length);
   blueCount.textContent = String(blue.length);
+  specCount.textContent = String(specs.length);
 
-  const renderList = (players) => {
+  const renderTeamList = (players) => {
     if (!players.length) return '<div class="quick-empty">No one yet</div>';
     return players.map(p => {
       const isYou = p.odId === odId;
@@ -534,16 +622,40 @@ function renderQuickLobby(game) {
     }).join('');
   };
 
-  redList.innerHTML = renderList(red);
-  blueList.innerHTML = renderList(blue);
+  const renderSpecList = (players) => {
+    if (!players.length) return '<div class="quick-empty">No one yet</div>';
+    return players.map(p => {
+      const isYou = p.odId === odId;
+      return `
+        <div class="quick-player spectator">
+          <span class="quick-player-name">${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+        </div>
+      `;
+    }).join('');
+  };
+
+  redList.innerHTML = renderTeamList(red);
+  blueList.innerHTML = renderTeamList(blue);
+  specList.innerHTML = renderSpecList(specs);
+
+  // Update role selector UI
+  const effectiveRole = role || selectedQuickTeam || 'spectator';
+  if (roleValue) {
+    roleValue.textContent = effectiveRole === 'spectator' ? 'Spectator' : (effectiveRole === 'red' ? 'Red Team' : 'Blue Team');
+  }
+  if (roleCard) {
+    roleCard.classList.toggle('role-red', effectiveRole === 'red');
+    roleCard.classList.toggle('role-blue', effectiveRole === 'blue');
+    roleCard.classList.toggle('role-spec', effectiveRole === 'spectator');
+  }
 
   // Button state
-  readyBtn.disabled = !team;
-  leaveBtn.disabled = !team;
+  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
+  leaveBtn.disabled = !effectiveRole;
 
-  const youObj = team === 'red'
+  const youObj = effectiveRole === 'red'
     ? red.find(p => p.odId === odId)
-    : team === 'blue'
+    : effectiveRole === 'blue'
       ? blue.find(p => p.odId === odId)
       : null;
   const youReady = !!youObj?.ready;
