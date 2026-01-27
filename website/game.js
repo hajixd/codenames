@@ -354,6 +354,9 @@ function initGameUI() {
   // Leave game
   document.getElementById('leave-game-btn')?.addEventListener('click', handleLeaveGame);
 
+  // End game (manual)
+  document.getElementById('end-game-btn')?.addEventListener('click', handleEndGame);
+
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
 
@@ -2784,6 +2787,31 @@ async function handleEndTurn() {
   }
 }
 
+async function handleEndGame() {
+  if (!currentGame) return;
+
+  const userName = getUserName() || 'Someone';
+  const confirmMsg = 'End this game for everyone? This cannot be undone.';
+  // eslint-disable-next-line no-alert
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    await db.collection('games').doc(currentGame.id).update({
+      winner: 'ended',
+      currentPhase: 'ended',
+      endedReason: 'manual',
+      endedBy: {
+        odId: getUserId() || null,
+        name: userName
+      },
+      log: firebase.firestore.FieldValue.arrayUnion(`${userName} ended the game.`),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.error('Failed to end game:', e);
+  }
+}
+
 /* =========================
    Game End
 ========================= */
@@ -2794,29 +2822,51 @@ function showGameEndOverlay() {
 
   if (!currentGame?.winner) return;
 
-  const myTeamColor = getMyTeamColor();
-  const isWinner = currentGame.winner === myTeamColor;
-  const winnerName = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-
-  // Play win or lose sound
-  if (window.playSound) {
-    setTimeout(() => {
-      window.playSound(isWinner ? 'gameWin' : 'gameLose');
-    }, 300);
-  }
+  const isRedBlueWin = currentGame.winner === 'red' || currentGame.winner === 'blue';
 
   const overlay = document.createElement('div');
   overlay.className = 'game-end-overlay';
-  overlay.innerHTML = `
-    <div class="game-end-card">
-      <div class="game-end-title ${isWinner ? 'win' : 'lose'}">${isWinner ? 'Victory!' : 'Defeat'}</div>
-      <div class="game-end-subtitle">${escapeHtml(winnerName)} wins the game!</div>
-      <div class="game-end-actions">
-        <button class="btn primary" onclick="handleRematch()">Rematch</button>
-        <button class="btn" onclick="handleLeaveGame()">Leave Game</button>
+
+  if (isRedBlueWin) {
+    const myTeamColor = getMyTeamColor();
+    const isWinner = currentGame.winner === myTeamColor;
+    const winnerName = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+
+    // Play win or lose sound
+    if (window.playSound) {
+      setTimeout(() => {
+        window.playSound(isWinner ? 'gameWin' : 'gameLose');
+      }, 300);
+    }
+
+    overlay.innerHTML = `
+      <div class="game-end-card">
+        <div class="game-end-title ${isWinner ? 'win' : 'lose'}">${isWinner ? 'Victory!' : 'Defeat'}</div>
+        <div class="game-end-subtitle">${escapeHtml(winnerName)} wins the game!</div>
+        <div class="game-end-actions">
+          <button class="btn primary" onclick="handleRematch()">Rematch</button>
+          <button class="btn" onclick="handleLeaveGame()">Leave Game</button>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  } else {
+    const endedByName = currentGame?.endedBy?.name;
+    const reason = currentGame?.endedReason;
+    const subtitleParts = [];
+    if (endedByName) subtitleParts.push(`Ended by ${escapeHtml(endedByName)}.`);
+    if (reason) subtitleParts.push(`${escapeHtml(String(reason))}.`);
+    const subtitle = subtitleParts.length ? subtitleParts.join(' ') : 'This game has ended.';
+
+    overlay.innerHTML = `
+      <div class="game-end-card">
+        <div class="game-end-title">Game ended</div>
+        <div class="game-end-subtitle">${subtitle}</div>
+        <div class="game-end-actions">
+          <button class="btn primary" onclick="handleLeaveGame()">Back to Lobby</button>
+        </div>
+      </div>
+    `;
+  }
 
   document.body.appendChild(overlay);
 }
