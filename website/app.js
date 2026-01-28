@@ -3668,12 +3668,36 @@ function stopPresenceListener() {
   }
 }
 
-function getPresenceStatus(presence) {
+function resolvePresenceArg(arg) {
+  if (!arg) return null;
+  // Allow callers to pass a userId string.
+  if (typeof arg === 'string') {
+    const uid = String(arg || '').trim();
+    if (!uid) return null;
+    return presenceCache.find(p => p?.id === uid || p?.odId === uid) || null;
+  }
+  // If they passed a presence doc object, use it as-is.
+  return arg;
+}
+
+function tsToMsSafe(ts) {
+  if (!ts) return 0;
+  // Firestore Timestamp
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  // Some Timestamp shapes expose seconds / nanoseconds
+  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+  if (typeof ts._seconds === 'number') return ts._seconds * 1000;
+  // Sometimes stored as number (ms)
+  if (typeof ts === 'number') return ts;
+  return 0;
+}
+
+function getPresenceStatus(presenceOrUserId) {
+  const presence = resolvePresenceArg(presenceOrUserId);
   if (!presence?.lastActivity) return 'offline';
 
-  const lastMs = typeof presence.lastActivity.toMillis === 'function'
-    ? presence.lastActivity.toMillis()
-    : (presence.lastActivity.seconds ? presence.lastActivity.seconds * 1000 : 0);
+  const lastMs = tsToMsSafe(presence.lastActivity);
+  if (!lastMs) return 'offline';
 
   const now = Date.now();
   const diff = now - lastMs;
@@ -3684,12 +3708,12 @@ function getPresenceStatus(presence) {
   return 'offline';
 }
 
-function getTimeSinceActivity(presence) {
+function getTimeSinceActivity(presenceOrUserId) {
+  const presence = resolvePresenceArg(presenceOrUserId);
   if (!presence?.lastActivity) return '';
 
-  const lastMs = typeof presence.lastActivity.toMillis === 'function'
-    ? presence.lastActivity.toMillis()
-    : (presence.lastActivity.seconds ? presence.lastActivity.seconds * 1000 : 0);
+  const lastMs = tsToMsSafe(presence.lastActivity);
+  if (!lastMs) return '';
 
   const now = Date.now();
   const diff = now - lastMs;
@@ -4149,6 +4173,18 @@ function initProfilePopup() {
   if (backdrop) {
     backdrop.addEventListener('click', hideProfilePopup);
   }
+
+
+// Mobile: tapping outside the sheet (anywhere above it) should dismiss.
+if (popup) {
+  popup.addEventListener('click', (e) => {
+    if (window.innerWidth > 768) return;
+    const card = popup.querySelector('.profile-popup-card');
+    if (card && !card.contains(e.target)) {
+      hideProfilePopup();
+    }
+  });
+}
 
   // Close on escape key
   document.addEventListener('keydown', (e) => {

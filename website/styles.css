@@ -2272,6 +2272,15 @@ body.mode-joiner .only-joiner{ display:block; }
   }
 }
 
+
+/* Tournament (desktop): keep chat panel a fixed height so it doesn't grow with messages */
+@media (min-width: 769px){
+  body.tournament .panel-chat .chat-card{
+    height: 68vh;
+    max-height: 68vh;
+  }
+}
+
 .chat-card .chat-messages{
   background: rgba(255,255,255,0.02);
   border: 1px solid rgba(255,255,255,0.06);
