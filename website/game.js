@@ -369,6 +369,9 @@ function initGameUI() {
   // End game (manual)
   document.getElementById('end-game-btn')?.addEventListener('click', handleEndGame);
 
+  // Popover toggles
+  setupGamePopovers();
+
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
 
@@ -380,6 +383,50 @@ function initGameUI() {
   } else {
     showModeSelect();
   }
+}
+
+/* =========================
+   Game Popovers (Log & Menu)
+========================= */
+function setupGamePopovers() {
+  const logToggle = document.getElementById('game-log-toggle');
+  const logPopover = document.getElementById('game-log');
+  const logClose = document.getElementById('game-log-close');
+  const menuToggle = document.getElementById('game-menu-toggle');
+  const menuPopover = document.getElementById('game-menu');
+  const backdrop = document.getElementById('popover-backdrop');
+
+  function closeAllPopovers() {
+    if (logPopover) logPopover.style.display = 'none';
+    if (menuPopover) menuPopover.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+  }
+
+  logToggle?.addEventListener('click', () => {
+    const isOpen = logPopover?.style.display === 'flex';
+    closeAllPopovers();
+    if (!isOpen && logPopover) {
+      logPopover.style.display = 'flex';
+      backdrop.style.display = 'block';
+    }
+  });
+
+  logClose?.addEventListener('click', closeAllPopovers);
+
+  menuToggle?.addEventListener('click', () => {
+    const isOpen = menuPopover?.style.display === 'flex';
+    closeAllPopovers();
+    if (!isOpen && menuPopover) {
+      menuPopover.style.display = 'flex';
+      backdrop.style.display = 'block';
+    }
+  });
+
+  backdrop?.addEventListener('click', closeAllPopovers);
+
+  // Close popovers when clicking menu items
+  document.getElementById('leave-game-btn')?.addEventListener('click', closeAllPopovers);
+  document.getElementById('end-game-btn')?.addEventListener('click', closeAllPopovers);
 }
 
 /* =========================
