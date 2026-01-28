@@ -1505,6 +1505,12 @@ async function quickReadyOrJoin() {
   const youRole = g ? getQuickPlayerRole(g, odId) : null;
   const inProgress = !!(g && g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
 
+  // Join as spectator during active game
+  if (inProgress && (selectedQuickTeam === 'spectator' || youRole === 'spectator' || (!youRole && !selectedQuickTeam))) {
+    await joinQuickLobby('spectator');
+    return;
+  }
+
   if (inProgress && isActiveJoinOn(g) && (youRole !== 'red' && youRole !== 'blue')) {
     const role = selectedQuickTeam || 'spectator';
     if (role !== 'red' && role !== 'blue') {
@@ -1754,6 +1760,9 @@ function renderQuickLobby(game) {
   if (inProgress && (youRoleNow === 'red' || youRoleNow === 'blue')) {
     readyBtn.textContent = 'In Game';
     readyBtn.disabled = true;
+  } else if (inProgress && effectiveRole === 'spectator') {
+    readyBtn.textContent = 'Join as Spectator';
+    readyBtn.disabled = false;
   } else if (canLateJoin) {
     readyBtn.textContent = 'Join';
     readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
