@@ -3390,7 +3390,8 @@ button.player-tag.pill-action:disabled{
 }
 
 #game-board-container .game-header { grid-row: 1; }
-#game-board-container .game-board { grid-row: 2; }
+/* The board is wrapped in .board-slot (which owns the available space). */
+#game-board-container .board-slot { grid-row: 2; }
 #game-board-container .clue-area { grid-row: 3; }
 #game-board-container .game-actions { grid-row: 4; }
 
@@ -3401,7 +3402,7 @@ button.player-tag.pill-action:disabled{
     grid-template-rows: auto 1fr auto auto;
   }
   #game-board-container .game-header { grid-column: 1 / -1; }
-  #game-board-container .game-board { grid-column: 1; }
+  #game-board-container .board-slot { grid-column: 1; }
   #game-board-container .clue-area { grid-column: 1; }
   #game-board-container .game-actions { grid-column: 1; }
   #game-board-container .game-log {
@@ -5387,6 +5388,12 @@ body.tournament.has-team-color .input:focus {
   grid-template-rows: auto 1fr auto auto;
   gap: 8px;
 }
+
+/* Explicitly place key children so we don't create implicit extra rows (which hides footer UI when scroll is locked). */
+.panel-game #game-board-container .game-header { grid-row: 1; }
+.panel-game #game-board-container .board-slot { grid-row: 2; }
+.panel-game #game-board-container .clue-area { grid-row: 3; }
+.panel-game #game-board-container .game-actions { grid-row: 4; }
 
 /* Desktop: board + compact log sidebar (internal scroll only) */
 @media (min-width: 980px) {
