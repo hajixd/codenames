@@ -3668,7 +3668,15 @@ function stopPresenceListener() {
   }
 }
 
-function getPresenceStatus(presence) {
+function getPresenceStatus(presenceOrId) {
+  // Accept either a presence doc/object OR a userId string.
+  let presence = presenceOrId;
+
+  if (typeof presenceOrId === 'string') {
+    const id = String(presenceOrId || '').trim();
+    presence = presenceCache.find(p => p?.id === id || p?.odId === id) || null;
+  }
+
   if (!presence?.lastActivity) return 'offline';
 
   const lastMs = typeof presence.lastActivity.toMillis === 'function'
@@ -4169,7 +4177,9 @@ function initProfilePopup() {
     const id = link.dataset.profileId;
 
     if (type && id) {
-      showProfilePopup(type, id, link);
+      try { playSound?.('click'); } catch (_) {}
+      // Click opens the full, centered detail modal.
+      openProfileDetailModal(type, id);
     }
   });
 
@@ -4181,6 +4191,8 @@ function initProfilePopup() {
 
     // Only hover behavior on desktop
     if (window.innerWidth <= 768) return;
+    // Don't show hover popovers while the full detail modal is open.
+    if (isProfileDetailModalOpen()) return;
 
     const type = link.dataset.profileType;
     const id = link.dataset.profileId;
@@ -4315,6 +4327,430 @@ function hideProfilePopup() {
   currentProfileType = null;
   currentProfileId = null;
 }
+
+/* =========================
+   Profile Detail Modal (click)
+========================= */
+let profileDetailLoadingToken = 0;
+
+function isProfileDetailModalOpen() {
+  const modal = document.getElementById('profile-detail-modal');
+  return !!(modal && modal.style.display === 'flex' && modal.classList.contains('modal-open'));
+}
+
+function initProfileDetailModal() {
+  const modal = document.getElementById('profile-detail-modal');
+  const backdrop = document.getElementById('profile-detail-modal-backdrop');
+  const closeBtn = document.getElementById('profile-detail-modal-close');
+
+  if (!modal) return;
+
+  closeBtn?.addEventListener('click', () => {
+    try { playSound?.('click'); } catch (_) {}
+    closeProfileDetailModal();
+  });
+
+  backdrop?.addEventListener('click', () => {
+    try { playSound?.('click'); } catch (_) {}
+    closeProfileDetailModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isProfileDetailModalOpen()) {
+      closeProfileDetailModal();
+    }
+  });
+}
+
+function openProfileDetailModal(type, id) {
+  const modal = document.getElementById('profile-detail-modal');
+  if (!modal) return;
+
+  // Close hover popup if it's open
+  hideProfilePopup();
+
+  // Show modal immediately with a loading state
+  setProfileDetailLoading(type, id);
+
+  modal.style.display = 'flex';
+  void modal.offsetWidth; // reflow
+  modal.classList.add('modal-open');
+
+  // Render details async (token prevents late writes if user clicks around quickly)
+  const token = ++profileDetailLoadingToken;
+  renderProfileDetail(type, id, token).catch(err => {
+    console.warn('Profile detail render failed:', err);
+    if (token !== profileDetailLoadingToken) return;
+    setProfileDetailError('Could not load details.');
+  });
+}
+
+function closeProfileDetailModal() {
+  const modal = document.getElementById('profile-detail-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
+}
+
+function setProfileDetailLoading(type, id) {
+  const titleEl = document.getElementById('profile-detail-title');
+  const bodyEl = document.getElementById('profile-detail-body');
+  if (!titleEl || !bodyEl) return;
+
+  const label = type === 'team' ? 'Team' : 'Player';
+  titleEl.textContent = `${label} Details`;
+  bodyEl.innerHTML = `
+    <div class="profile-detail-loading">
+      <div class="spinner"></div>
+      <div class="hint">Loading…</div>
+    </div>
+  `;
+}
+
+function setProfileDetailError(msg) {
+  const titleEl = document.getElementById('profile-detail-title');
+  const bodyEl = document.getElementById('profile-detail-body');
+  if (!titleEl || !bodyEl) return;
+
+  titleEl.textContent = 'Profile';
+  bodyEl.innerHTML = `<div class="hint">${esc(msg || 'Error')}</div>`;
+}
+
+async function renderProfileDetail(type, id, token) {
+  if (token !== profileDetailLoadingToken) return;
+
+  if (type === 'team') {
+    await renderTeamDetailModal(id, token);
+  } else if (type === 'player') {
+    await renderPlayerDetailModal(id, token);
+  } else {
+    setProfileDetailError('Unknown profile type.');
+  }
+}
+
+async function fetchTeamRecordAllTime(teamId) {
+  // Best-effort all-time record based on finished games (winner red/blue).
+  // If Firestore composite indexes aren't available, we fall back to "recent games" record.
+  const finished = (winner) => winner === 'red' || winner === 'blue';
+
+  try {
+    const [redSnap, blueSnap] = await Promise.all([
+      db.collection('games')
+        .where('redTeamId', '==', teamId)
+        .where('winner', 'in', ['red', 'blue'])
+        .get(),
+      db.collection('games')
+        .where('blueTeamId', '==', teamId)
+        .where('winner', 'in', ['red', 'blue'])
+        .get()
+    ]);
+
+    const docs = [...redSnap.docs, ...blueSnap.docs].map(d => ({ id: d.id, ...d.data() }));
+    let wins = 0, losses = 0;
+
+    for (const g of docs) {
+      if (!finished(g.winner)) continue;
+      const isRed = g.redTeamId === teamId;
+      const isBlue = g.blueTeamId === teamId;
+      const won = (g.winner === 'red' && isRed) || (g.winner === 'blue' && isBlue);
+      if (won) wins++; else losses++;
+    }
+
+    const total = wins + losses;
+    return { wins, losses, total, isApprox: false };
+  } catch (e) {
+    // Fallback handled by caller
+    return null;
+  }
+}
+
+async function fetchRecentTeamGames(teamId, limit = 8) {
+  const toMs = (t) => {
+    try { return tsToMs(t); } catch (_) { return 0; }
+  };
+
+  const [redSnap, blueSnap] = await Promise.all([
+    db.collection('games').where('redTeamId', '==', teamId).orderBy('createdAt', 'desc').limit(limit).get(),
+    db.collection('games').where('blueTeamId', '==', teamId).orderBy('createdAt', 'desc').limit(limit).get()
+  ]);
+
+  const games = [...redSnap.docs, ...blueSnap.docs].map(d => ({ id: d.id, ...d.data() }));
+  games.sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
+  return games.slice(0, limit);
+}
+
+function formatGameDate(ts) {
+  const ms = tsToMs(ts);
+  if (!ms) return '';
+  const d = new Date(ms);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function gameResultForTeam(game, teamId) {
+  const finished = game?.winner === 'red' || game?.winner === 'blue';
+  if (!finished) return '—';
+  const isRed = game.redTeamId === teamId;
+  const isBlue = game.blueTeamId === teamId;
+  const won = (game.winner === 'red' && isRed) || (game.winner === 'blue' && isBlue);
+  return won ? 'W' : 'L';
+}
+
+async function renderTeamDetailModal(teamId, token) {
+  const team = teamsCache.find(t => t.id === teamId);
+  if (!team) {
+    setProfileDetailError('Team not found.');
+    return;
+  }
+
+  const titleEl = document.getElementById('profile-detail-title');
+  const bodyEl = document.getElementById('profile-detail-body');
+  if (!titleEl || !bodyEl) return;
+
+  const tc = getDisplayTeamColor(team);
+  const members = getMembers(team);
+  const creatorId = team.creatorUserId;
+
+  const createdAt = team.createdAt ? formatRelativeTime(tsToMs(team.createdAt)) : 'Unknown';
+  const memberIds = members.map(m => entryAccountId(m)).filter(Boolean);
+  const lastActivity = getTeamLastActivity(memberIds);
+
+  // Record + recent games
+  let record = await fetchTeamRecordAllTime(teamId);
+  let recordNote = '';
+  if (!record) {
+    const recent = await fetchRecentTeamGames(teamId, 20);
+    let wins = 0, losses = 0;
+    for (const g of recent) {
+      const r = gameResultForTeam(g, teamId);
+      if (r === 'W') wins++;
+      if (r === 'L') losses++;
+    }
+    record = { wins, losses, total: wins + losses, isApprox: true, sampleN: recent.length };
+    recordNote = ' (recent games)';
+  }
+
+  const total = record.total || 0;
+  const pct = total ? Math.round((record.wins / total) * 100) : 0;
+
+  const recentGames = await fetchRecentTeamGames(teamId, 6);
+  const opponents = (g) => {
+    const isRed = g.redTeamId === teamId;
+    const oppName = isRed ? (g.blueTeamName || 'Opponent') : (g.redTeamName || 'Opponent');
+    return truncateTeamName(oppName);
+  };
+
+  titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(team.teamName || 'Unnamed Team')}</span>`;
+
+  const onlineCount = memberIds.filter(id => getPresenceStatus(id) === 'online').length;
+
+  bodyEl.innerHTML = `
+    <div class="profile-detail-top">
+      <div class="profile-stats">
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Members</span>
+          <span class="profile-stat-value">${members.length}/${TEAM_MAX} <span class="hint">(${onlineCount} online)</span></span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Created</span>
+          <span class="profile-stat-value">${esc(createdAt)}</span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Last Active</span>
+          <span class="profile-stat-value">${esc(lastActivity)}</span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Record</span>
+          <span class="profile-stat-value">${record.wins}-${record.losses}${recordNote} <span class="hint">(${pct}%)</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-members">
+      <div class="profile-members-title">Roster</div>
+      ${members.length ? members.map(m => {
+        const mid = entryAccountId(m);
+        const status = getPresenceStatus(mid);
+        const dot = status === 'online' ? 'online' : (status === 'idle' ? 'inactive' : 'offline');
+        const isLeader = isSameAccount(m, creatorId);
+        return `
+          <div class="profile-member">
+            <span class="profile-member-name profile-link" data-profile-type="player" data-profile-id="${esc(mid)}" style="color:${esc(tc || 'var(--text)')}">${esc(m.name || '—')}</span>
+            <span class="profile-member-meta">
+              <span class="online-user-dot ${esc(dot)}"></span>
+              <span class="hint">${esc(status)}</span>
+            </span>
+            ${isLeader ? '<span class="profile-member-badge leader">Leader</span>' : ''}
+          </div>
+        `;
+      }).join('') : '<div class="profile-member"><span class="profile-member-name" style="color:var(--text-dim)">No members yet</span></div>'}
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-detail-section">
+      <div class="profile-members-title">Recent Matches</div>
+      ${recentGames && recentGames.length ? `
+        <div class="profile-detail-games">
+          ${recentGames.map(g => {
+            const r = gameResultForTeam(g, teamId);
+            const cls = r === 'W' ? 'win' : (r === 'L' ? 'loss' : '');
+            const date = formatGameDate(g.createdAt);
+            const opp = opponents(g);
+            const finished = g.winner === 'red' || g.winner === 'blue';
+            const status = finished ? (r === 'W' ? 'Win' : 'Loss') : (g.winner ? 'Ended' : 'In progress');
+            return `
+              <div class="profile-game-row ${esc(cls)}">
+                <div class="profile-game-left">
+                  <div class="profile-game-title">${esc(opp)}</div>
+                  <div class="profile-game-sub hint">${esc(date)}</div>
+                </div>
+                <div class="profile-game-right">
+                  <span class="profile-game-pill ${esc(cls)}">${esc(status)}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : `<div class="hint">No finished games yet.</div>`}
+    </div>
+  `;
+}
+
+async function fetchSpymasterRecordForName(name) {
+  const n = (name || '').trim();
+  if (!n) return { wins: 0, losses: 0, total: 0 };
+
+  const normalizeWinner = (g) => (g?.winner === 'red' || g?.winner === 'blue') ? g.winner : null;
+
+  // Two queries (red spymaster / blue spymaster)
+  const [redSnap, blueSnap] = await Promise.all([
+    db.collection('games').where('redSpymaster', '==', n).orderBy('createdAt', 'desc').limit(50).get(),
+    db.collection('games').where('blueSpymaster', '==', n).orderBy('createdAt', 'desc').limit(50).get()
+  ]);
+
+  const docs = [...redSnap.docs, ...blueSnap.docs].map(d => ({ id: d.id, ...d.data() }));
+  let wins = 0, losses = 0;
+
+  for (const g of docs) {
+    const w = normalizeWinner(g);
+    if (!w) continue;
+
+    const wasRedSpy = g.redSpymaster === n;
+    const wasBlueSpy = g.blueSpymaster === n;
+
+    const won = (w === 'red' && wasRedSpy) || (w === 'blue' && wasBlueSpy);
+    if (won) wins++; else losses++;
+  }
+
+  const total = wins + losses;
+  return { wins, losses, total };
+}
+
+async function renderPlayerDetailModal(playerId, token) {
+  // Find player in cache
+  const player = playersCache.find(p => p.id === playerId || entryAccountId(p) === playerId);
+  if (!player) {
+    setProfileDetailError('Player not found.');
+    return;
+  }
+
+  const titleEl = document.getElementById('profile-detail-title');
+  const bodyEl = document.getElementById('profile-detail-body');
+  if (!titleEl || !bodyEl) return;
+
+  const name = (player.name || '—').trim();
+  const roster = buildRosterIndex(teamsCache);
+  const memberTeam = roster.memberTeamByUserId.get(player.id);
+  const tc = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+
+  const createdAt = player.createdAt ? formatRelativeTime(tsToMs(player.createdAt)) : 'Unknown';
+  const updatedAt = player.updatedAt ? formatRelativeTime(tsToMs(player.updatedAt)) : 'Unknown';
+
+  const presenceStatus = getPresenceStatus(player.id);
+  const isOnline = presenceStatus === 'online';
+  const lastSeen = getPlayerLastSeen(player.id);
+
+  // Team record (if on a team)
+  let teamRecordHtml = '<div class="hint">No team</div>';
+  if (memberTeam) {
+    const record = await fetchTeamRecordAllTime(memberTeam.id);
+    if (record) {
+      const total = record.total || 0;
+      const pct = total ? Math.round((record.wins / total) * 100) : 0;
+      teamRecordHtml = `<div class="profile-stat-value">${record.wins}-${record.losses} <span class="hint">(${pct}%)</span></div>`;
+    } else {
+      teamRecordHtml = `<div class="hint">Record unavailable</div>`;
+    }
+  }
+
+  // Spymaster record (best-effort)
+  let spy = null;
+  try { spy = await fetchSpymasterRecordForName(name); } catch (_) { spy = null; }
+  const spyTotal = spy?.total || 0;
+  const spyPct = spyTotal ? Math.round((spy.wins / spyTotal) * 100) : 0;
+
+  titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
+
+  const teamLine = memberTeam
+    ? `<span class="profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}" style="color:${esc(tc || 'var(--text)')}">${esc(truncateTeamName(memberTeam.teamName || 'Team'))}</span>`
+    : 'No team';
+
+  bodyEl.innerHTML = `
+    <div class="profile-detail-top">
+      <div class="profile-stats">
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Status</span>
+          <span class="profile-status ${isOnline ? 'online' : (presenceStatus === 'idle' ? 'idle' : 'offline')}">
+            <span class="profile-status-dot"></span>
+            ${isOnline ? 'Online' : (presenceStatus === 'idle' ? 'Idle' : 'Offline')}
+          </span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Team</span>
+          <span class="profile-stat-value ${memberTeam ? 'highlight' : ''}" style="${memberTeam && tc ? `color:${esc(tc)}` : ''}">${teamLine}</span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Joined</span>
+          <span class="profile-stat-value">${esc(createdAt)}</span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Last Seen</span>
+          <span class="profile-stat-value">${esc(isOnline ? 'Now' : lastSeen)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-detail-section">
+      <div class="profile-members-title">Stats</div>
+      <div class="profile-stats">
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Team Record</span>
+          ${teamRecordHtml}
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Spymaster Record</span>
+          <span class="profile-stat-value">${spy ? `${spy.wins}-${spy.losses} <span class="hint">(${spyPct}%)</span>` : '—'}</span>
+        </div>
+        <div class="profile-stat-row">
+          <span class="profile-stat-label">Profile Updated</span>
+          <span class="profile-stat-value">${esc(updatedAt)}</span>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:8px;">Spymaster stats are tracked by name (best-effort).</div>
+    </div>
+  `;
+}
+
+// Initialize profile detail modal on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', initProfileDetailModal);
 
 function renderTeamProfile(teamId) {
   const team = teamsCache.find(t => t.id === teamId);
