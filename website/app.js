@@ -200,7 +200,12 @@ function initLaunchScreen() {
       return;
     }
     if (hint) hint.textContent = '';
-    await setUserName(v);
+    showAuthLoadingScreen();
+    try {
+      await setUserName(v);
+    } finally {
+      hideAuthLoadingScreen();
+    }
   });
 
   logoutBtn?.addEventListener('click', () => {
@@ -790,7 +795,12 @@ function initName() {
       return;
     }
     if (hint) hint.textContent = '';
-    await setUserName(v);
+    showAuthLoadingScreen();
+    try {
+      await setUserName(v);
+    } finally {
+      hideAuthLoadingScreen();
+    }
   });
 
   // Only way to unlink a device from the currently linked name/account.
@@ -4454,7 +4464,12 @@ function initNameChangeModal() {
     if (!newName) return;
 
     playSound('click');
-    await setUserName(newName);
+    showAuthLoadingScreen();
+    try {
+      await setUserName(newName);
+    } finally {
+      hideAuthLoadingScreen();
+    }
     closeNameChangeModal();
   });
 
@@ -4615,15 +4630,20 @@ setUserName = async function(name, opts) {
   }
 };
 
+// Show the auth loading screen
+function showAuthLoadingScreen() {
+  const screen = document.getElementById('auth-loading-screen');
+  if (screen) {
+    screen.style.display = 'flex';
+    screen.classList.remove('hidden');
+  }
+}
+
 // Hide the auth loading screen with a fade transition
 function hideAuthLoadingScreen() {
   const screen = document.getElementById('auth-loading-screen');
   if (screen) {
     screen.classList.add('hidden');
-    // Remove from DOM after transition
-    setTimeout(() => {
-      if (screen.parentNode) screen.parentNode.removeChild(screen);
-    }, 400);
   }
 }
 
