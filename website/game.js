@@ -1660,9 +1660,10 @@ function renderQuickLobby(game) {
     return players.map(p => {
       const isYou = p.odId === odId;
       const ready = !!p.ready;
+      const playerId = p.odId || '';
       return `
         <div class="quick-player ${ready ? 'ready' : ''}">
-          <span class="quick-player-name">${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
           <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         </div>
       `;
@@ -1673,9 +1674,10 @@ function renderQuickLobby(game) {
     if (!players.length) return '<div class="quick-empty">No one yet</div>';
     return players.map(p => {
       const isYou = p.odId === odId;
+      const playerId = p.odId || '';
       return `
         <div class="quick-player spectator">
-          <span class="quick-player-name">${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
         </div>
       `;
     }).join('');
@@ -3685,10 +3687,11 @@ function renderTeamRoster() {
       const isSpymaster = p.name === spymaster;
       const role = isSpymaster ? 'spymaster' : 'operative';
       const isCurrent = isCurrentTeam && currentGame.currentPhase !== 'ended';
+      const playerId = p.odId || '';
 
       return `
         <div class="roster-player ${isCurrent ? 'current-turn' : ''}">
-          <span class="roster-player-name">${escapeHtml(p.name)}</span>
+          <span class="roster-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}</span>
           <span class="roster-player-role ${role}">${isSpymaster ? 'Spy' : 'Op'}</span>
         </div>
       `;

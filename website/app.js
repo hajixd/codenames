@@ -901,8 +901,15 @@ function refreshNameUI() {
 function refreshHeaderIdentity() {
   const st = computeUserState(teamsCache);
   // Only show team name if actually on a team (not pending) - pending requests don't count
-  const teamText = st.team ? truncateTeamName(st.team.teamName || 'My team') : 'No team';
-  setText('user-team-display', teamText);
+  const teamDisplayEl = document.getElementById('user-team-display');
+  if (teamDisplayEl) {
+    if (st.team) {
+      const teamName = truncateTeamName(st.team.teamName || 'My team');
+      teamDisplayEl.innerHTML = `<span class="profile-link" data-profile-type="team" data-profile-id="${esc(st.team.id)}">${esc(teamName)}</span>`;
+    } else {
+      teamDisplayEl.textContent = 'No team';
+    }
+  }
 
   // Apply team theme (glow + accent) for the team you're ON.
   applyTeamThemeFromState(st);
@@ -1259,7 +1266,7 @@ function renderPlayers(players, teams) {
       // Always show the status pill (Available or Team). If you're on a team,
       // also show an Invite pill to the RIGHT of the status pill.
       let statusPillHtml = memberTeam
-        ? `<span class="player-tag" ${teamPillStyle}>${esc(teamName)}</span>`
+        ? `<span class="player-tag profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}" ${teamPillStyle}>${esc(teamName)}</span>`
         : `<span class="player-tag ok">Available</span>`;
 
       let invitePillHtml = '';
@@ -1283,7 +1290,7 @@ function renderPlayers(players, teams) {
       return `
         <div class="player-row player-directory-row">
           <div class="player-left">
-            <span class="player-name" ${nameStyle}>${esc(name)}</span>
+            <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(name)}</span>
           </div>
           <div class="player-right">
             ${statusPillHtml}
@@ -1352,8 +1359,8 @@ function renderInvites(players, teams) {
     return `
       <div class="invite-row">
         <div class="invite-left">
-          <div class="invite-title" ${nameStyle}>${esc(teamName)}</div>
-          <div class="invite-sub">You’ve been invited to join</div>
+          <div class="invite-title profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" ${nameStyle}>${esc(teamName)}</div>
+          <div class="invite-sub">You've been invited to join</div>
         </div>
         <div class="invite-actions">
           <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
@@ -1632,8 +1639,12 @@ function renderTeams(teams) {
   // Sharp, simple list: team name + member names. Click for details / request.
   container.innerHTML = sortedTeams.map((t) => {
     const members = getMembers(t);
-    const memberNames = members.length
-      ? members.map(m => (m?.name || '—').trim()).filter(Boolean).join(', ')
+    const memberNamesHtml = members.length
+      ? members.map(m => {
+          const memberId = entryAccountId(m);
+          const memberName = (m?.name || '—').trim();
+          return memberId ? createProfileLink('player', memberId, memberName, null) : esc(memberName);
+        }).join(', ')
       : 'No members yet';
 
     const isMine = st.teamId === t.id;
@@ -1647,8 +1658,8 @@ function renderTeams(teams) {
     return `
       <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}" ${itemStyle}>
         <div class="team-list-left">
-          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(truncateTeamName(t.teamName || 'Unnamed'))}</span></div>
-          <div class="team-list-members" ${nameStyle}>${esc(memberNames)}</div>
+          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text profile-link" data-profile-type="team" data-profile-id="${esc(t.id)}" ${nameStyle}>${esc(truncateTeamName(t.teamName || 'Unnamed'))}</span></div>
+          <div class="team-list-members" ${nameStyle}>${memberNamesHtml}</div>
         </div>
         <div class="team-list-right">
           <div class="team-list-count ${pillClass}">${members.length}/${TEAM_MAX}</div>
@@ -1722,13 +1733,17 @@ function renderTeamModal(teamId) {
   const tcMember = getDisplayTeamColor(team);
   if (membersEl) {
     membersEl.innerHTML = members.length
-      ? members.map(m => `
+      ? members.map(m => {
+          const memberId = entryAccountId(m);
+          const memberName = m.name || '—';
+          return `
           <div class="player-row">
             <div class="player-left">
-              <span class="player-name" style="color:${esc(tcMember)}">${esc(m.name || '—')}</span>
+              <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(memberId)}" style="color:${esc(tcMember)}">${esc(memberName)}</span>
             </div>
           </div>
-        `).join('')
+        `;
+        }).join('')
       : '<div class="empty-state">No members yet</div>';
   }
 
@@ -2004,12 +2019,13 @@ function renderMyTeam(teams) {
       const ownerKey = String(st.team.creatorUserId || '').trim() || nameToAccountId((st.team.creatorName || '').trim());
       const isOwner = ownerKey ? (entryAccountId(m) === ownerKey) : false;
       const canKick = st.isCreator && !isOwner;
+      const memberId = entryAccountId(m);
       return `
         <div class="player-row">
           <div class="player-left">
-            <span class="player-name" style="color:${esc(getDisplayTeamColor(st.team))}">${esc(m.name || '—')}</span>
+            <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(memberId)}" style="color:${esc(getDisplayTeamColor(st.team))}">${esc(m.name || '—')}</span>
           </div>
-          ${canKick ? `<button class="icon-btn danger" type="button" data-kick="${esc(entryAccountId(m))}" title="Kick">×</button>` : ''}
+          ${canKick ? `<button class="icon-btn danger" type="button" data-kick="${esc(memberId)}" title="Kick">×</button>` : ''}
         </div>
       `;
     }).join('');
@@ -2064,10 +2080,11 @@ function renderRequestsModal() {
   const pending = getPending(st.team);
   list.innerHTML = pending.length
     ? pending.map(r => {
+        const requesterId = entryAccountId(r);
         return `
           <div class="request-row">
             <div class="player-left">
-              <span class="player-name">${esc(r.name || '—')}</span>
+              <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(requesterId)}">${esc(r.name || '—')}</span>
             </div>
             <div class="request-actions">
               <button class="btn primary small" type="button" data-accept="${esc(r.userId)}">Accept</button>
@@ -2411,15 +2428,17 @@ function renderChatTabMessages() {
     const teamName = team?.teamName ? truncateTeamName(String(team.teamName)) : '';
     const color = team ? getDisplayTeamColor(team) : '';
 
-    const label = teamName
-      ? `${senderName} (team ${teamName})`
-      : senderName;
-
     const whoStyle = color ? `style="color:${esc(color)}"` : '';
+    const senderHtml = senderId
+      ? `<span class="profile-link" data-profile-type="player" data-profile-id="${esc(senderId)}" ${whoStyle}>${esc(senderName)}</span>`
+      : `<span ${whoStyle}>${esc(senderName)}</span>`;
+    const teamHtml = team
+      ? ` <span class="profile-link" data-profile-type="team" data-profile-id="${esc(team.id)}" ${whoStyle}>(${esc(teamName)})</span>`
+      : '';
 
     return `
       <div class="chat-msg">
-        <div class="chat-line"><span class="chat-who" ${whoStyle}>${esc(label)}:</span> <span class="chat-text">${esc(m?.text || '')}</span></div>
+        <div class="chat-line"><span class="chat-who">${senderHtml}${teamHtml}:</span> <span class="chat-text">${esc(m?.text || '')}</span></div>
       </div>
     `;
   }).join('');
@@ -3809,12 +3828,12 @@ function renderOnlineUsersList() {
       const teamName = memberTeam ? truncateTeamName(memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
+      const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
-          <div class="online-user-name" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
+          <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">active</div>
         </div>
       `;
@@ -3832,12 +3851,12 @@ function renderOnlineUsersList() {
       const teamName = memberTeam ? truncateTeamName(memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
+      const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot inactive"></div>
-          <div class="online-user-name" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
+          <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">${getTimeSinceActivity(p)}</div>
         </div>
       `;
@@ -3855,12 +3874,12 @@ function renderOnlineUsersList() {
       const teamName = memberTeam ? truncateTeamName(memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
-      const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
+      const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
-          <div class="online-user-name" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
+          <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
         </div>
       `;
@@ -4060,12 +4079,13 @@ function renderTeammatesList() {
     const isYou = member.userId === myId;
     const isOwner = member.userId === ownerId;
     const initial = (member.name || '?').charAt(0).toUpperCase();
+    const memberId = entryAccountId(member);
 
     html += `
       <div class="teammate-row${isYou ? ' is-you' : ''}${isOwner ? ' is-owner' : ''}">
         <div class="teammate-avatar">${esc(initial)}</div>
         <div class="teammate-info">
-          <div class="teammate-name">${esc(member.name || 'Unknown')}${isYou ? ' (you)' : ''}</div>
+          <div class="teammate-name profile-link" data-profile-type="player" data-profile-id="${esc(memberId)}">${esc(member.name || 'Unknown')}${isYou ? ' (you)' : ''}</div>
         </div>
       </div>
     `;
@@ -4109,3 +4129,385 @@ Object.defineProperty(window, 'presenceCache', {
   configurable: true
 });
 window.updatePresence = updatePresence;
+
+/* =========================
+   Profile Popup System
+========================= */
+let profilePopupTimeout = null;
+let currentProfileType = null; // 'team' | 'player'
+let currentProfileId = null;
+
+function initProfilePopup() {
+  const popup = document.getElementById('profile-popup');
+  const backdrop = document.getElementById('profile-popup-backdrop');
+  const closeBtn = document.getElementById('profile-popup-close');
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', hideProfilePopup);
+  }
+
+  if (backdrop) {
+    backdrop.addEventListener('click', hideProfilePopup);
+  }
+
+  // Close on escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && popup?.style.display !== 'none') {
+      hideProfilePopup();
+    }
+  });
+
+  // Handle clicks on profile links via event delegation
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('.profile-link');
+    if (!link) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const type = link.dataset.profileType;
+    const id = link.dataset.profileId;
+
+    if (type && id) {
+      showProfilePopup(type, id, link);
+    }
+  });
+
+  // Desktop: show on hover with delay
+  let hoverTimeout = null;
+  document.addEventListener('mouseover', (e) => {
+    const link = e.target.closest('.profile-link');
+    if (!link) return;
+
+    // Only hover behavior on desktop
+    if (window.innerWidth <= 768) return;
+
+    const type = link.dataset.profileType;
+    const id = link.dataset.profileId;
+
+    if (type && id) {
+      clearTimeout(hoverTimeout);
+      hoverTimeout = setTimeout(() => {
+        showProfilePopup(type, id, link);
+      }, 300);
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    const link = e.target.closest('.profile-link');
+    if (!link) return;
+
+    clearTimeout(hoverTimeout);
+  });
+
+  // Keep popup open when hovering over it
+  if (popup) {
+    popup.addEventListener('mouseenter', () => {
+      clearTimeout(profilePopupTimeout);
+    });
+
+    popup.addEventListener('mouseleave', () => {
+      if (window.innerWidth > 768) {
+        profilePopupTimeout = setTimeout(hideProfilePopup, 200);
+      }
+    });
+  }
+}
+
+function showProfilePopup(type, id, anchorEl) {
+  const popup = document.getElementById('profile-popup');
+  const backdrop = document.getElementById('profile-popup-backdrop');
+  if (!popup) return;
+
+  clearTimeout(profilePopupTimeout);
+  currentProfileType = type;
+  currentProfileId = id;
+
+  // Generate content based on type
+  if (type === 'team') {
+    renderTeamProfile(id);
+  } else if (type === 'player') {
+    renderPlayerProfile(id);
+  }
+
+  // Position popup
+  const isMobile = window.innerWidth <= 768;
+
+  if (isMobile) {
+    // Mobile: show as bottom sheet
+    popup.style.top = '';
+    popup.style.left = '';
+    popup.style.right = '';
+    popup.style.bottom = '';
+    backdrop.style.display = 'block';
+  } else {
+    // Desktop: position near anchor element
+    backdrop.style.display = 'none';
+    positionPopupNearAnchor(popup, anchorEl);
+  }
+
+  popup.style.display = 'flex';
+  requestAnimationFrame(() => {
+    popup.classList.add('visible');
+  });
+}
+
+function positionPopupNearAnchor(popup, anchorEl) {
+  if (!anchorEl) return;
+
+  const rect = anchorEl.getBoundingClientRect();
+  const popupCard = popup.querySelector('.profile-popup-card');
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  // Temporarily show to measure
+  popup.style.visibility = 'hidden';
+  popup.style.display = 'flex';
+
+  const popupWidth = popupCard?.offsetWidth || 300;
+  const popupHeight = popupCard?.offsetHeight || 200;
+
+  popup.style.visibility = '';
+
+  // Calculate position - prefer below and to the right
+  let top = rect.bottom + 8;
+  let left = rect.left;
+
+  // Adjust if would overflow right
+  if (left + popupWidth > viewportWidth - 16) {
+    left = viewportWidth - popupWidth - 16;
+  }
+
+  // Adjust if would overflow left
+  if (left < 16) {
+    left = 16;
+  }
+
+  // Adjust if would overflow bottom - show above instead
+  if (top + popupHeight > viewportHeight - 16) {
+    top = rect.top - popupHeight - 8;
+  }
+
+  // Adjust if would overflow top
+  if (top < 16) {
+    top = 16;
+  }
+
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+}
+
+function hideProfilePopup() {
+  const popup = document.getElementById('profile-popup');
+  const backdrop = document.getElementById('profile-popup-backdrop');
+
+  if (popup) {
+    popup.classList.remove('visible');
+    setTimeout(() => {
+      popup.style.display = 'none';
+    }, 200);
+  }
+
+  if (backdrop) {
+    backdrop.style.display = 'none';
+  }
+
+  currentProfileType = null;
+  currentProfileId = null;
+}
+
+function renderTeamProfile(teamId) {
+  const team = teamsCache.find(t => t.id === teamId);
+  if (!team) {
+    renderProfileError('Team not found');
+    return;
+  }
+
+  const titleEl = document.getElementById('profile-popup-title');
+  const bodyEl = document.getElementById('profile-popup-body');
+  if (!titleEl || !bodyEl) return;
+
+  const tc = getDisplayTeamColor(team);
+  const members = getMembers(team);
+  const isEligible = members.length >= TEAM_MIN;
+  const creatorId = team.creatorUserId;
+
+  // Format creation date
+  const createdAt = team.createdAt ? formatRelativeTime(tsToMs(team.createdAt)) : 'Unknown';
+
+  // Get last activity (most recent member activity from presence)
+  const memberIds = members.map(m => entryAccountId(m)).filter(Boolean);
+  const lastActivity = getTeamLastActivity(memberIds);
+
+  titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(team.teamName || 'Unnamed Team')}</span>`;
+
+  bodyEl.innerHTML = `
+    <div class="profile-stats">
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Status</span>
+        <span class="profile-status ${isEligible ? 'eligible' : 'not-eligible'}">
+          <span class="profile-status-dot"></span>
+          ${isEligible ? 'Tournament Ready' : 'Needs ' + (TEAM_MIN - members.length) + ' more'}
+        </span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Members</span>
+        <span class="profile-stat-value">${members.length}/${TEAM_MAX}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Created</span>
+        <span class="profile-stat-value">${esc(createdAt)}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Last Active</span>
+        <span class="profile-stat-value">${esc(lastActivity)}</span>
+      </div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-members">
+      <div class="profile-members-title">Team Members</div>
+      ${members.length ? members.map(m => {
+        const isLeader = isSameAccount(m, creatorId);
+        const memberColor = tc || 'var(--text)';
+        return `
+          <div class="profile-member">
+            <span class="profile-member-name" style="color:${esc(memberColor)}">${esc(m.name || '—')}</span>
+            ${isLeader ? '<span class="profile-member-badge leader">Leader</span>' : ''}
+          </div>
+        `;
+      }).join('') : '<div class="profile-member"><span class="profile-member-name" style="color:var(--text-dim)">No members yet</span></div>'}
+    </div>
+  `;
+}
+
+function renderPlayerProfile(playerId) {
+  // Find player in cache
+  const player = playersCache.find(p => p.id === playerId || entryAccountId(p) === playerId);
+  if (!player) {
+    renderProfileError('Player not found');
+    return;
+  }
+
+  const titleEl = document.getElementById('profile-popup-title');
+  const bodyEl = document.getElementById('profile-popup-body');
+  if (!titleEl || !bodyEl) return;
+
+  const name = (player.name || '—').trim();
+  const roster = buildRosterIndex(teamsCache);
+  const memberTeam = roster.memberTeamByUserId.get(player.id);
+  const tc = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+
+  // Format dates
+  const createdAt = player.createdAt ? formatRelativeTime(tsToMs(player.createdAt)) : 'Unknown';
+  const updatedAt = player.updatedAt ? formatRelativeTime(tsToMs(player.updatedAt)) : 'Unknown';
+
+  // Get online status from presence
+  const presenceStatus = getPresenceStatus(player.id);
+  const isOnline = presenceStatus === 'online';
+  const lastSeen = getPlayerLastSeen(player.id);
+
+  titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
+
+  bodyEl.innerHTML = `
+    <div class="profile-stats">
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Status</span>
+        <span class="profile-status ${isOnline ? 'online' : 'offline'}">
+          <span class="profile-status-dot"></span>
+          ${isOnline ? 'Online' : 'Offline'}
+        </span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Team</span>
+        <span class="profile-stat-value ${memberTeam ? 'highlight' : ''}" style="${memberTeam && tc ? `color:${esc(tc)}` : ''}">${memberTeam ? esc(truncateTeamName(memberTeam.teamName || 'Team')) : 'No team'}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Joined</span>
+        <span class="profile-stat-value">${esc(createdAt)}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Last Active</span>
+        <span class="profile-stat-value">${esc(isOnline ? 'Now' : lastSeen)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderProfileError(message) {
+  const titleEl = document.getElementById('profile-popup-title');
+  const bodyEl = document.getElementById('profile-popup-body');
+  if (!titleEl || !bodyEl) return;
+
+  titleEl.textContent = 'Error';
+  bodyEl.innerHTML = `<div style="color:var(--text-dim);font-size:13px;">${esc(message)}</div>`;
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp || isNaN(timestamp)) return 'Unknown';
+
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const weeks = Math.floor(days / 7);
+
+  if (seconds < 60) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  if (weeks < 4) return `${weeks}w ago`;
+
+  // For older dates, show the actual date
+  const date = new Date(timestamp);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+}
+
+function getTeamLastActivity(memberIds) {
+  if (!memberIds || !memberIds.length) return 'Unknown';
+
+  let latestActivity = 0;
+
+  for (const memberId of memberIds) {
+    const presence = presenceCache.find(p => p.id === memberId);
+    if (presence?.lastActivity) {
+      const ts = tsToMs(presence.lastActivity);
+      if (ts > latestActivity) {
+        latestActivity = ts;
+      }
+    }
+  }
+
+  if (latestActivity === 0) return 'Unknown';
+
+  // Check if any member is currently online
+  const anyOnline = memberIds.some(id => getPresenceStatus(id) === 'online');
+  if (anyOnline) return 'Now';
+
+  return formatRelativeTime(latestActivity);
+}
+
+function getPlayerLastSeen(playerId) {
+  const presence = presenceCache.find(p => p.id === playerId);
+  if (!presence?.lastActivity) return 'Unknown';
+
+  return formatRelativeTime(tsToMs(presence.lastActivity));
+}
+
+// Helper to create a profile link HTML
+function createProfileLink(type, id, displayName, color) {
+  const style = color ? `style="color:${esc(color)}"` : '';
+  return `<span class="profile-link" data-profile-type="${esc(type)}" data-profile-id="${esc(id)}" ${style}>${esc(displayName)}</span>`;
+}
+
+// Export for use in other files
+window.createProfileLink = createProfileLink;
+window.showProfilePopup = showProfilePopup;
+window.hideProfilePopup = hideProfilePopup;
+
+// Initialize profile popup on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', initProfilePopup);
