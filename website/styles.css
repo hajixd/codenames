@@ -3334,8 +3334,7 @@ body.tournament.has-team-color .team-list-item.is-mine{
 
 /* Full team (3+ members) outline effect on the entire team card */
 .team-list-item.is-full{
-  border: 2px solid var(--team-accent, rgba(34, 197, 94, 0.5));
-  box-shadow: 0 0 12px var(--team-accent, rgba(34, 197, 94, 0.3)), 0 0 20px var(--team-accent, rgba(34, 197, 94, 0.15));
+  border: 2px solid var(--team-accent, rgba(34, 197, 94, 0.7));
 }
 
 /* Teams page cards */
