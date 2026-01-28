@@ -694,15 +694,28 @@ async function setUserName(name, opts = {}) {
 
   // If this name belongs to another account, switch to it (and migrate any local data best-effort).
   if (targetAccountId && targetAccountId !== myAccountId) {
+    const oldId = myAccountId;
     try {
       await migrateIdentity(myAccountId, targetAccountId, nextName);
     } catch (e) {
       console.warn('Identity migration failed (best-effort)', e);
     }
     safeLSSet(LS_USER_ID, targetAccountId);
+
+    // IMPORTANT: close any presence doc written under the old id so it doesn't show up
+    // as a "duplicate account" in the online list.
+    try {
+      if (oldId) {
+        await db.collection('presence').doc(oldId).set({
+          isOpen: false,
+          closedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (_) {}
   }
 
-  // Ensure we are listening to the correct profile doc for cross-device name sync.
+// Ensure we are listening to the correct profile doc for cross-device name sync.
   startProfileNameSync();
 
   refreshNameUI();
@@ -726,6 +739,65 @@ async function setUserName(name, opts = {}) {
   }
 }
 
+
+
+async function ensureAccountLinkedForName(displayName) {
+  // On load, if we already know the user's name, make sure this device is linked to the
+  // canonical account for that name BEFORE presence starts. This prevents "ghost" presence
+  // docs (and apparent duplicate accounts) when LS_USER_ID differs from the name registry.
+  const name = (displayName || '').trim();
+  const key = nameToAccountId(name);
+  if (!name || !key) return;
+
+  const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
+  const nameRef = namesCol.doc(key);
+
+  const oldId = String(safeLSGet(LS_USER_ID) || '').trim();
+  let mappedId = '';
+
+  try {
+    const snap = await nameRef.get();
+    mappedId = snap.exists ? String(snap.data()?.accountId || '').trim() : '';
+  } catch (_) {
+    // best-effort
+  }
+
+  // If the registry points to an existing account, follow it.
+  if (mappedId && mappedId !== oldId) {
+    try { await migrateIdentity(oldId, mappedId, name); } catch (_) {}
+    safeLSSet(LS_USER_ID, mappedId);
+
+    // Best-effort: immediately close any presence doc we might have written under the old id.
+    try {
+      if (oldId) {
+        await db.collection('presence').doc(oldId).set({
+          isOpen: false,
+          closedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (_) {}
+  }
+
+  // If there is no registry mapping yet, create one to the current device account id.
+  // Do NOT overwrite an existing mapping (we already handled the mappedId case above).
+  if (!mappedId) {
+    const curId = getLocalAccountId();
+    try {
+      await nameRef.set({
+        accountId: curId,
+        name: name,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (_) {}
+  }
+
+  // Ensure a players doc exists for the resolved account (fixes "Player not found" hovers).
+  try {
+    await upsertPlayerProfile(getUserId(), getUserName());
+  } catch (_) {}
+}
 
 async function migrateIdentity(oldId, newId, displayName) {
   const fromId = String(oldId || '').trim();
@@ -2945,7 +3017,7 @@ async function adminDeletePlayer(userId) {
     }
     // Delete player + presence docs
     batch.delete(db.collection('players').doc(uid));
-    batch.delete(db.collection(PRESENCE_COLLECTION).doc(uid));
+    batch.delete(db.collection('presence').doc(uid));
     writes += 2;
     await batch.commit();
   } catch (e) {
@@ -3945,10 +4017,15 @@ let presenceCache = [];
 let presenceUpdateInterval = null;
 let lastActivityTime = Date.now();
 let presenceLastActivePingAtMs = 0;
+let presenceBoundUserId = null;
 
 function initPresence() {
   const name = getUserName();
   if (!name) return;
+
+  // Bind this tab/session to the current account id so we can correctly close/update
+  // presence even if the local account id changes during a login/link flow.
+  presenceBoundUserId = getUserId();
 
   // Update presence immediately
   updatePresence();
@@ -3977,9 +4054,9 @@ function initPresence() {
 
   // Mark the session as closed when navigating away.
   const markClosed = () => {
-    const userId = getUserId();
+    const userId = presenceBoundUserId || getUserId();
     if (!userId) return;
-    const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+    const presenceRef = db.collection('presence').doc(userId);
     // Best-effort: this can fail if the browser is already shutting down.
     presenceRef.set({
       isOpen: false,
@@ -4012,8 +4089,25 @@ async function updatePresence() {
   const name = getUserName();
   if (!userId || !name) return;
 
+  // If the local account id changes (e.g., user clicked "Continue as …"),
+  // immediately close the old presence doc so it doesn't look like a duplicate user.
+  const currentId = String(userId || '').trim();
+  if (!presenceBoundUserId) presenceBoundUserId = currentId;
+
+  if (presenceBoundUserId && currentId && presenceBoundUserId !== currentId) {
+    try {
+      await db.collection('presence').doc(presenceBoundUserId).set({
+        isOpen: false,
+        closedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (_) {}
+    presenceBoundUserId = currentId;
+    presenceLastActivePingAtMs = 0;
+  }
+
   try {
-    const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+    const presenceRef = db.collection('presence').doc(presenceBoundUserId);
     const whereKey = computeLocalPresenceWhereKey();
     // "Heartbeat" is written on a timer so we can tell the tab is still open.
     // "Last activity" is only written when the user recently interacted.
@@ -4021,7 +4115,7 @@ async function updatePresence() {
     const recentlyActive = (document.visibilityState === 'visible') && (now - lastActivityTime < 2 * 60 * 1000);
 
     const payload = {
-      odId: userId,
+      odId: presenceBoundUserId,
       name: name,
       whereKey: whereKey,
       whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
@@ -4049,7 +4143,7 @@ async function updatePresence() {
 function startPresenceListener() {
   if (presenceUnsub) return;
 
-  presenceUnsub = db.collection(PRESENCE_COLLECTION)
+  presenceUnsub = db.collection('presence')
     .orderBy('lastActivity', 'desc')
     .onSnapshot(snap => {
       presenceCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -4564,11 +4658,21 @@ setUserName = async function(name, opts) {
 
 // Initialize presence on DOMContentLoaded if user already has a name
 document.addEventListener('DOMContentLoaded', () => {
-  if (getUserName()) {
-    initPresence();
-  }
-});
+  (async () => {
+    const n = getUserName();
+    if (!n) return;
 
+    // IMPORTANT: resolve the canonical account id for this name before starting presence
+    // to avoid creating "ghost" presence docs that look like duplicate accounts.
+    try {
+      await ensureAccountLinkedForName(n);
+    } catch (e) {
+      console.warn('Account bootstrap failed (best-effort)', e);
+    }
+
+    initPresence();
+  })();
+});
 // Export presence functions for game.js
 window.getPresenceStatus = getPresenceStatus;
 Object.defineProperty(window, 'presenceCache', {
