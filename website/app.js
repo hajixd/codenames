@@ -219,9 +219,7 @@ function initLaunchScreen() {
   });
 
   logoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out on this device?');
-    if (!ok) return;
-    logoutLocal();
+    logoutLocal('Logging out');
   });
 
   refreshNameUI();
@@ -817,9 +815,7 @@ function initName() {
 
   // Only way to unlink a device from the currently linked name/account.
   logoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out on this device?');
-    if (!ok) return;
-    logoutLocal();
+    logoutLocal('Logging out');
   });
 
   // Double-click editing for home page (works on desktop + mobile)
@@ -1941,11 +1937,21 @@ function initMyTeamControls() {
     if (!st.teamId) return;
 
     if (st.isCreator) {
-      const ok = window.confirm('Are you sure you want to delete your team? This cannot be undone.');
+      const ok = await showCustomConfirm({
+        title: 'Delete team?',
+        message: 'Are you sure you want to delete your team? This cannot be undone.',
+        okText: 'Delete',
+        danger: true
+      });
       if (!ok) return;
       await deleteTeam(st.teamId);
     } else {
-      const ok = window.confirm('Are you sure you want to leave this team?');
+      const ok = await showCustomConfirm({
+        title: 'Leave team?',
+        message: 'Are you sure you want to leave this team?',
+        okText: 'Leave',
+        danger: true
+      });
       if (!ok) return;
       await leaveTeam(st.teamId, st.userId);
     }
@@ -2852,7 +2858,12 @@ async function adminDeleteTeam(teamId) {
   if (!isAdminUser()) return;
   const tid = String(teamId || '').trim();
   if (!tid) return;
-  const ok = window.confirm('Delete this team for everyone? This cannot be undone.');
+  const ok = await showCustomConfirm({
+    title: 'Delete team?',
+    message: 'Delete this team for everyone? This cannot be undone.',
+    okText: 'Delete',
+    danger: true
+  });
   if (!ok) return;
 
   await deleteTeam(tid);
@@ -2885,7 +2896,12 @@ async function adminDeletePlayer(userId) {
   if (!uid) return;
 
   const displayName = findKnownUserName(uid) || uid;
-  const ok = window.confirm(`Delete account "${displayName}"? This will remove them from teams and delete their profile.`);
+  const ok = await showCustomConfirm({
+    title: 'Delete account?',
+    message: `Delete account "${displayName}"? This will remove them from teams and delete their profile.`,
+    okText: 'Delete',
+    danger: true
+  });
   if (!ok) return;
 
   // Remove from any teams (members + pending)
@@ -2912,7 +2928,6 @@ async function adminDeletePlayer(userId) {
     await batch.commit();
   } catch (e) {
     console.error('Admin delete player failed:', e);
-    window.alert('Could not delete that account (check permissions / rules).');
   }
 }
 
@@ -3260,13 +3275,19 @@ function safeLSSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
 }
 
-function logoutLocal() {
+function logoutLocal(loadingMessage = 'Logging out') {
+  // Show loading screen with appropriate message
+  showAuthLoadingScreen(loadingMessage);
+
   // Local-only "logout": clears this device's saved name + id so it is no longer
   // linked to any shared name-based account.
   try { localStorage.removeItem(LS_USER_NAME); } catch (_) {}
   try { localStorage.removeItem(LS_USER_ID); } catch (_) {}
   // Full refresh keeps the app state consistent (listeners, cached state, theme).
-  try { window.location.reload(); } catch (_) {}
+  // Small delay to show the loading screen
+  setTimeout(() => {
+    try { window.location.reload(); } catch (_) {}
+  }, 300);
 }
 
 /* =========================
@@ -3354,10 +3375,8 @@ function initSettings() {
   // Log Out button in settings
   const settingsLogoutBtn = document.getElementById('settings-logout-btn');
   settingsLogoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out?');
-    if (!ok) return;
     closeSettingsModal();
-    logoutLocal();
+    logoutLocal('Logging out');
   });
 
   // Change Name button in settings
@@ -3371,10 +3390,8 @@ function initSettings() {
   // Delete Account button in settings
   const settingsDeleteBtn = document.getElementById('settings-delete-account-btn');
   settingsDeleteBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to delete your account? This cannot be undone.');
-    if (!ok) return;
     closeSettingsModal();
-    logoutLocal();
+    logoutLocal('Deleting account');
   });
 
   // Test sound button
@@ -4153,7 +4170,12 @@ function initOnlineAdminDeleteHandlers(listEl) {
 
     playSound('click');
     const label = name || uid;
-    const ok = window.confirm(`Delete user "${label}"?\n\nThis will remove them from teams and clear their profile/presence.`);
+    const ok = await showCustomConfirm({
+      title: 'Delete user?',
+      message: `Delete user "${label}"?<br><br>This will remove them from teams and clear their profile/presence.`,
+      okText: 'Delete',
+      danger: true
+    });
     if (!ok) return;
 
     try {
@@ -4642,9 +4664,15 @@ setUserName = async function(name, opts) {
   }
 };
 
-// Show the auth loading screen
-function showAuthLoadingScreen() {
+// Show the auth loading screen with optional custom message
+function showAuthLoadingScreen(message = 'Loading') {
   const screen = document.getElementById('auth-loading-screen');
+  const desktopMsg = document.getElementById('auth-loading-message-desktop');
+  const mobileMsg = document.getElementById('auth-loading-message-mobile');
+
+  if (desktopMsg) desktopMsg.textContent = message;
+  if (mobileMsg) mobileMsg.textContent = message;
+
   if (screen) {
     screen.style.display = 'flex';
     screen.classList.remove('hidden');
@@ -4664,20 +4692,51 @@ function hideAuthLoadingScreen() {
 ========================= */
 let confirmDialogResolve = null;
 
+// Show confirm dialog for "continue as player" (sign-in existing account)
 function showConfirmDialog(name) {
+  return showCustomConfirm({
+    title: 'Continue as this player?',
+    message: `This name is already taken. Continue to log in as "${name}"?`,
+    okText: 'Continue',
+    cancelText: 'Cancel',
+    danger: false
+  });
+}
+
+// Generic custom confirm dialog - replaces window.confirm
+function showCustomConfirm(options = {}) {
+  const {
+    title = 'Confirm',
+    message = 'Are you sure?',
+    okText = 'OK',
+    cancelText = 'Cancel',
+    danger = false
+  } = options;
+
   return new Promise((resolve) => {
     confirmDialogResolve = resolve;
     const backdrop = document.getElementById('confirm-dialog-backdrop');
     const dialog = document.getElementById('confirm-dialog');
-    const nameSpan = document.getElementById('confirm-dialog-name');
+    const titleEl = document.getElementById('confirm-dialog-title');
+    const messageEl = document.getElementById('confirm-dialog-message');
+    const okBtn = document.getElementById('confirm-dialog-ok');
+    const cancelBtn = document.getElementById('confirm-dialog-cancel');
 
-    if (nameSpan) nameSpan.textContent = name;
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.innerHTML = message;
+    if (okBtn) {
+      okBtn.textContent = okText;
+      okBtn.classList.toggle('danger', danger);
+      okBtn.classList.toggle('primary', !danger);
+    }
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+
     if (backdrop) backdrop.classList.remove('hidden');
     if (dialog) dialog.classList.remove('hidden');
 
-    // Focus the continue button for accessibility
+    // Focus the ok button for accessibility
     setTimeout(() => {
-      document.getElementById('confirm-dialog-ok')?.focus();
+      okBtn?.focus();
     }, 100);
   });
 }
@@ -4717,7 +4776,6 @@ function initConfirmDialog() {
 // presence from being written under a stale device ID.
 async function verifyAccountAndInitPresence() {
   const storedName = getUserName();
-  const loadingScreen = document.getElementById('auth-loading-screen');
 
   // No stored name - nothing to verify, hide loading screen immediately
   if (!storedName) {
@@ -4726,7 +4784,7 @@ async function verifyAccountAndInitPresence() {
   }
 
   // Show loading screen while we verify
-  if (loadingScreen) loadingScreen.style.display = 'flex';
+  showAuthLoadingScreen('Signing in');
 
   try {
     const nameKey = nameToAccountId(storedName);

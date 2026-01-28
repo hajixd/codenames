@@ -7672,33 +7672,58 @@ body.tournament.has-team-color .input:focus {
   min-width: 100px;
 }
 
+.confirm-dialog-actions .btn.danger {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
+.confirm-dialog-actions .btn.danger:hover {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
+/* Mobile: more compact confirm dialog */
 @media (max-width: 480px) {
+  .confirm-dialog {
+    padding: 16px;
+  }
+
   .confirm-dialog-card {
-    padding: 24px;
+    padding: 20px 16px;
+    max-width: 300px;
+    border-radius: 12px;
   }
 
   .confirm-dialog-icon {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 16px;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 12px;
   }
 
   .confirm-dialog-icon svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
   }
 
   .confirm-dialog-title {
-    font-size: 18px;
+    font-size: 16px;
+    margin-bottom: 8px;
   }
 
   .confirm-dialog-message {
     font-size: 13px;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+    line-height: 1.4;
+  }
+
+  .confirm-dialog-actions {
+    gap: 8px;
   }
 
   .confirm-dialog-actions .btn {
-    padding: 10px 16px;
+    padding: 10px 12px;
     font-size: 13px;
+    min-width: 80px;
   }
 }
