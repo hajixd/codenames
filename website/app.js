@@ -66,6 +66,7 @@ let lastLocalNameSetAtMs = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   initSettings();
+  initConfirmDialog();
   initLaunchScreen();
   initHeaderLogoNav();
   initTabs();
@@ -147,8 +148,12 @@ function showLaunchScreen() {
 }
 
 function returnToLaunchScreen() {
-  // Alias for callers (e.g., game back button)
-  showLaunchScreen();
+  // Show loading screen during navigation transition
+  showAuthLoadingScreen();
+  setTimeout(() => {
+    showLaunchScreen();
+    hideAuthLoadingScreen();
+  }, 300);
 }
 
 // Allow other modules (game.js) to return to the initial screen.
@@ -182,7 +187,12 @@ function initLaunchScreen() {
       return;
     }
     if (hint) hint.textContent = '';
-    enterAppFromLaunch(mode);
+    // Show loading screen during navigation transition
+    showAuthLoadingScreen();
+    setTimeout(() => {
+      enterAppFromLaunch(mode);
+      hideAuthLoadingScreen();
+    }, 300);
   };
 
   quickBtn?.addEventListener('click', () => requireNameThen('quick'));
@@ -200,7 +210,7 @@ function initLaunchScreen() {
       return;
     }
     if (hint) hint.textContent = '';
-    showAuthLoadingScreen();
+    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
     try {
       await setUserName(v);
     } finally {
@@ -583,13 +593,15 @@ async function setUserName(name, opts = {}) {
       const s = await nextRef.get();
       const existing = s.exists ? String(s.data()?.accountId || '').trim() : '';
       if (existing && existing !== myAccountId) {
-        const ok = window.confirm('This name is already taken.\n\nContinue to log in as "' + nextName + '"?');
+        const ok = await showConfirmDialog(nextName);
         if (!ok) {
           // Revert to previous name and keep this device on its current account.
           safeLSSet(LS_USER_NAME, prevName);
           refreshNameUI();
           return;
         }
+        // Show loading screen AFTER user confirms (not before)
+        showAuthLoadingScreen();
       }
     } catch (e) {
       // best-effort
@@ -795,7 +807,7 @@ function initName() {
       return;
     }
     if (hint) hint.textContent = '';
-    showAuthLoadingScreen();
+    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
     try {
       await setUserName(v);
     } finally {
@@ -4464,7 +4476,7 @@ function initNameChangeModal() {
     if (!newName) return;
 
     playSound('click');
-    showAuthLoadingScreen();
+    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
     try {
       await setUserName(newName);
     } finally {
@@ -4645,6 +4657,59 @@ function hideAuthLoadingScreen() {
   if (screen) {
     screen.classList.add('hidden');
   }
+}
+
+/* =========================
+   Custom Confirm Dialog
+========================= */
+let confirmDialogResolve = null;
+
+function showConfirmDialog(name) {
+  return new Promise((resolve) => {
+    confirmDialogResolve = resolve;
+    const backdrop = document.getElementById('confirm-dialog-backdrop');
+    const dialog = document.getElementById('confirm-dialog');
+    const nameSpan = document.getElementById('confirm-dialog-name');
+
+    if (nameSpan) nameSpan.textContent = name;
+    if (backdrop) backdrop.classList.remove('hidden');
+    if (dialog) dialog.classList.remove('hidden');
+
+    // Focus the continue button for accessibility
+    setTimeout(() => {
+      document.getElementById('confirm-dialog-ok')?.focus();
+    }, 100);
+  });
+}
+
+function hideConfirmDialog(result) {
+  const backdrop = document.getElementById('confirm-dialog-backdrop');
+  const dialog = document.getElementById('confirm-dialog');
+
+  if (backdrop) backdrop.classList.add('hidden');
+  if (dialog) dialog.classList.add('hidden');
+
+  if (confirmDialogResolve) {
+    confirmDialogResolve(result);
+    confirmDialogResolve = null;
+  }
+}
+
+function initConfirmDialog() {
+  const cancelBtn = document.getElementById('confirm-dialog-cancel');
+  const okBtn = document.getElementById('confirm-dialog-ok');
+  const backdrop = document.getElementById('confirm-dialog-backdrop');
+
+  cancelBtn?.addEventListener('click', () => hideConfirmDialog(false));
+  okBtn?.addEventListener('click', () => hideConfirmDialog(true));
+  backdrop?.addEventListener('click', () => hideConfirmDialog(false));
+
+  // Handle escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && confirmDialogResolve) {
+      hideConfirmDialog(false);
+    }
+  });
 }
 
 // Verify the user's account on page load before starting presence.
