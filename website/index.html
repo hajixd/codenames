@@ -329,7 +329,17 @@
                         <span class="quick-team-count" id="quick-red-count">0</span>
                       </div>
                       <div class="quick-team-status" id="quick-red-status"></div>
-                      <div class="quick-team-list" id="quick-red-list"></div>
+                      <div class="quick-role-lists">
+                        <div class="quick-role-section">
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters</div>
+                          <div class="quick-team-list" id="quick-red-spymaster-list"></div>
+                        </div>
+                        <div class="quick-role-divider" aria-hidden="true"></div>
+                        <div class="quick-role-section">
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives</div>
+                          <div class="quick-team-list" id="quick-red-operative-list"></div>
+                        </div>
+                      </div>
                     </div>
 
                     <div class="quick-team-col spectator selectable" id="quick-seat-switcher" role="button" tabindex="0" aria-label="Switch role (Red, Spectator, Blue)">
@@ -348,7 +358,17 @@
                         <span class="quick-team-count" id="quick-blue-count">0</span>
                       </div>
                       <div class="quick-team-status" id="quick-blue-status"></div>
-                      <div class="quick-team-list" id="quick-blue-list"></div>
+                      <div class="quick-role-lists">
+                        <div class="quick-role-section">
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters</div>
+                          <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
+                        </div>
+                        <div class="quick-role-divider" aria-hidden="true"></div>
+                        <div class="quick-role-section">
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives</div>
+                          <div class="quick-team-list" id="quick-blue-operative-list"></div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -578,7 +598,8 @@
 
               <!-- Game Actions -->
               <div class="game-actions">
-                <button class="btn danger" id="leave-game-btn" type="button">Leave Game</button>
+                <button class="btn danger" id="end-game-btn" type="button">End Game</button>
+                <button class="btn" id="leave-game-btn" type="button">Leave Game</button>
               </div>
             </div>
           </div>
