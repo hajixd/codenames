@@ -900,9 +900,8 @@ function refreshNameUI() {
 
 function refreshHeaderIdentity() {
   const st = computeUserState(teamsCache);
-  const teamText = st.team
-    ? (st.team.teamName || 'My team')
-    : (st.pendingTeam ? `Pending: ${st.pendingTeam.teamName || 'Team'}` : 'No team');
+  // Only show team name if actually on a team (not pending) - pending requests don't count
+  const teamText = st.team ? (st.team.teamName || 'My team') : 'No team';
   setText('user-team-display', teamText);
 
   // Apply team theme (glow + accent) for the team you're ON.
@@ -957,17 +956,17 @@ function listenToPlayers() {
 }
 
 function updateHomeStats(teams) {
-  const teamCount = teams.length;
+  // Count "full" teams (3+ members) - these are the ones that count toward the 8 slots
+  const fullTeams = teams.filter(t => getMembers(t).length >= TEAM_MIN).length;
   const players = teams.reduce((sum, t) => sum + getMembers(t).length, 0);
 
-  // Home "spots" = remaining player slots (more useful than remaining teams)
-  const maxPlayers = MAX_TEAMS * TEAM_MAX;
-  const spots = Math.max(0, maxPlayers - players);
+  // Home "spots" = remaining full team slots
+  const spotsLeft = Math.max(0, MAX_TEAMS - fullTeams);
 
-  setText('spots-left', spots);
+  setText('spots-left', spotsLeft);
   setText('players-count', players);
-  setText('team-count', teamCount);
-  setText('team-count-pill', `${teamCount}/${MAX_TEAMS}`);
+  setText('team-count', `${fullTeams}/${MAX_TEAMS}`);
+  setText('team-count-pill', `${fullTeams}/${MAX_TEAMS}`);
 }
 
 /* =========================
@@ -1627,26 +1626,30 @@ function renderTeams(teams) {
     return;
   }
 
+  // Sort teams by member count (most players first)
+  const sortedTeams = [...teams].sort((a, b) => getMembers(b).length - getMembers(a).length);
+
   // Sharp, simple list: team name + member names. Click for details / request.
-  container.innerHTML = teams.map((t) => {
+  container.innerHTML = sortedTeams.map((t) => {
     const members = getMembers(t);
     const memberNames = members.length
       ? members.map(m => (m?.name || '—').trim()).filter(Boolean).join(', ')
       : 'No members yet';
 
     const isMine = st.teamId === t.id;
+    const isFull = members.length >= TEAM_MIN; // 3+ members = "full" team
 
     const tc = getDisplayTeamColor(t);
     const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
 
     return `
-      <button class="team-list-item ${isMine ? 'is-mine' : ''}" type="button" data-team="${esc(t.id)}">
+      <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}">
         <div class="team-list-left">
           <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(t.teamName || 'Unnamed')}</span></div>
           <div class="team-list-members" ${nameStyle}>${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
-          <div class="team-list-count">${members.length}/${TEAM_MAX}</div>
+          <div class="team-list-count ${isFull ? 'pill-full' : ''}">${members.length}/${TEAM_MAX}</div>
         </div>
       </button>
     `;
@@ -1931,7 +1934,10 @@ function renderMyTeam(teams) {
   }
   if (createBtn) {
     // Create button is only relevant if you're not on a team.
-    const disableCreate = !st.name || hasTeam || !!st.pendingTeamId || teams.length >= MAX_TEAMS;
+    // Pending requests don't block team creation - only being on an actual team does.
+    // Check if 8 full teams exist (not just 8 teams total)
+    const fullTeamCount = teams.filter(t => getMembers(t).length >= TEAM_MIN).length;
+    const disableCreate = !st.name || hasTeam || fullTeamCount >= MAX_TEAMS;
     createBtn.disabled = disableCreate;
     createBtn.classList.toggle('disabled', disableCreate);
     createBtn.style.display = hasTeam ? 'none' : 'inline-flex';
@@ -2514,12 +2520,14 @@ async function handleCreateTeam() {
     setHint('create-team-hint', 'Set your name on Home first.');
     return;
   }
-  if (st.teamId || st.pendingTeamId) {
-    setHint('create-team-hint', 'You are already on a team (or have a pending request).');
+  if (st.teamId) {
+    setHint('create-team-hint', 'You are already on a team.');
     return;
   }
-  if (teamsCache.length >= MAX_TEAMS) {
-    setHint('create-team-hint', 'No team slots left.');
+  // Check if 8 full teams exist (not just 8 teams total)
+  const fullTeamCount = teamsCache.filter(t => getMembers(t).length >= TEAM_MIN).length;
+  if (fullTeamCount >= MAX_TEAMS) {
+    setHint('create-team-hint', 'No team slots left (8 full teams already exist).');
     return;
   }
 
