@@ -47,6 +47,55 @@ let currentGame = null;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
+/* =========================
+   Player Stats (Wins/Losses)
+   - Stored on players/<userId>: gamesPlayed, wins, losses
+   - Applied once per game via games/<gameId>.statsApplied
+========================= */
+async function applyGameResultToPlayerStatsIfNeeded(game) {
+  try {
+    if (!game || !game.id) return;
+    if (game.statsApplied) return;
+    if (game.winner !== 'red' && game.winner !== 'blue') return;
+    // Avoid counting quickplay lobby placeholder etc.
+    const gameRef = db.collection('games').doc(game.id);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(gameRef);
+      if (!snap.exists) return;
+      const g = { id: snap.id, ...snap.data() };
+      if (g.statsApplied) return;
+      if (g.winner !== 'red' && g.winner !== 'blue') return;
+
+      const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
+      const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
+
+      const redIds = new Set(redPlayers.map(p => String(p?.odId || '').trim()).filter(Boolean));
+      const blueIds = new Set(bluePlayers.map(p => String(p?.odId || '').trim()).filter(Boolean));
+      const all = new Set([...redIds, ...blueIds]);
+      if (all.size === 0) {
+        tx.update(gameRef, { statsApplied: true, statsAppliedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        return;
+      }
+
+      for (const uid of all) {
+        const isWin = (g.winner === 'red' && redIds.has(uid)) || (g.winner === 'blue' && blueIds.has(uid));
+        const isLoss = !isWin;
+        const ref = db.collection('players').doc(uid);
+        tx.set(ref, {
+          gamesPlayed: firebase.firestore.FieldValue.increment(1),
+          wins: firebase.firestore.FieldValue.increment(isWin ? 1 : 0),
+          losses: firebase.firestore.FieldValue.increment(isLoss ? 1 : 0),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+
+      tx.update(gameRef, { statsApplied: true, statsAppliedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+  } catch (e) {
+    console.warn('Failed to apply game stats (best-effort):', e);
+  }
+}
+
 let gameUnsub = null;
 let challengesUnsub = null;
 let quickGamesUnsub = null;
@@ -2440,6 +2489,9 @@ function startGameListener(gameId, options = {}) {
 
     currentGame = { id: snap.id, ...snap.data() };
     try { window.bumpPresence?.(); } catch (_) {}
+
+    // Best-effort: when a game finishes, increment player stats exactly once.
+    try { applyGameResultToPlayerStatsIfNeeded(currentGame); } catch (_) {}
 
     // If a game ever reaches 0 players, end it.
     if (currentGame?.type === 'quick') {

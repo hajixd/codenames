@@ -37,6 +37,11 @@ let playersCache = [];
 let openTeamId = null;
 let mergeNamesInFlight = new Set();
 
+// Admin controls
+function isAdminUser() {
+  return ((getUserName() || '').trim().toLowerCase() === 'admin');
+}
+
 // Chat (tab)
 const GLOBAL_CHAT_COLLECTION = 'globalChat';
 let chatMode = 'global'; // 'global' | 'team'
@@ -69,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initRequestsModal();
   initChatTab();
   initOnlineCounterUI();
+  initProfileDetailsModal();
   listenToTeams();
   listenToPlayers();
 
@@ -79,6 +85,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+function isAdminUser() {
+  return String(getUserName() || '').trim().toLowerCase() === 'admin';
+}
 
 /* =========================
    Header navigation
@@ -1290,6 +1300,10 @@ function renderPlayers(players, teams) {
         }
       }
 
+      const adminDeleteBtn = (isAdminUser() && uid)
+        ? `<button class="player-tag pill-action danger" type="button" data-admin-delete-player="${esc(uid)}">Delete</button>`
+        : '';
+
       return `
         <div class="player-row player-directory-row">
           <div class="player-left">
@@ -1298,6 +1312,7 @@ function renderPlayers(players, teams) {
           <div class="player-right">
             ${statusPillHtml}
             ${invitePillHtml}
+            ${adminDeleteBtn}
           </div>
         </div>
       `;
@@ -1317,6 +1332,16 @@ function renderPlayers(players, teams) {
       } else {
         await sendInviteToPlayer(targetId);
       }
+    });
+  });
+
+  container.querySelectorAll('[data-admin-delete-player]')?.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const uid = btn.getAttribute('data-admin-delete-player');
+      if (!uid) return;
+      await adminDeletePlayer(uid);
     });
   });
 
@@ -1658,6 +1683,10 @@ function renderTeams(teams) {
     const itemStyle = isFull && tc ? `style="--team-accent:${esc(tc)}"` : '';
     const pillClass = isFull ? 'pill-full' : 'pill-incomplete';
 
+    const adminDeleteBtn = isAdminUser()
+      ? `<button class="icon-btn danger small admin-delete-btn" type="button" data-admin-delete-team="${esc(t.id)}" title="Delete team">🗑</button>`
+      : '';
+
     return `
       <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}" ${itemStyle}>
         <div class="team-list-left">
@@ -1666,6 +1695,7 @@ function renderTeams(teams) {
         </div>
         <div class="team-list-right">
           <div class="team-list-count ${pillClass}">${members.length}/${TEAM_MAX}</div>
+          ${adminDeleteBtn}
         </div>
       </button>
     `;
@@ -1675,6 +1705,16 @@ function renderTeams(teams) {
     row.addEventListener('click', () => {
       const teamId = row.getAttribute('data-team');
       if (teamId) openTeamModal(teamId);
+    });
+  });
+
+  container.querySelectorAll('[data-admin-delete-team]')?.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const tid = btn.getAttribute('data-admin-delete-team');
+      if (!tid) return;
+      await adminDeleteTeam(tid);
     });
   });
 }
@@ -2656,6 +2696,75 @@ async function deleteTeam(teamId) {
   }
 }
 
+// Admin: delete any team + clean up invites referencing it
+async function adminDeleteTeam(teamId) {
+  if (!isAdminUser()) return;
+  const tid = String(teamId || '').trim();
+  if (!tid) return;
+  const ok = window.confirm('Delete this team for everyone? This cannot be undone.');
+  if (!ok) return;
+
+  await deleteTeam(tid);
+
+  // Best-effort cleanup: remove team invites from player docs.
+  try {
+    const batch = db.batch();
+    let writes = 0;
+    for (const p of (playersCache || [])) {
+      const pid = String(p?.id || '').trim();
+      if (!pid) continue;
+      const invites = Array.isArray(p?.invites) ? p.invites : [];
+      if (!invites.some(i => String(i?.teamId || '').trim() === tid)) continue;
+      const nextInvites = invites.filter(i => String(i?.teamId || '').trim() !== tid);
+      batch.update(db.collection('players').doc(pid), { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      writes++;
+      // Keep batches reasonable.
+      if (writes >= 450) break;
+    }
+    if (writes > 0) await batch.commit();
+  } catch (e) {
+    console.warn('Admin team delete cleanup failed (best-effort):', e);
+  }
+}
+
+// Admin: delete any player account + remove them from teams/pending/presence
+async function adminDeletePlayer(userId) {
+  if (!isAdminUser()) return;
+  const uid = String(userId || '').trim();
+  if (!uid) return;
+
+  const displayName = findKnownUserName(uid) || uid;
+  const ok = window.confirm(`Delete account "${displayName}"? This will remove them from teams and delete their profile.`);
+  if (!ok) return;
+
+  // Remove from any teams (members + pending)
+  try {
+    const batch = db.batch();
+    let writes = 0;
+    for (const t of (teamsCache || [])) {
+      const tid = String(t?.id || '').trim();
+      if (!tid) continue;
+      const members = getMembers(t);
+      const pending = getPending(t);
+      const nextMembers = members.filter(m => !isSameAccount(m, uid));
+      const nextPending = pending.filter(r => !isSameAccount(r, uid));
+      if (nextMembers.length !== members.length || nextPending.length !== pending.length) {
+        batch.update(db.collection('teams').doc(tid), { members: nextMembers, pending: nextPending, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        writes++;
+      }
+      if (writes >= 450) break;
+    }
+    // Delete player + presence docs
+    batch.delete(db.collection('players').doc(uid));
+    batch.delete(db.collection(PRESENCE_COLLECTION).doc(uid));
+    writes += 2;
+    await batch.commit();
+  } catch (e) {
+    console.error('Admin delete player failed:', e);
+    window.alert('Could not delete that account (check permissions / rules).');
+  }
+}
+
 
 async function renameTeamUnique(teamId, nextName) {
   const tid = String(teamId || '').trim();
@@ -3580,19 +3689,38 @@ const PRESENCE_WHERE_LABELS = {
 };
 
 function computeLocalPresenceWhereKey() {
-  // Launch screen (choose Quick Play / Tournament)
-  if (document.body.classList.contains('launch')) return 'menus';
+  // Prefer actual UI visibility over body classes (more robust across pages).
+  const isDisplayed = (el) => {
+    if (!el) return false;
+    const st = window.getComputedStyle(el);
+    return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0';
+  };
 
-  // Tournament UI
-  if (document.body.classList.contains('tournament')) return 'tournament';
-
-  // Quick Play lobby/game
-  if (document.body.classList.contains('quickplay')) {
+  // Game board visible -> either lobby or game (based on phase)
+  const gameBoard = document.getElementById('game-board-container');
+  if (isDisplayed(gameBoard)) {
     const phase = (typeof window.getCurrentGamePhase === 'function') ? window.getCurrentGamePhase() : null;
     if (phase && phase !== 'waiting') return 'game';
     return 'lobby';
   }
 
+  // Tournament lobby visible
+  const tournamentLobby = document.getElementById('tournament-lobby');
+  if (isDisplayed(tournamentLobby)) return 'tournament';
+
+  // Quick play lobby visible
+  const quickLobby = document.getElementById('quick-play-lobby');
+  if (isDisplayed(quickLobby)) return 'lobby';
+
+  // Mode selection visible
+  const modeSelect = document.getElementById('play-mode-select');
+  if (isDisplayed(modeSelect)) return 'menus';
+
+  // Tournament page visible
+  const tournamentPage = document.getElementById('tournament-page') || document.getElementById('tournament-section');
+  if (isDisplayed(tournamentPage)) return 'tournament';
+
+  // Otherwise treat as menus/home
   return 'menus';
 }
 
@@ -3742,9 +3870,11 @@ function tsToMsSafe(ts) {
 
 function getPresenceStatus(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  if (!presence?.lastActivity) return 'offline';
+  // Support older presence docs that may not have `lastActivity`.
+  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
+  if (!ts) return 'offline';
 
-  const lastMs = tsToMsSafe(presence.lastActivity);
+  const lastMs = tsToMsSafe(ts);
   if (!lastMs) return 'offline';
 
   const now = Date.now();
@@ -3758,9 +3888,10 @@ function getPresenceStatus(presenceOrUserId) {
 
 function getTimeSinceActivity(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  if (!presence?.lastActivity) return '';
+  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
+  if (!ts) return '';
 
-  const lastMs = tsToMsSafe(presence.lastActivity);
+  const lastMs = tsToMsSafe(ts);
   if (!lastMs) return '';
 
   const now = Date.now();
@@ -3795,6 +3926,12 @@ function initOnlineCounterUI() {
   const closeBtn = document.getElementById('online-modal-close');
 
   if (!btn || !modal) return;
+
+  // Legend for "where" statuses (kept short; the app determines these automatically).
+  const legendEl = document.getElementById('online-status-legend');
+  if (legendEl) {
+    legendEl.textContent = Object.values(PRESENCE_WHERE_LABELS).join(' • ');
+  }
 
   btn.addEventListener('click', () => {
     playSound('click');
@@ -4508,14 +4645,22 @@ function renderPlayerProfile(playerId) {
   const isOnline = presenceStatus === 'online';
   const lastSeen = getPlayerLastSeen(player.id);
   const whereLabel = getPresenceWhereLabel(player.id);
-  const statusText = isOnline ? (`Online${whereLabel ? ' — ' + whereLabel : ''}`) : 'Offline';
+  const statusText = (() => {
+    const base = presenceStatus === 'online' ? 'Online' : (presenceStatus === 'idle' ? 'Idle' : 'Offline');
+    if (presenceStatus === 'offline') return base;
+    return `${base}${whereLabel ? ' — ' + whereLabel : ''}`;
+  })();
+
+  const statsGames = Number(player.gamesPlayed || 0) || 0;
+  const statsWins = Number(player.wins || 0) || 0;
+  const statsLosses = Number(player.losses || 0) || 0;
 
   titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
 
   bodyEl.innerHTML = `
     <div class="profile-stats">
       <div class="profile-stat-row">
-        <span class="profile-stat-label">Status<span class="profile-stat-sub">In Menus (if they're in the choose Quick Play or Tournament page), or In Tournament (if they're in the tournament page), or In Lobby (if they're in the lobby for a game), or In Game (if they're playing a codenames game)</span></span>
+        <span class="profile-stat-label">Status<span class="profile-stat-sub">${esc(Object.values(PRESENCE_WHERE_LABELS).join(' • '))}</span></span>
         <span class="profile-status ${isOnline ? 'online' : 'offline'}">
           <span class="profile-status-dot"></span>
           ${esc(statusText)}
@@ -4533,8 +4678,24 @@ function renderPlayerProfile(playerId) {
         <span class="profile-stat-label">Last Active</span>
         <span class="profile-stat-value">${esc(isOnline ? 'Now' : lastSeen)}</span>
       </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Games Played</span>
+        <span class="profile-stat-value">${esc(String(statsGames))}</span>
+      </div>
+    </div>
+
+    <div class="profile-more-details">
+      <button class="link-btn subtle" type="button" id="profile-more-details-btn">See more details</button>
     </div>
   `;
+
+  // Hook up "See more details" after content is mounted.
+  const moreBtn = document.getElementById('profile-more-details-btn');
+  moreBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openProfileDetailsModal(player.id);
+  });
 }
 
 function renderProfileError(message) {
@@ -4544,6 +4705,133 @@ function renderProfileError(message) {
 
   titleEl.textContent = 'Error';
   bodyEl.innerHTML = `<div style="color:var(--text-dim);font-size:13px;">${esc(message)}</div>`;
+}
+
+/* =========================
+   Profile Details Modal
+========================= */
+function initProfileDetailsModal() {
+  const modal = document.getElementById('profile-details-modal');
+  const backdrop = document.getElementById('profile-details-backdrop');
+  const closeBtn = document.getElementById('profile-details-close');
+  if (!modal) return;
+
+  const close = () => closeProfileDetailsModal();
+  closeBtn?.addEventListener('click', close);
+  backdrop?.addEventListener('click', close);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('modal-open')) {
+      closeProfileDetailsModal();
+    }
+  });
+}
+
+function openProfileDetailsModal(playerId) {
+  const modal = document.getElementById('profile-details-modal');
+  if (!modal) return;
+
+  renderProfileDetailsModal(playerId);
+
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+}
+
+function closeProfileDetailsModal() {
+  const modal = document.getElementById('profile-details-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
+}
+
+function renderProfileDetailsModal(playerId) {
+  const titleEl = document.getElementById('profile-details-title');
+  const bodyEl = document.getElementById('profile-details-body');
+  if (!titleEl || !bodyEl) return;
+
+  const player = playersCache.find(p => p?.id === playerId || entryAccountId(p) === playerId);
+  if (!player) {
+    titleEl.textContent = 'Details';
+    bodyEl.innerHTML = `<div class="hint">Player not found.</div>`;
+    return;
+  }
+
+  const roster = buildRosterIndex(teamsCache);
+  const memberTeam = roster.memberTeamByUserId.get(player.id);
+  const tc = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+  const name = (player.name || '—').trim();
+
+  const presenceStatus = getPresenceStatus(player.id);
+  const whereLabel = getPresenceWhereLabel(player.id);
+  const statusBase = presenceStatus === 'online' ? 'Online' : (presenceStatus === 'idle' ? 'Idle' : 'Offline');
+  const statusLine = presenceStatus === 'offline'
+    ? statusBase
+    : `${statusBase}${whereLabel ? ' — ' + whereLabel : ''}`;
+
+  const joinedAt = player.createdAt ? formatRelativeTime(tsToMs(player.createdAt)) : 'Unknown';
+  const lastSeen = getPlayerLastSeen(player.id);
+
+  const games = Number(player.gamesPlayed || 0) || 0;
+  const wins = Number(player.wins || 0) || 0;
+  const losses = Number(player.losses || 0) || 0;
+  const denom = (wins + losses);
+  const winRate = denom > 0 ? Math.round((wins / denom) * 100) : 0;
+
+  titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
+
+  const teamLine = memberTeam
+    ? `<span class="profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}" style="color:${esc(tc)}">${esc(truncateTeamName(memberTeam.teamName || 'Team'))}</span>`
+    : '<span style="color:var(--text-dim)">No team</span>';
+
+  bodyEl.innerHTML = `
+    <div class="profile-stats">
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Status<span class="profile-stat-sub">${esc(Object.values(PRESENCE_WHERE_LABELS).join(' • '))}</span></span>
+        <span class="profile-status ${presenceStatus === 'online' ? 'online' : (presenceStatus === 'idle' ? 'idle' : 'offline')}">
+          <span class="profile-status-dot"></span>
+          ${esc(statusLine)}
+        </span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Team</span>
+        <span class="profile-stat-value">${teamLine}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Joined</span>
+        <span class="profile-stat-value">${esc(joinedAt)}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Last Active</span>
+        <span class="profile-stat-value">${esc(presenceStatus === 'online' ? 'Now' : lastSeen)}</span>
+      </div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-stats">
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Games Played</span>
+        <span class="profile-stat-value">${esc(String(games))}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Record</span>
+        <span class="profile-stat-value">${esc(String(wins))}W - ${esc(String(losses))}L</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Win Rate</span>
+        <span class="profile-stat-value">${esc(String(winRate))}%</span>
+      </div>
+    </div>
+
+    <div class="hint" style="margin-top:10px;">
+      Stats are updated when a game ends (wins/losses count for players in red/blue teams).
+    </div>
+  `;
 }
 
 function formatRelativeTime(timestamp) {
@@ -4594,10 +4882,11 @@ function getTeamLastActivity(memberIds) {
 }
 
 function getPlayerLastSeen(playerId) {
-  const presence = presenceCache.find(p => p.id === playerId);
-  if (!presence?.lastActivity) return 'Unknown';
+  const presence = presenceCache.find(p => p.id === playerId || p.odId === playerId);
+  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
+  if (!ts) return 'Unknown';
 
-  return formatRelativeTime(tsToMs(presence.lastActivity));
+  return formatRelativeTime(tsToMs(ts));
 }
 
 // Helper to create a profile link HTML

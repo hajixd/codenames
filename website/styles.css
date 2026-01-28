@@ -6919,6 +6919,37 @@ body.tournament.has-team-color .input:focus {
   opacity: 1;
 }
 
+/* Small inline link-style button */
+.link-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 3px;
+}
+.link-btn.subtle {
+  color: var(--text-dim);
+  text-decoration-color: rgba(255,255,255,0.25);
+}
+.link-btn.subtle:hover {
+  color: var(--text);
+  text-decoration-color: rgba(255,255,255,0.5);
+}
+
+.profile-more-details {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.profile-details-modal-card {
+  max-width: 520px;
+}
+
 /* Specific context overrides for profile links */
 .team-list-members .profile-link {
   border-bottom: none;
