@@ -3927,11 +3927,7 @@ function initOnlineCounterUI() {
 
   if (!btn || !modal) return;
 
-  // Legend for "where" statuses (kept short; the app determines these automatically).
-  const legendEl = document.getElementById('online-status-legend');
-  if (legendEl) {
-    legendEl.textContent = Object.values(PRESENCE_WHERE_LABELS).join(' • ');
-  }
+  // No static legend text here (the app determines location/status automatically).
 
   btn.addEventListener('click', () => {
     playSound('click');
@@ -4660,7 +4656,7 @@ function renderPlayerProfile(playerId) {
   bodyEl.innerHTML = `
     <div class="profile-stats">
       <div class="profile-stat-row">
-        <span class="profile-stat-label">Status<span class="profile-stat-sub">${esc(Object.values(PRESENCE_WHERE_LABELS).join(' • '))}</span></span>
+        <span class="profile-stat-label">Status</span>
         <span class="profile-status ${isOnline ? 'online' : 'offline'}">
           <span class="profile-status-dot"></span>
           ${esc(statusText)}
@@ -4694,6 +4690,8 @@ function renderPlayerProfile(playerId) {
   moreBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // Close the small anchored profile popup before opening the centered modal.
+    hideProfilePopup();
     openProfileDetailsModal(player.id);
   });
 }
@@ -4733,7 +4731,8 @@ function openProfileDetailsModal(playerId) {
 
   renderProfileDetailsModal(playerId);
 
-  modal.style.display = 'flex';
+  // Match the settings modal behavior (centered fixed card).
+  modal.style.display = 'block';
   void modal.offsetWidth;
   modal.classList.add('modal-open');
 }
@@ -4791,7 +4790,7 @@ function renderProfileDetailsModal(playerId) {
   bodyEl.innerHTML = `
     <div class="profile-stats">
       <div class="profile-stat-row">
-        <span class="profile-stat-label">Status<span class="profile-stat-sub">${esc(Object.values(PRESENCE_WHERE_LABELS).join(' • '))}</span></span>
+        <span class="profile-stat-label">Status</span>
         <span class="profile-status ${presenceStatus === 'online' ? 'online' : (presenceStatus === 'idle' ? 'idle' : 'offline')}">
           <span class="profile-status-dot"></span>
           ${esc(statusLine)}

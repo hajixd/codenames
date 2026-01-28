@@ -6947,7 +6947,19 @@ body.tournament.has-team-color .input:focus {
 }
 
 .profile-details-modal-card {
-  max-width: 520px;
+  max-width: 420px;
+  max-height: 80vh;
+}
+
+/* Keep the details modal content scrollable (same centered positioning as settings) */
+#profile-details-modal .settings-modal-body {
+  max-height: calc(80vh - 70px);
+  overflow-y: auto;
+}
+
+/* If the online legend isn't populated, don't reserve space */
+#online-status-legend:empty {
+  display: none;
 }
 
 /* Specific context overrides for profile links */
