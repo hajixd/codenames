@@ -5355,3 +5355,134 @@ body.tournament.has-team-color .input:focus {
   animation: notificationPop var(--anim-duration-slow) var(--anim-ease-bounce);
 }
 
+/* ======================================================================
+   IN-GAME: TRUE NO-PAGE-SCROLL LAYOUT (desktop + mobile)
+
+   The base styles size the board using each card's aspect-ratio. On many
+   screens that makes the board taller than the viewport, hiding the clue/
+  actions area (and we intentionally lock page scroll during the game).
+
+   These overrides make the *container* define the board height (1fr row),
+   then force the board to be a 5x5 grid that fills that height.
+   ====================================================================== */
+
+/* Lock the game panel scroll; everything should fit in the viewport */
+.panel-game {
+  overflow: hidden !important;
+}
+
+.panel-game .panel-inner {
+  height: 100%;
+  min-height: 0;
+  max-width: 1180px;
+  padding: 12px 12px 14px;
+}
+
+/* Height-aware layout: header, board (flex row), clue, actions */
+.panel-game #game-board-container {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 8px;
+}
+
+/* Desktop: board + compact log sidebar (internal scroll only) */
+@media (min-width: 980px) {
+  .panel-game #game-board-container {
+    grid-template-columns: 1fr 300px;
+  }
+  .panel-game #game-board-container .game-header {
+    grid-column: 1 / -1;
+  }
+  .panel-game #game-board-container .game-log {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    overflow: auto;
+  }
+  #open-log-btn { display: none; }
+}
+
+/* Mobile/tablet: hide inline log and use the modal button */
+@media (max-width: 979px) {
+  .panel-game #game-board-container .game-log { display: none; }
+  .panel-game #game-board-container { gap: 6px; }
+}
+
+/* Compact header + footer controls so the board gets maximum height */
+.panel-game .game-header {
+  padding: 8px;
+  gap: 6px;
+  margin: 0;
+}
+
+.panel-game .game-team { padding: 6px 10px; }
+.panel-game .game-team .team-name { font-size: 12px; }
+.panel-game .game-team .cards-left { font-size: 18px; }
+.panel-game .game-turn-display { font-size: 13px; }
+
+.panel-game .clue-area {
+  padding: 8px;
+  margin: 0;
+}
+
+.panel-game .clue-form {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.panel-game .clue-num-input { width: 52px; }
+
+.panel-game .game-actions {
+  margin: 0;
+  gap: 6px;
+}
+
+/* The board must fill the available 1fr row (no aspect-ratio sizing) */
+.panel-game .game-board {
+  height: 100%;
+  min-height: 0;
+  width: auto;
+  max-width: 100%;
+  justify-self: center;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.panel-game .game-card {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  padding: 6px;
+  border-width: 1px;
+  border-radius: 10px;
+}
+
+.panel-game .game-card .card-word {
+  font-size: clamp(9px, 1.15vw, 12px);
+  line-height: 1.15;
+}
+
+/* Extra tightening for very short screens */
+@media (max-height: 760px) {
+  .panel-game .panel-inner { padding: 10px; }
+  .panel-game .game-header { padding: 7px; }
+  .panel-game .clue-area { padding: 7px; }
+  .panel-game .game-board { gap: 5px; }
+  .panel-game .game-card { padding: 5px; }
+}
+
+/* Phone portrait: slightly smaller text + gaps */
+@media (max-width: 420px) {
+  .panel-game .game-board { gap: 5px; }
+  .panel-game .game-card .card-word { font-size: clamp(8px, 3.2vw, 11px); }
+}
+
