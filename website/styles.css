@@ -4927,6 +4927,30 @@ button.player-tag.pill-action:disabled{
   flex-shrink: 0;
 }
 
+.online-user-delete {
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.online-user-delete:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.online-user-delete:active {
+  transform: scale(0.96);
+}
+
 .online-user-row.is-you .online-user-name::after {
   content: ' (you)';
   color: var(--text-dim);

@@ -4101,11 +4101,152 @@ function closeOnlineModal() {
   }, 200);
 }
 
+
+function isAdminUser() {
+  return String(getUserName() || '').trim().toLowerCase() === 'admin';
+}
+
+function initOnlineAdminDeleteHandlers(listEl) {
+  if (!listEl || listEl.dataset.adminDeleteBound) return;
+  listEl.dataset.adminDeleteBound = '1';
+
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.online-user-delete');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!isAdminUser()) return;
+
+    const uid = String(btn.getAttribute('data-delete-user') || '').trim();
+    const name = String(btn.getAttribute('data-delete-name') || '').trim();
+    if (!uid) return;
+
+    playSound('click');
+    const label = name || uid;
+    const ok = window.confirm(`Delete user "${label}"?\n\nThis will remove them from teams and clear their profile/presence.`);
+    if (!ok) return;
+
+    try {
+      await adminDeleteUser(uid, name);
+    } catch (err) {
+      console.warn('Admin delete failed:', err);
+    }
+  }, true);
+}
+
+async function adminDeleteUser(userId, displayName) {
+  if (!isAdminUser()) return;
+  const uid = String(userId || '').trim();
+  if (!uid) return;
+
+  // Remove from presence directory (so they disappear from Who's Online)
+  try {
+    await db.collection(PRESENCE_COLLECTION).doc(uid).delete();
+  } catch (e) {
+    // best effort
+  }
+
+  // Remove player profile (name + invites)
+  try {
+    await db.collection('players').doc(uid).delete();
+  } catch (e) {
+    // best effort
+  }
+
+  // Remove from all teams (and transfer ownership / delete empty teams if needed)
+  const teams = Array.isArray(teamsCache) ? teamsCache.slice() : [];
+  for (const t of teams) {
+    const teamId = String(t?.id || '').trim();
+    if (!teamId) continue;
+    try {
+      await adminRemoveUserFromTeam(teamId, uid);
+    } catch (e) {
+      // best effort
+    }
+  }
+
+  // Clean up name registry entry if it points at this user
+  try {
+    const key = nameToAccountId((displayName || findKnownUserName(uid) || '').trim());
+    if (key) {
+      const ref = db.collection(NAME_REGISTRY_COLLECTION).doc(key);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const data = snap.data() || {};
+        const canon = String(data.canonicalId || data.userId || data.id || '').trim();
+        if (canon && canon === uid) {
+          tx.delete(ref);
+        }
+      });
+    }
+  } catch (e) {
+    // best effort
+  }
+}
+
+async function adminRemoveUserFromTeam(teamId, userId) {
+  if (!isAdminUser()) return;
+  const tid = String(teamId || '').trim();
+  const uid = String(userId || '').trim();
+  if (!tid || !uid) return;
+
+  const ref = db.collection('teams').doc(tid);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+
+    const t = { id: snap.id, ...snap.data() };
+    const members = getMembers(t);
+    const pending = getPending(t);
+
+    const newMembers = members.filter(m => !isSameAccount(m, uid));
+    const newPending = pending.filter(p => !isSameAccount(p, uid));
+
+    const creatorId = getTeamCreatorAccountId(t);
+    const wasCreator = !!(creatorId && String(creatorId).trim() === uid);
+
+    // No changes needed
+    if (!wasCreator && newMembers.length === members.length && newPending.length === pending.length) return;
+
+    // If the deleted user owned the team, either transfer to first remaining member or delete the team if empty
+    if (wasCreator) {
+      if (newMembers.length === 0) {
+        tx.delete(ref);
+        return;
+      }
+      const next = newMembers[0];
+      const nextId = entryAccountId(next);
+      const nextName = String(next?.name || '').trim();
+      tx.update(ref, {
+        members: newMembers,
+        pending: newPending,
+        creatorUserId: nextId || '',
+        creatorName: nextName || '—',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      return;
+    }
+
+    tx.update(ref, {
+      members: newMembers,
+      pending: newPending,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  });
+}
+
+
 function renderOnlineUsersList() {
   const listEl = document.getElementById('online-users-list');
   if (!listEl) return;
 
   const myId = getUserId();
+  const isAdmin = isAdminUser();
+
+  initOnlineAdminDeleteHandlers(listEl);
 
   const roster = buildRosterIndex(teamsCache);
 
@@ -4164,12 +4305,15 @@ function renderOnlineUsersList() {
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
+      const canDelete = isAdmin && !isYou && uid;
+      const delBtn = canDelete ? `<button class="online-user-delete" type="button" title="Delete user" aria-label="Delete user" data-delete-user="${esc(uid)}" data-delete-name="${esc(displayName)}">×</button>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Active')}</div>
+          ${delBtn}
         </div>
       `;
     }
@@ -4187,12 +4331,15 @@ function renderOnlineUsersList() {
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
+      const canDelete = isAdmin && !isYou && uid;
+      const delBtn = canDelete ? `<button class="online-user-delete" type="button" title="Delete user" aria-label="Delete user" data-delete-user="${esc(uid)}" data-delete-name="${esc(displayName)}">×</button>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot inactive"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Idle')} • ${getTimeSinceActivity(p)}</div>
+          ${delBtn}
         </div>
       `;
     }
@@ -4210,12 +4357,15 @@ function renderOnlineUsersList() {
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
+      const canDelete = isAdmin && !isYou && uid;
+      const delBtn = canDelete ? `<button class="online-user-delete" type="button" title="Delete user" aria-label="Delete user" data-delete-user="${esc(uid)}" data-delete-name="${esc(displayName)}">×</button>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
+          ${delBtn}
         </div>
       `;
     }
@@ -4392,6 +4542,9 @@ function renderTeammatesList() {
 
   const st = computeUserState(teamsCache);
   const myId = getUserId();
+  const isAdmin = isAdminUser();
+
+  initOnlineAdminDeleteHandlers(listEl);
 
   const roster = buildRosterIndex(teamsCache);
 
