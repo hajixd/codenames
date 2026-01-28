@@ -4636,6 +4636,10 @@ function renderTeamProfile(teamId) {
       </div>
     </div>
 
+    <div class="profile-more-details">
+      <button class="link-btn subtle" type="button" id="team-more-details-btn">See more details</button>
+    </div>
+
     <div class="profile-divider"></div>
 
     <div class="profile-members">
@@ -4652,6 +4656,15 @@ function renderTeamProfile(teamId) {
       }).join('') : '<div class="profile-member"><span class="profile-member-name" style="color:var(--text-dim)">No members yet</span></div>'}
     </div>
   `;
+  // Hook up "See more details" for teams after content is mounted.
+  const teamMoreBtn = document.getElementById('team-more-details-btn');
+  teamMoreBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideProfilePopup();
+    openProfileDetailsModal(team.id, 'team');
+  });
+
 }
 
 function renderPlayerProfile(playerId) {
@@ -4731,7 +4744,7 @@ function renderPlayerProfile(playerId) {
     e.stopPropagation();
     // Close the small anchored profile popup before opening the centered modal.
     hideProfilePopup();
-    openProfileDetailsModal(player.id);
+    openProfileDetailsModal(player.id, 'player');
   });
 }
 
@@ -4764,11 +4777,11 @@ function initProfileDetailsModal() {
   });
 }
 
-function openProfileDetailsModal(playerId) {
+function openProfileDetailsModal(id, type = 'player') {
   const modal = document.getElementById('profile-details-modal');
   if (!modal) return;
 
-  renderProfileDetailsModal(playerId);
+  renderProfileDetailsModal(id, type);
 
   // Match the settings modal behavior (centered fixed card).
   modal.style.display = 'block';
@@ -4787,10 +4800,117 @@ function closeProfileDetailsModal() {
   }, 200);
 }
 
-function renderProfileDetailsModal(playerId) {
+
+function renderTeamDetailsModal(teamId) {
   const titleEl = document.getElementById('profile-details-title');
   const bodyEl = document.getElementById('profile-details-body');
   if (!titleEl || !bodyEl) return;
+
+  const team = teamsCache.find(t => t?.id === teamId);
+  if (!team) {
+    titleEl.textContent = 'Details';
+    bodyEl.innerHTML = `<div class="hint">Team not found.</div>`;
+    return;
+  }
+
+  const tc = getDisplayTeamColor(team);
+  const members = getMembers(team);
+  const creatorId = team.creatorUserId;
+
+  const createdAt = team.createdAt ? formatRelativeTime(tsToMs(team.createdAt)) : 'Unknown';
+
+  const memberIds = members.map(m => entryAccountId(m)).filter(Boolean);
+  const lastActivity = getTeamLastActivity(memberIds);
+
+  // Aggregate member stats (best-effort)
+  let aggGames = 0, aggWins = 0, aggLosses = 0;
+  for (const mid of memberIds) {
+    const p = playersCache.find(pp => pp?.id === mid || entryAccountId(pp) === mid);
+    if (!p) continue;
+    aggGames += Number(p.gamesPlayed || 0) || 0;
+    aggWins += Number(p.wins || 0) || 0;
+    aggLosses += Number(p.losses || 0) || 0;
+  }
+  const denom = (aggWins + aggLosses);
+  const winRate = denom > 0 ? Math.round((aggWins / denom) * 100) : 0;
+
+  const isEligible = members.length >= TEAM_MIN;
+
+  titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(team.teamName || 'Unnamed Team')}</span>`;
+
+  bodyEl.innerHTML = `
+    <div class="profile-stats">
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Status</span>
+        <span class="profile-status ${isEligible ? 'eligible' : 'not-eligible'}">
+          <span class="profile-status-dot"></span>
+          ${isEligible ? 'Tournament Ready' : 'Needs ' + (TEAM_MIN - members.length) + ' more'}
+        </span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Members</span>
+        <span class="profile-stat-value">${members.length}/${TEAM_MAX}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Created</span>
+        <span class="profile-stat-value">${esc(createdAt)}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Last Active</span>
+        <span class="profile-stat-value">${esc(lastActivity)}</span>
+      </div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-stats">
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Games Played</span>
+        <span class="profile-stat-value">${esc(String(aggGames))}</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Record</span>
+        <span class="profile-stat-value">${esc(String(aggWins))}W - ${esc(String(aggLosses))}L</span>
+      </div>
+      <div class="profile-stat-row">
+        <span class="profile-stat-label">Win Rate</span>
+        <span class="profile-stat-value">${esc(String(winRate))}%</span>
+      </div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-members">
+      <div class="profile-members-title">Team Members</div>
+      ${members.length ? members.map(m => {
+        const mid = entryAccountId(m);
+        const mname = (m?.name || '—').trim();
+        const isLeader = isSameAccount(m, creatorId);
+        const link = mid
+          ? `<span class="profile-link" data-profile-type="player" data-profile-id="${esc(mid)}" style="color:${esc(tc || 'var(--text)')}">${esc(mname)}</span>`
+          : `<span class="profile-member-name" style="color:${esc(tc || 'var(--text)')}">${esc(mname)}</span>`;
+        return `
+          <div class="profile-member">
+            ${link}
+            ${isLeader ? '<span class="profile-member-badge leader">Leader</span>' : ''}
+          </div>
+        `;
+      }).join('') : '<div class="profile-member"><span class="profile-member-name" style="color:var(--text-dim)">No members yet</span></div>'}
+    </div>
+  `;
+}
+
+function renderProfileDetailsModal(id, type = 'player') {
+  const titleEl = document.getElementById('profile-details-title');
+  const bodyEl = document.getElementById('profile-details-body');
+  if (!titleEl || !bodyEl) return;
+
+  if (type === 'team') {
+    renderTeamDetailsModal(id);
+    return;
+  }
+
+  const playerId = id;
 
   const player = playersCache.find(p => p?.id === playerId || entryAccountId(p) === playerId);
   if (!player) {
@@ -4866,9 +4986,6 @@ function renderProfileDetailsModal(playerId) {
       </div>
     </div>
 
-    <div class="hint" style="margin-top:10px;">
-      Stats are updated when a game ends (wins/losses count for players in red/blue teams).
-    </div>
   `;
 }
 

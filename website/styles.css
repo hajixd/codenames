@@ -5608,6 +5608,28 @@ body.tournament.has-team-color .btn.primary:hover {
   transform: translate(-50%, -50%) scale(0.95);
 }
 
+
+/* Profile details modal positioning + size */
+.profile-details-modal-card{
+  top: 50%;
+  left: 50%;
+  width: min(560px, 92vw);
+  max-width: 560px;
+  max-height: calc(100vh - 140px);
+}
+
+.profile-details-modal-card .modal-body{
+  overflow-y: auto;
+}
+
+.profile-details-modal.modal-open .profile-details-modal-card{
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.profile-details-modal:not(.modal-open) .profile-details-modal-card{
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
 /* Card hover animations */
 .mode-card {
   transition: background var(--anim-duration) var(--anim-ease),
