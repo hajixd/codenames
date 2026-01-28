@@ -1408,65 +1408,12 @@ function renderInvites(players, teams) {
   const list = document.getElementById('invites-list');
   if (!card || !list) return;
 
-  const st = computeUserState(teams);
-  const noName = !st.name;
-
-  // Invites are useful even if you're already on a team (accepting will switch you).
-  // If the user has a pending request somewhere, they can still accept an invite (and the pending request will be cleared).
-
-  const me = (players || []).find(p => p.id === st.userId);
-  const invites = Array.isArray(me?.invites) ? me.invites : [];
-  if (!invites.length) {
-    card.style.display = 'none';
-    return;
-  }
-
-  card.style.display = 'block';
-
-  if (noName) {
-    setHint('invites-hint', 'Set your name on Home first.');
-  } else {
-    setHint('invites-hint', '');
-  }
-
-  list.innerHTML = invites.map(inv => {
-    const teamName = truncateTeamName(inv?.teamName || 'Team');
-    const teamId = inv?.teamId || '';
-    const t = (teams || []).find(x => x?.id === teamId);
-    const c = t ? getDisplayTeamColor(t) : null;
-    const nameStyle = c ? `style="color:${esc(c)}"` : '';
-    return `
-      <div class="invite-row">
-        <div class="invite-left">
-          <div class="invite-title profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" ${nameStyle}>${esc(teamName)}</div>
-          <div class="invite-sub">You've been invited to join</div>
-        </div>
-        <div class="invite-actions">
-          <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
-          <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  list.querySelectorAll('[data-invite-accept]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-invite-accept');
-      if (!teamId) return;
-      await acceptInvite(teamId);
-      renderInvites(playersCache, teamsCache);
-      renderMyTeam(teamsCache);
-    });
-  });
-
-  list.querySelectorAll('[data-invite-decline]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-invite-decline');
-      if (!teamId) return;
-      await declineInvite(teamId);
-      renderInvites(playersCache, teamsCache);
-    });
-  });
+  // Invites are now shown via the Invites modal (opened from the My Team tab).
+  // Keep the legacy inline card hidden so there isn't duplicate UI.
+  card.style.display = 'none';
+  list.innerHTML = '';
+  setHint('invites-hint', '');
+  return;
 }
 
 async function upsertPlayerProfile(userId, name) {
@@ -1983,6 +1930,11 @@ function initMyTeamControls() {
     openInvitesModal();
   });
 
+  // Invites button in the My Team tab header (useful even when you're not on a team).
+  document.getElementById('open-invites-top')?.addEventListener('click', () => {
+    openInvitesModal();
+  });
+
   document.getElementById('open-chat')?.addEventListener('click', () => {
     openChatModal();
   });
@@ -2031,6 +1983,7 @@ function renderMyTeam(teams) {
   const createBtn = document.getElementById('open-create-team');
   const card = document.getElementById('myteam-card');
   const joinBtn = document.getElementById('join-team-btn');
+  const invitesTopBtn = document.getElementById('open-invites-top');
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
@@ -2042,6 +1995,14 @@ function renderMyTeam(teams) {
   const colorInput = document.getElementById('team-color-input');
 
   const hasTeam = !!st.teamId;
+
+  // Invites are relevant whether or not you're on a team.
+  const me = (playersCache || []).find(p => p?.id === st.userId);
+  const invites = Array.isArray(me?.invites) ? me.invites : [];
+  if (invitesTopBtn) {
+    invitesTopBtn.style.display = 'inline-flex';
+    invitesTopBtn.textContent = invites.length ? `Invites (${invites.length})` : 'Invites';
+  }
 
   if (joinBtn) {
     // Only show when you're named and not currently on a team.
@@ -2099,8 +2060,7 @@ function renderMyTeam(teams) {
 
   // Invites button (shows your pending invites in a modal)
   if (invitesBtn) {
-    const me = (playersCache || []).find(p => p?.id === st.userId);
-    const invites = Array.isArray(me?.invites) ? me.invites : [];
+    // Only shown inside the team card footer (when you're already on a team).
     if (invites.length) {
       invitesBtn.style.display = 'inline-flex';
       invitesBtn.textContent = `Invites (${invites.length})`;
