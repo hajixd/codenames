@@ -22,7 +22,7 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-
+const rtdb = firebase.database();
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
@@ -2921,6 +2921,8 @@ async function adminDeletePlayer(userId) {
     batch.delete(db.collection(PRESENCE_COLLECTION).doc(uid));
     writes += 2;
     await batch.commit();
+    // Also remove realtime presence entry
+    try { await rtdb.ref(`${PRESENCE_ROOT}/${uid}`).remove(); } catch (_) {}
   } catch (e) {
     console.error('Admin delete player failed:', e);
     window.alert('Could not delete that account (check permissions / rules).');
@@ -3915,49 +3917,81 @@ let presenceCache = [];
 let presenceUpdateInterval = null;
 let lastActivityTime = Date.now();
 
+const PRESENCE_ROOT = "presence";
+const PRESENCE_ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const PRESENCE_HEARTBEAT_MS = 25 * 1000; // 25 seconds
+let presenceSelfRef = null;
+let presenceSelfDisconnectArmed = false;
+
 function initPresence() {
   const name = getUserName();
-  if (!name) return;
+  const userId = getUserId();
+  if (!name || !userId) return;
+
+  // Arm onDisconnect once so closing the tab marks you offline reliably.
+  if (!presenceSelfRef) {
+    presenceSelfRef = rtdb.ref(`${PRESENCE_ROOT}/${userId}`);
+  }
+
+  if (!presenceSelfDisconnectArmed) {
+    presenceSelfDisconnectArmed = true;
+    const baseWhereKey = computeLocalPresenceWhereKey();
+    const offlinePayload = {
+      odId: userId,
+      name: name,
+      state: 'offline',
+      whereKey: baseWhereKey,
+      whereLabel: PRESENCE_WHERE_LABELS[baseWhereKey] || baseWhereKey,
+      activePanelId: activePanelId || null,
+      lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    try {
+      presenceSelfRef.onDisconnect().set(offlinePayload);
+    } catch (e) {
+      console.warn('Presence onDisconnect arm failed:', e);
+    }
+  }
 
   // Update presence immediately
   updatePresence();
 
-  // Set up periodic presence updates
+  // Heartbeat keeps lastSeenAt fresh so "online within 5 minutes" works.
   if (presenceUpdateInterval) clearInterval(presenceUpdateInterval);
-  presenceUpdateInterval = setInterval(updatePresence, PRESENCE_UPDATE_INTERVAL_MS);
+  presenceUpdateInterval = setInterval(() => {
+    updatePresence();
+  }, PRESENCE_HEARTBEAT_MS);
 
-  // Track user activity
-  const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
-  const throttledActivity = throttle(() => {
-    lastActivityTime = Date.now();
-  }, 10000); // Throttle to once per 10 seconds
-
-  activityEvents.forEach(evt => {
-    document.addEventListener(evt, throttledActivity, { passive: true });
-  });
-
-  // Update presence on visibility change
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
+  // Track activity to flip idle/online quickly
+  ['click', 'keydown', 'mousemove', 'touchstart'].forEach(evt => {
+    document.addEventListener(evt, () => {
       lastActivityTime = Date.now();
-      updatePresence();
-    }
+      if (document.visibilityState === 'visible') updatePresence();
+    }, { passive: true });
   });
 
-  // Update presence before unload
+  document.addEventListener('visibilitychange', () => {
+    updatePresence();
+  });
+
+  // Best-effort immediate offline (onDisconnect is the reliable path).
   window.addEventListener('beforeunload', () => {
-    // Mark as going offline
-    const userId = getUserId();
-    if (userId) {
-      // Use sendBeacon for reliable delivery on page close
-      const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
-      presenceRef.update({
-        lastActivity: firebase.firestore.FieldValue.serverTimestamp()
-      }).catch(() => {});
-    }
+    try {
+      if (presenceSelfRef) {
+        const baseWhereKey = computeLocalPresenceWhereKey();
+        presenceSelfRef.update({
+          state: 'offline',
+          whereKey: baseWhereKey,
+          whereLabel: PRESENCE_WHERE_LABELS[baseWhereKey] || baseWhereKey,
+          activePanelId: activePanelId || null,
+          lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+      }
+    } catch (_) {}
   });
 
-  // Start listening to all presence docs
+  // Start listening to all presence entries
   startPresenceListener();
 }
 
@@ -3978,17 +4012,21 @@ async function updatePresence() {
   if (!userId || !name) return;
 
   try {
-    const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+    if (!presenceSelfRef) presenceSelfRef = rtdb.ref(`${PRESENCE_ROOT}/${userId}`);
+
     const whereKey = computeLocalPresenceWhereKey();
-    await presenceRef.set({
+    const state = (document.visibilityState === 'visible') ? 'online' : 'idle';
+
+    await presenceSelfRef.update({
       odId: userId,
       name: name,
+      state: state,
       whereKey: whereKey,
       whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
-      activePanelId: activePanelId,
-      lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+      activePanelId: activePanelId || null,
+      lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    });
   } catch (e) {
     console.warn('Presence update failed:', e);
   }
@@ -3997,14 +4035,23 @@ async function updatePresence() {
 function startPresenceListener() {
   if (presenceUnsub) return;
 
-  presenceUnsub = db.collection(PRESENCE_COLLECTION)
-    .orderBy('lastActivity', 'desc')
-    .onSnapshot(snap => {
-      presenceCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderOnlineCounter();
-    }, err => {
-      console.warn('Presence listener error:', err);
-    });
+  const ref = rtdb.ref(PRESENCE_ROOT);
+  const handler = snap => {
+    const val = snap.val() || {};
+    presenceCache = Object.keys(val).map(id => ({ id, ...val[id] }));
+    renderOnlineCounter();
+    // If online modal is open, re-render it.
+    if (document.getElementById('online-modal')?.classList.contains('open')) {
+      try { renderOnlineModal(); } catch (_) {}
+    }
+  };
+
+  ref.on('value', handler, err => {
+    console.warn('Presence listener error:', err);
+  });
+
+  // Store unsubscriber
+  presenceUnsub = () => ref.off('value', handler);
 }
 
 function stopPresenceListener() {
@@ -4040,42 +4087,36 @@ function tsToMsSafe(ts) {
 
 function getPresenceStatus(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  // Support older presence docs that may not have `lastActivity`.
-  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
-  if (!ts) return 'offline';
+  if (!presence) return 'offline';
 
-  const lastMs = tsToMsSafe(ts);
+  const lastMs = tsToMsSafe(presence.lastSeenAt || presence.updatedAt || presence.lastActivity);
   if (!lastMs) return 'offline';
 
-  const now = Date.now();
-  const diff = now - lastMs;
+  const age = Date.now() - lastMs;
+  if (age > PRESENCE_ONLINE_WINDOW_MS) return 'offline';
 
-  if (diff < PRESENCE_INACTIVE_MS) return 'online';
-  // Rename "inactive" to "idle" in the UI/status model.
-  if (diff < PRESENCE_OFFLINE_MS) return 'idle';
-  return 'offline';
+  const st = String(presence.state || presence.status || '').toLowerCase().trim();
+  if (st === 'idle') return 'idle';
+  if (st === 'online') return 'online';
+
+  // Fallback: within window => online
+  return 'online';
 }
 
 function getTimeSinceActivity(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
-  if (!ts) return '';
+  if (!presence) return '';
 
-  const lastMs = tsToMsSafe(ts);
+  const lastMs = tsToMsSafe(presence.lastSeenAt || presence.updatedAt || presence.lastActivity);
   if (!lastMs) return '';
 
-  const now = Date.now();
-  const diff = now - lastMs;
-  const minutes = Math.floor(diff / 60000);
-
-  if (minutes < 1) return 'just now';
-  if (minutes === 1) return '1 minute ago';
-  if (minutes < 60) return `${minutes} minutes ago`;
-
-  const hours = Math.floor(minutes / 60);
+  const diffMs = Date.now() - lastMs;
+  if (diffMs < 60 * 1000) return 'just now';
+  const mins = Math.floor(diffMs / (60 * 1000));
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
   if (hours === 1) return '1 hour ago';
   if (hours < 24) return `${hours} hours ago`;
-
   const days = Math.floor(hours / 24);
   if (days === 1) return '1 day ago';
   return `${days} days ago`;
