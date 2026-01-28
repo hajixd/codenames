@@ -1806,6 +1806,11 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function truncateTeamNameGame(name, maxLen = 20) {
+  const str = String(name || '');
+  return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
+}
+
 async function renderSpectateGames() {
   const section = document.getElementById('spectate-games-section');
   const list = document.getElementById('spectate-games-list');
@@ -1833,8 +1838,8 @@ async function renderSpectateGames() {
     section.style.display = 'block';
 
     const activeHtml = activeGames.map(g => {
-      const redName = escapeHtml(g.redTeamName || 'Red Team');
-      const blueName = escapeHtml(g.blueTeamName || 'Blue Team');
+      const redName = escapeHtml(truncateTeamNameGame(g.redTeamName || 'Red Team'));
+      const blueName = escapeHtml(truncateTeamNameGame(g.blueTeamName || 'Blue Team'));
       const status = escapeHtml(describeGameStatus(g));
 
       // Tournament games: only team members can join, others can only watch
@@ -1921,7 +1926,7 @@ async function renderTournamentLobby() {
   // Show team status
   statusEl.innerHTML = `
     <div class="team-info">
-      <span class="team-name">${escapeHtml(myTeam.teamName || 'My Team')}</span>
+      <span class="team-name">${escapeHtml(truncateTeamNameGame(myTeam.teamName || 'My Team'))}</span>
     </div>
   `;
 
@@ -1932,7 +1937,7 @@ async function renderTournamentLobby() {
       activeBanner.style.display = 'flex';
       const teamsText = document.getElementById('game-banner-teams');
       if (teamsText) {
-        teamsText.textContent = `${activeGame.redTeamName} vs ${activeGame.blueTeamName}`;
+        teamsText.textContent = `${truncateTeamNameGame(activeGame.redTeamName)} vs ${truncateTeamNameGame(activeGame.blueTeamName)}`;
       }
     }
     if (challengesSec) challengesSec.style.display = 'none';
@@ -1958,7 +1963,7 @@ async function renderTournamentLobby() {
       list.innerHTML = incoming.map(c => `
         <div class="challenge-row incoming">
           <div class="challenge-info">
-            <span class="challenge-team-name">${escapeHtml(c.fromTeamName || 'Unknown Team')}</span>
+            <span class="challenge-team-name">${escapeHtml(truncateTeamNameGame(c.fromTeamName || 'Unknown Team'))}</span>
             <span class="challenge-meta">wants to play</span>
           </div>
           <div class="challenge-actions">
@@ -1981,7 +1986,7 @@ async function renderTournamentLobby() {
       list.innerHTML = pending.map(c => `
         <div class="challenge-row">
           <div class="challenge-info">
-            <span class="challenge-team-name">${escapeHtml(c.toTeamName || 'Unknown Team')}</span>
+            <span class="challenge-team-name">${escapeHtml(truncateTeamNameGame(c.toTeamName || 'Unknown Team'))}</span>
             <span class="challenge-meta">waiting for response...</span>
           </div>
           <div class="challenge-actions">
@@ -2011,7 +2016,7 @@ async function renderTournamentLobby() {
       list.innerHTML = otherTeams.map(t => `
         <div class="challenge-row">
           <div class="challenge-info">
-            <span class="challenge-team-name">${escapeHtml(t.teamName || 'Team')}</span>
+            <span class="challenge-team-name">${escapeHtml(truncateTeamNameGame(t.teamName || 'Team'))}</span>
             <span class="challenge-meta">${getMembers(t).length} players</span>
           </div>
           <div class="challenge-actions">
@@ -2042,8 +2047,8 @@ async function renderActiveGamesList(myTeam, myActiveGameId) {
   activeGamesSec.style.display = 'block';
 
   list.innerHTML = games.map(g => {
-    const redName = escapeHtml(g.redTeamName || 'Red Team');
-    const blueName = escapeHtml(g.blueTeamName || 'Blue Team');
+    const redName = escapeHtml(truncateTeamNameGame(g.redTeamName || 'Red Team'));
+    const blueName = escapeHtml(truncateTeamNameGame(g.blueTeamName || 'Blue Team'));
     const status = escapeHtml(describeGameStatus(g));
 
     const isMyGame = !!(myTeam && (g.redTeamId === myTeam.id || g.blueTeamId === myTeam.id));
@@ -2489,8 +2494,8 @@ function renderGame() {
     if (redTeamEl) redTeamEl.textContent = `Red (${redCount})`;
     if (blueTeamEl) blueTeamEl.textContent = `Blue (${blueCount})`;
   } else {
-    if (redTeamEl) redTeamEl.textContent = currentGame.redTeamName || 'Red Team';
-    if (blueTeamEl) blueTeamEl.textContent = currentGame.blueTeamName || 'Blue Team';
+    if (redTeamEl) redTeamEl.textContent = truncateTeamNameGame(currentGame.redTeamName || 'Red Team');
+    if (blueTeamEl) blueTeamEl.textContent = truncateTeamNameGame(currentGame.blueTeamName || 'Blue Team');
   }
 
   document.getElementById('game-red-left').textContent = currentGame.redCardsLeft;
@@ -2506,11 +2511,11 @@ function renderGame() {
     turnTeamEl.className = 'turn-team';
     turnRoleEl.textContent = '(Players joining)';
   } else if (currentGame.winner) {
-    turnTeamEl.textContent = currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue');
+    turnTeamEl.textContent = truncateTeamNameGame(currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
     turnTeamEl.className = `turn-team ${currentGame.winner}`;
     turnRoleEl.textContent = 'WINS!';
   } else {
-    turnTeamEl.textContent = currentGame.currentTeam === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue');
+    turnTeamEl.textContent = truncateTeamNameGame(currentGame.currentTeam === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
     turnTeamEl.className = `turn-team ${currentGame.currentTeam}`;
     if (spectator) {
       turnRoleEl.textContent = '(Spectating)';
@@ -2677,7 +2682,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     } else {
       // Show waiting message
       waitingEl.style.display = 'block';
-      const waitingTeam = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+      const waitingTeam = truncateTeamNameGame(currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
       document.getElementById('waiting-for').textContent = `${waitingTeam}'s Spymaster`;
     }
     return;
@@ -2697,7 +2702,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       operativeActionsEl.style.display = 'flex';
     } else if (!isMyTurn) {
       waitingEl.style.display = 'block';
-      const waitingTeam = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+      const waitingTeam = truncateTeamNameGame(currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
       document.getElementById('waiting-for').textContent = `${waitingTeam}'s Operatives`;
     }
   }
@@ -2931,7 +2936,7 @@ async function handleCardClick(cardIndex) {
   if (winner) {
     updates.winner = winner;
     updates.currentPhase = 'ended';
-    const winnerName = winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+    const winnerName = truncateTeamNameGame(winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
     updates.log = firebase.firestore.FieldValue.arrayUnion(`${winnerName} wins!`);
   } else if (endTurn) {
     // Switch teams
@@ -3018,7 +3023,7 @@ function showGameEndOverlay() {
   if (isRedBlueWin) {
     const myTeamColor = getMyTeamColor();
     const isWinner = currentGame.winner === myTeamColor;
-    const winnerName = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+    const winnerName = truncateTeamNameGame(currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
 
     // Play win or lose sound
     if (window.playSound) {

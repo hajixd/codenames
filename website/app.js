@@ -901,7 +901,7 @@ function refreshNameUI() {
 function refreshHeaderIdentity() {
   const st = computeUserState(teamsCache);
   // Only show team name if actually on a team (not pending) - pending requests don't count
-  const teamText = st.team ? (st.team.teamName || 'My team') : 'No team';
+  const teamText = st.team ? truncateTeamName(st.team.teamName || 'My team') : 'No team';
   setText('user-team-display', teamText);
 
   // Apply team theme (glow + accent) for the team you're ON.
@@ -1238,7 +1238,7 @@ function renderPlayers(players, teams) {
       // IMPORTANT: do not show pending requests publicly.
       // Only show team if the player is an accepted member.
       const team = memberTeam || null;
-      const teamName = team ? (team.teamName || 'Team') : '—';
+      const teamName = team ? truncateTeamName(team.teamName || 'Team') : '—';
       const teamColor = team ? getDisplayTeamColor(team) : null;
 
       const showAvailable = !memberTeam;
@@ -1344,7 +1344,7 @@ function renderInvites(players, teams) {
   }
 
   list.innerHTML = invites.map(inv => {
-    const teamName = inv?.teamName || 'Team';
+    const teamName = truncateTeamName(inv?.teamName || 'Team');
     const teamId = inv?.teamId || '';
     const t = (teams || []).find(x => x?.id === teamId);
     const c = t ? getDisplayTeamColor(t) : null;
@@ -1647,7 +1647,7 @@ function renderTeams(teams) {
     return `
       <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}" ${itemStyle}>
         <div class="team-list-left">
-          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(t.teamName || 'Unnamed')}</span></div>
+          <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(truncateTeamName(t.teamName || 'Unnamed'))}</span></div>
           <div class="team-list-members" ${nameStyle}>${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
@@ -1715,7 +1715,7 @@ function renderTeamModal(teamId) {
   if (!team) return;
 
   const tc = getDisplayTeamColor(team);
-  setHTML('team-modal-title', `<span class="team-title-inline" style="color:${esc(tc)}">${esc(team.teamName || 'Team')}</span>`);
+  setHTML('team-modal-title', `<span class="team-title-inline" style="color:${esc(tc)}">${esc(truncateTeamName(team.teamName || 'Team'))}</span>`);
 
   const membersEl = document.getElementById('team-modal-members');
   const members = getMembers(team);
@@ -1964,7 +1964,7 @@ function renderMyTeam(teams) {
   }
 
   card.style.display = 'block';
-  setText('myteam-name', st.team.teamName || 'Unnamed');
+  setText('myteam-name', truncateTeamName(st.team.teamName || 'Unnamed'));
   const myNameEl = document.getElementById('myteam-name');
   if (myNameEl) myNameEl.style.color = getDisplayTeamColor(st.team);
   setText('myteam-size', `${getMembers(st.team).length}/${TEAM_MAX}`);
@@ -2408,7 +2408,7 @@ function renderChatTabMessages() {
     const senderName = (m?.senderName || '—');
     const senderId = String(m?.senderId || '').trim() || nameToAccountId(senderName);
     const team = getTeamForMemberId(senderId);
-    const teamName = team?.teamName ? String(team.teamName) : '';
+    const teamName = team?.teamName ? truncateTeamName(String(team.teamName)) : '';
     const color = team ? getDisplayTeamColor(team) : '';
 
     const label = teamName
@@ -2963,6 +2963,11 @@ function activatePanel(panelId) {
 
 function esc(s) {
   return String(s || '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+}
+
+function truncateTeamName(name, maxLen = 20) {
+  const str = String(name || '');
+  return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
 }
 
 function safeLSGet(key) {
@@ -3801,7 +3806,7 @@ function renderOnlineUsersList() {
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : null;
+      const teamName = memberTeam ? truncateTeamName(memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
@@ -3824,7 +3829,7 @@ function renderOnlineUsersList() {
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : null;
+      const teamName = memberTeam ? truncateTeamName(memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
@@ -3847,7 +3852,7 @@ function renderOnlineUsersList() {
       const uid = String(p.id || p.odId || '').trim();
       const displayName = (p.name || findKnownUserName(uid) || 'Unknown').trim();
       const memberTeam = roster.memberTeamByUserId.get(uid);
-      const teamName = memberTeam ? (memberTeam.teamName || 'Team') : null;
+      const teamName = memberTeam ? truncateTeamName(memberTeam.teamName || 'Team') : null;
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = teamName ? ` <span class="online-user-team-inline">(${esc(teamName)})</span>` : '';
@@ -4044,7 +4049,7 @@ function renderTeammatesList() {
   }
 
   const team = st.team;
-  if (titleEl) titleEl.textContent = team.teamName || 'My Team';
+  if (titleEl) titleEl.textContent = truncateTeamName(team.teamName || 'My Team');
   if (hintEl) hintEl.textContent = '';
 
   const members = team.members || [];

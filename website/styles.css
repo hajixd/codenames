@@ -3271,15 +3271,15 @@ button:disabled{
 
 /* Highlight your current team in the list (very subtle) */
 .team-list-item.is-mine{
-  border-color: rgba(255,255,255,0.12);
-  box-shadow: 0 0 0 2px var(--team-glow);
+  border-color: rgba(255,255,255,0.08);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
 }
 
 /* In Tournament, outline your team row using your team's color */
 body.tournament.has-team-color .team-list-item.is-mine{
-  border-color: var(--team-accent);
-  /* Slightly softer glow on the Teams tab */
-  box-shadow: 0 0 0 2px var(--team-glow), 0 0 6px var(--team-glow);
+  border-color: color-mix(in srgb, var(--team-accent) 40%, transparent);
+  /* Softer glow on the Teams tab */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--team-glow) 35%, transparent);
 }
 
 .team-list-left{ min-width: 0; }
