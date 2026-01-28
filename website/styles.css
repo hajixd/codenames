@@ -3366,6 +3366,155 @@ button.player-tag.pill-action:disabled{
   max-width: 900px;
 }
 
+/* ==================== COMPACT IN-GAME LAYOUT (no page scroll) ==================== */
+/* The overall app uses scrollable panels. For the game panel we lock the panel scroll
+   and instead lay out the game using a height-aware grid. */
+.panel-game {
+  overflow: hidden;
+}
+
+.panel-game .panel-inner {
+  height: 100%;
+  padding: 14px 14px 18px;
+  max-width: 1100px;
+  min-height: 100%;
+}
+
+#game-board-container {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr auto auto;
+}
+
+#game-board-container .game-header { grid-row: 1; }
+#game-board-container .game-board { grid-row: 2; }
+#game-board-container .clue-area { grid-row: 3; }
+#game-board-container .game-actions { grid-row: 4; }
+
+/* Desktop: give the game log a sidebar so the board stays centered and the page never scrolls */
+@media (min-width: 980px) {
+  #game-board-container {
+    grid-template-columns: 1fr 310px;
+    grid-template-rows: auto 1fr auto auto;
+  }
+  #game-board-container .game-header { grid-column: 1 / -1; }
+  #game-board-container .game-board { grid-column: 1; }
+  #game-board-container .clue-area { grid-column: 1; }
+  #game-board-container .game-actions { grid-column: 1; }
+  #game-board-container .game-log {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    margin-bottom: 0;
+    height: 100%;
+    max-height: none;
+  }
+  /* On desktop the log is always visible, so the log button can hide to reduce clutter */
+  #open-log-btn { display: none; }
+}
+
+/* Mobile: hide inline log and use a modal (Log button) */
+@media (max-width: 979px) {
+  #game-board-container .game-log { display: none; }
+  #game-board-container {
+    gap: 8px;
+  }
+}
+
+/* Tighten spacing + typography to fit on smaller viewports */
+.game-header {
+  margin-bottom: 0;
+  padding: 10px;
+  gap: 8px;
+}
+
+.game-team { padding: 6px 10px; }
+.game-team .team-name { font-size: 12px; }
+.game-team .cards-left { font-size: 18px; }
+.game-turn-display { font-size: 13px; }
+
+.game-board {
+  margin-bottom: 0;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: repeat(5, 1fr);
+}
+
+.game-card {
+  aspect-ratio: auto;
+  padding: 6px;
+  border-width: 1px;
+}
+
+.game-card .card-word {
+  font-size: clamp(8px, 1.6vw, 12px);
+  letter-spacing: 0.4px;
+}
+
+.clue-area {
+  margin-bottom: 0;
+  padding: 10px;
+}
+
+.current-clue {
+  gap: 8px;
+  font-size: 14px;
+}
+
+.clue-word { font-size: 16px; }
+.clue-number {
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+}
+
+.clue-form { gap: 8px; }
+.clue-num-input { width: 56px; }
+
+.game-actions {
+  margin-top: 0;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Make the role selection overlay-like so it doesn't push the board down */
+.role-selection {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  margin: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.72);
+  border: none;
+}
+
+.role-selection[style*="display: block"],
+.role-selection[style*="display:block"] {
+  display: flex !important;
+}
+
+.role-selection .role-title,
+.role-selection .role-status,
+.role-selection .role-buttons {
+  max-width: 520px;
+}
+
+.role-selection .role-title { font-size: 18px; margin-bottom: 10px; }
+.role-selection .role-buttons { gap: 10px; }
+.role-btn { padding: 14px 18px; }
+
+/* Game log modal: allow internal scrolling without affecting the page */
+#game-log-modal .modal-body {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
 /* Game Lobby */
 #game-lobby h2 {
   font-size: 20px;

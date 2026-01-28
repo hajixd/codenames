@@ -368,6 +368,26 @@ function initGameUI() {
   // End game (manual)
   document.getElementById('end-game-btn')?.addEventListener('click', handleEndGame);
 
+  // Game log modal (primarily for mobile)
+  const logBtn = document.getElementById('open-log-btn');
+  const logModal = document.getElementById('game-log-modal');
+  const logClose = document.getElementById('game-log-modal-close');
+  const openLog = () => {
+    if (!logModal) return;
+    logModal.style.display = 'flex';
+    requestAnimationFrame(() => logModal.classList.add('modal-open'));
+  };
+  const closeLog = () => {
+    if (!logModal) return;
+    logModal.classList.remove('modal-open');
+    setTimeout(() => { logModal.style.display = 'none'; }, 200);
+  };
+  logBtn?.addEventListener('click', openLog);
+  logClose?.addEventListener('click', closeLog);
+  logModal?.addEventListener('click', (e) => {
+    if (e.target === logModal) closeLog();
+  });
+
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
 
@@ -1462,17 +1482,40 @@ async function maybeAutoStartQuickPlay(game) {
         revealed: false
       }));
 
-      // If players pre-selected Spymaster in the lobby, pre-assign them.
-      const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
-      const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
-      const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
-      const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
-      const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
+      // Roles are chosen in the lobby. Ensure each team has a spymaster before starting.
+      let redPlayers = Array.isArray(g.redPlayers) ? [...g.redPlayers] : [];
+      let bluePlayers = Array.isArray(g.bluePlayers) ? [...g.bluePlayers] : [];
+
+      const ensureSpymaster = (players) => {
+        // If someone already chose Spymaster, keep it.
+        const existing = players.find(p => String(p?.role || 'operative') === 'spymaster');
+        if (existing?.name) return { players, spyName: existing.name };
+
+        // Otherwise, promote the first player to Spymaster so the game can start.
+        if (players.length > 0) {
+          const first = players[0];
+          players[0] = { ...first, role: 'spymaster' };
+          return { players, spyName: first.name || null };
+        }
+        return { players, spyName: null };
+      };
+
+      const redEnsured = ensureSpymaster(redPlayers);
+      redPlayers = redEnsured.players;
+      const redSpy = redEnsured.spyName;
+
+      const blueEnsured = ensureSpymaster(bluePlayers);
+      bluePlayers = blueEnsured.players;
+      const blueSpy = blueEnsured.spyName;
+
+      const startPhase = 'spymaster';
 
       tx.update(ref, {
         cards,
         currentTeam: firstTeam,
         currentPhase: startPhase,
+        redPlayers,
+        bluePlayers,
         redSpymaster: redSpy,
         blueSpymaster: blueSpy,
         redCardsLeft: FIRST_TEAM_CARDS,
@@ -1949,7 +1992,6 @@ function describeGameStatus(game) {
     ? (game.redTeamName || 'Red Team')
     : (game.blueTeamName || 'Blue Team');
 
-  if (game.currentPhase === 'role-selection') return 'Selecting roles';
   if (game.currentPhase === 'spymaster') return `${teamName} (Spymaster)`;
   if (game.currentPhase === 'operatives') return `${teamName} (Operatives)`;
   return 'In progress';
@@ -2199,6 +2241,19 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
   const blueTeamId = isTeam1Red ? team2Id : team1Id;
   const blueTeamName = isTeam1Red ? team2Name : team1Name;
 
+  // Roles are chosen in the lobby; for tournament games we auto-pick a default spymaster
+  // to avoid any extra in-game prompts.
+  const pickDefaultSpymasterName = (teamId) => {
+    const team = (teamsCache || []).find(t => t.id === teamId) || null;
+    const members = (team && (typeof getMembers === 'function')) ? getMembers(team) : (team?.members || team?.players || []);
+    const nameOf = (m) => String(m?.name || m?.displayName || m?.userName || m?.email || '').trim();
+    const names = members.map(nameOf).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    return names[0] || null;
+  };
+
+  const redSpy = pickDefaultSpymasterName(redTeamId);
+  const blueSpy = pickDefaultSpymasterName(blueTeamId);
+
   // Red always goes first in Codenames
   const firstTeam = 'red';
 
@@ -2222,9 +2277,9 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
     blueTeamName,
     cards,
     currentTeam: firstTeam,
-    currentPhase: 'role-selection', // role-selection, spymaster, operatives, ended
-    redSpymaster: null,
-    blueSpymaster: null,
+    currentPhase: 'spymaster', // spymaster, operatives, ended
+    redSpymaster: redSpy,
+    blueSpymaster: blueSpy,
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
@@ -2396,19 +2451,9 @@ function renderGame() {
     }
   }
 
-  // Role selection
+  // Roles are chosen in the lobby (no in-game role selection).
   const roleSelectionEl = document.getElementById('role-selection');
-  if (!spectator && currentGame.currentPhase === 'role-selection' && myTeamColor) {
-    const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
-    if (!mySpymaster) {
-      roleSelectionEl.style.display = 'block';
-      updateRoleButtons();
-    } else {
-      roleSelectionEl.style.display = 'none';
-    }
-  } else {
-    roleSelectionEl.style.display = 'none';
-  }
+  if (roleSelectionEl) roleSelectionEl.style.display = 'none';
 
   // Render board
   renderBoard(isSpymaster);
@@ -2497,12 +2542,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     return;
   }
 
-  if (currentGame.currentPhase === 'role-selection') {
-    waitingEl.style.display = 'block';
-    document.getElementById('waiting-for').textContent = 'all teams to select roles';
-    return;
-  }
-
   if (currentGame.currentPhase === 'spymaster') {
     if (!spectator && isMyTurn && isSpymaster) {
       // Show clue input
@@ -2537,16 +2576,25 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 }
 
 function renderGameLog() {
-  const logEl = document.getElementById('game-log-entries');
-  if (!logEl || !currentGame?.log) return;
+  const entries = Array.isArray(currentGame?.log) ? currentGame.log : [];
 
-  logEl.innerHTML = currentGame.log.map(entry => {
-    return `<div class="log-entry">${entry}</div>`;
-  }).join('');
+  const renderEntries = (el) => {
+    if (!el) return;
+    el.innerHTML = entries.map(entry => `<div class="log-entry">${entry}</div>`).join('');
+  };
 
-  // Auto-scroll to bottom
-  const container = document.getElementById('game-log');
-  if (container) container.scrollTop = container.scrollHeight;
+  renderEntries(document.getElementById('game-log-entries'));
+  renderEntries(document.getElementById('game-log-entries-modal'));
+
+  // Auto-scroll visible containers to bottom
+  const inlineContainer = document.getElementById('game-log');
+  if (inlineContainer) inlineContainer.scrollTop = inlineContainer.scrollHeight;
+
+  const modalEntries = document.getElementById('game-log-entries-modal');
+  if (modalEntries && modalEntries.parentElement) {
+    const modalScroll = modalEntries.parentElement;
+    modalScroll.scrollTop = modalScroll.scrollHeight;
+  }
 }
 
 function updateRoleButtons() {
@@ -2952,6 +3000,14 @@ function getMyTeamColor() {
 function isCurrentUserSpymaster() {
   if (!currentGame) return false;
 
+  // Quick Play uses per-player seat roles stored in the lobby arrays.
+  if (currentGame.type === 'quick') {
+    const odId = getUserId();
+    if (!odId) return false;
+    return getQuickPlayerSeatRole(currentGame, odId) === 'spymaster';
+  }
+
+  // Tournament games store the spymaster as a name string on the game doc.
   const userName = getUserName();
   if (!userName) return false;
 
@@ -2961,6 +3017,7 @@ function isCurrentUserSpymaster() {
   const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
   return mySpymaster === userName;
 }
+
 
 function escapeHtml(str) {
   const div = document.createElement('div');
