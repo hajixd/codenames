@@ -2393,47 +2393,7 @@ function showGameBoard() {
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'block';
-
-  // Ensure the board is sized to the viewport the moment the game view shows.
-  scheduleBoardResize();
 }
-
-/* =========================
-   Responsive board sizing
-   Make the 5x5 board the largest square that fits the available space.
-========================= */
-let _boardResizeRaf = null;
-
-function scheduleBoardResize() {
-  if (_boardResizeRaf) cancelAnimationFrame(_boardResizeRaf);
-  _boardResizeRaf = requestAnimationFrame(() => {
-    _boardResizeRaf = null;
-    resizeBoardToFit();
-  });
-}
-
-function resizeBoardToFit() {
-  const container = document.getElementById('game-board-container');
-  if (!container || container.style.display === 'none') return;
-
-  const slot = document.getElementById('board-slot');
-  const board = document.getElementById('game-board');
-  if (!slot || !board) return;
-
-  // If hidden (e.g. switched panels), don't stomp styles.
-  if (slot.offsetParent === null) return;
-
-  const r = slot.getBoundingClientRect();
-  const size = Math.floor(Math.min(r.width, r.height));
-  if (!Number.isFinite(size) || size <= 0) return;
-
-  board.style.width = `${size}px`;
-  board.style.height = `${size}px`;
-}
-
-// Keep the board fitting the viewport on resizes.
-window.addEventListener('resize', scheduleBoardResize);
-window.addEventListener('orientationchange', scheduleBoardResize);
 
 function renderGame() {
   if (!currentGame) {
@@ -2542,8 +2502,7 @@ function renderBoard(isSpymaster) {
     `;
   }).join('');
 
-  // Board contents affect layout; re-fit after DOM updates.
-  scheduleBoardResize();
+  // Board contents affect layout; the panel is scrollable so no forced resizing needed.
 }
 
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
