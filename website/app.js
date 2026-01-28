@@ -17,13 +17,12 @@ const firebaseConfig = {
   projectId: "codenames-tournament",
   storageBucket: "codenames-tournament.firebasestorage.app",
   messagingSenderId: "199881649305",
-  appId: "1:199881649305:web:b907e2832cf7d9d4151c08",
-  databaseURL: "https://codenames-tournament-default-rtdb.firebaseio.com"
+  appId: "1:199881649305:web:b907e2832cf7d9d4151c08"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const rtdb = firebase.database();
+
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
@@ -981,7 +980,6 @@ function listenToTeams() {
       renderMyTeam(teamsCache);
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
-      renderMyTeam(teamsCache);
       // If a modal is open, refresh its contents
       if (openTeamId) openTeamModal(openTeamId);
       if (document.getElementById('requests-modal')?.style?.display === 'flex') {
@@ -1409,10 +1407,6 @@ function renderInvites(players, teams) {
   const card = document.getElementById('invites-card');
   const list = document.getElementById('invites-list');
   if (!card || !list) return;
-
-  // Invites are shown via the Invites modal (button) to avoid clutter on the My Team page.
-  card.style.display = 'none';
-  return;
 
   const st = computeUserState(teams);
   const noName = !st.name;
@@ -2103,15 +2097,16 @@ function renderMyTeam(teams) {
     }
   }
 
-  // Invites button (opens a modal with all your invites)
+  // Invites button (shows your pending invites in a modal)
   if (invitesBtn) {
     const me = (playersCache || []).find(p => p?.id === st.userId);
     const invites = Array.isArray(me?.invites) ? me.invites : [];
-    // Always show the button when you have a team; disable it if you have no invites.
-    invitesBtn.style.display = hasTeam ? 'inline-flex' : 'none';
-    invitesBtn.textContent = invites.length ? `Invites (${invites.length})` : 'Invites';
-    invitesBtn.disabled = invites.length === 0;
-    invitesBtn.classList.toggle('disabled', invites.length === 0);
+    if (invites.length) {
+      invitesBtn.style.display = 'inline-flex';
+      invitesBtn.textContent = `Invites (${invites.length})`;
+    } else {
+      invitesBtn.style.display = 'none';
+    }
   }
 
   // Team color picker (visible to everyone; editable by creator)
@@ -2926,8 +2921,6 @@ async function adminDeletePlayer(userId) {
     batch.delete(db.collection(PRESENCE_COLLECTION).doc(uid));
     writes += 2;
     await batch.commit();
-    // Also remove realtime presence entry
-    try { await rtdb.ref(`${PRESENCE_ROOT}/${uid}`).remove(); } catch (_) {}
   } catch (e) {
     console.error('Admin delete player failed:', e);
     window.alert('Could not delete that account (check permissions / rules).');
@@ -3919,114 +3912,53 @@ window.bumpPresence = throttle(() => {
 
 let presenceUnsub = null;
 let presenceCache = [];
-let presenceFsUnsub = null;
-let presenceFsCache = [];
-let presenceSource = 'rtdb'; // 'rtdb' | 'firestore'
-let presenceRtdbOk = true;
 let presenceUpdateInterval = null;
 let lastActivityTime = Date.now();
 
-const PRESENCE_ROOT = "presence";
-const PRESENCE_ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-const PRESENCE_HEARTBEAT_MS = 25 * 1000; // 25 seconds
-let presenceSelfRef = null;
-let presenceSelfDisconnectArmed = false;
-
 function initPresence() {
   const name = getUserName();
-  const userId = getUserId();
-  if (!name || !userId) return;
-
-  // Arm onDisconnect once so closing the tab marks you offline reliably.
-  if (!presenceSelfRef) {
-    presenceSelfRef = rtdb.ref(`${PRESENCE_ROOT}/${userId}`);
-  }
-
-  if (!presenceSelfDisconnectArmed) {
-    presenceSelfDisconnectArmed = true;
-    const baseWhereKey = computeLocalPresenceWhereKey();
-    const offlinePayload = {
-      odId: userId,
-      name: name,
-      state: 'offline',
-      whereKey: baseWhereKey,
-      whereLabel: PRESENCE_WHERE_LABELS[baseWhereKey] || baseWhereKey,
-      activePanelId: activePanelId || null,
-      lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
-      updatedAt: firebase.database.ServerValue.TIMESTAMP
-    };
-    try {
-      presenceSelfRef.onDisconnect().set(offlinePayload);
-    } catch (e) {
-      presenceRtdbOk = false;
-      console.warn('Presence onDisconnect arm failed:', e);
-      switchPresenceToFirestore();
-    }
-  }
+  if (!name) return;
 
   // Update presence immediately
   updatePresence();
 
-  // Heartbeat keeps lastSeenAt fresh so "online within 5 minutes" works.
+  // Set up periodic presence updates
   if (presenceUpdateInterval) clearInterval(presenceUpdateInterval);
-  presenceUpdateInterval = setInterval(() => {
-    updatePresence();
-  }, PRESENCE_HEARTBEAT_MS);
+  presenceUpdateInterval = setInterval(updatePresence, PRESENCE_UPDATE_INTERVAL_MS);
 
-  // Track activity to flip idle/online quickly
-  ['click', 'keydown', 'mousemove', 'touchstart'].forEach(evt => {
-    document.addEventListener(evt, () => {
-      lastActivityTime = Date.now();
-      if (document.visibilityState === 'visible') updatePresence();
-    }, { passive: true });
+  // Track user activity
+  const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+  const throttledActivity = throttle(() => {
+    lastActivityTime = Date.now();
+  }, 10000); // Throttle to once per 10 seconds
+
+  activityEvents.forEach(evt => {
+    document.addEventListener(evt, throttledActivity, { passive: true });
   });
 
+  // Update presence on visibility change
   document.addEventListener('visibilitychange', () => {
-    updatePresence();
+    if (document.visibilityState === 'visible') {
+      lastActivityTime = Date.now();
+      updatePresence();
+    }
   });
 
-  // Best-effort immediate offline (onDisconnect is the reliable path).
+  // Update presence before unload
   window.addEventListener('beforeunload', () => {
+    // Mark as going offline
     const userId = getUserId();
-    const name = getUserName();
-    const baseWhereKey = computeLocalPresenceWhereKey();
-    const whereLabel = PRESENCE_WHERE_LABELS[baseWhereKey] || baseWhereKey;
-
-    // Best-effort Firestore offline
-    try {
-      if (userId && name) {
-        db.collection(PRESENCE_COLLECTION).doc(userId).set({
-          odId: userId,
-          name: name,
-          state: 'offline',
-          whereKey: baseWhereKey,
-          whereLabel: whereLabel,
-          activePanelId: activePanelId || null,
-          lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      }
-    } catch (_) {}
-
-    // Best-effort RTDB offline (onDisconnect is the reliable path)
-    try {
-      if (presenceSelfRef) {
-        presenceSelfRef.update({
-          state: 'offline',
-          whereKey: baseWhereKey,
-          whereLabel: whereLabel,
-          activePanelId: activePanelId || null,
-          lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
-          updatedAt: firebase.database.ServerValue.TIMESTAMP
-        });
-      }
-    } catch (_) {}
+    if (userId) {
+      // Use sendBeacon for reliable delivery on page close
+      const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+      presenceRef.update({
+        lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(() => {});
+    }
   });
 
-  // Start listeners
-  startFirestorePresenceListener();
-  if (presenceRtdbOk) startPresenceListener();
-  else switchPresenceToFirestore();
+  // Start listening to all presence docs
+  startPresenceListener();
 }
 
 function throttle(fn, wait) {
@@ -4045,76 +3977,34 @@ async function updatePresence() {
   const name = getUserName();
   if (!userId || !name) return;
 
-  const whereKey = computeLocalPresenceWhereKey();
-  const state = (document.visibilityState === 'visible') ? 'online' : 'idle';
-  const whereLabel = PRESENCE_WHERE_LABELS[whereKey] || whereKey;
-
-  // Always keep a Firestore presence doc updated as a fallback (also powers online counts if RTDB isn't available).
   try {
-    await db.collection(PRESENCE_COLLECTION).doc(userId).set({
+    const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+    const whereKey = computeLocalPresenceWhereKey();
+    await presenceRef.set({
       odId: userId,
       name: name,
-      state: state,
       whereKey: whereKey,
-      whereLabel: whereLabel,
-      activePanelId: activePanelId || null,
-      lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+      whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
+      activePanelId: activePanelId,
+      lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-  } catch (_) {}
-
-  // Prefer RTDB presence for reliable onDisconnect/offline.
-  try {
-    if (!presenceSelfRef) presenceSelfRef = rtdb.ref(`${PRESENCE_ROOT}/${userId}`);
-
-    await presenceSelfRef.update({
-      odId: userId,
-      name: name,
-      state: state,
-      whereKey: whereKey,
-      whereLabel: whereLabel,
-      activePanelId: activePanelId || null,
-      lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
-      updatedAt: firebase.database.ServerValue.TIMESTAMP
-    });
-    presenceRtdbOk = true;
   } catch (e) {
-    presenceRtdbOk = false;
     console.warn('Presence update failed:', e);
-    switchPresenceToFirestore();
   }
 }
 
 function startPresenceListener() {
   if (presenceUnsub) return;
 
-  const ref = rtdb.ref(PRESENCE_ROOT);
-  // Quick permission check: if this fails, fall back to Firestore presence.
-  try {
-    ref.once('value').catch(() => {
-      presenceRtdbOk = false;
-      switchPresenceToFirestore();
+  presenceUnsub = db.collection(PRESENCE_COLLECTION)
+    .orderBy('lastActivity', 'desc')
+    .onSnapshot(snap => {
+      presenceCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderOnlineCounter();
+    }, err => {
+      console.warn('Presence listener error:', err);
     });
-  } catch (_) {}
-
-  const handler = snap => {
-    const val = snap.val() || {};
-    presenceCache = Object.keys(val).map(id => ({ id, ...val[id] }));
-    renderOnlineCounter();
-    // If online modal is open, re-render it.
-    if (document.getElementById('online-modal')?.classList.contains('open')) {
-      try { renderOnlineModal(); } catch (_) {}
-    }
-  };
-
-  ref.on('value', handler, err => {
-    console.warn('Presence listener error:', err);
-    presenceRtdbOk = false;
-    switchPresenceToFirestore();
-  });
-
-  // Store unsubscriber
-  presenceUnsub = () => ref.off('value', handler);
 }
 
 function stopPresenceListener() {
@@ -4122,34 +4012,6 @@ function stopPresenceListener() {
     presenceUnsub();
     presenceUnsub = null;
   }
-}
-
-function startFirestorePresenceListener() {
-  if (presenceFsUnsub) return;
-  try {
-    presenceFsUnsub = db.collection(PRESENCE_COLLECTION).onSnapshot((snap) => {
-      presenceFsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      if (presenceSource === 'firestore') {
-        presenceCache = presenceFsCache;
-        renderOnlineCounter();
-        if (document.getElementById('online-modal')?.classList.contains('open')) {
-          try { renderOnlineModal(); } catch (_) {}
-        }
-      }
-    }, (err) => {
-      console.warn('Firestore presence listener error:', err);
-    });
-  } catch (e) {
-    console.warn('Could not start Firestore presence listener:', e);
-  }
-}
-
-function switchPresenceToFirestore() {
-  if (presenceSource === 'firestore') return;
-  presenceSource = 'firestore';
-  startFirestorePresenceListener();
-  presenceCache = presenceFsCache || [];
-  renderOnlineCounter();
 }
 
 function resolvePresenceArg(arg) {
@@ -4178,36 +4040,42 @@ function tsToMsSafe(ts) {
 
 function getPresenceStatus(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  if (!presence) return 'offline';
+  // Support older presence docs that may not have `lastActivity`.
+  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
+  if (!ts) return 'offline';
 
-  const lastMs = tsToMsSafe(presence.lastSeenAt || presence.updatedAt || presence.lastActivity);
+  const lastMs = tsToMsSafe(ts);
   if (!lastMs) return 'offline';
 
-  const age = Date.now() - lastMs;
-  if (age > PRESENCE_ONLINE_WINDOW_MS) return 'offline';
+  const now = Date.now();
+  const diff = now - lastMs;
 
-  const st = String(presence.state || presence.status || '').toLowerCase().trim();
-  if (st === 'idle') return 'idle';
-  if (st === 'online') return 'online';
-
-  // Fallback: within window => online
-  return 'online';
+  if (diff < PRESENCE_INACTIVE_MS) return 'online';
+  // Rename "inactive" to "idle" in the UI/status model.
+  if (diff < PRESENCE_OFFLINE_MS) return 'idle';
+  return 'offline';
 }
 
 function getTimeSinceActivity(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  if (!presence) return '';
+  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
+  if (!ts) return '';
 
-  const lastMs = tsToMsSafe(presence.lastSeenAt || presence.updatedAt || presence.lastActivity);
+  const lastMs = tsToMsSafe(ts);
   if (!lastMs) return '';
 
-  const diffMs = Date.now() - lastMs;
-  if (diffMs < 60 * 1000) return 'just now';
-  const mins = Math.floor(diffMs / (60 * 1000));
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.floor(mins / 60);
+  const now = Date.now();
+  const diff = now - lastMs;
+  const minutes = Math.floor(diff / 60000);
+
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+
+  const hours = Math.floor(minutes / 60);
   if (hours === 1) return '1 hour ago';
   if (hours < 24) return `${hours} hours ago`;
+
   const days = Math.floor(hours / 24);
   if (days === 1) return '1 day ago';
   return `${days} days ago`;
