@@ -17,7 +17,8 @@ const firebaseConfig = {
   projectId: "codenames-tournament",
   storageBucket: "codenames-tournament.firebasestorage.app",
   messagingSenderId: "199881649305",
-  appId: "1:199881649305:web:b907e2832cf7d9d4151c08"
+  appId: "1:199881649305:web:b907e2832cf7d9d4151c08",
+  databaseURL: "https://codenames-tournament-default-rtdb.firebaseio.com"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -980,6 +981,7 @@ function listenToTeams() {
       renderMyTeam(teamsCache);
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
+      renderMyTeam(teamsCache);
       // If a modal is open, refresh its contents
       if (openTeamId) openTeamModal(openTeamId);
       if (document.getElementById('requests-modal')?.style?.display === 'flex') {
@@ -1407,6 +1409,10 @@ function renderInvites(players, teams) {
   const card = document.getElementById('invites-card');
   const list = document.getElementById('invites-list');
   if (!card || !list) return;
+
+  // Invites are shown via the Invites modal (button) to avoid clutter on the My Team page.
+  card.style.display = 'none';
+  return;
 
   const st = computeUserState(teams);
   const noName = !st.name;
@@ -2097,16 +2103,15 @@ function renderMyTeam(teams) {
     }
   }
 
-  // Invites button (shows your pending invites in a modal)
+  // Invites button (opens a modal with all your invites)
   if (invitesBtn) {
     const me = (playersCache || []).find(p => p?.id === st.userId);
     const invites = Array.isArray(me?.invites) ? me.invites : [];
-    if (invites.length) {
-      invitesBtn.style.display = 'inline-flex';
-      invitesBtn.textContent = `Invites (${invites.length})`;
-    } else {
-      invitesBtn.style.display = 'none';
-    }
+    // Always show the button when you have a team; disable it if you have no invites.
+    invitesBtn.style.display = hasTeam ? 'inline-flex' : 'none';
+    invitesBtn.textContent = invites.length ? `Invites (${invites.length})` : 'Invites';
+    invitesBtn.disabled = invites.length === 0;
+    invitesBtn.classList.toggle('disabled', invites.length === 0);
   }
 
   // Team color picker (visible to everyone; editable by creator)
@@ -3914,6 +3919,10 @@ window.bumpPresence = throttle(() => {
 
 let presenceUnsub = null;
 let presenceCache = [];
+let presenceFsUnsub = null;
+let presenceFsCache = [];
+let presenceSource = 'rtdb'; // 'rtdb' | 'firestore'
+let presenceRtdbOk = true;
 let presenceUpdateInterval = null;
 let lastActivityTime = Date.now();
 
@@ -3949,7 +3958,9 @@ function initPresence() {
     try {
       presenceSelfRef.onDisconnect().set(offlinePayload);
     } catch (e) {
+      presenceRtdbOk = false;
       console.warn('Presence onDisconnect arm failed:', e);
+      switchPresenceToFirestore();
     }
   }
 
@@ -3976,13 +3987,34 @@ function initPresence() {
 
   // Best-effort immediate offline (onDisconnect is the reliable path).
   window.addEventListener('beforeunload', () => {
+    const userId = getUserId();
+    const name = getUserName();
+    const baseWhereKey = computeLocalPresenceWhereKey();
+    const whereLabel = PRESENCE_WHERE_LABELS[baseWhereKey] || baseWhereKey;
+
+    // Best-effort Firestore offline
+    try {
+      if (userId && name) {
+        db.collection(PRESENCE_COLLECTION).doc(userId).set({
+          odId: userId,
+          name: name,
+          state: 'offline',
+          whereKey: baseWhereKey,
+          whereLabel: whereLabel,
+          activePanelId: activePanelId || null,
+          lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (_) {}
+
+    // Best-effort RTDB offline (onDisconnect is the reliable path)
     try {
       if (presenceSelfRef) {
-        const baseWhereKey = computeLocalPresenceWhereKey();
         presenceSelfRef.update({
           state: 'offline',
           whereKey: baseWhereKey,
-          whereLabel: PRESENCE_WHERE_LABELS[baseWhereKey] || baseWhereKey,
+          whereLabel: whereLabel,
           activePanelId: activePanelId || null,
           lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
           updatedAt: firebase.database.ServerValue.TIMESTAMP
@@ -3991,8 +4023,10 @@ function initPresence() {
     } catch (_) {}
   });
 
-  // Start listening to all presence entries
-  startPresenceListener();
+  // Start listeners
+  startFirestorePresenceListener();
+  if (presenceRtdbOk) startPresenceListener();
+  else switchPresenceToFirestore();
 }
 
 function throttle(fn, wait) {
@@ -4011,24 +4045,43 @@ async function updatePresence() {
   const name = getUserName();
   if (!userId || !name) return;
 
+  const whereKey = computeLocalPresenceWhereKey();
+  const state = (document.visibilityState === 'visible') ? 'online' : 'idle';
+  const whereLabel = PRESENCE_WHERE_LABELS[whereKey] || whereKey;
+
+  // Always keep a Firestore presence doc updated as a fallback (also powers online counts if RTDB isn't available).
+  try {
+    await db.collection(PRESENCE_COLLECTION).doc(userId).set({
+      odId: userId,
+      name: name,
+      state: state,
+      whereKey: whereKey,
+      whereLabel: whereLabel,
+      activePanelId: activePanelId || null,
+      lastSeenAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (_) {}
+
+  // Prefer RTDB presence for reliable onDisconnect/offline.
   try {
     if (!presenceSelfRef) presenceSelfRef = rtdb.ref(`${PRESENCE_ROOT}/${userId}`);
-
-    const whereKey = computeLocalPresenceWhereKey();
-    const state = (document.visibilityState === 'visible') ? 'online' : 'idle';
 
     await presenceSelfRef.update({
       odId: userId,
       name: name,
       state: state,
       whereKey: whereKey,
-      whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
+      whereLabel: whereLabel,
       activePanelId: activePanelId || null,
       lastSeenAt: firebase.database.ServerValue.TIMESTAMP,
       updatedAt: firebase.database.ServerValue.TIMESTAMP
     });
+    presenceRtdbOk = true;
   } catch (e) {
+    presenceRtdbOk = false;
     console.warn('Presence update failed:', e);
+    switchPresenceToFirestore();
   }
 }
 
@@ -4036,6 +4089,14 @@ function startPresenceListener() {
   if (presenceUnsub) return;
 
   const ref = rtdb.ref(PRESENCE_ROOT);
+  // Quick permission check: if this fails, fall back to Firestore presence.
+  try {
+    ref.once('value').catch(() => {
+      presenceRtdbOk = false;
+      switchPresenceToFirestore();
+    });
+  } catch (_) {}
+
   const handler = snap => {
     const val = snap.val() || {};
     presenceCache = Object.keys(val).map(id => ({ id, ...val[id] }));
@@ -4048,6 +4109,8 @@ function startPresenceListener() {
 
   ref.on('value', handler, err => {
     console.warn('Presence listener error:', err);
+    presenceRtdbOk = false;
+    switchPresenceToFirestore();
   });
 
   // Store unsubscriber
@@ -4059,6 +4122,34 @@ function stopPresenceListener() {
     presenceUnsub();
     presenceUnsub = null;
   }
+}
+
+function startFirestorePresenceListener() {
+  if (presenceFsUnsub) return;
+  try {
+    presenceFsUnsub = db.collection(PRESENCE_COLLECTION).onSnapshot((snap) => {
+      presenceFsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (presenceSource === 'firestore') {
+        presenceCache = presenceFsCache;
+        renderOnlineCounter();
+        if (document.getElementById('online-modal')?.classList.contains('open')) {
+          try { renderOnlineModal(); } catch (_) {}
+        }
+      }
+    }, (err) => {
+      console.warn('Firestore presence listener error:', err);
+    });
+  } catch (e) {
+    console.warn('Could not start Firestore presence listener:', e);
+  }
+}
+
+function switchPresenceToFirestore() {
+  if (presenceSource === 'firestore') return;
+  presenceSource = 'firestore';
+  startFirestorePresenceListener();
+  presenceCache = presenceFsCache || [];
+  renderOnlineCounter();
 }
 
 function resolvePresenceArg(arg) {
