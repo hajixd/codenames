@@ -28,51 +28,8 @@ const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
-const LS_NAV_STATE = 'ct_navState_v1';
-
-// Navigation persistence (best-effort, device-local)
-// Stores: chosen app mode (launch/quick/tournament), active panel, and game navigation state.
-function loadNavState() {
-  try {
-    const raw = localStorage.getItem(LS_NAV_STATE);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    return (data && typeof data === 'object') ? data : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function saveNavState(patch = {}) {
-  try {
-    const cur = loadNavState() || {};
-    const next = {
-      version: 1,
-      updatedAt: Date.now(),
-      ...cur,
-      ...patch,
-    };
-
-    // Deep-merge known nested objects
-    if (cur.game && patch.game) next.game = { ...cur.game, ...patch.game };
-
-    localStorage.setItem(LS_NAV_STATE, JSON.stringify(next));
-    return next;
-  } catch (_) {
-    return null;
-  }
-}
-
-function clearNavState() {
-  try { localStorage.removeItem(LS_NAV_STATE); } catch (_) {}
-}
-
-// Expose a tiny API for game.js to use without importing modules.
-window.ctNav = {
-  load: loadNavState,
-  save: saveNavState,
-  clear: clearNavState,
-};
+const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
+const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
 // Account model:
 // - Accounts are keyed by normalized player name so "same name" = same account across devices.
 // - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
@@ -111,6 +68,7 @@ let lastLocalNameSetAtMs = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   initSettings();
+  initConfirmDialog();
   initLaunchScreen();
   initHeaderLogoNav();
   initTabs();
@@ -126,11 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initProfileDetailsModal();
   listenToTeams();
   listenToPlayers();
-
-  // Restore last navigation/game view (best-effort) after other modules initialize.
-  setTimeout(() => {
-    try { restoreNavOnLoad(); } catch (_) {}
-  }, 0);
 
   // If user already has a name, proactively merge any case-insensitive duplicates
   if (getUserName()) {
@@ -193,13 +146,16 @@ function showLaunchScreen() {
   document.body.classList.remove('tournament');
   document.body.classList.remove('has-team-color');
   setBrowserTitle('launch');
-  saveNavState({ mode: 'launch', panel: activePanelId || 'panel-game' });
   try { refreshNameUI?.(); } catch (_) {}
 }
 
 function returnToLaunchScreen() {
-  // Alias for callers (e.g., game back button)
-  showLaunchScreen();
+  // Show loading screen during navigation transition
+  showAuthLoadingScreen();
+  setTimeout(() => {
+    showLaunchScreen();
+    hideAuthLoadingScreen();
+  }, 300);
 }
 
 // Allow other modules (game.js) to return to the initial screen.
@@ -233,7 +189,12 @@ function initLaunchScreen() {
       return;
     }
     if (hint) hint.textContent = '';
-    enterAppFromLaunch(mode);
+    // Show loading screen during navigation transition
+    showAuthLoadingScreen();
+    setTimeout(() => {
+      enterAppFromLaunch(mode);
+      hideAuthLoadingScreen();
+    }, 300);
   };
 
   quickBtn?.addEventListener('click', () => requireNameThen('quick'));
@@ -251,13 +212,16 @@ function initLaunchScreen() {
       return;
     }
     if (hint) hint.textContent = '';
-    await setUserName(v);
+    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
+    try {
+      await setUserName(v);
+    } finally {
+      hideAuthLoadingScreen();
+    }
   });
 
   logoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out on this device?');
-    if (!ok) return;
-    logoutLocal();
+    logoutLocal('Logging out');
   });
 
   refreshNameUI();
@@ -281,7 +245,6 @@ function enterAppFromLaunch(mode) {
     try { refreshHeaderIdentity?.(); } catch (_) {}
     setBrowserTitle('quick');
     switchToPanel('panel-game');
-    saveNavState({ mode: 'quick', panel: 'panel-game' });
     try { window.bumpPresence?.(); } catch (_) {}
     try {
       if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
@@ -298,39 +261,7 @@ function enterAppFromLaunch(mode) {
   try { refreshHeaderIdentity?.(); } catch (_) {}
   setBrowserTitle('tournament');
   switchToPanel('panel-home');
-  saveNavState({ mode: 'tournament', panel: 'panel-home' });
   try { window.bumpPresence?.(); } catch (_) {}
-}
-
-
-function restoreNavOnLoad() {
-  const state = loadNavState();
-  if (!state || typeof state !== 'object') return;
-
-  // If the user hasn't set a name yet, always stay on the launch screen.
-  if (!getUserName()) {
-    showLaunchScreen();
-    return;
-  }
-
-  const mode = String(state.mode || '').trim();
-  if (mode === 'quick') {
-    enterAppFromLaunch('quick');
-    return;
-  }
-  if (mode === 'tournament') {
-    enterAppFromLaunch('tournament');
-
-    const desiredPanel = String(state.panel || '').trim();
-    // Only restore known panels (avoid breaking if ids change).
-    if (desiredPanel && document.getElementById(desiredPanel)) {
-      switchToPanel(desiredPanel);
-    }
-    return;
-  }
-
-  // Default fallback: launch.
-  showLaunchScreen();
 }
 
 /* =========================
@@ -341,7 +272,6 @@ function initTabs() {
   const panels = document.querySelectorAll('.panel');
 
   activePanelId = document.querySelector('.panel.active')?.id || 'panel-game';
-  saveNavState({ panel: activePanelId });
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -373,7 +303,6 @@ function switchToPanel(panelId) {
     recomputeUnreadBadges();
   }
   activePanelId = targetId;
-  saveNavState({ panel: targetId });
   recomputeUnreadBadges();
   try { window.bumpPresence?.(); } catch (_) {}
 
@@ -664,13 +593,15 @@ async function setUserName(name, opts = {}) {
       const s = await nextRef.get();
       const existing = s.exists ? String(s.data()?.accountId || '').trim() : '';
       if (existing && existing !== myAccountId) {
-        const ok = window.confirm('This name is already taken.\n\nContinue to log in as "' + nextName + '"?');
+        const ok = await showConfirmDialog(nextName);
         if (!ok) {
           // Revert to previous name and keep this device on its current account.
           safeLSSet(LS_USER_NAME, prevName);
           refreshNameUI();
           return;
         }
+        // Show loading screen AFTER user confirms (not before)
+        showAuthLoadingScreen();
       }
     } catch (e) {
       // best-effort
@@ -754,6 +685,13 @@ async function migrateIdentity(oldId, newId, displayName) {
   const fromId = String(oldId || '').trim();
   const toId = String(newId || '').trim();
   if (!fromId || !toId || fromId === toId) return;
+
+  // 0) Delete any presence doc keyed to the old ID to prevent "ghost" online users.
+  try {
+    await db.collection('presence').doc(fromId).delete();
+  } catch (_) {
+    // best-effort - presence doc might not exist
+  }
 
   // 1) Merge player docs (invites) onto the name-keyed account.
   const fromRef = db.collection('players').doc(fromId);
@@ -869,14 +807,17 @@ function initName() {
       return;
     }
     if (hint) hint.textContent = '';
-    await setUserName(v);
+    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
+    try {
+      await setUserName(v);
+    } finally {
+      hideAuthLoadingScreen();
+    }
   });
 
   // Only way to unlink a device from the currently linked name/account.
   logoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out on this device?');
-    if (!ok) return;
-    logoutLocal();
+    logoutLocal('Logging out');
   });
 
   // Double-click editing for home page (works on desktop + mobile)
@@ -1494,65 +1435,12 @@ function renderInvites(players, teams) {
   const list = document.getElementById('invites-list');
   if (!card || !list) return;
 
-  const st = computeUserState(teams);
-  const noName = !st.name;
-
-  // Invites are useful even if you're already on a team (accepting will switch you).
-  // If the user has a pending request somewhere, they can still accept an invite (and the pending request will be cleared).
-
-  const me = (players || []).find(p => p.id === st.userId);
-  const invites = Array.isArray(me?.invites) ? me.invites : [];
-  if (!invites.length) {
-    card.style.display = 'none';
-    return;
-  }
-
-  card.style.display = 'block';
-
-  if (noName) {
-    setHint('invites-hint', 'Set your name on Home first.');
-  } else {
-    setHint('invites-hint', '');
-  }
-
-  list.innerHTML = invites.map(inv => {
-    const teamName = truncateTeamName(inv?.teamName || 'Team');
-    const teamId = inv?.teamId || '';
-    const t = (teams || []).find(x => x?.id === teamId);
-    const c = t ? getDisplayTeamColor(t) : null;
-    const nameStyle = c ? `style="color:${esc(c)}"` : '';
-    return `
-      <div class="invite-row">
-        <div class="invite-left">
-          <div class="invite-title profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" ${nameStyle}>${esc(teamName)}</div>
-          <div class="invite-sub">You've been invited to join</div>
-        </div>
-        <div class="invite-actions">
-          <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
-          <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  list.querySelectorAll('[data-invite-accept]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-invite-accept');
-      if (!teamId) return;
-      await acceptInvite(teamId);
-      renderInvites(playersCache, teamsCache);
-      renderMyTeam(teamsCache);
-    });
-  });
-
-  list.querySelectorAll('[data-invite-decline]')?.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const teamId = btn.getAttribute('data-invite-decline');
-      if (!teamId) return;
-      await declineInvite(teamId);
-      renderInvites(playersCache, teamsCache);
-    });
-  });
+  // Invites are now shown via the Invites modal (opened from the My Team tab).
+  // Keep the legacy inline card hidden so there isn't duplicate UI.
+  card.style.display = 'none';
+  list.innerHTML = '';
+  setHint('invites-hint', '');
+  return;
 }
 
 async function upsertPlayerProfile(userId, name) {
@@ -2051,11 +1939,21 @@ function initMyTeamControls() {
     if (!st.teamId) return;
 
     if (st.isCreator) {
-      const ok = window.confirm('Are you sure you want to delete your team? This cannot be undone.');
+      const ok = await showCustomConfirm({
+        title: 'Delete team?',
+        message: 'Are you sure you want to delete your team? This cannot be undone.',
+        okText: 'Delete',
+        danger: true
+      });
       if (!ok) return;
       await deleteTeam(st.teamId);
     } else {
-      const ok = window.confirm('Are you sure you want to leave this team?');
+      const ok = await showCustomConfirm({
+        title: 'Leave team?',
+        message: 'Are you sure you want to leave this team?',
+        okText: 'Leave',
+        danger: true
+      });
       if (!ok) return;
       await leaveTeam(st.teamId, st.userId);
     }
@@ -2066,6 +1964,11 @@ function initMyTeamControls() {
   });
 
   document.getElementById('open-invites')?.addEventListener('click', () => {
+    openInvitesModal();
+  });
+
+  // Invites button in the My Team tab header (useful even when you're not on a team).
+  document.getElementById('open-invites-top')?.addEventListener('click', () => {
     openInvitesModal();
   });
 
@@ -2117,6 +2020,7 @@ function renderMyTeam(teams) {
   const createBtn = document.getElementById('open-create-team');
   const card = document.getElementById('myteam-card');
   const joinBtn = document.getElementById('join-team-btn');
+  const invitesTopBtn = document.getElementById('open-invites-top');
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
@@ -2128,6 +2032,14 @@ function renderMyTeam(teams) {
   const colorInput = document.getElementById('team-color-input');
 
   const hasTeam = !!st.teamId;
+
+  // Invites are relevant whether or not you're on a team.
+  const me = (playersCache || []).find(p => p?.id === st.userId);
+  const invites = Array.isArray(me?.invites) ? me.invites : [];
+  if (invitesTopBtn) {
+    invitesTopBtn.style.display = 'inline-flex';
+    invitesTopBtn.textContent = invites.length ? `Invites (${invites.length})` : 'Invites';
+  }
 
   if (joinBtn) {
     // Only show when you're named and not currently on a team.
@@ -2185,8 +2097,7 @@ function renderMyTeam(teams) {
 
   // Invites button (shows your pending invites in a modal)
   if (invitesBtn) {
-    const me = (playersCache || []).find(p => p?.id === st.userId);
-    const invites = Array.isArray(me?.invites) ? me.invites : [];
+    // Only shown inside the team card footer (when you're already on a team).
     if (invites.length) {
       invitesBtn.style.display = 'inline-flex';
       invitesBtn.textContent = `Invites (${invites.length})`;
@@ -2949,7 +2860,12 @@ async function adminDeleteTeam(teamId) {
   if (!isAdminUser()) return;
   const tid = String(teamId || '').trim();
   if (!tid) return;
-  const ok = window.confirm('Delete this team for everyone? This cannot be undone.');
+  const ok = await showCustomConfirm({
+    title: 'Delete team?',
+    message: 'Delete this team for everyone? This cannot be undone.',
+    okText: 'Delete',
+    danger: true
+  });
   if (!ok) return;
 
   await deleteTeam(tid);
@@ -2982,7 +2898,12 @@ async function adminDeletePlayer(userId) {
   if (!uid) return;
 
   const displayName = findKnownUserName(uid) || uid;
-  const ok = window.confirm(`Delete account "${displayName}"? This will remove them from teams and delete their profile.`);
+  const ok = await showCustomConfirm({
+    title: 'Delete account?',
+    message: `Delete account "${displayName}"? This will remove them from teams and delete their profile.`,
+    okText: 'Delete',
+    danger: true
+  });
   if (!ok) return;
 
   // Remove from any teams (members + pending)
@@ -3009,7 +2930,6 @@ async function adminDeletePlayer(userId) {
     await batch.commit();
   } catch (e) {
     console.error('Admin delete player failed:', e);
-    window.alert('Could not delete that account (check permissions / rules).');
   }
 }
 
@@ -3357,13 +3277,19 @@ function safeLSSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
 }
 
-function logoutLocal() {
+function logoutLocal(loadingMessage = 'Logging out') {
+  // Show loading screen with appropriate message
+  showAuthLoadingScreen(loadingMessage);
+
   // Local-only "logout": clears this device's saved name + id so it is no longer
   // linked to any shared name-based account.
   try { localStorage.removeItem(LS_USER_NAME); } catch (_) {}
   try { localStorage.removeItem(LS_USER_ID); } catch (_) {}
   // Full refresh keeps the app state consistent (listeners, cached state, theme).
-  try { window.location.reload(); } catch (_) {}
+  // Small delay to show the loading screen
+  setTimeout(() => {
+    try { window.location.reload(); } catch (_) {}
+  }, 300);
 }
 
 /* =========================
@@ -3451,10 +3377,8 @@ function initSettings() {
   // Log Out button in settings
   const settingsLogoutBtn = document.getElementById('settings-logout-btn');
   settingsLogoutBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to log out?');
-    if (!ok) return;
     closeSettingsModal();
-    logoutLocal();
+    logoutLocal('Logging out');
   });
 
   // Change Name button in settings
@@ -3468,10 +3392,8 @@ function initSettings() {
   // Delete Account button in settings
   const settingsDeleteBtn = document.getElementById('settings-delete-account-btn');
   settingsDeleteBtn?.addEventListener('click', () => {
-    const ok = window.confirm('Are you sure you want to delete your account? This cannot be undone.');
-    if (!ok) return;
     closeSettingsModal();
-    logoutLocal();
+    logoutLocal('Deleting account');
   });
 
   // Test sound button
@@ -4227,11 +4149,157 @@ function closeOnlineModal() {
   }, 200);
 }
 
+
+function isAdminUser() {
+  return String(getUserName() || '').trim().toLowerCase() === 'admin';
+}
+
+function initOnlineAdminDeleteHandlers(listEl) {
+  if (!listEl || listEl.dataset.adminDeleteBound) return;
+  listEl.dataset.adminDeleteBound = '1';
+
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.online-user-delete');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!isAdminUser()) return;
+
+    const uid = String(btn.getAttribute('data-delete-user') || '').trim();
+    const name = String(btn.getAttribute('data-delete-name') || '').trim();
+    if (!uid) return;
+
+    playSound('click');
+    const label = name || uid;
+    const ok = await showCustomConfirm({
+      title: 'Delete user?',
+      message: `Delete user "${label}"?<br><br>This will remove them from teams and clear their profile/presence.`,
+      okText: 'Delete',
+      danger: true
+    });
+    if (!ok) return;
+
+    try {
+      await adminDeleteUser(uid, name);
+    } catch (err) {
+      console.warn('Admin delete failed:', err);
+    }
+  }, true);
+}
+
+async function adminDeleteUser(userId, displayName) {
+  if (!isAdminUser()) return;
+  const uid = String(userId || '').trim();
+  if (!uid) return;
+
+  // Remove from presence directory (so they disappear from Who's Online)
+  try {
+    await db.collection(PRESENCE_COLLECTION).doc(uid).delete();
+  } catch (e) {
+    // best effort
+  }
+
+  // Remove player profile (name + invites)
+  try {
+    await db.collection('players').doc(uid).delete();
+  } catch (e) {
+    // best effort
+  }
+
+  // Remove from all teams (and transfer ownership / delete empty teams if needed)
+  const teams = Array.isArray(teamsCache) ? teamsCache.slice() : [];
+  for (const t of teams) {
+    const teamId = String(t?.id || '').trim();
+    if (!teamId) continue;
+    try {
+      await adminRemoveUserFromTeam(teamId, uid);
+    } catch (e) {
+      // best effort
+    }
+  }
+
+  // Clean up name registry entry if it points at this user
+  try {
+    const key = nameToAccountId((displayName || findKnownUserName(uid) || '').trim());
+    if (key) {
+      const ref = db.collection(NAME_REGISTRY_COLLECTION).doc(key);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const data = snap.data() || {};
+        const canon = String(data.canonicalId || data.userId || data.id || '').trim();
+        if (canon && canon === uid) {
+          tx.delete(ref);
+        }
+      });
+    }
+  } catch (e) {
+    // best effort
+  }
+}
+
+async function adminRemoveUserFromTeam(teamId, userId) {
+  if (!isAdminUser()) return;
+  const tid = String(teamId || '').trim();
+  const uid = String(userId || '').trim();
+  if (!tid || !uid) return;
+
+  const ref = db.collection('teams').doc(tid);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+
+    const t = { id: snap.id, ...snap.data() };
+    const members = getMembers(t);
+    const pending = getPending(t);
+
+    const newMembers = members.filter(m => !isSameAccount(m, uid));
+    const newPending = pending.filter(p => !isSameAccount(p, uid));
+
+    const creatorId = getTeamCreatorAccountId(t);
+    const wasCreator = !!(creatorId && String(creatorId).trim() === uid);
+
+    // No changes needed
+    if (!wasCreator && newMembers.length === members.length && newPending.length === pending.length) return;
+
+    // If the deleted user owned the team, either transfer to first remaining member or delete the team if empty
+    if (wasCreator) {
+      if (newMembers.length === 0) {
+        tx.delete(ref);
+        return;
+      }
+      const next = newMembers[0];
+      const nextId = entryAccountId(next);
+      const nextName = String(next?.name || '').trim();
+      tx.update(ref, {
+        members: newMembers,
+        pending: newPending,
+        creatorUserId: nextId || '',
+        creatorName: nextName || '—',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      return;
+    }
+
+    tx.update(ref, {
+      members: newMembers,
+      pending: newPending,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  });
+}
+
+
 function renderOnlineUsersList() {
   const listEl = document.getElementById('online-users-list');
   if (!listEl) return;
 
   const myId = getUserId();
+  const isAdmin = isAdminUser();
+
+  initOnlineAdminDeleteHandlers(listEl);
 
   const roster = buildRosterIndex(teamsCache);
 
@@ -4290,12 +4358,15 @@ function renderOnlineUsersList() {
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
+      const canDelete = isAdmin && !isYou && uid;
+      const delBtn = canDelete ? `<button class="online-user-delete" type="button" title="Delete user" aria-label="Delete user" data-delete-user="${esc(uid)}" data-delete-name="${esc(displayName)}">×</button>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Active')}</div>
+          ${delBtn}
         </div>
       `;
     }
@@ -4313,12 +4384,15 @@ function renderOnlineUsersList() {
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
+      const canDelete = isAdmin && !isYou && uid;
+      const delBtn = canDelete ? `<button class="online-user-delete" type="button" title="Delete user" aria-label="Delete user" data-delete-user="${esc(uid)}" data-delete-name="${esc(displayName)}">×</button>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot inactive"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Idle')} • ${getTimeSinceActivity(p)}</div>
+          ${delBtn}
         </div>
       `;
     }
@@ -4336,12 +4410,15 @@ function renderOnlineUsersList() {
       const teamColor = memberTeam ? getDisplayTeamColor(memberTeam) : null;
       const nameStyle = teamColor ? `style="color:${esc(teamColor)}"` : '';
       const teamSuffix = memberTeam ? ` <span class="online-user-team-inline profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}">(${esc(teamName)})</span>` : '';
+      const canDelete = isAdmin && !isYou && uid;
+      const delBtn = canDelete ? `<button class="online-user-delete" type="button" title="Delete user" aria-label="Delete user" data-delete-user="${esc(uid)}" data-delete-name="${esc(displayName)}">×</button>` : '';
 
       html += `
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
           <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
+          ${delBtn}
         </div>
       `;
     }
@@ -4423,7 +4500,12 @@ function initNameChangeModal() {
     if (!newName) return;
 
     playSound('click');
-    await setUserName(newName);
+    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
+    try {
+      await setUserName(newName);
+    } finally {
+      hideAuthLoadingScreen();
+    }
     closeNameChangeModal();
   });
 
@@ -4518,6 +4600,9 @@ function renderTeammatesList() {
 
   const st = computeUserState(teamsCache);
   const myId = getUserId();
+  const isAdmin = isAdminUser();
+
+  initOnlineAdminDeleteHandlers(listEl);
 
   const roster = buildRosterIndex(teamsCache);
 
@@ -4559,11 +4644,15 @@ function renderTeammatesList() {
   listEl.innerHTML = html;
 }
 
+// Track whether presence has been initialized for this session
+let presenceInitialized = false;
+
 // Initialize presence when name is set
 const originalSetUserName = setUserName;
 window.setUserNameWithPresence = async function(name, opts) {
   await originalSetUserName(name, opts);
-  if (getUserName()) {
+  if (getUserName() && !presenceInitialized) {
+    presenceInitialized = true;
     initPresence();
   }
 };
@@ -4571,15 +4660,192 @@ window.setUserNameWithPresence = async function(name, opts) {
 // Override setUserName to also init presence
 setUserName = async function(name, opts) {
   await originalSetUserName.call(this, name, opts);
-  if (getUserName()) {
+  if (getUserName() && !presenceInitialized) {
+    presenceInitialized = true;
     initPresence();
   }
 };
 
-// Initialize presence on DOMContentLoaded if user already has a name
+// Show the auth loading screen with optional custom message
+function showAuthLoadingScreen(message = 'Loading') {
+  const screen = document.getElementById('auth-loading-screen');
+  const desktopMsg = document.getElementById('auth-loading-message-desktop');
+  const mobileMsg = document.getElementById('auth-loading-message-mobile');
+
+  if (desktopMsg) desktopMsg.textContent = message;
+  if (mobileMsg) mobileMsg.textContent = message;
+
+  if (screen) {
+    screen.style.display = 'flex';
+    screen.classList.remove('hidden');
+  }
+}
+
+// Hide the auth loading screen with a fade transition
+function hideAuthLoadingScreen() {
+  const screen = document.getElementById('auth-loading-screen');
+  if (screen) {
+    screen.classList.add('hidden');
+  }
+}
+
+/* =========================
+   Custom Confirm Dialog
+========================= */
+let confirmDialogResolve = null;
+
+// Show confirm dialog for "continue as player" (sign-in existing account)
+function showConfirmDialog(name) {
+  return showCustomConfirm({
+    title: 'Continue as this player?',
+    message: `This name is already taken. Continue to log in as "${name}"?`,
+    okText: 'Continue',
+    cancelText: 'Cancel',
+    danger: false
+  });
+}
+
+// Generic custom confirm dialog - replaces window.confirm
+function showCustomConfirm(options = {}) {
+  const {
+    title = 'Confirm',
+    message = 'Are you sure?',
+    okText = 'OK',
+    cancelText = 'Cancel',
+    danger = false
+  } = options;
+
+  return new Promise((resolve) => {
+    confirmDialogResolve = resolve;
+    const backdrop = document.getElementById('confirm-dialog-backdrop');
+    const dialog = document.getElementById('confirm-dialog');
+    const titleEl = document.getElementById('confirm-dialog-title');
+    const messageEl = document.getElementById('confirm-dialog-message');
+    const okBtn = document.getElementById('confirm-dialog-ok');
+    const cancelBtn = document.getElementById('confirm-dialog-cancel');
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.innerHTML = message;
+    if (okBtn) {
+      okBtn.textContent = okText;
+      okBtn.classList.toggle('danger', danger);
+      okBtn.classList.toggle('primary', !danger);
+    }
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+
+    if (backdrop) backdrop.classList.remove('hidden');
+    if (dialog) dialog.classList.remove('hidden');
+
+    // Focus the ok button for accessibility
+    setTimeout(() => {
+      okBtn?.focus();
+    }, 100);
+  });
+}
+
+function hideConfirmDialog(result) {
+  const backdrop = document.getElementById('confirm-dialog-backdrop');
+  const dialog = document.getElementById('confirm-dialog');
+
+  if (backdrop) backdrop.classList.add('hidden');
+  if (dialog) dialog.classList.add('hidden');
+
+  if (confirmDialogResolve) {
+    confirmDialogResolve(result);
+    confirmDialogResolve = null;
+  }
+}
+
+function initConfirmDialog() {
+  const cancelBtn = document.getElementById('confirm-dialog-cancel');
+  const okBtn = document.getElementById('confirm-dialog-ok');
+  const backdrop = document.getElementById('confirm-dialog-backdrop');
+
+  cancelBtn?.addEventListener('click', () => hideConfirmDialog(false));
+  okBtn?.addEventListener('click', () => hideConfirmDialog(true));
+  backdrop?.addEventListener('click', () => hideConfirmDialog(false));
+
+  // Handle escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && confirmDialogResolve) {
+      hideConfirmDialog(false);
+    }
+  });
+}
+
+// Verify the user's account on page load before starting presence.
+// This resolves the canonical account ID for the stored name, preventing
+// presence from being written under a stale device ID.
+async function verifyAccountAndInitPresence() {
+  const storedName = getUserName();
+
+  // No stored name - nothing to verify, hide loading screen immediately
+  if (!storedName) {
+    hideAuthLoadingScreen();
+    return;
+  }
+
+  // Show loading screen while we verify
+  showAuthLoadingScreen('Signing in');
+
+  try {
+    const nameKey = nameToAccountId(storedName);
+    if (!nameKey) {
+      // Invalid name, just proceed
+      hideAuthLoadingScreen();
+      return;
+    }
+
+    const myDeviceId = getLocalAccountId();
+    const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
+    const nameDoc = await namesCol.doc(nameKey).get();
+
+    if (nameDoc.exists) {
+      const canonicalAccountId = String(nameDoc.data()?.accountId || '').trim();
+
+      // If the name belongs to a different account, migrate silently
+      if (canonicalAccountId && canonicalAccountId !== myDeviceId) {
+        // Migrate identity (this also cleans up old presence doc)
+        try {
+          await migrateIdentity(myDeviceId, canonicalAccountId, storedName);
+        } catch (e) {
+          console.warn('Identity migration during verification failed (best-effort)', e);
+        }
+        // Update local storage to use the canonical account
+        safeLSSet(LS_USER_ID, canonicalAccountId);
+      }
+    }
+
+    // Now that we've verified/migrated, start presence with the correct ID
+    if (!presenceInitialized) {
+      presenceInitialized = true;
+      initPresence();
+    }
+
+    // Also ensure profile sync is active
+    startProfileNameSync();
+
+  } catch (e) {
+    console.warn('Account verification failed (best-effort), starting presence anyway', e);
+    // Even if verification fails, start presence to maintain functionality
+    if (!presenceInitialized) {
+      presenceInitialized = true;
+      initPresence();
+    }
+  }
+
+  // Hide loading screen after verification completes
+  hideAuthLoadingScreen();
+}
+
+// Initialize presence on DOMContentLoaded - but verify account first
 document.addEventListener('DOMContentLoaded', () => {
+  // If there's a stored name, verify the account before starting presence
   if (getUserName()) {
-    initPresence();
+    verifyAccountAndInitPresence();
+  } else {
+    // No stored name - hide loading screen immediately
+    hideAuthLoadingScreen();
   }
 });
 

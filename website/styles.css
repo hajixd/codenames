@@ -978,6 +978,17 @@ body.tournament #play-mode-select{ display:none !important; }
   font-size: 13px;
 }
 
+/* Invites button - same size as regular btn, yellow color */
+.btn.invites-btn {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.4);
+  color: rgb(250, 204, 21);
+}
+.btn.invites-btn:hover {
+  background: rgba(234, 179, 8, 0.25);
+  border-color: rgba(234, 179, 8, 0.5);
+}
+
 .manage-area { padding: 0 14px 14px 14px; }
 
 .manage-card {
@@ -2904,12 +2915,21 @@ body.mode-joiner .only-joiner{ display:block; }
     padding: 10px;
     border-radius: 14px;
     min-width: 0;
-    min-height: 0;
+    min-height: 180px; /* Ensure team boxes have good vertical presence */
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   body.quickplay .quick-team-col.red{ grid-column: 1; grid-row: 1; }
   body.quickplay .quick-team-col.blue{ grid-column: 2; grid-row: 1; }
+
+  /* Make player lists expand to fill available space in team columns */
+  body.quickplay .quick-team-col.red .quick-team-list,
+  body.quickplay .quick-team-col.blue .quick-team-list{
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
   body.quickplay .quick-team-col.spectator{
     grid-column: 1 / span 2;
@@ -2918,6 +2938,7 @@ body.mode-joiner .only-joiner{ display:block; }
     border-radius: 14px;
     padding: 10px;
     background: rgba(0,0,0,0.22);
+    max-height: 120px; /* Keep spectators compact to give more room to teams */
   }
 
   body.quickplay .quick-team-head{ margin-bottom: 8px; }
@@ -3279,15 +3300,15 @@ button:disabled{
 
 /* Highlight your current team in the list (very subtle) */
 .team-list-item.is-mine{
-  border-color: rgba(255,255,255,0.08);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.05);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.03);
 }
 
 /* In Tournament, outline your team row using your team's color */
 body.tournament.has-team-color .team-list-item.is-mine{
-  border-color: color-mix(in srgb, var(--team-accent) 40%, transparent);
+  border-color: color-mix(in srgb, var(--team-accent) 20%, transparent);
   /* Softer glow on the Teams tab */
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--team-glow) 35%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--team-glow) 15%, transparent);
 }
 
 .team-list-left{ min-width: 0; }
@@ -3326,18 +3347,18 @@ body.tournament.has-team-color .team-list-item.is-mine{
   color: rgba(239, 68, 68, 1);
 }
 
-/* Full team (3+ members) outline effect on the entire team row (thin) */
+/* Full team (3+ members) outline effect on the entire team row (thin, dimmed) */
 .team-list-item.is-full{
-  border: 1px solid var(--team-accent, rgba(34, 197, 94, 0.4));
+  border: 1px solid var(--team-accent, rgba(34, 197, 94, 0.2));
 }
 
-/* Teams page: subtle eligibility tint (very low opacity) */
+/* Teams page: subtle eligibility tint (very low opacity, dimmed) */
 .panel-teams .team-list-item.is-full{
-  background: rgba(34, 197, 94, 0.03);
+  background: rgba(34, 197, 94, 0.015);
 }
 
 .panel-teams .team-list-item:not(.is-full){
-  background: rgba(239, 68, 68, 0.02);
+  background: rgba(239, 68, 68, 0.01);
 }
 
 /* Teams page cards */
@@ -4925,6 +4946,30 @@ button.player-tag.pill-action:disabled{
   font-size: 11px;
   color: var(--text-dim);
   flex-shrink: 0;
+}
+
+.online-user-delete {
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.online-user-delete:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.online-user-delete:active {
+  transform: scale(0.96);
 }
 
 .online-user-row.is-you .online-user-name::after {
@@ -7301,4 +7346,394 @@ body.tournament.has-team-color .input:focus {
   opacity: 0.75;
   margin-top: 2px;
   line-height: 1.25;
+}
+
+/* =========================
+   Auth Loading Screen
+========================= */
+.auth-loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+.auth-loading-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.auth-loading-content {
+  text-align: center;
+}
+
+/* Loading text shared styles */
+.auth-loading-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.auth-loading-subtitle {
+  display: block;
+  font-size: 14px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+/* Animated dots */
+.auth-dots span {
+  animation: authDotPulse 1.4s ease-in-out infinite;
+  opacity: 0;
+}
+
+.auth-dots span:nth-child(1) { animation-delay: 0s; }
+.auth-dots span:nth-child(2) { animation-delay: 0.2s; }
+.auth-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes authDotPulse {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+
+/* Desktop Animation: 3x3 Grid of Cards */
+.auth-loading-desktop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+.auth-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 140px;
+  height: 140px;
+}
+
+.auth-card {
+  width: 40px;
+  height: 40px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  animation: authCardPulse 2.4s ease-in-out infinite;
+  animation-delay: calc(var(--delay) * 0.1s);
+}
+
+.auth-card.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+@keyframes authCardPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+.auth-card.accent {
+  animation: authCardAccentPulse 2.4s ease-in-out infinite;
+  animation-delay: calc(var(--delay) * 0.1s);
+}
+
+@keyframes authCardAccentPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+  }
+}
+
+/* Mobile Animation: Orbit with Logo */
+.auth-loading-mobile {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.auth-mobile-orbit {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+
+.auth-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  animation: authOrbitRingSpin 3s linear infinite;
+}
+
+.auth-orbit-ring::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--accent);
+}
+
+@keyframes authOrbitRingSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.auth-orbit-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  animation: authOrbitDot 2s ease-in-out infinite;
+  box-shadow: 0 0 10px var(--green);
+}
+
+@keyframes authOrbitDot {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.6;
+  }
+}
+
+.auth-mobile-logo {
+  position: absolute;
+  inset: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-mobile-logo svg {
+  width: 36px;
+  height: 36px;
+  color: var(--text-dim);
+}
+
+.auth-rect {
+  fill: none;
+  stroke-width: 1.5;
+  animation: authRectFill 2s ease-in-out infinite;
+}
+
+.auth-rect-1 { animation-delay: 0s; }
+.auth-rect-2 { animation-delay: 0.3s; }
+.auth-rect-3 { animation-delay: 0.6s; }
+.auth-rect-4 { animation-delay: 0.9s; }
+
+@keyframes authRectFill {
+  0%, 100% {
+    fill: transparent;
+    stroke: var(--text-dim);
+  }
+  50% {
+    fill: rgba(59, 130, 246, 0.2);
+    stroke: var(--accent);
+  }
+}
+
+/* Show mobile, hide desktop on small screens */
+@media (max-width: 768px) {
+  .auth-loading-desktop { display: none; }
+  .auth-loading-mobile { display: flex; }
+
+  .auth-loading-title {
+    font-size: 22px;
+    letter-spacing: 3px;
+  }
+
+  .auth-loading-subtitle {
+    font-size: 13px;
+  }
+}
+
+/* =========================
+   Custom Confirm Dialog
+========================= */
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.confirm-dialog-backdrop.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.confirm-dialog.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.confirm-dialog-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  transform: scale(1);
+  transition: transform 0.25s ease;
+}
+
+.confirm-dialog.hidden .confirm-dialog-card {
+  transform: scale(0.95);
+}
+
+.confirm-dialog-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border-radius: 50%;
+  color: var(--accent);
+}
+
+.confirm-dialog-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.confirm-dialog-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 12px;
+  letter-spacing: 0.5px;
+}
+
+.confirm-dialog-message {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0 0 28px;
+  line-height: 1.5;
+}
+
+.confirm-dialog-message #confirm-dialog-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.confirm-dialog-actions .btn {
+  flex: 1;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  min-width: 100px;
+}
+
+.confirm-dialog-actions .btn.danger {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
+.confirm-dialog-actions .btn.danger:hover {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
+/* Mobile: more compact confirm dialog */
+@media (max-width: 480px) {
+  .confirm-dialog {
+    padding: 16px;
+  }
+
+  .confirm-dialog-card {
+    padding: 20px 16px;
+    max-width: 300px;
+    border-radius: 12px;
+  }
+
+  .confirm-dialog-icon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 12px;
+  }
+
+  .confirm-dialog-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .confirm-dialog-title {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .confirm-dialog-message {
+    font-size: 13px;
+    margin-bottom: 16px;
+    line-height: 1.4;
+  }
+
+  .confirm-dialog-actions {
+    gap: 8px;
+  }
+
+  .confirm-dialog-actions .btn {
+    padding: 10px 12px;
+    font-size: 13px;
+    min-width: 80px;
+  }
 }
