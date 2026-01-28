@@ -6907,6 +6907,20 @@ body.tournament.has-team-color .input:focus {
   border-bottom-color: currentColor;
 }
 
+/* Teams/Players pages: disable profile-link click targets (these pages use their own interactions) */
+#panel-teams .profile-link,
+#panel-players .profile-link {
+  pointer-events: none;
+  cursor: default;
+  border-bottom: none;
+}
+
+#panel-teams .profile-link:hover,
+#panel-players .profile-link:hover {
+  border-bottom-color: transparent;
+  opacity: 1;
+}
+
 /* Specific context overrides for profile links */
 .team-list-members .profile-link {
   border-bottom: none;
@@ -6929,7 +6943,7 @@ body.tournament.has-team-color .input:focus {
 /* Profile Popup Container */
 .profile-popup {
   position: fixed;
-  z-index: 1000;
+  z-index: 2000;
   pointer-events: none;
 }
 
@@ -7138,7 +7152,7 @@ body.tournament.has-team-color .input:focus {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
+  z-index: 1999;
 }
 
 /* Mobile Styles */

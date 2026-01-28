@@ -4175,16 +4175,16 @@ function initProfilePopup() {
   }
 
 
-// Mobile: tapping outside the sheet (anywhere above it) should dismiss.
-if (popup) {
-  popup.addEventListener('click', (e) => {
-    if (window.innerWidth > 768) return;
-    const card = popup.querySelector('.profile-popup-card');
-    if (card && !card.contains(e.target)) {
-      hideProfilePopup();
-    }
-  });
-}
+  // Clicking anywhere outside the popup card should dismiss (mobile + desktop).
+  // (Keeps "X" + Escape behavior, but removes the need to hunt for it.)
+  if (popup) {
+    popup.addEventListener('click', (e) => {
+      const card = popup.querySelector('.profile-popup-card');
+      if (card && !card.contains(e.target)) {
+        hideProfilePopup();
+      }
+    });
+  }
 
   // Close on escape key
   document.addEventListener('keydown', (e) => {
@@ -4192,6 +4192,22 @@ if (popup) {
       hideProfilePopup();
     }
   });
+
+  // Desktop + mobile: click anywhere outside the popup card dismisses it.
+  // (We use a document-level handler because on desktop the popup isn't fullscreen.)
+  document.addEventListener('mousedown', (e) => {
+    if (!popup) return;
+    const isOpen = popup.classList.contains('visible') && popup.style.display !== 'none';
+    if (!isOpen) return;
+
+    const card = popup.querySelector('.profile-popup-card');
+    if (card && card.contains(e.target)) return;
+
+    // Let clicks on other profile links switch the popup instead of closing it.
+    if (e.target.closest('.profile-link')) return;
+
+    hideProfilePopup();
+  }, true);
 
   // Handle clicks on profile links via event delegation
   document.addEventListener('click', (e) => {
