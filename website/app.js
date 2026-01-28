@@ -669,6 +669,13 @@ async function migrateIdentity(oldId, newId, displayName) {
   const toId = String(newId || '').trim();
   if (!fromId || !toId || fromId === toId) return;
 
+  // 0) Delete any presence doc keyed to the old ID to prevent "ghost" online users.
+  try {
+    await db.collection('presence').doc(fromId).delete();
+  } catch (_) {
+    // best-effort - presence doc might not exist
+  }
+
   // 1) Merge player docs (invites) onto the name-keyed account.
   const fromRef = db.collection('players').doc(fromId);
   const toRef = db.collection('players').doc(toId);
@@ -4586,11 +4593,15 @@ function renderTeammatesList() {
   listEl.innerHTML = html;
 }
 
+// Track whether presence has been initialized for this session
+let presenceInitialized = false;
+
 // Initialize presence when name is set
 const originalSetUserName = setUserName;
 window.setUserNameWithPresence = async function(name, opts) {
   await originalSetUserName(name, opts);
-  if (getUserName()) {
+  if (getUserName() && !presenceInitialized) {
+    presenceInitialized = true;
     initPresence();
   }
 };
@@ -4598,15 +4609,98 @@ window.setUserNameWithPresence = async function(name, opts) {
 // Override setUserName to also init presence
 setUserName = async function(name, opts) {
   await originalSetUserName.call(this, name, opts);
-  if (getUserName()) {
+  if (getUserName() && !presenceInitialized) {
+    presenceInitialized = true;
     initPresence();
   }
 };
 
-// Initialize presence on DOMContentLoaded if user already has a name
+// Hide the auth loading screen with a fade transition
+function hideAuthLoadingScreen() {
+  const screen = document.getElementById('auth-loading-screen');
+  if (screen) {
+    screen.classList.add('hidden');
+    // Remove from DOM after transition
+    setTimeout(() => {
+      if (screen.parentNode) screen.parentNode.removeChild(screen);
+    }, 400);
+  }
+}
+
+// Verify the user's account on page load before starting presence.
+// This resolves the canonical account ID for the stored name, preventing
+// presence from being written under a stale device ID.
+async function verifyAccountAndInitPresence() {
+  const storedName = getUserName();
+  const loadingScreen = document.getElementById('auth-loading-screen');
+
+  // No stored name - nothing to verify, hide loading screen immediately
+  if (!storedName) {
+    hideAuthLoadingScreen();
+    return;
+  }
+
+  // Show loading screen while we verify
+  if (loadingScreen) loadingScreen.style.display = 'flex';
+
+  try {
+    const nameKey = nameToAccountId(storedName);
+    if (!nameKey) {
+      // Invalid name, just proceed
+      hideAuthLoadingScreen();
+      return;
+    }
+
+    const myDeviceId = getLocalAccountId();
+    const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
+    const nameDoc = await namesCol.doc(nameKey).get();
+
+    if (nameDoc.exists) {
+      const canonicalAccountId = String(nameDoc.data()?.accountId || '').trim();
+
+      // If the name belongs to a different account, migrate silently
+      if (canonicalAccountId && canonicalAccountId !== myDeviceId) {
+        // Migrate identity (this also cleans up old presence doc)
+        try {
+          await migrateIdentity(myDeviceId, canonicalAccountId, storedName);
+        } catch (e) {
+          console.warn('Identity migration during verification failed (best-effort)', e);
+        }
+        // Update local storage to use the canonical account
+        safeLSSet(LS_USER_ID, canonicalAccountId);
+      }
+    }
+
+    // Now that we've verified/migrated, start presence with the correct ID
+    if (!presenceInitialized) {
+      presenceInitialized = true;
+      initPresence();
+    }
+
+    // Also ensure profile sync is active
+    startProfileNameSync();
+
+  } catch (e) {
+    console.warn('Account verification failed (best-effort), starting presence anyway', e);
+    // Even if verification fails, start presence to maintain functionality
+    if (!presenceInitialized) {
+      presenceInitialized = true;
+      initPresence();
+    }
+  }
+
+  // Hide loading screen after verification completes
+  hideAuthLoadingScreen();
+}
+
+// Initialize presence on DOMContentLoaded - but verify account first
 document.addEventListener('DOMContentLoaded', () => {
+  // If there's a stored name, verify the account before starting presence
   if (getUserName()) {
-    initPresence();
+    verifyAccountAndInitPresence();
+  } else {
+    // No stored name - hide loading screen immediately
+    hideAuthLoadingScreen();
   }
 });
 
