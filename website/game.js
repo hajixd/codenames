@@ -2460,7 +2460,7 @@ function showGameBoard() {
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
-  document.getElementById('game-board-container').style.display = 'block';
+  document.getElementById('game-board-container').style.display = 'flex';
 }
 
 function renderGame() {
@@ -2546,6 +2546,42 @@ function renderGame() {
   if (currentGame.winner) {
     showGameEndOverlay();
   }
+
+  // Render advanced features
+  renderAdvancedFeatures();
+}
+
+// Advanced features rendering hook
+function renderAdvancedFeatures() {
+  if (!currentGame) return;
+
+  // Load tags from localStorage for this game
+  loadTagsFromLocal();
+
+  // Render advanced UI
+  renderCardTags();
+  renderCardVotes();
+  renderClueHistory();
+  renderTeamRoster();
+  updateChatPrivacyBadge();
+
+  // Show/hide tag legend based on role
+  const tagLegend = document.getElementById('card-tag-legend');
+  if (tagLegend) {
+    const isSpymaster = isCurrentUserSpymaster();
+    const isSpectator = isSpectating();
+    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner) ? 'flex' : 'none';
+  }
+
+  // Initialize operative chat
+  initOperativeChat();
+
+  // Handle timer if present
+  if (currentGame?.timerEnd) {
+    startGameTimer(currentGame.timerEnd, currentGame.currentPhase);
+  } else {
+    stopGameTimer();
+  }
 }
 
 function renderBoard(isSpymaster) {
@@ -2571,14 +2607,22 @@ function renderBoard(isSpymaster) {
       classes.push('disabled');
     }
 
-    const clickHandler = canGuess && !card.revealed ? `onclick="handleCardClick(${i})"` : '';
+    // Allow clicking for guessing, tagging, or voting (if not revealed)
+    const canClick = !card.revealed && !isSpymaster;
+    const clickHandler = canClick ? `onclick="handleCardClick(${i})"` : '';
 
     return `
-      <div class="${classes.join(' ')}" ${clickHandler}>
+      <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
         <span class="card-word">${escapeHtml(card.word)}</span>
       </div>
     `;
   }).join('');
+
+  // Re-render tags and votes after board re-renders
+  setTimeout(() => {
+    renderCardTags();
+    renderCardVotes();
+  }, 10);
 }
 
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
@@ -2772,11 +2816,21 @@ async function handleClueSubmit(e) {
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
 
   try {
+    // Add clue to history
+    const clueEntry = {
+      team: currentGame.currentTeam,
+      word: word,
+      number: number,
+      results: [],
+      timestamp: new Date().toISOString()
+    };
+
     await db.collection('games').doc(currentGame.id).update({
       currentClue: { word, number },
       guessesRemaining: number + 1, // Can guess number + 1 times
       currentPhase: 'operatives',
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
+      clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
@@ -3130,3 +3184,658 @@ function updateGameTabBadge() {
 
 // Call badge update on init
 setTimeout(updateGameTabBadge, 1000);
+
+/* =========================
+   ADVANCED GAME FEATURES
+   - Card Tagging
+   - Card Voting
+   - Operative Chat
+   - Clue History
+   - Timer Display
+   - Team Roster
+========================= */
+
+// State for advanced features
+let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
+let cardVotes = {}; // { odId: [cardIndices] }
+let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
+let operativeChatUnsub = null;
+let gameTimerInterval = null;
+let gameTimerEnd = null;
+
+// Initialize advanced features
+function initAdvancedFeatures() {
+  // Tag buttons
+  document.querySelectorAll('.tag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.tag;
+      if (tag === 'clear') {
+        clearAllTags();
+        return;
+      }
+      setActiveTagMode(tag === activeTagMode ? null : tag);
+    });
+  });
+
+  // Sidebar toggles
+  document.getElementById('toggle-left-sidebar')?.addEventListener('click', toggleLeftSidebar);
+  document.getElementById('toggle-right-sidebar')?.addEventListener('click', toggleRightSidebar);
+
+  // Operative chat form
+  document.getElementById('operative-chat-form')?.addEventListener('submit', handleOperativeChatSubmit);
+
+  // Clear votes button
+  document.getElementById('clear-votes-btn')?.addEventListener('click', clearMyVotes);
+
+  // Close sidebars on backdrop click
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('sidebar-backdrop')) {
+      closeMobileSidebars();
+    }
+  });
+}
+
+// Call init on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+  initAdvancedFeatures();
+});
+
+/* =========================
+   Card Tagging System
+========================= */
+function setActiveTagMode(mode) {
+  activeTagMode = mode;
+
+  // Update button states
+  document.querySelectorAll('.tag-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tag === mode);
+  });
+
+  // Update card cursor state
+  document.querySelectorAll('.game-card').forEach(card => {
+    card.classList.toggle('tag-mode', !!mode && !card.classList.contains('revealed'));
+  });
+}
+
+function tagCard(cardIndex, tag) {
+  if (tag === 'clear' || cardTags[cardIndex] === tag) {
+    delete cardTags[cardIndex];
+  } else {
+    cardTags[cardIndex] = tag;
+  }
+  renderCardTags();
+  saveTagsToLocal();
+}
+
+function clearAllTags() {
+  cardTags = {};
+  renderCardTags();
+  saveTagsToLocal();
+  setActiveTagMode(null);
+}
+
+function renderCardTags() {
+  const cards = document.querySelectorAll('.game-card');
+  cards.forEach((card, index) => {
+    // Remove existing tag
+    const existingTag = card.querySelector('.card-tag');
+    if (existingTag) existingTag.remove();
+
+    const tag = cardTags[index];
+    if (tag && !card.classList.contains('revealed')) {
+      const tagEl = document.createElement('div');
+      tagEl.className = `card-tag tag-${tag}`;
+
+      if (tag === 'yes') {
+        tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+      } else if (tag === 'maybe') {
+        tagEl.innerHTML = '?';
+      } else if (tag === 'no') {
+        tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      }
+
+      card.appendChild(tagEl);
+    }
+  });
+}
+
+function saveTagsToLocal() {
+  if (!currentGame?.id) return;
+  try {
+    localStorage.setItem(`codenames_tags_${currentGame.id}`, JSON.stringify(cardTags));
+  } catch (e) {}
+}
+
+function loadTagsFromLocal() {
+  if (!currentGame?.id) return;
+  try {
+    const saved = localStorage.getItem(`codenames_tags_${currentGame.id}`);
+    if (saved) {
+      cardTags = JSON.parse(saved);
+    } else {
+      cardTags = {};
+    }
+  } catch (e) {
+    cardTags = {};
+  }
+}
+
+/* =========================
+   Card Voting System
+========================= */
+async function toggleVoteForCard(cardIndex) {
+  if (!currentGame?.id) return;
+  const odId = getUserId();
+  if (!odId) return;
+
+  const myTeamColor = getMyTeamColor();
+  if (!myTeamColor) return;
+
+  // Don't allow spymasters to vote
+  if (isCurrentUserSpymaster()) return;
+
+  const gameRef = db.collection('games').doc(currentGame.id);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const doc = await tx.get(gameRef);
+      if (!doc.exists) return;
+
+      const data = doc.data();
+      const votes = data.cardVotes || {};
+      const myVotes = votes[odId] || [];
+
+      const idx = myVotes.indexOf(cardIndex);
+      if (idx >= 0) {
+        myVotes.splice(idx, 1);
+      } else {
+        myVotes.push(cardIndex);
+      }
+
+      votes[odId] = myVotes;
+      tx.update(gameRef, { cardVotes: votes });
+    });
+  } catch (e) {
+    console.error('Vote error:', e);
+  }
+}
+
+function clearMyVotes() {
+  if (!currentGame?.id) return;
+  const odId = getUserId();
+  if (!odId) return;
+
+  const gameRef = db.collection('games').doc(currentGame.id);
+  gameRef.update({
+    [`cardVotes.${odId}`]: firebase.firestore.FieldValue.delete()
+  }).catch(console.error);
+}
+
+function renderCardVotes() {
+  if (!currentGame?.cardVotes) return;
+
+  const myTeamColor = getMyTeamColor();
+  const odId = getUserId();
+  const myVotes = currentGame.cardVotes[odId] || [];
+
+  // Get votes only from teammates (same color)
+  const teamVotes = {};
+  const teamPlayers = myTeamColor === 'red' ? currentGame.redPlayers : currentGame.bluePlayers;
+  const teamOdIds = (teamPlayers || []).map(p => p.odId);
+
+  for (const odId of Object.keys(currentGame.cardVotes)) {
+    if (!teamOdIds.includes(odId)) continue;
+    const votes = currentGame.cardVotes[odId] || [];
+    for (const idx of votes) {
+      teamVotes[idx] = (teamVotes[idx] || 0) + 1;
+    }
+  }
+
+  // Render vote dots on cards
+  const cards = document.querySelectorAll('.game-card');
+  cards.forEach((card, index) => {
+    const existingVotes = card.querySelector('.card-votes');
+    if (existingVotes) existingVotes.remove();
+
+    const voteCount = teamVotes[index] || 0;
+    if (voteCount > 0 && !card.classList.contains('revealed')) {
+      const votesEl = document.createElement('div');
+      votesEl.className = 'card-votes';
+
+      for (let i = 0; i < Math.min(voteCount, 5); i++) {
+        const dot = document.createElement('div');
+        dot.className = 'card-vote-dot';
+        if (myVotes.includes(index) && i === 0) {
+          dot.classList.add('my-vote');
+        }
+        votesEl.appendChild(dot);
+      }
+
+      card.appendChild(votesEl);
+    }
+  });
+
+  // Update voting panel
+  renderVotingPanel(teamVotes, myVotes);
+}
+
+function renderVotingPanel(teamVotes, myVotes) {
+  const container = document.getElementById('voting-content');
+  if (!container || !currentGame?.cards) return;
+
+  // Sort by vote count
+  const sorted = Object.entries(teamVotes)
+    .filter(([idx, count]) => count > 0 && !currentGame.cards[idx]?.revealed)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  if (sorted.length === 0) {
+    container.innerHTML = '<div class="voting-empty-state">Vote on cards to coordinate with your team</div>';
+    return;
+  }
+
+  container.innerHTML = sorted.map(([idx, count]) => {
+    const card = currentGame.cards[idx];
+    const hasMyVote = myVotes.includes(parseInt(idx));
+
+    return `
+      <div class="voting-item" onclick="toggleVoteForCard(${idx})">
+        <span class="voting-word">${escapeHtml(card.word)}</span>
+        <div class="voting-count">
+          <div class="voting-dots">
+            ${Array(Math.min(count, 4)).fill(0).map((_, i) =>
+              `<div class="voting-dot ${hasMyVote && i === 0 ? 'my-vote' : ''}"></div>`
+            ).join('')}
+          </div>
+          <span class="voting-number">${count}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* =========================
+   Operative Team Chat
+========================= */
+function initOperativeChat() {
+  if (!currentGame?.id) return;
+
+  // Cleanup previous listener
+  if (operativeChatUnsub) {
+    operativeChatUnsub();
+    operativeChatUnsub = null;
+  }
+
+  const myTeamColor = getMyTeamColor();
+  if (!myTeamColor) return;
+
+  // Listen to team chat subcollection
+  operativeChatUnsub = db.collection('games').doc(currentGame.id)
+    .collection(`${myTeamColor}Chat`)
+    .orderBy('createdAt', 'asc')
+    .limitToLast(50)
+    .onSnapshot(snap => {
+      renderOperativeChat(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, err => console.error('Chat error:', err));
+}
+
+function renderOperativeChat(messages) {
+  const container = document.getElementById('operative-chat-messages');
+  if (!container) return;
+
+  const odId = getUserId();
+
+  if (!messages || messages.length === 0) {
+    container.innerHTML = '<div class="chat-empty-state">No messages yet. Discuss with your team!</div>';
+    return;
+  }
+
+  container.innerHTML = messages.map(msg => {
+    const isMe = msg.senderId === odId;
+    const time = msg.createdAt?.toDate?.() ? formatTime(msg.createdAt.toDate()) : '';
+    const teamColor = getMyTeamColor();
+
+    return `
+      <div class="chat-message ${isMe ? 'my-message' : ''}">
+        <div class="chat-message-header">
+          <span class="chat-sender ${teamColor}">${escapeHtml(msg.senderName)}</span>
+          <span class="chat-time">${time}</span>
+        </div>
+        <div class="chat-text">${escapeHtml(msg.text)}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Auto-scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+function formatTime(date) {
+  if (!date) return '';
+  const h = date.getHours();
+  const m = date.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
+async function handleOperativeChatSubmit(e) {
+  e.preventDefault();
+
+  const input = document.getElementById('operative-chat-input');
+  const text = input?.value?.trim();
+  if (!text || !currentGame?.id) return;
+
+  const myTeamColor = getMyTeamColor();
+  if (!myTeamColor) return;
+
+  const userName = getUserName();
+  const odId = getUserId();
+  if (!userName || !odId) return;
+
+  input.value = '';
+
+  try {
+    await db.collection('games').doc(currentGame.id)
+      .collection(`${myTeamColor}Chat`)
+      .add({
+        senderId: odId,
+        senderName: userName,
+        text: text,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+  } catch (err) {
+    console.error('Send chat error:', err);
+    input.value = text; // Restore on error
+  }
+}
+
+function updateChatPrivacyBadge() {
+  const badge = document.getElementById('chat-privacy-badge');
+  if (!badge) return;
+
+  const isSpymaster = isCurrentUserSpymaster();
+  if (isSpymaster) {
+    badge.textContent = 'All Team';
+    badge.classList.add('spymaster-visible');
+  } else {
+    badge.textContent = 'Operatives Only';
+    badge.classList.remove('spymaster-visible');
+  }
+}
+
+/* =========================
+   Clue History
+========================= */
+function renderClueHistory() {
+  const container = document.getElementById('clue-history-list');
+  if (!container || !currentGame) return;
+
+  const history = currentGame.clueHistory || [];
+
+  if (history.length === 0) {
+    container.innerHTML = '<div class="clue-history-empty">No clues given yet</div>';
+    return;
+  }
+
+  container.innerHTML = history.map(clue => {
+    const resultsHtml = (clue.results || []).map(r => {
+      let className = 'neutral';
+      if (r.correct) className = 'correct';
+      else if (r.wrong) className = 'wrong';
+      return `<span class="clue-result-chip ${className}">${escapeHtml(r.word)}</span>`;
+    }).join('');
+
+    return `
+      <div class="clue-history-item ${clue.team}">
+        <div class="clue-history-header">
+          <span class="clue-history-team ${clue.team}">${clue.team.toUpperCase()}</span>
+          <span class="clue-history-number">${clue.number}</span>
+        </div>
+        <div class="clue-history-word">${escapeHtml(clue.word)}</div>
+        ${resultsHtml ? `<div class="clue-history-results">${resultsHtml}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // Scroll to latest
+  container.scrollTop = container.scrollHeight;
+}
+
+/* =========================
+   Timer Display
+========================= */
+function startGameTimer(endTime, phase) {
+  stopGameTimer();
+
+  if (!endTime) return;
+
+  gameTimerEnd = endTime instanceof Date ? endTime : endTime.toDate?.() || new Date(endTime);
+
+  const timerEl = document.getElementById('game-timer');
+  const fillEl = document.getElementById('timer-fill');
+  const textEl = document.getElementById('timer-text');
+
+  if (!timerEl || !fillEl || !textEl) return;
+
+  timerEl.style.display = 'flex';
+
+  const totalDuration = gameTimerEnd - Date.now();
+
+  gameTimerInterval = setInterval(() => {
+    const remaining = Math.max(0, gameTimerEnd - Date.now());
+    const seconds = Math.ceil(remaining / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    textEl.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+
+    const percent = (remaining / totalDuration) * 100;
+    fillEl.style.width = `${percent}%`;
+
+    // Warning states
+    fillEl.classList.remove('warning', 'danger');
+    textEl.classList.remove('warning', 'danger');
+
+    if (seconds <= 10) {
+      fillEl.classList.add('danger');
+      textEl.classList.add('danger');
+    } else if (seconds <= 30) {
+      fillEl.classList.add('warning');
+      textEl.classList.add('warning');
+    }
+
+    if (remaining <= 0) {
+      stopGameTimer();
+    }
+  }, 100);
+}
+
+function stopGameTimer() {
+  if (gameTimerInterval) {
+    clearInterval(gameTimerInterval);
+    gameTimerInterval = null;
+  }
+  gameTimerEnd = null;
+
+  const timerEl = document.getElementById('game-timer');
+  if (timerEl) timerEl.style.display = 'none';
+}
+
+/* =========================
+   Team Roster
+========================= */
+function renderTeamRoster() {
+  const redContainer = document.getElementById('roster-red-players');
+  const blueContainer = document.getElementById('roster-blue-players');
+
+  if (!redContainer || !blueContainer || !currentGame) return;
+
+  const renderPlayers = (players, spymaster, isCurrentTeam) => {
+    if (!players || players.length === 0) {
+      return '<div class="roster-player"><span class="roster-player-name" style="color: var(--text-dim);">No players</span></div>';
+    }
+
+    return players.map(p => {
+      const isSpymaster = p.name === spymaster;
+      const role = isSpymaster ? 'spymaster' : 'operative';
+      const isCurrent = isCurrentTeam && currentGame.currentPhase !== 'ended';
+
+      return `
+        <div class="roster-player ${isCurrent ? 'current-turn' : ''}">
+          <span class="roster-player-name">${escapeHtml(p.name)}</span>
+          <span class="roster-player-role ${role}">${isSpymaster ? 'Spy' : 'Op'}</span>
+        </div>
+      `;
+    }).join('');
+  };
+
+  const isRedTurn = currentGame.currentTeam === 'red';
+  const isBlueTurn = currentGame.currentTeam === 'blue';
+
+  redContainer.innerHTML = renderPlayers(
+    currentGame.redPlayers,
+    currentGame.redSpymaster,
+    isRedTurn
+  );
+
+  blueContainer.innerHTML = renderPlayers(
+    currentGame.bluePlayers,
+    currentGame.blueSpymaster,
+    isBlueTurn
+  );
+}
+
+/* =========================
+   Sidebar Toggles
+========================= */
+function toggleLeftSidebar() {
+  const sidebar = document.querySelector('.game-sidebar-left');
+  if (!sidebar) return;
+
+  if (window.innerWidth <= 1024) {
+    sidebar.classList.toggle('mobile-visible');
+    toggleSidebarBackdrop(sidebar.classList.contains('mobile-visible'));
+  } else {
+    sidebar.classList.toggle('collapsed');
+  }
+}
+
+function toggleRightSidebar() {
+  const sidebar = document.querySelector('.game-sidebar-right');
+  if (!sidebar) return;
+
+  if (window.innerWidth <= 1024) {
+    sidebar.classList.toggle('mobile-visible');
+    toggleSidebarBackdrop(sidebar.classList.contains('mobile-visible'));
+  } else {
+    sidebar.classList.toggle('collapsed');
+  }
+}
+
+function toggleSidebarBackdrop(show) {
+  let backdrop = document.querySelector('.sidebar-backdrop');
+  if (!backdrop && show) {
+    backdrop = document.createElement('div');
+    backdrop.className = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+  }
+  if (backdrop) {
+    backdrop.classList.toggle('visible', show);
+  }
+}
+
+function closeMobileSidebars() {
+  document.querySelectorAll('.game-sidebar').forEach(sb => {
+    sb.classList.remove('mobile-visible');
+  });
+  toggleSidebarBackdrop(false);
+}
+
+/* =========================
+   Enhanced Card Click Handler
+========================= */
+// Store original handleCardClick
+const _originalHandleCardClick = handleCardClick;
+
+// Create enhanced version
+async function handleCardClickEnhanced(cardIndex) {
+  // If in tag mode, tag the card instead of guessing
+  if (activeTagMode) {
+    tagCard(cardIndex, activeTagMode);
+    return;
+  }
+
+  // If shift key held, toggle vote
+  if (window.event?.shiftKey) {
+    await toggleVoteForCard(cardIndex);
+    return;
+  }
+
+  // Check if this should be a guess or just a vote click
+  const myTeamColor = getMyTeamColor();
+  const isMyTurn = myTeamColor && currentGame?.currentTeam === myTeamColor;
+  const canGuess = isMyTurn && currentGame?.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame?.winner;
+
+  if (!canGuess) {
+    // Can't guess, but maybe they want to vote - toggle vote on click
+    await toggleVoteForCard(cardIndex);
+    return;
+  }
+
+  // Otherwise, call original handler to guess
+  await _originalHandleCardClick(cardIndex);
+}
+
+// Replace global handleCardClick
+window.handleCardClick = handleCardClickEnhanced;
+
+
+/* =========================
+   Clue History Tracking
+========================= */
+// Helper to add clue to history when given
+async function addClueToHistory(gameId, team, word, number) {
+  if (!gameId) return;
+
+  const clueEntry = {
+    team,
+    word,
+    number,
+    results: [],
+    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    await db.collection('games').doc(gameId).update({
+      clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry)
+    });
+  } catch (e) {
+    console.error('Failed to add clue to history:', e);
+  }
+}
+
+// Cleanup on game exit
+function cleanupAdvancedFeatures() {
+  stopGameTimer();
+
+  if (operativeChatUnsub) {
+    operativeChatUnsub();
+    operativeChatUnsub = null;
+  }
+
+  cardTags = {};
+  cardVotes = {};
+  activeTagMode = null;
+  setActiveTagMode(null);
+  closeMobileSidebars();
+}
+
+// Hook into leave game
+const originalLeaveQuickGame = window.leaveQuickGame;
+if (originalLeaveQuickGame) {
+  window.leaveQuickGame = function() {
+    cleanupAdvancedFeatures();
+    return originalLeaveQuickGame.apply(this, arguments);
+  };
+}

@@ -518,88 +518,199 @@
             </div>
 
             <!-- Game Board View (shown during active game) -->
-            <div id="game-board-container" class="game-container-compact" style="display:none;">
-              <!-- Compact Game Header - Single Row -->
-              <div class="game-header-compact">
-                <div class="game-score-row">
-                  <div class="game-team-compact red">
+            <div id="game-board-container" class="game-container-expanded" style="display:none;">
+
+              <!-- Enhanced Game Header with Timer -->
+              <div class="game-header-expanded">
+                <div class="game-score-section">
+                  <div class="game-team-expanded red">
                     <span class="team-badge" id="game-red-team"></span>
                     <span class="cards-count" id="game-red-left">9</span>
                   </div>
-                  <span class="game-vs-compact">vs</span>
-                  <div class="game-team-compact blue">
+                  <div class="game-center-info">
+                    <span class="game-vs-expanded">VS</span>
+                    <div class="game-timer-display" id="game-timer" style="display:none;">
+                      <div class="timer-bar">
+                        <div class="timer-fill" id="timer-fill"></div>
+                      </div>
+                      <span class="timer-text" id="timer-text">0:00</span>
+                    </div>
+                  </div>
+                  <div class="game-team-expanded blue">
                     <span class="cards-count" id="game-blue-left">8</span>
                     <span class="team-badge" id="game-blue-team"></span>
                   </div>
                 </div>
-                <div class="game-turn-compact">
+                <div class="game-turn-expanded">
                   <span class="turn-indicator" id="game-turn-team">Red</span>
-                  <span class="turn-role-compact" id="game-turn-role">Spymaster</span>
+                  <span class="turn-phase" id="game-turn-role">Spymaster</span>
                 </div>
               </div>
 
-              <!-- Role Selection (before game starts for player) -->
-              <div class="role-selection-compact" id="role-selection" style="display:none;">
-                <div class="role-buttons-compact">
-                  <button class="btn role-btn-compact" id="role-spymaster" type="button">
-                    <span class="role-icon">🕵️</span>
-                    <span class="role-info">
-                      <span class="role-name">Spymaster</span>
-                      <span class="role-desc">Give clues</span>
-                    </span>
-                  </button>
-                  <button class="btn role-btn-compact" id="role-operative" type="button">
-                    <span class="role-icon">🔍</span>
-                    <span class="role-info">
-                      <span class="role-name">Operative</span>
-                      <span class="role-desc">Guess words</span>
-                    </span>
-                  </button>
-                </div>
-                <div class="role-status" id="role-status"></div>
-              </div>
+              <!-- Main Game Layout - 3 Column on Desktop -->
+              <div class="game-main-layout">
 
-              <!-- Game Board - Fills Available Space -->
-              <div class="game-board-wrapper">
-                <div class="game-board" id="game-board">
-                  <!-- 5x5 grid of cards will be generated here -->
-                </div>
-              </div>
+                <!-- Left Sidebar - Team Roster & Clue History -->
+                <div class="game-sidebar game-sidebar-left">
+                  <!-- Team Roster -->
+                  <div class="sidebar-panel team-roster-panel">
+                    <div class="sidebar-panel-header">
+                      <span class="sidebar-panel-title">Players</span>
+                    </div>
+                    <div class="team-roster-content">
+                      <div class="roster-team red">
+                        <div class="roster-team-header">
+                          <span class="roster-team-dot red"></span>
+                          <span class="roster-team-name">Red Team</span>
+                        </div>
+                        <div class="roster-players" id="roster-red-players"></div>
+                      </div>
+                      <div class="roster-team blue">
+                        <div class="roster-team-header">
+                          <span class="roster-team-dot blue"></span>
+                          <span class="roster-team-name">Blue Team</span>
+                        </div>
+                        <div class="roster-players" id="roster-blue-players"></div>
+                      </div>
+                    </div>
+                  </div>
 
-              <!-- Compact Action Bar - Fixed at Bottom -->
-              <div class="game-action-bar">
-                <!-- Clue Display -->
-                <div class="clue-display-compact" id="current-clue" style="display:none;">
-                  <span class="clue-word-compact" id="clue-word"></span>
-                  <span class="clue-number-compact" id="clue-number"></span>
-                  <span class="guesses-left-compact" id="guesses-left"></span>
-                </div>
-
-                <!-- Spymaster Clue Input -->
-                <form class="clue-form-compact" id="clue-form" style="display:none;">
-                  <input type="text" class="input clue-input-compact" id="clue-input" placeholder="Clue" required />
-                  <input type="number" class="input clue-num-compact" id="clue-num-input" min="0" max="9" placeholder="#" required />
-                  <button type="submit" class="btn primary btn-compact">Give</button>
-                </form>
-
-                <!-- Operative Actions -->
-                <div class="operative-actions-compact" id="operative-actions" style="display:none;">
-                  <button class="btn btn-compact" id="end-turn-btn" type="button">End Turn</button>
+                  <!-- Clue History -->
+                  <div class="sidebar-panel clue-history-panel">
+                    <div class="sidebar-panel-header">
+                      <span class="sidebar-panel-title">Clue History</span>
+                    </div>
+                    <div class="clue-history-content" id="clue-history-list"></div>
+                  </div>
                 </div>
 
-                <!-- Waiting Message -->
-                <div class="waiting-compact" id="waiting-message" style="display:none;">
-                  Waiting for <span id="waiting-for"></span>...
+                <!-- Center - Game Board -->
+                <div class="game-center-area">
+                  <!-- Role Selection (before game starts for player) -->
+                  <div class="role-selection-compact" id="role-selection" style="display:none;">
+                    <div class="role-buttons-compact">
+                      <button class="btn role-btn-compact" id="role-spymaster" type="button">
+                        <span class="role-icon">🕵️</span>
+                        <span class="role-info">
+                          <span class="role-name">Spymaster</span>
+                          <span class="role-desc">Give clues</span>
+                        </span>
+                      </button>
+                      <button class="btn role-btn-compact" id="role-operative" type="button">
+                        <span class="role-icon">🔍</span>
+                        <span class="role-info">
+                          <span class="role-name">Operative</span>
+                          <span class="role-desc">Guess words</span>
+                        </span>
+                      </button>
+                    </div>
+                    <div class="role-status" id="role-status"></div>
+                  </div>
+
+                  <!-- Game Board -->
+                  <div class="game-board-wrapper">
+                    <div class="game-board" id="game-board">
+                      <!-- 5x5 grid of cards will be generated here -->
+                    </div>
+                  </div>
+
+                  <!-- Card Tagging Legend (for operatives) -->
+                  <div class="card-tag-legend" id="card-tag-legend" style="display:none;">
+                    <span class="tag-legend-title">Mark cards:</span>
+                    <div class="tag-legend-items">
+                      <button class="tag-btn tag-yes" data-tag="yes" title="Likely correct">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                      <button class="tag-btn tag-maybe" data-tag="maybe" title="Maybe">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      </button>
+                      <button class="tag-btn tag-no" data-tag="no" title="Avoid">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                      <button class="tag-btn tag-clear" data-tag="clear" title="Clear tags">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                    <span class="tag-legend-hint">Click a mark, then click cards</span>
+                  </div>
+
+                  <!-- Action Bar -->
+                  <div class="game-action-bar">
+                    <!-- Clue Display -->
+                    <div class="clue-display-expanded" id="current-clue" style="display:none;">
+                      <span class="clue-label">Clue:</span>
+                      <span class="clue-word-expanded" id="clue-word"></span>
+                      <span class="clue-number-expanded" id="clue-number"></span>
+                      <span class="guesses-left-expanded" id="guesses-left"></span>
+                    </div>
+
+                    <!-- Spymaster Clue Input -->
+                    <form class="clue-form-expanded" id="clue-form" style="display:none;">
+                      <input type="text" class="input clue-input-expanded" id="clue-input" placeholder="Enter your clue..." required />
+                      <input type="number" class="input clue-num-expanded" id="clue-num-input" min="0" max="9" placeholder="#" required />
+                      <button type="submit" class="btn primary">Give Clue</button>
+                    </form>
+
+                    <!-- Operative Actions -->
+                    <div class="operative-actions-expanded" id="operative-actions" style="display:none;">
+                      <button class="btn" id="end-turn-btn" type="button">End Turn</button>
+                    </div>
+
+                    <!-- Waiting Message -->
+                    <div class="waiting-expanded" id="waiting-message" style="display:none;">
+                      Waiting for <span id="waiting-for"></span>...
+                    </div>
+
+                    <!-- Toolbar -->
+                    <div class="game-toolbar">
+                      <button class="btn-icon" id="toggle-left-sidebar" type="button" title="Toggle Players">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      </button>
+                      <button class="btn-icon" id="toggle-right-sidebar" type="button" title="Toggle Chat">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      </button>
+                      <button class="btn-icon" id="game-log-toggle" type="button" title="Game Log">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                      </button>
+                      <button class="btn-icon btn-danger-icon" id="game-menu-toggle" type="button" title="Game Menu">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                <!-- Action Buttons (always visible) -->
-                <div class="game-toolbar">
-                  <button class="btn-icon" id="game-log-toggle" type="button" title="Game Log">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  </button>
-                  <button class="btn-icon btn-danger-icon" id="game-menu-toggle" type="button" title="Game Menu">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-                  </button>
+                <!-- Right Sidebar - Operative Chat & Voting -->
+                <div class="game-sidebar game-sidebar-right">
+                  <!-- Operative Team Chat -->
+                  <div class="sidebar-panel operative-chat-panel">
+                    <div class="sidebar-panel-header">
+                      <span class="sidebar-panel-title">Team Chat</span>
+                      <span class="chat-privacy-badge" id="chat-privacy-badge">Operatives Only</span>
+                    </div>
+                    <div class="operative-chat-messages" id="operative-chat-messages">
+                      <div class="chat-empty-state">No messages yet. Discuss with your team!</div>
+                    </div>
+                    <form class="operative-chat-form" id="operative-chat-form">
+                      <input type="text" class="input chat-input" id="operative-chat-input" placeholder="Message your team..." autocomplete="off" />
+                      <button type="submit" class="btn primary chat-send-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                      </button>
+                    </form>
+                  </div>
+
+                  <!-- Card Voting Panel -->
+                  <div class="sidebar-panel voting-panel">
+                    <div class="sidebar-panel-header">
+                      <span class="sidebar-panel-title">Team Votes</span>
+                      <button class="btn-icon btn-small" id="clear-votes-btn" title="Clear my votes">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                    <div class="voting-content" id="voting-content">
+                      <div class="voting-empty-state">Vote on cards to coordinate with your team</div>
+                    </div>
+                    <div class="voting-hint">Click cards to vote. Top votes shown here.</div>
+                  </div>
                 </div>
               </div>
 
@@ -628,6 +739,9 @@
 
               <!-- Popover Backdrop -->
               <div class="popover-backdrop" id="popover-backdrop" style="display:none;"></div>
+
+              <!-- Mobile Sidebar Backdrop -->
+              <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
             </div>
           </div>
         </section>
