@@ -50,7 +50,6 @@ let quickGamesUnsub = null;
 let spectatorMode = false;
 let spectatingGameId = null;
 let selectedQuickTeam = null; // 'red' | 'spectator' | 'blue'
-let selectedQuickSeatRole = 'operative'; // 'operative' | 'spymaster' (Quick Play lobby)
 let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
 // Quick Play is a single shared lobby/game.
@@ -276,48 +275,11 @@ function initGameUI() {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectQuickRole('blue'); }
   });
 
-  // Choose Operative vs Spymaster inside team boxes
-  const redSeatOp = document.getElementById('quick-red-seat-operative');
-  const redSeatSpy = document.getElementById('quick-red-seat-spymaster');
-  const blueSeatOp = document.getElementById('quick-blue-seat-operative');
-  const blueSeatSpy = document.getElementById('quick-blue-seat-spymaster');
-
-  const bindSeat = (el, team, seatRole) => {
-    if (!el) return;
-    const go = (e) => {
-      if (e?.type === 'keydown' && !(e.key === 'Enter' || e.key === ' ')) return;
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-
-      // Requested UX:
-      // - If you're already on Red/Blue, clicking the header "box" toggles between
-      //   Operative <-> Spymaster (regardless of which header you clicked).
-      // - If you're not on this team yet, clicking picks that specific role.
-      if (selectedQuickTeam === team && (team === 'red' || team === 'blue')) {
-        const next = (selectedQuickSeatRole === 'spymaster') ? 'operative' : 'spymaster';
-        selectQuickSeat(team, next);
-        return;
-      }
-
-      selectQuickSeat(team, seatRole);
-    };
-    el.addEventListener('click', go);
-    el.addEventListener('keydown', go);
-  };
-  bindSeat(redSeatOp, 'red', 'operative');
-  bindSeat(redSeatSpy, 'red', 'spymaster');
-  bindSeat(blueSeatOp, 'blue', 'operative');
-  bindSeat(blueSeatSpy, 'blue', 'spymaster');
-
   // Arrow keys anywhere in the lobby
   document.addEventListener('keydown', (e) => {
     if (currentPlayMode !== 'quick') return;
     const lobby = document.getElementById('quick-play-lobby');
     if (!lobby || lobby.style.display === 'none') return;
-    const t = e?.target;
-    if (t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea'))) {
-      return;
-    }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
       stepQuickRole(-1);
@@ -325,16 +287,6 @@ function initGameUI() {
     if (e.key === 'ArrowRight') {
       e.preventDefault();
       stepQuickRole(1);
-    }
-
-    // Up/Down (or W/S): switch between Spymaster and Operative
-    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-      e.preventDefault();
-      stepQuickSeatRole('spymaster');
-    }
-    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-      e.preventDefault();
-      stepQuickSeatRole('operative');
     }
   });
 
@@ -365,29 +317,6 @@ function initGameUI() {
   // Leave game
   document.getElementById('leave-game-btn')?.addEventListener('click', handleLeaveGame);
 
-  // End game (manual)
-  document.getElementById('end-game-btn')?.addEventListener('click', handleEndGame);
-
-  // Game log modal (primarily for mobile)
-  const logBtn = document.getElementById('open-log-btn');
-  const logModal = document.getElementById('game-log-modal');
-  const logClose = document.getElementById('game-log-modal-close');
-  const openLog = () => {
-    if (!logModal) return;
-    logModal.style.display = 'flex';
-    requestAnimationFrame(() => logModal.classList.add('modal-open'));
-  };
-  const closeLog = () => {
-    if (!logModal) return;
-    logModal.classList.remove('modal-open');
-    setTimeout(() => { logModal.style.display = 'none'; }, 200);
-  };
-  logBtn?.addEventListener('click', openLog);
-  logClose?.addEventListener('click', closeLog);
-  logModal?.addEventListener('click', (e) => {
-    if (e.target === logModal) closeLog();
-  });
-
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
 
@@ -405,7 +334,6 @@ function initGameUI() {
    Mode Navigation
 ========================= */
 function showModeSelect() {
-  document.body.classList.remove('in-game');
   // Safety: in Tournament mode, the Play tab should never show the mode chooser.
   if (document.body.classList.contains('tournament')) {
     showTournamentLobby();
@@ -425,7 +353,6 @@ function showModeSelect() {
 }
 
 function showQuickPlayLobby() {
-  document.body.classList.remove('in-game');
   currentPlayMode = 'quick';
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'block';
@@ -449,7 +376,6 @@ function showQuickPlayLobby() {
 }
 
 function showTournamentLobby() {
-  document.body.classList.remove('in-game');
   currentPlayMode = 'tournament';
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'none';
@@ -477,14 +403,8 @@ function selectQuickRole(role) {
     hint.style.color = role === 'red' ? 'var(--game-red)' : role === 'blue' ? 'var(--game-blue)' : '';
   }
 
-  // Highlight seat selection only when on a team.
-  clearQuickSeatHighlights();
-  if (role === 'red' || role === 'blue') {
-    applyQuickSeatHighlight(role, selectedQuickSeatRole);
-  }
-
   // Join the lobby for the selected role.
-  joinQuickLobby(role, selectedQuickSeatRole);
+  joinQuickLobby(role);
 }
 
 function applyQuickRoleHighlight(role) {
@@ -502,65 +422,6 @@ function stepQuickRole(delta) {
   if (idx === -1) idx = 1;
   idx = (idx + delta + QUICK_ROLES.length) % QUICK_ROLES.length;
   selectQuickRole(QUICK_ROLES[idx]);
-}
-
-function applyQuickSeatHighlight(team, seatRole) {
-  const ids = {
-    red: { operative: 'quick-red-seat-operative', spymaster: 'quick-red-seat-spymaster' },
-    blue: { operative: 'quick-blue-seat-operative', spymaster: 'quick-blue-seat-spymaster' },
-  };
-  const t = ids[team];
-  if (!t) return;
-  const op = document.getElementById(t.operative);
-  const sp = document.getElementById(t.spymaster);
-  op?.classList.toggle('selected', team === selectedQuickTeam && seatRole === 'operative');
-  sp?.classList.toggle('selected', team === selectedQuickTeam && seatRole === 'spymaster');
-}
-
-function clearQuickSeatHighlights() {
-  const all = [
-    'quick-red-seat-operative', 'quick-red-seat-spymaster',
-    'quick-blue-seat-operative', 'quick-blue-seat-spymaster',
-  ];
-  for (const id of all) {
-    document.getElementById(id)?.classList.remove('selected');
-  }
-}
-
-function getQuickPlayerSeatRole(game, odId) {
-  const team = getQuickPlayerRole(game, odId);
-  if (team !== 'red' && team !== 'blue') return null;
-  const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
-  const players = Array.isArray(game?.[key]) ? game[key] : [];
-  const me = players.find(p => p?.odId === odId);
-  const r = String(me?.role || 'operative');
-  return (r === 'spymaster') ? 'spymaster' : 'operative';
-}
-
-function stepQuickSeatRole(targetRole) {
-  // Only applies when you're on Red/Blue in Quick Play.
-  if (selectedQuickTeam !== 'red' && selectedQuickTeam !== 'blue') return;
-  const next = (targetRole === 'spymaster') ? 'spymaster' : 'operative';
-  selectQuickSeat(selectedQuickTeam, next);
-}
-
-function selectQuickSeat(team, seatRole) {
-  const nextTeam = (team === 'red' || team === 'blue') ? team : 'spectator';
-  const nextSeat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-  selectedQuickSeatRole = nextSeat;
-
-  // If you're already on that team, update the seat without resetting readiness.
-  if (selectedQuickTeam === nextTeam && (nextTeam === 'red' || nextTeam === 'blue')) {
-    setQuickSeatRole(nextSeat);
-    return;
-  }
-
-  // Otherwise, join the team and apply the seat.
-  selectedQuickTeam = nextTeam;
-  applyQuickRoleHighlight(nextTeam);
-  clearQuickSeatHighlights();
-  applyQuickSeatHighlight(nextTeam, nextSeat);
-  joinQuickLobby(nextTeam, nextSeat);
 }
 
 
@@ -1241,7 +1102,7 @@ function getQuickPlayerRole(game, odId) {
   return null;
 }
 
-async function joinQuickLobby(role, seatRole) {
+async function joinQuickLobby(role) {
   const userName = getUserName();
   const odId = getUserId();
   if (!userName) return;
@@ -1270,8 +1131,7 @@ async function joinQuickLobby(role, seatRole) {
       const nextBlue = bluePlayers.filter(p => p.odId !== odId);
       const nextSpec = spectators.filter(p => p.odId !== odId);
 
-      const seat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-      const player = { odId, name: userName, ready: false, role: seat };
+      const player = { odId, name: userName, ready: false };
       if (role === 'red') nextRed.push(player);
       else if (role === 'blue') nextBlue.push(player);
       else nextSpec.push(player);
@@ -1312,56 +1172,12 @@ async function joinQuickLobby(role, seatRole) {
     });
 
     selectedQuickTeam = role;
-    if (role === 'red' || role === 'blue') {
-      selectedQuickSeatRole = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-    }
     quickAutoJoinedSpectator = true;
     // Play join sound
     if (window.playSound) window.playSound('join');
   } catch (e) {
     console.error('Failed to join Quick Play lobby:', e);
     alert(e.message || 'Failed to join lobby.');
-  }
-}
-
-async function setQuickSeatRole(seatRole) {
-  const odId = getUserId();
-  const userName = getUserName();
-  if (!userName) return;
-
-  const nextSeat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Lobby not found');
-      const game = snap.data();
-      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null) {
-        throw new Error('Game is in progress. You can switch roles next game.');
-      }
-
-      const team = getQuickPlayerRole(game, odId);
-      if (team !== 'red' && team !== 'blue') throw new Error('Join Red or Blue first.');
-      const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
-      const players = Array.isArray(game[key]) ? [...game[key]] : [];
-      const idx = players.findIndex(p => p.odId === odId);
-      if (idx === -1) throw new Error('Join a team first.');
-
-      // Preserve readiness, just switch seat.
-      players[idx] = { ...players[idx], role: nextSeat };
-      tx.update(ref, {
-        [key]: players,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-    selectedQuickSeatRole = nextSeat;
-    clearQuickSeatHighlights();
-    if (selectedQuickTeam === 'red' || selectedQuickTeam === 'blue') {
-      applyQuickSeatHighlight(selectedQuickTeam, nextSeat);
-    }
-  } catch (e) {
-    console.error('Failed to set Quick Play seat role:', e);
-    alert(e.message || 'Failed to switch role.');
   }
 }
 
@@ -1373,7 +1189,7 @@ function joinQuickGame(_gameId, preferredTeam = null) {
     alert('Please select a team first.');
     return;
   }
-  joinQuickLobby(team, selectedQuickSeatRole);
+  joinQuickLobby(team);
 }
 
 async function leaveQuickLobby() {
@@ -1485,42 +1301,12 @@ async function maybeAutoStartQuickPlay(game) {
         revealed: false
       }));
 
-      // Roles are chosen in the lobby. Ensure each team has a spymaster before starting.
-      let redPlayers = Array.isArray(g.redPlayers) ? [...g.redPlayers] : [];
-      let bluePlayers = Array.isArray(g.bluePlayers) ? [...g.bluePlayers] : [];
-
-      const ensureSpymaster = (players) => {
-        // If someone already chose Spymaster, keep it.
-        const existing = players.find(p => String(p?.role || 'operative') === 'spymaster');
-        if (existing?.name) return { players, spyName: existing.name };
-
-        // Otherwise, promote the first player to Spymaster so the game can start.
-        if (players.length > 0) {
-          const first = players[0];
-          players[0] = { ...first, role: 'spymaster' };
-          return { players, spyName: first.name || null };
-        }
-        return { players, spyName: null };
-      };
-
-      const redEnsured = ensureSpymaster(redPlayers);
-      redPlayers = redEnsured.players;
-      const redSpy = redEnsured.spyName;
-
-      const blueEnsured = ensureSpymaster(bluePlayers);
-      bluePlayers = blueEnsured.players;
-      const blueSpy = blueEnsured.spyName;
-
-      const startPhase = 'spymaster';
-
       tx.update(ref, {
         cards,
         currentTeam: firstTeam,
-        currentPhase: startPhase,
-        redPlayers,
-        bluePlayers,
-        redSpymaster: redSpy,
-        blueSpymaster: blueSpy,
+        currentPhase: 'role-selection',
+        redSpymaster: null,
+        blueSpymaster: null,
         redCardsLeft: FIRST_TEAM_CARDS,
         blueCardsLeft: SECOND_TEAM_CARDS,
         currentClue: null,
@@ -1538,10 +1324,8 @@ async function maybeAutoStartQuickPlay(game) {
 }
 
 function renderQuickLobby(game) {
-  const redSpyList = document.getElementById('quick-red-spymaster-list');
-  const redOpList = document.getElementById('quick-red-operative-list');
-  const blueSpyList = document.getElementById('quick-blue-spymaster-list');
-  const blueOpList = document.getElementById('quick-blue-operative-list');
+  const redList = document.getElementById('quick-red-list');
+  const blueList = document.getElementById('quick-blue-list');
   const specList = document.getElementById('quick-spec-list');
   const redCount = document.getElementById('quick-red-count');
   const blueCount = document.getElementById('quick-blue-count');
@@ -1550,13 +1334,11 @@ function renderQuickLobby(game) {
   const readyBtn = document.getElementById('quick-ready-btn');
   const leaveBtn = document.getElementById('quick-leave-btn');
 
-  if (!redSpyList || !redOpList || !blueSpyList || !blueOpList || !specList || !redCount || !blueCount || !specCount || !status || !readyBtn || !leaveBtn) return;
+  if (!redList || !blueList || !specList || !redCount || !blueCount || !specCount || !status || !readyBtn || !leaveBtn) return;
 
   if (!game) {
-    redSpyList.innerHTML = '';
-    redOpList.innerHTML = '';
-    blueSpyList.innerHTML = '';
-    blueOpList.innerHTML = '';
+    redList.innerHTML = '';
+    blueList.innerHTML = '';
     specList.innerHTML = '';
     redCount.textContent = '0';
     blueCount.textContent = '0';
@@ -1630,23 +1412,8 @@ function renderQuickLobby(game) {
     }).join('');
   };
 
-  const splitBySeat = (players) => {
-    const spymasters = [];
-    const operatives = [];
-    for (const p of (players || [])) {
-      if (String(p?.role || 'operative') === 'spymaster') spymasters.push(p);
-      else operatives.push(p);
-    }
-    return { spymasters, operatives };
-  };
-
-  const redSplit = splitBySeat(red);
-  const blueSplit = splitBySeat(blue);
-
-  redSpyList.innerHTML = renderTeamList(redSplit.spymasters);
-  redOpList.innerHTML = renderTeamList(redSplit.operatives);
-  blueSpyList.innerHTML = renderTeamList(blueSplit.spymasters);
-  blueOpList.innerHTML = renderTeamList(blueSplit.operatives);
+  redList.innerHTML = renderTeamList(red);
+  blueList.innerHTML = renderTeamList(blue);
   specList.innerHTML = renderSpecList(specs);
 
   // Update team status indicators
@@ -1683,14 +1450,6 @@ function renderQuickLobby(game) {
   // Update role selector UI (highlight the selected column)
   const effectiveRole = role || selectedQuickTeam || 'spectator';
   applyQuickRoleHighlight(effectiveRole);
-
-  // Update seat selector UI (Operative vs Spymaster)
-  clearQuickSeatHighlights();
-  if (effectiveRole === 'red' || effectiveRole === 'blue') {
-    const seat = getQuickPlayerSeatRole(game, odId) || selectedQuickSeatRole;
-    selectedQuickSeatRole = (seat === 'spymaster') ? 'spymaster' : 'operative';
-    applyQuickSeatHighlight(effectiveRole, selectedQuickSeatRole);
-  }
 
   // Rules UI
   updateQuickRulesUI(game);
@@ -1995,6 +1754,7 @@ function describeGameStatus(game) {
     ? (game.redTeamName || 'Red Team')
     : (game.blueTeamName || 'Blue Team');
 
+  if (game.currentPhase === 'role-selection') return 'Selecting roles';
   if (game.currentPhase === 'spymaster') return `${teamName} (Spymaster)`;
   if (game.currentPhase === 'operatives') return `${teamName} (Operatives)`;
   return 'In progress';
@@ -2244,19 +2004,6 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
   const blueTeamId = isTeam1Red ? team2Id : team1Id;
   const blueTeamName = isTeam1Red ? team2Name : team1Name;
 
-  // Roles are chosen in the lobby; for tournament games we auto-pick a default spymaster
-  // to avoid any extra in-game prompts.
-  const pickDefaultSpymasterName = (teamId) => {
-    const team = (teamsCache || []).find(t => t.id === teamId) || null;
-    const members = (team && (typeof getMembers === 'function')) ? getMembers(team) : (team?.members || team?.players || []);
-    const nameOf = (m) => String(m?.name || m?.displayName || m?.userName || m?.email || '').trim();
-    const names = members.map(nameOf).filter(Boolean).sort((a, b) => a.localeCompare(b));
-    return names[0] || null;
-  };
-
-  const redSpy = pickDefaultSpymasterName(redTeamId);
-  const blueSpy = pickDefaultSpymasterName(blueTeamId);
-
   // Red always goes first in Codenames
   const firstTeam = 'red';
 
@@ -2280,9 +2027,9 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
     blueTeamName,
     cards,
     currentTeam: firstTeam,
-    currentPhase: 'spymaster', // spymaster, operatives, ended
-    redSpymaster: redSpy,
-    blueSpymaster: blueSpy,
+    currentPhase: 'role-selection', // role-selection, spymaster, operatives, ended
+    redSpymaster: null,
+    blueSpymaster: null,
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
@@ -2396,59 +2143,6 @@ function showGameBoard() {
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'block';
-  document.body.classList.add('in-game');
-}
-
-function renderInGameSidePanels() {
-  if (!currentGame) return;
-  const blueSpyEl = document.getElementById('game-blue-spymasters');
-  const blueOpEl = document.getElementById('game-blue-operatives');
-  const redSpyEl = document.getElementById('game-red-spymasters');
-  const redOpEl = document.getElementById('game-red-operatives');
-  if (!blueSpyEl || !blueOpEl || !redSpyEl || !redOpEl) return;
-
-  const presenceData = window.presenceCache || [];
-  const presenceMap = new Map();
-  for (const pr of presenceData) {
-    const status = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
-    presenceMap.set(pr.odId || pr.id, status);
-  }
-  const isActive = (id) => {
-    if (!presenceData.length) return true;
-    return presenceMap.get(id) === 'online';
-  };
-
-  const splitBySeat = (players) => {
-    const spymasters = [];
-    const operatives = [];
-    for (const p of (players || [])) {
-      if (!p?.odId || isActive(p.odId)) {
-        if (String(p?.role || 'operative') === 'spymaster') spymasters.push(p);
-        else operatives.push(p);
-      }
-    }
-    return { spymasters, operatives };
-  };
-
-  const renderPills = (players) => {
-    if (!players.length) return '<div class="side-empty">—</div>';
-    return players.map(p => {
-      const isYou = p.odId === odId;
-      return `
-        <div class="side-pill ${isYou ? 'you' : ''}">
-          ${escapeHtml(p.name)}${isYou ? ' <span class="side-you">(you)</span>' : ''}
-        </div>
-      `;
-    }).join('');
-  };
-
-  const blueSplit = splitBySeat(currentGame.bluePlayers || []);
-  const redSplit = splitBySeat(currentGame.redPlayers || []);
-
-  blueSpyEl.innerHTML = renderPills(blueSplit.spymasters);
-  blueOpEl.innerHTML = renderPills(blueSplit.operatives);
-  redSpyEl.innerHTML = renderPills(redSplit.spymasters);
-  redOpEl.innerHTML = renderPills(redSplit.operatives);
 }
 
 function renderGame() {
@@ -2481,9 +2175,6 @@ function renderGame() {
     if (blueTeamEl) blueTeamEl.textContent = currentGame.blueTeamName || 'Blue Team';
   }
 
-  // Side panels (Operatives / Spymasters) for both teams
-  renderInGameSidePanels();
-
   document.getElementById('game-red-left').textContent = currentGame.redCardsLeft;
   document.getElementById('game-blue-left').textContent = currentGame.blueCardsLeft;
 
@@ -2510,9 +2201,19 @@ function renderGame() {
     }
   }
 
-  // Roles are chosen in the lobby (no in-game role selection).
+  // Role selection
   const roleSelectionEl = document.getElementById('role-selection');
-  if (roleSelectionEl) roleSelectionEl.style.display = 'none';
+  if (!spectator && currentGame.currentPhase === 'role-selection' && myTeamColor) {
+    const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
+    if (!mySpymaster) {
+      roleSelectionEl.style.display = 'block';
+      updateRoleButtons();
+    } else {
+      roleSelectionEl.style.display = 'none';
+    }
+  } else {
+    roleSelectionEl.style.display = 'none';
+  }
 
   // Render board
   renderBoard(isSpymaster);
@@ -2560,8 +2261,6 @@ function renderBoard(isSpymaster) {
       </div>
     `;
   }).join('');
-
-  // Board contents affect layout; the panel is scrollable so no forced resizing needed.
 }
 
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
@@ -2603,6 +2302,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     return;
   }
 
+  if (currentGame.currentPhase === 'role-selection') {
+    waitingEl.style.display = 'block';
+    document.getElementById('waiting-for').textContent = 'all teams to select roles';
+    return;
+  }
+
   if (currentGame.currentPhase === 'spymaster') {
     if (!spectator && isMyTurn && isSpymaster) {
       // Show clue input
@@ -2637,25 +2342,16 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 }
 
 function renderGameLog() {
-  const entries = Array.isArray(currentGame?.log) ? currentGame.log : [];
+  const logEl = document.getElementById('game-log-entries');
+  if (!logEl || !currentGame?.log) return;
 
-  const renderEntries = (el) => {
-    if (!el) return;
-    el.innerHTML = entries.map(entry => `<div class="log-entry">${entry}</div>`).join('');
-  };
+  logEl.innerHTML = currentGame.log.map(entry => {
+    return `<div class="log-entry">${entry}</div>`;
+  }).join('');
 
-  renderEntries(document.getElementById('game-log-entries'));
-  renderEntries(document.getElementById('game-log-entries-modal'));
-
-  // Auto-scroll visible containers to bottom
-  const inlineContainer = document.getElementById('game-log');
-  if (inlineContainer) inlineContainer.scrollTop = inlineContainer.scrollHeight;
-
-  const modalEntries = document.getElementById('game-log-entries-modal');
-  if (modalEntries && modalEntries.parentElement) {
-    const modalScroll = modalEntries.parentElement;
-    modalScroll.scrollTop = modalScroll.scrollHeight;
-  }
+  // Auto-scroll to bottom
+  const container = document.getElementById('game-log');
+  if (container) container.scrollTop = container.scrollHeight;
 }
 
 function updateRoleButtons() {
@@ -2907,31 +2603,6 @@ async function handleEndTurn() {
   }
 }
 
-async function handleEndGame() {
-  if (!currentGame) return;
-
-  const userName = getUserName() || 'Someone';
-  const confirmMsg = 'End this game for everyone? This cannot be undone.';
-  // eslint-disable-next-line no-alert
-  if (!confirm(confirmMsg)) return;
-
-  try {
-    await db.collection('games').doc(currentGame.id).update({
-      winner: 'ended',
-      currentPhase: 'ended',
-      endedReason: 'manual',
-      endedBy: {
-        odId: getUserId() || null,
-        name: userName
-      },
-      log: firebase.firestore.FieldValue.arrayUnion(`${userName} ended the game.`),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  } catch (e) {
-    console.error('Failed to end game:', e);
-  }
-}
-
 /* =========================
    Game End
 ========================= */
@@ -2942,51 +2613,29 @@ function showGameEndOverlay() {
 
   if (!currentGame?.winner) return;
 
-  const isRedBlueWin = currentGame.winner === 'red' || currentGame.winner === 'blue';
+  const myTeamColor = getMyTeamColor();
+  const isWinner = currentGame.winner === myTeamColor;
+  const winnerName = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+
+  // Play win or lose sound
+  if (window.playSound) {
+    setTimeout(() => {
+      window.playSound(isWinner ? 'gameWin' : 'gameLose');
+    }, 300);
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'game-end-overlay';
-
-  if (isRedBlueWin) {
-    const myTeamColor = getMyTeamColor();
-    const isWinner = currentGame.winner === myTeamColor;
-    const winnerName = currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-
-    // Play win or lose sound
-    if (window.playSound) {
-      setTimeout(() => {
-        window.playSound(isWinner ? 'gameWin' : 'gameLose');
-      }, 300);
-    }
-
-    overlay.innerHTML = `
-      <div class="game-end-card">
-        <div class="game-end-title ${isWinner ? 'win' : 'lose'}">${isWinner ? 'Victory!' : 'Defeat'}</div>
-        <div class="game-end-subtitle">${escapeHtml(winnerName)} wins the game!</div>
-        <div class="game-end-actions">
-          <button class="btn primary" onclick="handleRematch()">Rematch</button>
-          <button class="btn" onclick="handleLeaveGame()">Leave Game</button>
-        </div>
+  overlay.innerHTML = `
+    <div class="game-end-card">
+      <div class="game-end-title ${isWinner ? 'win' : 'lose'}">${isWinner ? 'Victory!' : 'Defeat'}</div>
+      <div class="game-end-subtitle">${escapeHtml(winnerName)} wins the game!</div>
+      <div class="game-end-actions">
+        <button class="btn primary" onclick="handleRematch()">Rematch</button>
+        <button class="btn" onclick="handleLeaveGame()">Leave Game</button>
       </div>
-    `;
-  } else {
-    const endedByName = currentGame?.endedBy?.name;
-    const reason = currentGame?.endedReason;
-    const subtitleParts = [];
-    if (endedByName) subtitleParts.push(`Ended by ${escapeHtml(endedByName)}.`);
-    if (reason) subtitleParts.push(`${escapeHtml(String(reason))}.`);
-    const subtitle = subtitleParts.length ? subtitleParts.join(' ') : 'This game has ended.';
-
-    overlay.innerHTML = `
-      <div class="game-end-card">
-        <div class="game-end-title">Game ended</div>
-        <div class="game-end-subtitle">${subtitle}</div>
-        <div class="game-end-actions">
-          <button class="btn primary" onclick="handleLeaveGame()">Back to Lobby</button>
-        </div>
-      </div>
-    `;
-  }
+    </div>
+  `;
 
   document.body.appendChild(overlay);
 }
@@ -3061,14 +2710,6 @@ function getMyTeamColor() {
 function isCurrentUserSpymaster() {
   if (!currentGame) return false;
 
-  // Quick Play uses per-player seat roles stored in the lobby arrays.
-  if (currentGame.type === 'quick') {
-    const odId = getUserId();
-    if (!odId) return false;
-    return getQuickPlayerSeatRole(currentGame, odId) === 'spymaster';
-  }
-
-  // Tournament games store the spymaster as a name string on the game doc.
   const userName = getUserName();
   if (!userName) return false;
 
@@ -3078,7 +2719,6 @@ function isCurrentUserSpymaster() {
   const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
   return mySpymaster === userName;
 }
-
 
 function escapeHtml(str) {
   const div = document.createElement('div');

@@ -329,17 +329,7 @@
                         <span class="quick-team-count" id="quick-red-count">0</span>
                       </div>
                       <div class="quick-team-status" id="quick-red-status"></div>
-                      <div class="quick-role-lists">
-                        <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters</div>
-                          <div class="quick-team-list" id="quick-red-spymaster-list"></div>
-                        </div>
-                        <div class="quick-role-divider" aria-hidden="true"></div>
-                        <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives</div>
-                          <div class="quick-team-list" id="quick-red-operative-list"></div>
-                        </div>
-                      </div>
+                      <div class="quick-team-list" id="quick-red-list"></div>
                     </div>
 
                     <div class="quick-team-col spectator selectable" id="quick-seat-switcher" role="button" tabindex="0" aria-label="Switch role (Red, Spectator, Blue)">
@@ -358,17 +348,7 @@
                         <span class="quick-team-count" id="quick-blue-count">0</span>
                       </div>
                       <div class="quick-team-status" id="quick-blue-status"></div>
-                      <div class="quick-role-lists">
-                        <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters</div>
-                          <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
-                        </div>
-                        <div class="quick-role-divider" aria-hidden="true"></div>
-                        <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives</div>
-                          <div class="quick-team-list" id="quick-blue-operative-list"></div>
-                        </div>
-                      </div>
+                      <div class="quick-team-list" id="quick-blue-list"></div>
                     </div>
                   </div>
                 </div>
@@ -518,9 +498,9 @@
             </div>
 
             <!-- Game Board View (shown during active game) -->
-            <div id="game-board-container" class="game-screen" style="display:none;">
+            <div id="game-board-container" style="display:none;">
               <!-- Game Header -->
-              <div class="game-header" id="game-header">
+              <div class="game-header">
                 <div class="game-teams-display">
                   <div class="game-team red">
                     <span class="team-name" id="game-red-team"></span>
@@ -537,43 +517,33 @@
                   <span class="turn-team" id="game-turn-team">Red</span>
                   <span class="turn-role" id="game-turn-role">Spymaster</span>
                 </div>
-
-                <div class="game-header-actions" aria-label="Game controls">
-                  <button class="btn danger" id="end-game-btn" type="button">End Game</button>
-                  <button class="btn danger" id="leave-game-btn" type="button">Leave Game</button>
-                </div>
               </div>
 
-              <!-- Team Panels -->
-              <aside class="game-side-panel blue" id="game-blue-panel" aria-label="Blue team">
-                <div class="side-section">
-                  <div class="side-heading">Spymasters</div>
-                  <div class="side-list" id="game-blue-spymasters"></div>
+              <!-- Role Selection (before game starts for player) -->
+              <div class="role-selection" id="role-selection" style="display:none;">
+                <div class="role-title">Choose Your Role</div>
+                <div class="role-buttons">
+                  <button class="btn role-btn" id="role-spymaster" type="button">
+                    <span class="role-icon">🕵️</span>
+                    <span class="role-name">Spymaster</span>
+                    <span class="role-desc">Give clues to your team</span>
+                  </button>
+                  <button class="btn role-btn" id="role-operative" type="button">
+                    <span class="role-icon">🔍</span>
+                    <span class="role-name">Operative</span>
+                    <span class="role-desc">Guess the words</span>
+                  </button>
                 </div>
-                <div class="side-section">
-                  <div class="side-heading">Operatives</div>
-                  <div class="side-list" id="game-blue-operatives"></div>
-                </div>
-              </aside>
-
-              <aside class="game-side-panel red" id="game-red-panel" aria-label="Red team">
-                <div class="side-section">
-                  <div class="side-heading">Spymasters</div>
-                  <div class="side-list" id="game-red-spymasters"></div>
-                </div>
-                <div class="side-section">
-                  <div class="side-heading">Operatives</div>
-                  <div class="side-list" id="game-red-operatives"></div>
-                </div>
-              </aside>
+                <div class="role-status" id="role-status"></div>
+              </div>
 
               <!-- Game Board -->
-              <div class="game-board" id="game-board" aria-label="Board">
+              <div class="game-board" id="game-board">
                 <!-- 5x5 grid of cards will be generated here -->
               </div>
 
               <!-- Clue Display / Input -->
-              <div class="clue-area" aria-label="Clues">
+              <div class="clue-area">
                 <!-- Current Clue Display -->
                 <div class="current-clue" id="current-clue" style="display:none;">
                   <span class="clue-label">Clue:</span>
@@ -601,9 +571,14 @@
               </div>
 
               <!-- Game Log -->
-              <div class="game-log" id="game-log" aria-label="Game log">
+              <div class="game-log" id="game-log">
                 <div class="game-log-title">Game Log</div>
                 <div class="game-log-entries" id="game-log-entries"></div>
+              </div>
+
+              <!-- Game Actions -->
+              <div class="game-actions">
+                <button class="btn danger" id="leave-game-btn" type="button">Leave Game</button>
               </div>
             </div>
           </div>
