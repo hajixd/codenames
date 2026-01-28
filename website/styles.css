@@ -2915,12 +2915,21 @@ body.mode-joiner .only-joiner{ display:block; }
     padding: 10px;
     border-radius: 14px;
     min-width: 0;
-    min-height: 0;
+    min-height: 180px; /* Ensure team boxes have good vertical presence */
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   body.quickplay .quick-team-col.red{ grid-column: 1; grid-row: 1; }
   body.quickplay .quick-team-col.blue{ grid-column: 2; grid-row: 1; }
+
+  /* Make player lists expand to fill available space in team columns */
+  body.quickplay .quick-team-col.red .quick-team-list,
+  body.quickplay .quick-team-col.blue .quick-team-list{
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
   body.quickplay .quick-team-col.spectator{
     grid-column: 1 / span 2;
@@ -2929,6 +2938,7 @@ body.mode-joiner .only-joiner{ display:block; }
     border-radius: 14px;
     padding: 10px;
     background: rgba(0,0,0,0.22);
+    max-height: 120px; /* Keep spectators compact to give more room to teams */
   }
 
   body.quickplay .quick-team-head{ margin-bottom: 8px; }

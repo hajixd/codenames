@@ -28,6 +28,8 @@ const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
+const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
+const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
 // Account model:
 // - Accounts are keyed by normalized player name so "same name" = same account across devices.
 // - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
