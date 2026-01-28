@@ -518,9 +518,9 @@
             </div>
 
             <!-- Game Board View (shown during active game) -->
-            <div id="game-board-container" style="display:none;">
+            <div id="game-board-container" class="game-screen" style="display:none;">
               <!-- Game Header -->
-              <div class="game-header">
+              <div class="game-header" id="game-header">
                 <div class="game-teams-display">
                   <div class="game-team red">
                     <span class="team-name" id="game-red-team"></span>
@@ -537,15 +537,43 @@
                   <span class="turn-team" id="game-turn-team">Red</span>
                   <span class="turn-role" id="game-turn-role">Spymaster</span>
                 </div>
+
+                <div class="game-header-actions" aria-label="Game controls">
+                  <button class="btn danger" id="end-game-btn" type="button">End Game</button>
+                  <button class="btn danger" id="leave-game-btn" type="button">Leave Game</button>
+                </div>
               </div>
 
+              <!-- Team Panels -->
+              <aside class="game-side-panel blue" id="game-blue-panel" aria-label="Blue team">
+                <div class="side-section">
+                  <div class="side-heading">Spymasters</div>
+                  <div class="side-list" id="game-blue-spymasters"></div>
+                </div>
+                <div class="side-section">
+                  <div class="side-heading">Operatives</div>
+                  <div class="side-list" id="game-blue-operatives"></div>
+                </div>
+              </aside>
+
+              <aside class="game-side-panel red" id="game-red-panel" aria-label="Red team">
+                <div class="side-section">
+                  <div class="side-heading">Spymasters</div>
+                  <div class="side-list" id="game-red-spymasters"></div>
+                </div>
+                <div class="side-section">
+                  <div class="side-heading">Operatives</div>
+                  <div class="side-list" id="game-red-operatives"></div>
+                </div>
+              </aside>
+
               <!-- Game Board -->
-              <div class="game-board" id="game-board">
+              <div class="game-board" id="game-board" aria-label="Board">
                 <!-- 5x5 grid of cards will be generated here -->
               </div>
 
               <!-- Clue Display / Input -->
-              <div class="clue-area">
+              <div class="clue-area" aria-label="Clues">
                 <!-- Current Clue Display -->
                 <div class="current-clue" id="current-clue" style="display:none;">
                   <span class="clue-label">Clue:</span>
@@ -573,15 +601,9 @@
               </div>
 
               <!-- Game Log -->
-              <div class="game-log" id="game-log">
+              <div class="game-log" id="game-log" aria-label="Game log">
                 <div class="game-log-title">Game Log</div>
                 <div class="game-log-entries" id="game-log-entries"></div>
-              </div>
-
-              <!-- Game Actions -->
-              <div class="game-actions">
-                <button class="btn danger" id="end-game-btn" type="button">End Game</button>
-                <button class="btn danger" id="leave-game-btn" type="button">Leave Game</button>
               </div>
             </div>
           </div>

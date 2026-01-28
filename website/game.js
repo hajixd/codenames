@@ -405,6 +405,7 @@ function initGameUI() {
    Mode Navigation
 ========================= */
 function showModeSelect() {
+  document.body.classList.remove('in-game');
   // Safety: in Tournament mode, the Play tab should never show the mode chooser.
   if (document.body.classList.contains('tournament')) {
     showTournamentLobby();
@@ -424,6 +425,7 @@ function showModeSelect() {
 }
 
 function showQuickPlayLobby() {
+  document.body.classList.remove('in-game');
   currentPlayMode = 'quick';
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'block';
@@ -447,6 +449,7 @@ function showQuickPlayLobby() {
 }
 
 function showTournamentLobby() {
+  document.body.classList.remove('in-game');
   currentPlayMode = 'tournament';
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'none';
@@ -2393,6 +2396,59 @@ function showGameBoard() {
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'block';
+  document.body.classList.add('in-game');
+}
+
+function renderInGameSidePanels() {
+  if (!currentGame) return;
+  const blueSpyEl = document.getElementById('game-blue-spymasters');
+  const blueOpEl = document.getElementById('game-blue-operatives');
+  const redSpyEl = document.getElementById('game-red-spymasters');
+  const redOpEl = document.getElementById('game-red-operatives');
+  if (!blueSpyEl || !blueOpEl || !redSpyEl || !redOpEl) return;
+
+  const presenceData = window.presenceCache || [];
+  const presenceMap = new Map();
+  for (const pr of presenceData) {
+    const status = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
+    presenceMap.set(pr.odId || pr.id, status);
+  }
+  const isActive = (id) => {
+    if (!presenceData.length) return true;
+    return presenceMap.get(id) === 'online';
+  };
+
+  const splitBySeat = (players) => {
+    const spymasters = [];
+    const operatives = [];
+    for (const p of (players || [])) {
+      if (!p?.odId || isActive(p.odId)) {
+        if (String(p?.role || 'operative') === 'spymaster') spymasters.push(p);
+        else operatives.push(p);
+      }
+    }
+    return { spymasters, operatives };
+  };
+
+  const renderPills = (players) => {
+    if (!players.length) return '<div class="side-empty">—</div>';
+    return players.map(p => {
+      const isYou = p.odId === odId;
+      return `
+        <div class="side-pill ${isYou ? 'you' : ''}">
+          ${escapeHtml(p.name)}${isYou ? ' <span class="side-you">(you)</span>' : ''}
+        </div>
+      `;
+    }).join('');
+  };
+
+  const blueSplit = splitBySeat(currentGame.bluePlayers || []);
+  const redSplit = splitBySeat(currentGame.redPlayers || []);
+
+  blueSpyEl.innerHTML = renderPills(blueSplit.spymasters);
+  blueOpEl.innerHTML = renderPills(blueSplit.operatives);
+  redSpyEl.innerHTML = renderPills(redSplit.spymasters);
+  redOpEl.innerHTML = renderPills(redSplit.operatives);
 }
 
 function renderGame() {
@@ -2424,6 +2480,9 @@ function renderGame() {
     if (redTeamEl) redTeamEl.textContent = currentGame.redTeamName || 'Red Team';
     if (blueTeamEl) blueTeamEl.textContent = currentGame.blueTeamName || 'Blue Team';
   }
+
+  // Side panels (Operatives / Spymasters) for both teams
+  renderInGameSidePanels();
 
   document.getElementById('game-red-left').textContent = currentGame.redCardsLeft;
   document.getElementById('game-blue-left').textContent = currentGame.blueCardsLeft;
