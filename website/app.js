@@ -2151,13 +2151,19 @@ function openRequestsModal() {
   if (!st.isCreator || !st.teamId) return;
   const modal = document.getElementById('requests-modal');
   if (!modal) return;
+  // Use the same animated modal system as other modals (team/settings/etc.).
+  // The global .modal CSS keeps modals hidden unless the .modal-open class is applied.
   modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
   renderRequestsModal();
 }
 
 function closeRequestsModal() {
   const modal = document.getElementById('requests-modal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.classList.remove('modal-open');
+    setTimeout(() => { modal.style.display = 'none'; }, 200);
+  }
   setHint('requests-modal-hint', '');
 }
 
