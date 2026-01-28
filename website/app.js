@@ -323,15 +323,12 @@ function nameToAccountId(name) {
 }
 
 function tsToMs(ts) {
-  // Convert Firestore Timestamp (or similar) to ms.
-  // Legacy docs may lack createdAt/updatedAt; treat missing/unparseable as 0 so they
-  // are considered the oldest in merge logic (prevents deleting older accounts).
-  if (!ts) return 0;
+  if (!ts) return Number.POSITIVE_INFINITY;
   try {
     if (typeof ts.toMillis === 'function') return ts.toMillis();
     if (typeof ts.seconds === 'number') return ts.seconds * 1000;
   } catch (_) {}
-  return 0;
+  return Number.POSITIVE_INFINITY;
 }
 
 function autoMergeDuplicatePlayers(players) {
@@ -372,77 +369,18 @@ async function mergeDuplicatePlayersForNameKey(nameKey) {
   const same = all.filter(p => nameToAccountId((p?.name || '').trim()) === key);
   if (same.length < 2) return;
 
-  // Name registry is helpful, but can become wrong if older/legacy docs lacked timestamps.
-  // We'll use it as a tiebreaker instead of blindly trusting it.
-  let registryAccountId = '';
-  try {
-    const ns = await db.collection(NAME_REGISTRY_COLLECTION).doc(key).get();
-    registryAccountId = ns.exists ? String(ns.data()?.accountId || '').trim() : '';
-  } catch (_) {}
-
-  const scorePlayer = (pid, player) => {
-    let s = 0;
-
-    // Invites are the most user-visible thing that gets "lost" in a bad merge.
-    const invites = Array.isArray(player?.invites) ? player.invites.length : 0;
-    s += invites * 10;
-
-    // Being on a team / creator / pending also indicates the "real" identity.
-    try {
-      for (const t of (teamsCache || [])) {
-        if (!t) continue;
-
-        const creatorId = String(t?.createdBy || t?.creatorId || t?.ownerId || '').trim();
-        if (creatorId && creatorId === pid) s += 25;
-
-        const mem = Array.isArray(t?.members) ? t.members : [];
-        if (mem.some(m => String(m?.id || m?.userId || m || '').trim() === pid)) s += 15;
-
-        const pend = Array.isArray(t?.pending) ? t.pending : [];
-        if (pend.some(m => String(m?.id || m?.userId || m || '').trim() === pid)) s += 5;
-      }
-    } catch (_) {}
-
-    // Legacy docs often lack createdAt; treat that as a mild signal it's older (and likely real).
-    if (!player?.createdAt) s += 2;
-
-    return s;
-  };
-
-  // Find best candidates by score.
-  let bestScore = -Infinity;
-  const scored = same.map(p => {
-    const pid = String(p?.id || '').trim();
-    const sc = scorePlayer(pid, p);
-    if (sc > bestScore) bestScore = sc;
-    return { p, pid, sc };
+  // Pick the earliest-created doc as canonical.
+  same.sort((a, b) => {
+    const ta = tsToMs(a.createdAt);
+    const tb = tsToMs(b.createdAt);
+    if (ta !== tb) return ta - tb;
+    return String(a.id).localeCompare(String(b.id));
   });
-
-  let top = scored.filter(x => x.sc === bestScore);
-  if (!top.length) return;
-
-  // Tiebreaker 1: if registry points to one of the top candidates, keep it.
-  let canonical = null;
-  if (registryAccountId) {
-    const hit = top.find(x => x.pid === registryAccountId);
-    if (hit) canonical = hit.p;
-  }
-
-  // Tiebreaker 2: choose the oldest (missing timestamps count as 0 via tsToMs).
-  if (!canonical) {
-    top.sort((a, b) => {
-      const ta = tsToMs(a.p?.createdAt) || 0;
-      const tb = tsToMs(b.p?.createdAt) || 0;
-      if (ta !== tb) return ta - tb;
-      return String(a.pid).localeCompare(String(b.pid));
-    });
-    canonical = top[0].p;
-  }
-
+  const canonical = same[0];
   const displayName = (canonical?.name || '').trim();
 
-  // Merge every other doc into canonical.
-  for (const dupe of same) {
+  for (let i = 1; i < same.length; i++) {
+    const dupe = same[i];
     if (!dupe?.id || dupe.id === canonical.id) continue;
     await mergePlayerIntoCanonical({
       nameKey: key,
@@ -452,7 +390,6 @@ async function mergeDuplicatePlayersForNameKey(nameKey) {
     });
   }
 }
-
 
 async function mergePlayerIntoCanonical({ nameKey, displayName, canonicalId, duplicateId }) {
   const key = String(nameKey || '').trim();
@@ -694,28 +631,15 @@ async function setUserName(name, opts = {}) {
 
   // If this name belongs to another account, switch to it (and migrate any local data best-effort).
   if (targetAccountId && targetAccountId !== myAccountId) {
-    const oldId = myAccountId;
     try {
       await migrateIdentity(myAccountId, targetAccountId, nextName);
     } catch (e) {
       console.warn('Identity migration failed (best-effort)', e);
     }
     safeLSSet(LS_USER_ID, targetAccountId);
-
-    // IMPORTANT: close any presence doc written under the old id so it doesn't show up
-    // as a "duplicate account" in the online list.
-    try {
-      if (oldId) {
-        await db.collection('presence').doc(oldId).set({
-          isOpen: false,
-          closedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      }
-    } catch (_) {}
   }
 
-// Ensure we are listening to the correct profile doc for cross-device name sync.
+  // Ensure we are listening to the correct profile doc for cross-device name sync.
   startProfileNameSync();
 
   refreshNameUI();
@@ -739,65 +663,6 @@ async function setUserName(name, opts = {}) {
   }
 }
 
-
-
-async function ensureAccountLinkedForName(displayName) {
-  // On load, if we already know the user's name, make sure this device is linked to the
-  // canonical account for that name BEFORE presence starts. This prevents "ghost" presence
-  // docs (and apparent duplicate accounts) when LS_USER_ID differs from the name registry.
-  const name = (displayName || '').trim();
-  const key = nameToAccountId(name);
-  if (!name || !key) return;
-
-  const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
-  const nameRef = namesCol.doc(key);
-
-  const oldId = String(safeLSGet(LS_USER_ID) || '').trim();
-  let mappedId = '';
-
-  try {
-    const snap = await nameRef.get();
-    mappedId = snap.exists ? String(snap.data()?.accountId || '').trim() : '';
-  } catch (_) {
-    // best-effort
-  }
-
-  // If the registry points to an existing account, follow it.
-  if (mappedId && mappedId !== oldId) {
-    try { await migrateIdentity(oldId, mappedId, name); } catch (_) {}
-    safeLSSet(LS_USER_ID, mappedId);
-
-    // Best-effort: immediately close any presence doc we might have written under the old id.
-    try {
-      if (oldId) {
-        await db.collection('presence').doc(oldId).set({
-          isOpen: false,
-          closedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      }
-    } catch (_) {}
-  }
-
-  // If there is no registry mapping yet, create one to the current device account id.
-  // Do NOT overwrite an existing mapping (we already handled the mappedId case above).
-  if (!mappedId) {
-    const curId = getLocalAccountId();
-    try {
-      await nameRef.set({
-        accountId: curId,
-        name: name,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    } catch (_) {}
-  }
-
-  // Ensure a players doc exists for the resolved account (fixes "Player not found" hovers).
-  try {
-    await upsertPlayerProfile(getUserId(), getUserName());
-  } catch (_) {}
-}
 
 async function migrateIdentity(oldId, newId, displayName) {
   const fromId = String(oldId || '').trim();
@@ -1139,13 +1004,7 @@ function listenToPlayers() {
       recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
-      // My Team tab (incl. Invites button) depends on playersCache, so re-render it here too.
-      renderMyTeam(teamsCache);
-      // If the Invites modal is open, keep it live-updated as invites arrive.
-      const invitesModal = document.getElementById('invites-modal');
-      if (invitesModal && invitesModal.style.display === 'flex') {
-        renderInvitesModal();
-      }    }, (err) => {
+    }, (err) => {
       console.error('Players listener error:', err);
       setHint('players-hint', 'Error loading players.');
     });
@@ -1549,10 +1408,65 @@ function renderInvites(players, teams) {
   const list = document.getElementById('invites-list');
   if (!card || !list) return;
 
-  // Invites are now shown via the My Team "Invites" button + modal.
-  // Keep the old inline card hidden to avoid duplicate UX.
-  card.style.display = 'none';
-  return;
+  const st = computeUserState(teams);
+  const noName = !st.name;
+
+  // Invites are useful even if you're already on a team (accepting will switch you).
+  // If the user has a pending request somewhere, they can still accept an invite (and the pending request will be cleared).
+
+  const me = (players || []).find(p => p.id === st.userId);
+  const invites = Array.isArray(me?.invites) ? me.invites : [];
+  if (!invites.length) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  if (noName) {
+    setHint('invites-hint', 'Set your name on Home first.');
+  } else {
+    setHint('invites-hint', '');
+  }
+
+  list.innerHTML = invites.map(inv => {
+    const teamName = truncateTeamName(inv?.teamName || 'Team');
+    const teamId = inv?.teamId || '';
+    const t = (teams || []).find(x => x?.id === teamId);
+    const c = t ? getDisplayTeamColor(t) : null;
+    const nameStyle = c ? `style="color:${esc(c)}"` : '';
+    return `
+      <div class="invite-row">
+        <div class="invite-left">
+          <div class="invite-title profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" ${nameStyle}>${esc(teamName)}</div>
+          <div class="invite-sub">You've been invited to join</div>
+        </div>
+        <div class="invite-actions">
+          <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
+          <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-invite-accept]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-invite-accept');
+      if (!teamId) return;
+      await acceptInvite(teamId);
+      renderInvites(playersCache, teamsCache);
+      renderMyTeam(teamsCache);
+    });
+  });
+
+  list.querySelectorAll('[data-invite-decline]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-invite-decline');
+      if (!teamId) return;
+      await declineInvite(teamId);
+      renderInvites(playersCache, teamsCache);
+    });
+  });
 }
 
 async function upsertPlayerProfile(userId, name) {
@@ -2069,11 +1983,6 @@ function initMyTeamControls() {
     openInvitesModal();
   });
 
-  // My Team tab: Invites button (top-level, even if you're not on a team)
-  document.getElementById('open-invites-myteam')?.addEventListener('click', () => {
-    openInvitesModal();
-  });
-
   document.getElementById('open-chat')?.addEventListener('click', () => {
     openChatModal();
   });
@@ -2126,7 +2035,6 @@ function renderMyTeam(teams) {
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
   const invitesBtn = document.getElementById('open-invites');
-  const invitesTopBtn = document.getElementById('open-invites-myteam');
   const chatBtn = document.getElementById('open-chat');
   const leaveDeleteBtn = document.getElementById('leave-or-delete');
   const sub = document.getElementById('myteam-subtitle');
@@ -2162,21 +2070,6 @@ function renderMyTeam(teams) {
     chatBtn.classList.toggle('disabled', !hasTeam);
   }
 
-  // Invites are useful even if you're not on a team (accepting switches you).
-  // Show a single Invites button on the My Team tab that opens the modal.
-  const me = (playersCache || []).find(p => p?.id === st.userId);
-  const invites = Array.isArray(me?.invites) ? me.invites : [];
-  if (invitesTopBtn) {
-    if (!st.name) {
-      invitesTopBtn.style.display = 'none';
-    } else {
-      invitesTopBtn.style.display = 'inline-flex';
-      invitesTopBtn.textContent = invites.length ? `Invites (${invites.length})` : 'Invites';
-      invitesTopBtn.disabled = invites.length === 0;
-      invitesTopBtn.classList.toggle('disabled', invites.length === 0);
-    }
-  }
-
   if (!card) return;
 
   if (!hasTeam) {
@@ -2204,9 +2097,17 @@ function renderMyTeam(teams) {
     }
   }
 
-  // Avoid duplicating the Invites button inside the team card now that we have a
-  // dedicated top-level button for the My Team tab.
-  if (invitesBtn) invitesBtn.style.display = 'none';
+  // Invites button (shows your pending invites in a modal)
+  if (invitesBtn) {
+    const me = (playersCache || []).find(p => p?.id === st.userId);
+    const invites = Array.isArray(me?.invites) ? me.invites : [];
+    if (invites.length) {
+      invitesBtn.style.display = 'inline-flex';
+      invitesBtn.textContent = `Invites (${invites.length})`;
+    } else {
+      invitesBtn.style.display = 'none';
+    }
+  }
 
   // Team color picker (visible to everyone; editable by creator)
   if (colorRow && colorInput) {
@@ -3017,7 +2918,7 @@ async function adminDeletePlayer(userId) {
     }
     // Delete player + presence docs
     batch.delete(db.collection('players').doc(uid));
-    batch.delete(db.collection('presence').doc(uid));
+    batch.delete(db.collection(PRESENCE_COLLECTION).doc(uid));
     writes += 2;
     await batch.commit();
   } catch (e) {
@@ -3948,9 +3849,6 @@ const PRESENCE_COLLECTION = 'presence';
 const PRESENCE_INACTIVE_MS = 5 * 60 * 1000;  // 5 minutes
 const PRESENCE_OFFLINE_MS = 15 * 60 * 1000;  // 15 minutes
 const PRESENCE_UPDATE_INTERVAL_MS = 60 * 1000; // Update every 1 minute
-// If a user still has the site open but their device sleeps / timers get throttled,
-// we keep them in "idle" instead of "offline" for a while.
-const PRESENCE_MAX_OPEN_STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 
 const PRESENCE_WHERE_LABELS = {
@@ -4016,16 +3914,10 @@ let presenceUnsub = null;
 let presenceCache = [];
 let presenceUpdateInterval = null;
 let lastActivityTime = Date.now();
-let presenceLastActivePingAtMs = 0;
-let presenceBoundUserId = null;
 
 function initPresence() {
   const name = getUserName();
   if (!name) return;
-
-  // Bind this tab/session to the current account id so we can correctly close/update
-  // presence even if the local account id changes during a login/link flow.
-  presenceBoundUserId = getUserId();
 
   // Update presence immediately
   updatePresence();
@@ -4052,22 +3944,18 @@ function initPresence() {
     }
   });
 
-  // Mark the session as closed when navigating away.
-  const markClosed = () => {
-    const userId = presenceBoundUserId || getUserId();
-    if (!userId) return;
-    const presenceRef = db.collection('presence').doc(userId);
-    // Best-effort: this can fail if the browser is already shutting down.
-    presenceRef.set({
-      isOpen: false,
-      closedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true }).catch(() => {});
-  };
-
-  window.addEventListener('beforeunload', markClosed);
-  // pagehide fires for bfcache as well as normal navigations.
-  window.addEventListener('pagehide', markClosed);
+  // Update presence before unload
+  window.addEventListener('beforeunload', () => {
+    // Mark as going offline
+    const userId = getUserId();
+    if (userId) {
+      // Use sendBeacon for reliable delivery on page close
+      const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+      presenceRef.update({
+        lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(() => {});
+    }
+  });
 
   // Start listening to all presence docs
   startPresenceListener();
@@ -4089,52 +3977,18 @@ async function updatePresence() {
   const name = getUserName();
   if (!userId || !name) return;
 
-  // If the local account id changes (e.g., user clicked "Continue as …"),
-  // immediately close the old presence doc so it doesn't look like a duplicate user.
-  const currentId = String(userId || '').trim();
-  if (!presenceBoundUserId) presenceBoundUserId = currentId;
-
-  if (presenceBoundUserId && currentId && presenceBoundUserId !== currentId) {
-    try {
-      await db.collection('presence').doc(presenceBoundUserId).set({
-        isOpen: false,
-        closedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    } catch (_) {}
-    presenceBoundUserId = currentId;
-    presenceLastActivePingAtMs = 0;
-  }
-
   try {
-    const presenceRef = db.collection('presence').doc(presenceBoundUserId);
+    const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
     const whereKey = computeLocalPresenceWhereKey();
-    // "Heartbeat" is written on a timer so we can tell the tab is still open.
-    // "Last activity" is only written when the user recently interacted.
-    const now = Date.now();
-    const recentlyActive = (document.visibilityState === 'visible') && (now - lastActivityTime < 2 * 60 * 1000);
-
-    const payload = {
-      odId: presenceBoundUserId,
+    await presenceRef.set({
+      odId: userId,
       name: name,
       whereKey: whereKey,
       whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
       activePanelId: activePanelId,
-      isOpen: true,
-      lastHeartbeat: firebase.firestore.FieldValue.serverTimestamp(),
+      lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    // Only bump lastActivity when they've actually been active recently.
-    if (recentlyActive && (now - presenceLastActivePingAtMs > 30 * 1000)) {
-      payload.lastActivity = firebase.firestore.FieldValue.serverTimestamp();
-      presenceLastActivePingAtMs = now;
-    }
-
-    // If we previously marked this session as closed, clear it.
-    payload.closedAt = firebase.firestore.FieldValue.delete();
-
-    await presenceRef.set(payload, { merge: true });
+    }, { merge: true });
   } catch (e) {
     console.warn('Presence update failed:', e);
   }
@@ -4143,7 +3997,7 @@ async function updatePresence() {
 function startPresenceListener() {
   if (presenceUnsub) return;
 
-  presenceUnsub = db.collection('presence')
+  presenceUnsub = db.collection(PRESENCE_COLLECTION)
     .orderBy('lastActivity', 'desc')
     .onSnapshot(snap => {
       presenceCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -4186,38 +4040,18 @@ function tsToMsSafe(ts) {
 
 function getPresenceStatus(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
-  if (!presence) return 'offline';
+  // Support older presence docs that may not have `lastActivity`.
+  const ts = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
+  if (!ts) return 'offline';
+
+  const lastMs = tsToMsSafe(ts);
+  if (!lastMs) return 'offline';
 
   const now = Date.now();
+  const diff = now - lastMs;
 
-  // Activity drives online vs idle.
-  const activityTs = presence?.lastActivity || presence?.updatedAt || presence?.lastSeen || null;
-  const lastActivityMs = tsToMsSafe(activityTs);
-
-  // Heartbeat/updatedAt tells us the tab has been around recently. If timers get throttled
-  // (sleeping phone/laptop), we keep the user "idle" for a longer window as long as the
-  // session was not explicitly closed.
-  const heartbeatTs = presence?.lastHeartbeat || presence?.updatedAt || null;
-  const lastHeartbeatMs = tsToMsSafe(heartbeatTs);
-
-  const closedAtMs = tsToMsSafe(presence?.closedAt || null);
-  const isOpen = !!presence?.isOpen && !closedAtMs;
-
-  if (isOpen) {
-    // If they're actively interacting, show Online; otherwise Idle.
-    if (lastActivityMs && (now - lastActivityMs) < PRESENCE_INACTIVE_MS) return 'online';
-
-    // Still-open session: keep as idle even if the heartbeat is stale, up to a cap.
-    const anchorMs = lastHeartbeatMs || lastActivityMs;
-    if (anchorMs && (now - anchorMs) < PRESENCE_MAX_OPEN_STALE_MS) return 'idle';
-    // Too stale (e.g., abandoned tab): treat as offline.
-    return 'offline';
-  }
-
-  // Fallback: legacy docs or explicitly closed sessions.
-  if (!lastActivityMs) return 'offline';
-  const diff = now - lastActivityMs;
   if (diff < PRESENCE_INACTIVE_MS) return 'online';
+  // Rename "inactive" to "idle" in the UI/status model.
   if (diff < PRESENCE_OFFLINE_MS) return 'idle';
   return 'offline';
 }
@@ -4658,21 +4492,11 @@ setUserName = async function(name, opts) {
 
 // Initialize presence on DOMContentLoaded if user already has a name
 document.addEventListener('DOMContentLoaded', () => {
-  (async () => {
-    const n = getUserName();
-    if (!n) return;
-
-    // IMPORTANT: resolve the canonical account id for this name before starting presence
-    // to avoid creating "ghost" presence docs that look like duplicate accounts.
-    try {
-      await ensureAccountLinkedForName(n);
-    } catch (e) {
-      console.warn('Account bootstrap failed (best-effort)', e);
-    }
-
+  if (getUserName()) {
     initPresence();
-  })();
+  }
 });
+
 // Export presence functions for game.js
 window.getPresenceStatus = getPresenceStatus;
 Object.defineProperty(window, 'presenceCache', {

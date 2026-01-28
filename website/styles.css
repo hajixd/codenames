@@ -3279,16 +3279,15 @@ button:disabled{
 
 /* Highlight your current team in the list (very subtle) */
 .team-list-item.is-mine{
-  /* Don't outline just because it's your team (only eligible teams get outlines) */
-  border-color: var(--border);
-  box-shadow: none;
+  border-color: rgba(255,255,255,0.08);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
 }
 
-/* In Tournament, don't outline your row just because it's yours */
-body.tournament.has-team-color .team-list-item.is-mine:not(.is-full){
-  /* Eligibility outlines are handled by .is-full */
-  border-color: var(--border);
-  box-shadow: none;
+/* In Tournament, outline your team row using your team's color */
+body.tournament.has-team-color .team-list-item.is-mine{
+  border-color: color-mix(in srgb, var(--team-accent) 40%, transparent);
+  /* Softer glow on the Teams tab */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--team-glow) 35%, transparent);
 }
 
 .team-list-left{ min-width: 0; }
@@ -3329,32 +3328,16 @@ body.tournament.has-team-color .team-list-item.is-mine:not(.is-full){
 
 /* Full team (3+ members) outline effect on the entire team row (thin) */
 .team-list-item.is-full{
-  /* Dimmer outline for eligible teams */
-  border: 1px solid var(--team-accent, rgba(34, 197, 94, 0.22));
+  border: 1px solid var(--team-accent, rgba(34, 197, 94, 0.4));
 }
 
 /* Teams page: subtle eligibility tint (very low opacity) */
 .panel-teams .team-list-item.is-full{
-  /* Slightly stronger tint (less transparent) */
-  background: rgba(34, 197, 94, 0.06);
+  background: rgba(34, 197, 94, 0.03);
 }
 
 .panel-teams .team-list-item:not(.is-full){
-  /* Slightly stronger tint (less transparent) */
-  background: rgba(239, 68, 68, 0.045);
-}
-
-/* Mobile: slightly tighter, more iOS-like density on Teams list */
-@media (max-width: 768px) {
-  .team-list-item{
-    padding: 10px 12px;
-    border-radius: 10px;
-    gap: 10px;
-  }
-  .team-list-name{ font-size: 13px; }
-  .team-list-members{ font-size: 11px; margin-top: 2px; }
-  .team-list-count{ font-size: 11px; padding: 3px 7px; }
-  .team-color-dot.sm{ width: 9px; height: 9px; }
+  background: rgba(239, 68, 68, 0.02);
 }
 
 /* Teams page cards */
