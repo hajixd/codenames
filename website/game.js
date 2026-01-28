@@ -1117,9 +1117,12 @@ async function joinQuickLobby(role) {
 
       const game = snap.data();
 
-      // If a game is already in progress, do not allow new joins.
+      // If a game is already in progress, only allow joining as a spectator.
+      // (Late arrivals can watch, but cannot take a seat mid-game.)
       if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null) {
-        throw new Error('Quick Play is in progress. Please wait for the next game.');
+        if (role !== 'spectator') {
+          throw new Error('Quick Play is in progress. You can join as a spectator.');
+        }
       }
 
       const redPlayers = Array.isArray(game.redPlayers) ? [...game.redPlayers] : [];
@@ -1237,11 +1240,22 @@ async function leaveQuickLobby() {
 async function toggleQuickReady() {
   const odId = getUserId();
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+
+  let shouldSpectate = false;
+
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('Lobby not found');
       const game = snap.data();
+
+      // If Quick Play already started, the button becomes a Spectate button.
+      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null) {
+        shouldSpectate = true;
+        return;
+      }
+
+      // If the game ended and is being reset, do nothing.
       if (game.currentPhase && game.currentPhase !== 'waiting') return;
 
       const role = getQuickPlayerRole(game, odId);
@@ -1260,6 +1274,12 @@ async function toggleQuickReady() {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
+
+    if (shouldSpectate) {
+      spectateGame(QUICKPLAY_DOC_ID);
+      return;
+    }
+
     // Play ready sound
     if (window.playSound) window.playSound('ready');
   } catch (e) {
@@ -1453,17 +1473,33 @@ function renderQuickLobby(game) {
   // Rules UI
   updateQuickRulesUI(game);
 
-  // Button state - allow ready up even if rules aren't agreed yet
-  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
-  leaveBtn.disabled = !effectiveRole;
+  // Button state
+  const inProgress = (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null);
 
-  const youObj = effectiveRole === 'red'
-    ? red.find(p => p.odId === odId)
-    : effectiveRole === 'blue'
-      ? blue.find(p => p.odId === odId)
-      : null;
-  const youReady = !!youObj?.ready;
-  readyBtn.textContent = youReady ? 'Unready' : 'Ready Up';
+  if (inProgress) {
+    // If you show up late, you can still watch.
+    const isPlayer = (role === 'red' || role === 'blue');
+    if (isPlayer) {
+      readyBtn.disabled = true;
+      readyBtn.textContent = 'In Game';
+    } else {
+      readyBtn.disabled = false;
+      readyBtn.textContent = 'Spectate';
+    }
+    leaveBtn.disabled = !role;
+  } else {
+    // Allow ready up even if rules aren't agreed yet
+    readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
+    leaveBtn.disabled = !effectiveRole;
+
+    const youObj = effectiveRole === 'red'
+      ? red.find(p => p.odId === odId)
+      : effectiveRole === 'blue'
+        ? blue.find(p => p.odId === odId)
+        : null;
+    const youReady = !!youObj?.ready;
+    readyBtn.textContent = youReady ? 'Unready' : 'Ready Up';
+  }
 
   if (game.currentPhase !== 'waiting' && game.winner == null) {
     status.textContent = 'Game in progress…';
