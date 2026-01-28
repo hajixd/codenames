@@ -2826,6 +2826,136 @@ body.mode-joiner .only-joiner{ display:block; }
   .quick-team-col{ min-width: 0; }
 }
 
+/*
+  Quick Play lobby on mobile:
+  - Fit within the viewport (no page scrolling)
+  - Keep controls visible
+  - Allow *internal* scrolling inside player lists if needed
+*/
+@media (max-width: 768px){
+  /* Tabs are hidden in Quick Play mode, so remove the extra bottom padding reserved for them. */
+  body.quickplay .panel-game .panel-inner{
+    padding: 14px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Avoid page scroll; the lobby itself manages its layout and internal scroll areas. */
+  body.quickplay .panel-game{
+    overflow: hidden;
+  }
+
+  body.quickplay #quick-play-lobby{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Save vertical space: the panel already has a title via the app header. */
+  body.quickplay #quick-play-lobby .lobby-header{
+    display: none;
+  }
+
+  body.quickplay .quick-setup{
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  body.quickplay .quick-lobby-card{
+    margin-top: 0;
+    padding: 12px;
+    border-radius: 16px;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body.quickplay .quick-lobby-top{
+    margin-bottom: 8px;
+  }
+
+  /* Use a compact grid: Red/Blue side-by-side, Spectators underneath spanning full width. */
+  body.quickplay .quick-lobby-layout{
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr auto;
+    gap: 10px;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  body.quickplay .quick-team-col{
+    padding: 10px;
+    border-radius: 14px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.quickplay .quick-team-col.red{ grid-column: 1; grid-row: 1; }
+  body.quickplay .quick-team-col.blue{ grid-column: 2; grid-row: 1; }
+
+  body.quickplay .quick-team-col.spectator{
+    grid-column: 1 / span 2;
+    grid-row: 2;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px;
+    padding: 10px;
+    background: rgba(0,0,0,0.22);
+  }
+
+  body.quickplay .quick-team-head{ margin-bottom: 8px; }
+  body.quickplay .quick-team-title{ font-size: 12px; }
+
+  /* Make player rows slightly tighter on phones */
+  body.quickplay .quick-player{ padding: 8px 9px; border-radius: 12px; }
+  body.quickplay .quick-player-name{ font-size: 12px; }
+  body.quickplay .quick-player-badge{ font-size: 10px; padding: 3px 7px; }
+
+  /* Let the lists scroll internally if needed; keep the overall lobby fixed. */
+  body.quickplay .quick-team-list{
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Keep controls compact and always visible */
+  body.quickplay .quick-lobby-controls{
+    margin-top: 0;
+    gap: 8px;
+  }
+
+  body.quickplay .quick-lobby-status{
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  body.quickplay .quick-rules-bar{
+    padding: 8px 10px;
+    border-radius: 14px;
+  }
+
+  body.quickplay .quick-rules-summary{
+    font-size: 13px;
+  }
+}
+
+/* Extra-tight phones (e.g., iPhone SE): squeeze spacing a bit more */
+@media (max-width: 380px){
+  body.quickplay .panel-game .panel-inner{ padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  body.quickplay .quick-lobby-layout{ gap: 8px; }
+  body.quickplay .quick-team-col{ padding: 9px; }
+  body.quickplay .quick-lobby-actions{ gap: 8px; }
+}
+
 @media (max-width: 520px){
   .modal{ padding: 10px; }
   .modal-card{ margin: 0; margin-top: -5vh; max-height: calc(100vh - 86px); }
