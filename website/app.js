@@ -323,12 +323,15 @@ function nameToAccountId(name) {
 }
 
 function tsToMs(ts) {
-  if (!ts) return Number.POSITIVE_INFINITY;
+  // Convert Firestore Timestamp (or similar) to ms.
+  // Legacy docs may lack createdAt/updatedAt; treat missing/unparseable as 0 so they
+  // are considered the oldest in merge logic (prevents deleting older accounts).
+  if (!ts) return 0;
   try {
     if (typeof ts.toMillis === 'function') return ts.toMillis();
     if (typeof ts.seconds === 'number') return ts.seconds * 1000;
   } catch (_) {}
-  return Number.POSITIVE_INFINITY;
+  return 0;
 }
 
 function autoMergeDuplicatePlayers(players) {
@@ -369,18 +372,77 @@ async function mergeDuplicatePlayersForNameKey(nameKey) {
   const same = all.filter(p => nameToAccountId((p?.name || '').trim()) === key);
   if (same.length < 2) return;
 
-  // Pick the earliest-created doc as canonical.
-  same.sort((a, b) => {
-    const ta = tsToMs(a.createdAt);
-    const tb = tsToMs(b.createdAt);
-    if (ta !== tb) return ta - tb;
-    return String(a.id).localeCompare(String(b.id));
+  // Name registry is helpful, but can become wrong if older/legacy docs lacked timestamps.
+  // We'll use it as a tiebreaker instead of blindly trusting it.
+  let registryAccountId = '';
+  try {
+    const ns = await db.collection(NAME_REGISTRY_COLLECTION).doc(key).get();
+    registryAccountId = ns.exists ? String(ns.data()?.accountId || '').trim() : '';
+  } catch (_) {}
+
+  const scorePlayer = (pid, player) => {
+    let s = 0;
+
+    // Invites are the most user-visible thing that gets "lost" in a bad merge.
+    const invites = Array.isArray(player?.invites) ? player.invites.length : 0;
+    s += invites * 10;
+
+    // Being on a team / creator / pending also indicates the "real" identity.
+    try {
+      for (const t of (teamsCache || [])) {
+        if (!t) continue;
+
+        const creatorId = String(t?.createdBy || t?.creatorId || t?.ownerId || '').trim();
+        if (creatorId && creatorId === pid) s += 25;
+
+        const mem = Array.isArray(t?.members) ? t.members : [];
+        if (mem.some(m => String(m?.id || m?.userId || m || '').trim() === pid)) s += 15;
+
+        const pend = Array.isArray(t?.pending) ? t.pending : [];
+        if (pend.some(m => String(m?.id || m?.userId || m || '').trim() === pid)) s += 5;
+      }
+    } catch (_) {}
+
+    // Legacy docs often lack createdAt; treat that as a mild signal it's older (and likely real).
+    if (!player?.createdAt) s += 2;
+
+    return s;
+  };
+
+  // Find best candidates by score.
+  let bestScore = -Infinity;
+  const scored = same.map(p => {
+    const pid = String(p?.id || '').trim();
+    const sc = scorePlayer(pid, p);
+    if (sc > bestScore) bestScore = sc;
+    return { p, pid, sc };
   });
-  const canonical = same[0];
+
+  let top = scored.filter(x => x.sc === bestScore);
+  if (!top.length) return;
+
+  // Tiebreaker 1: if registry points to one of the top candidates, keep it.
+  let canonical = null;
+  if (registryAccountId) {
+    const hit = top.find(x => x.pid === registryAccountId);
+    if (hit) canonical = hit.p;
+  }
+
+  // Tiebreaker 2: choose the oldest (missing timestamps count as 0 via tsToMs).
+  if (!canonical) {
+    top.sort((a, b) => {
+      const ta = tsToMs(a.p?.createdAt) || 0;
+      const tb = tsToMs(b.p?.createdAt) || 0;
+      if (ta !== tb) return ta - tb;
+      return String(a.pid).localeCompare(String(b.pid));
+    });
+    canonical = top[0].p;
+  }
+
   const displayName = (canonical?.name || '').trim();
 
-  for (let i = 1; i < same.length; i++) {
-    const dupe = same[i];
+  // Merge every other doc into canonical.
+  for (const dupe of same) {
     if (!dupe?.id || dupe.id === canonical.id) continue;
     await mergePlayerIntoCanonical({
       nameKey: key,
@@ -390,6 +452,7 @@ async function mergeDuplicatePlayersForNameKey(nameKey) {
     });
   }
 }
+
 
 async function mergePlayerIntoCanonical({ nameKey, displayName, canonicalId, duplicateId }) {
   const key = String(nameKey || '').trim();
