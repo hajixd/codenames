@@ -1747,16 +1747,23 @@ function renderQuickLobby(game) {
   updateQuickRulesUI(game);
 
   // Button state - allow ready up even if rules aren't agreed yet
-    const youRoleNow = getQuickPlayerRole(game, getUserId());
+  const youRoleNow = getQuickPlayerRole(game, getUserId());
   const inProgress = (game.currentPhase !== 'waiting' && game.winner == null);
   const activeJoinOn = isActiveJoinOn(game);
   const canLateJoin = inProgress && activeJoinOn && (youRoleNow !== 'red' && youRoleNow !== 'blue');
+
+  // Find the current player object to check ready state
+  const allPlayers = [...redAll, ...blueAll, ...specsAll];
+  const youObj = allPlayers.find(p => p.odId === odId);
 
   // Button behavior:
   // - Waiting: Ready Up / Unready for team members.
   // - In progress + Active Join: latecomers can Join after selecting Red/Blue.
   // - In progress (already rostered): show In Game (no ready toggling mid-round).
   const youReady = !!youObj?.ready;
+
+  // Enable leave button when in lobby
+  leaveBtn.disabled = !youObj;
   if (inProgress && (youRoleNow === 'red' || youRoleNow === 'blue')) {
     readyBtn.textContent = 'In Game';
     readyBtn.disabled = true;
