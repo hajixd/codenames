@@ -800,17 +800,28 @@ function initName() {
     onCommit: (v) => setUserName(v),
   });
 
-  // Header name pill - single click opens modal
+  // Header name pill - single click opens your profile
   const headerNamePill = document.getElementById('header-name-pill');
   headerNamePill?.addEventListener('click', () => {
     playSound('click');
-    openNameChangeModal();
+    const uid = getUserId();
+    // If the user isn't signed in yet, fall back to name entry.
+    if (!uid || !getUserName()) {
+      openNameChangeModal();
+      return;
+    }
+    showProfilePopup('player', uid, headerNamePill);
   });
   headerNamePill?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       playSound('click');
-      openNameChangeModal();
+      const uid = getUserId();
+      if (!uid || !getUserName()) {
+        openNameChangeModal();
+        return;
+      }
+      showProfilePopup('player', uid, headerNamePill);
     }
   });
 
@@ -3246,6 +3257,14 @@ function initSettings() {
     if (!ok) return;
     closeSettingsModal();
     logoutLocal();
+  });
+
+  // Change Name button in settings
+  const settingsChangeNameBtn = document.getElementById('settings-change-name-btn');
+  settingsChangeNameBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeSettingsModal();
+    openNameChangeModal();
   });
 
   // Delete Account button in settings
