@@ -51,6 +51,7 @@ let spectatorMode = false;
 let spectatingGameId = null;
 let selectedQuickTeam = null; // 'red' | 'spectator' | 'blue'
 let selectedQuickSeatRole = 'operative'; // 'operative' | 'spymaster' (Quick Play lobby)
+let latestQuickGame = null; // last observed Quick Play game doc for UI decisions
 let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
 // Quick Play is a single shared lobby/game.
@@ -341,7 +342,7 @@ function initGameUI() {
 
   // Quick Play game actions
   // Quick Play is a single lobby; no "create game" button.
-  document.getElementById('quick-ready-btn')?.addEventListener('click', toggleQuickReady);
+  document.getElementById('quick-ready-btn')?.addEventListener('click', quickReadyOrJoin);
   document.getElementById('quick-leave-btn')?.addEventListener('click', leaveQuickLobby);
 
   // Quick Play settings & rule negotiation
@@ -458,6 +459,16 @@ function selectQuickRole(role) {
   clearQuickSeatHighlights();
   if (role === 'red' || role === 'blue') {
     applyQuickSeatHighlight(role, selectedQuickSeatRole);
+  }
+
+  // In an active game with Active Join enabled, selecting a team should not auto-join.
+  // Let the player confirm by pressing the Join button.
+  const g = latestQuickGame;
+  const youRole = g ? getQuickPlayerRole(g, getUserId()) : null;
+  const inProgress = !!(g && g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
+  if (inProgress && isActiveJoinOn(g) && (youRole !== 'red' && youRole !== 'blue')) {
+    if (hint && role !== 'spectator') hint.textContent += ' — click Join to enter.';
+    return;
   }
 
   // Join the lobby for the selected role.
@@ -1141,6 +1152,7 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
 
   return {
     type: 'quick',
+    activeJoinOn: true,
     roomCode: null,
     redTeamId: null,
     redTeamName: 'Red Team',
@@ -1203,6 +1215,7 @@ async function ensureQuickPlayGameExists() {
   }
   if (!g.settingsAccepted) updates.settingsAccepted = { red: false, blue: false };
   if (typeof g.settingsPending === 'undefined') updates.settingsPending = null;
+  if (typeof g.activeJoinOn === 'undefined') updates.activeJoinOn = true;
   if (Object.keys(updates).length) {
     await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
   }
@@ -1216,6 +1229,14 @@ function getQuickPlayerRole(game, odId) {
   if (inBlue) return 'blue';
   if (inSpec) return 'spectator';
   return null;
+}
+
+function isActiveJoinOn(game) {
+  return !!(game && (
+    game.activeJoinOn === true ||
+    (game.quickSettings && game.quickSettings.activeJoinOn === true) ||
+    (game.settings && game.settings.activeJoinOn === true)
+  ));
 }
 
 async function joinQuickLobby(role, seatRole) {
@@ -1233,8 +1254,10 @@ async function joinQuickLobby(role, seatRole) {
 
       const game = snap.data();
 
-      // If a game is already in progress, do not allow new joins.
-      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null) {
+      const activeJoinOn = isActiveJoinOn(game);
+
+      // If a game is already in progress, do not allow new joins unless Active Join is enabled.
+      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null && !activeJoinOn) {
         throw new Error('Quick Play is in progress. Please wait for the next game.');
       }
 
@@ -1429,6 +1452,26 @@ async function toggleQuickReady() {
   }
 }
 
+async function quickReadyOrJoin() {
+  const g = latestQuickGame;
+  const odId = getUserId();
+  const youRole = g ? getQuickPlayerRole(g, odId) : null;
+  const inProgress = !!(g && g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
+
+  if (inProgress && isActiveJoinOn(g) && (youRole !== 'red' && youRole !== 'blue')) {
+    const role = selectedQuickTeam || 'spectator';
+    if (role !== 'red' && role !== 'blue') {
+      alert('Switch to Red or Blue to join.');
+      return;
+    }
+    const seatRole = selectedQuickSeatRole || 'operative';
+    await joinQuickLobby(role, seatRole);
+    return;
+  }
+
+  await toggleQuickReady();
+}
+
 function bothTeamsFullyReady(game) {
   const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
   const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
@@ -1492,6 +1535,7 @@ async function maybeAutoStartQuickPlay(game) {
 }
 
 function renderQuickLobby(game) {
+  latestQuickGame = game || null;
   const redSpyList = document.getElementById('quick-red-spymaster-list');
   const redOpList = document.getElementById('quick-red-operative-list');
   const blueSpyList = document.getElementById('quick-blue-spymaster-list');
@@ -1650,19 +1694,35 @@ function renderQuickLobby(game) {
   updateQuickRulesUI(game);
 
   // Button state - allow ready up even if rules aren't agreed yet
-  readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
-  leaveBtn.disabled = !effectiveRole;
+    const youRoleNow = getQuickPlayerRole(game, getUserId());
+  const inProgress = (game.currentPhase !== 'waiting' && game.winner == null);
+  const activeJoinOn = isActiveJoinOn(game);
+  const canLateJoin = inProgress && activeJoinOn && (youRoleNow !== 'red' && youRoleNow !== 'blue');
 
-  const youObj = effectiveRole === 'red'
-    ? red.find(p => p.odId === odId)
-    : effectiveRole === 'blue'
-      ? blue.find(p => p.odId === odId)
-      : null;
+  // Button behavior:
+  // - Waiting: Ready Up / Unready for team members.
+  // - In progress + Active Join: latecomers can Join after selecting Red/Blue.
+  // - In progress (already rostered): show In Game (no ready toggling mid-round).
   const youReady = !!youObj?.ready;
-  readyBtn.textContent = youReady ? 'Unready' : 'Ready Up';
+  if (inProgress && (youRoleNow === 'red' || youRoleNow === 'blue')) {
+    readyBtn.textContent = 'In Game';
+    readyBtn.disabled = true;
+  } else if (canLateJoin) {
+    readyBtn.textContent = 'Join';
+    readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
+  } else {
+    readyBtn.textContent = youReady ? 'Unready' : 'Ready Up';
+    readyBtn.disabled = !(effectiveRole === 'red' || effectiveRole === 'blue');
+  }
 
   if (game.currentPhase !== 'waiting' && game.winner == null) {
-    status.textContent = 'Game in progress…';
+    const activeJoinOn = isActiveJoinOn(game);
+    const youRoleNow = getQuickPlayerRole(game, getUserId());
+    if (activeJoinOn && (youRoleNow !== 'red' && youRoleNow !== 'blue')) {
+      status.textContent = 'Game in progress — late join enabled.';
+    } else {
+      status.textContent = 'Game in progress…';
+    }
   } else if (!quickRulesAreAgreed(game)) {
     status.textContent = 'Waiting for rule agreement…';
   } else if (bothTeamsFullyReady(game)) {
