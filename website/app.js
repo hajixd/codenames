@@ -34,6 +34,9 @@ const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 
 let teamsCache = [];
 let playersCache = [];
+
+// Avoid spamming Firestore with repeated legacy-migration writes.
+const migratedCreatorIds = new Set();
 let openTeamId = null;
 let mergeNamesInFlight = new Set();
 
@@ -936,6 +939,26 @@ function listenToTeams() {
     .orderBy('createdAt', 'asc')
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Legacy migration: ensure the team you lead has a stable creatorUserId.
+      // Some older teams were created with only creatorName, which breaks request management
+      // if names change. We infer the creator from the roster and write it once.
+      try {
+        const st = computeUserState(teamsCache);
+        if (st?.team && st.isCreator) {
+          const t = st.team;
+          const tid = String(t.id || '').trim();
+          const creatorUserId = String(t.creatorUserId || '').trim();
+          if (tid && !creatorUserId && !migratedCreatorIds.has(tid)) {
+            migratedCreatorIds.add(tid);
+            db.collection('teams').doc(tid).update({
+              creatorUserId: st.userId,
+              creatorName: (st.name || '').trim() || (t.creatorName || '').trim() || (getUserName() || '').trim()
+            }).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
       refreshHeaderIdentity();
       refreshUnreadTeamListener();
       recomputeUnreadBadges();
@@ -1010,6 +1033,26 @@ function entryAccountId(entry) {
   return nameToAccountId(n);
 }
 
+// Robust creator id resolution for legacy teams.
+// - Prefer explicit creatorUserId
+// - Fallback to matching creatorName against a member
+// - Final fallback: first member in the roster
+function getTeamCreatorAccountId(team) {
+  const uid = String(team?.creatorUserId || '').trim();
+  if (uid) return uid;
+
+  const creatorKey = nameToAccountId((team?.creatorName || '').trim());
+  if (creatorKey) {
+    const m = getMembers(team).find(mm => nameToAccountId((mm?.name || '').trim()) === creatorKey);
+    const inferred = m ? entryAccountId(m) : '';
+    if (inferred) return inferred;
+  }
+
+  const members = getMembers(team);
+  if (members.length) return entryAccountId(members[0]);
+  return '';
+}
+
 function isSameAccount(entry, accountId) {
   const aid = String(accountId || '').trim();
   if (!aid) return false;
@@ -1054,16 +1097,12 @@ function computeUserState(teams) {
     if (findUserInMembers(t, userId)) team = t;
     if (findUserInPending(t, userId)) pendingTeam = t;
   }
-  const creatorKey = team ? nameToAccountId((team.creatorName || '').trim()) : '';
   // Creator detection:
-  // - Prefer the stable creatorUserId match
-  // - Fallback to creatorName match (legacy teams)
-  const myNameKey = nameToAccountId(getUserName());
-  const isCreator = !!(team && (
-    team.creatorUserId === userId ||
-    (creatorKey && myNameKey && creatorKey === myNameKey) ||
-    (creatorKey && creatorKey === userId) // very old/buggy sessions
-  ));
+  // - Prefer explicit creatorUserId
+  // - Otherwise infer from creatorName/member roster
+  // - Otherwise fallback to first member
+  const creatorId = team ? getTeamCreatorAccountId(team) : '';
+  const isCreator = !!(team && creatorId && String(creatorId).trim() === String(userId || '').trim());
   return {
     userId,
     name: getUserName(),
@@ -2130,8 +2169,8 @@ function renderRequestsModal() {
               <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(requesterId)}">${esc(r.name || '—')}</span>
             </div>
             <div class="request-actions">
-              <button class="btn primary small" type="button" data-accept="${esc(r.userId)}">Accept</button>
-              <button class="btn danger small" type="button" data-decline="${esc(r.userId)}">Decline</button>
+              <button class="btn primary small" type="button" data-accept="${esc(requesterId)}">Accept</button>
+              <button class="btn danger small" type="button" data-decline="${esc(requesterId)}">Decline</button>
             </div>
           </div>
         `;
@@ -2914,7 +2953,7 @@ async function declineRequest(teamId, userId) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const pending = getPending(t);
-      tx.update(ref, { pending: pending.filter(r => r.userId !== userId) });
+      tx.update(ref, { pending: pending.filter(r => !isSameAccount(r, userId)) });
     });
   } catch (e) {
     console.error(e);
