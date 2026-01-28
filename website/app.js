@@ -1004,7 +1004,13 @@ function listenToPlayers() {
       recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
-    }, (err) => {
+      // My Team tab (incl. Invites button) depends on playersCache, so re-render it here too.
+      renderMyTeam(teamsCache);
+      // If the Invites modal is open, keep it live-updated as invites arrive.
+      const invitesModal = document.getElementById('invites-modal');
+      if (invitesModal && invitesModal.style.display === 'flex') {
+        renderInvitesModal();
+      }    }, (err) => {
       console.error('Players listener error:', err);
       setHint('players-hint', 'Error loading players.');
     });
