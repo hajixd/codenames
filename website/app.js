@@ -28,13 +28,6 @@ const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
-
-// View persistence (device-local)
-// Remembers where the user was (mode + active panel) across refreshes.
-// Note: we only restore if a name is set (same requirement as entering the app).
-const LS_LAST_MODE = 'ct_lastMode_v1'; // 'quick' | 'tournament'
-const LS_LAST_PANEL = 'ct_lastPanel_v1'; // e.g. 'panel-chat'
-const LS_LAST_CHAT_MODE = 'ct_lastChatMode_v1'; // 'global' | 'team'
 // Account model:
 // - Accounts are keyed by normalized player name so "same name" = same account across devices.
 // - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
@@ -59,10 +52,6 @@ let unreadTeamCount = 0;
 let lastReadWriteAtMs = 0;
 let activePanelId = 'panel-game';
 
-// Prevent localStorage writes while we are restoring the last view on startup.
-// (Otherwise the app's default screen/tab would overwrite the saved view.)
-let suppressViewPersist = false;
-
 // Profile sync
 let profileUnsub = null;
 let lastLocalNameSetAtMs = 0;
@@ -83,10 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
   listenToTeams();
   listenToPlayers();
 
-  // Best-effort: restore last mode + tab on refresh.
-  // If no name is set yet, we stay on the launch screen.
-  restoreLastView();
-
   // If user already has a name, proactively merge any case-insensitive duplicates
   if (getUserName()) {
     mergeDuplicatePlayersForName(getUserName()).catch(e => {
@@ -94,39 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
-
-function restoreLastView() {
-  const name = getUserName();
-  if (!name) {
-    // Launch screen requires a name; keep default launch behavior.
-    return;
-  }
-
-  const mode = safeLSGet(LS_LAST_MODE);
-  if (mode !== 'quick' && mode !== 'tournament') return;
-
-  suppressViewPersist = true;
-  try {
-    enterAppFromLaunch(mode);
-
-    // Restore panel for Tournament only (Quick Play is always the Play panel).
-    if (mode === 'tournament') {
-      const panel = safeLSGet(LS_LAST_PANEL);
-      if (panel && document.getElementById(panel)) {
-        switchToPanel(panel);
-      }
-    }
-
-    // Restore last chat sub-mode if applicable.
-    const savedChatMode = safeLSGet(LS_LAST_CHAT_MODE);
-    if (savedChatMode === 'global' || savedChatMode === 'team') {
-      chatMode = savedChatMode;
-      try { window.__ctSetChatMode?.(chatMode, { persist: false }); } catch (_) {}
-    }
-  } finally {
-    suppressViewPersist = false;
-  }
-}
 
 /* =========================
    Header navigation
@@ -182,9 +134,6 @@ function showLaunchScreen() {
 
 function returnToLaunchScreen() {
   // Alias for callers (e.g., game back button)
-  // User explicitly chose to go "start over"; don't auto-restore into a mode.
-  try { if (!suppressViewPersist) localStorage.removeItem(LS_LAST_MODE); } catch (_) {}
-  try { if (!suppressViewPersist) localStorage.removeItem(LS_LAST_PANEL); } catch (_) {}
   showLaunchScreen();
 }
 
@@ -253,11 +202,6 @@ function enterAppFromLaunch(mode) {
   const screen = document.getElementById('launch-screen');
   if (screen) screen.style.display = 'none';
 
-  // Persist last chosen mode so refresh returns to the same place.
-  if (!suppressViewPersist) {
-    try { localStorage.setItem(LS_LAST_MODE, mode === 'quick' ? 'quick' : 'tournament'); } catch (_) {}
-  }
-
   // Default: leave launch state.
   document.body.classList.remove('launch');
   document.body.classList.remove('tournament');
@@ -272,7 +216,6 @@ function enterAppFromLaunch(mode) {
     try { refreshHeaderIdentity?.(); } catch (_) {}
     setBrowserTitle('quick');
     switchToPanel('panel-game');
-    // (Panel persistence handled by switchToPanel.)
     try {
       if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
     } catch (_) {}
@@ -330,11 +273,6 @@ function switchToPanel(panelId) {
   }
   activePanelId = targetId;
   recomputeUnreadBadges();
-
-  // Persist last active panel so refresh returns to it.
-  if (!suppressViewPersist && !document.body.classList.contains('launch')) {
-    try { localStorage.setItem(LS_LAST_PANEL, targetId); } catch (_) {}
-  }
 
   // Ensure the Tournament "Play" tab never shows Quick Play options.
   // In tournament mode, the Play panel should always render the tournament lobby.
@@ -2339,12 +2277,8 @@ function initChatTab() {
   const btnTeam = document.getElementById('chat-mode-team');
   const form = document.getElementById('chat-panel-form');
 
-  const setMode = (mode, opts = {}) => {
+  const setMode = (mode) => {
     chatMode = mode === 'team' ? 'team' : 'global';
-    const shouldPersist = opts && opts.persist === false ? false : !suppressViewPersist;
-    if (shouldPersist) {
-      try { localStorage.setItem(LS_LAST_CHAT_MODE, chatMode); } catch (_) {}
-    }
     btnGlobal?.classList.toggle('active', chatMode === 'global');
     btnTeam?.classList.toggle('active', chatMode === 'team');
     btnGlobal?.setAttribute('aria-selected', chatMode === 'global' ? 'true' : 'false');
@@ -2362,19 +2296,13 @@ function initChatTab() {
   btnGlobal?.addEventListener('click', () => setMode('global'));
   btnTeam?.addEventListener('click', () => setMode('team'));
 
-  // Allow boot restore to re-sync the toggle UI after reading localStorage.
-  window.__ctSetChatMode = (m, opts) => {
-    try { setMode(m, opts); } catch (_) {}
-  };
-
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     await sendChatTabMessage();
   });
 
   initUnreadListeners();
-  // Initialize UI to last chosen mode (restored on boot).
-  setMode(chatMode, { persist: false });
+  recomputeUnreadBadges();
 }
 
 function stopChatSubscription() {
