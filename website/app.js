@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
+  initInvitesModal();
   initChatTab();
   initOnlineCounterUI();
   initProfileDetailsModal();
@@ -1978,6 +1979,10 @@ function initMyTeamControls() {
     openRequestsModal();
   });
 
+  document.getElementById('open-invites')?.addEventListener('click', () => {
+    openInvitesModal();
+  });
+
   document.getElementById('open-chat')?.addEventListener('click', () => {
     openChatModal();
   });
@@ -2029,6 +2034,7 @@ function renderMyTeam(teams) {
   const membersEl = document.getElementById('myteam-members');
   const actionsEl = document.getElementById('myteam-actions');
   const requestsBtn = document.getElementById('open-requests');
+  const invitesBtn = document.getElementById('open-invites');
   const chatBtn = document.getElementById('open-chat');
   const leaveDeleteBtn = document.getElementById('leave-or-delete');
   const sub = document.getElementById('myteam-subtitle');
@@ -2088,6 +2094,18 @@ function renderMyTeam(teams) {
       requestsBtn.textContent = `Requests (${getPending(st.team).length})`;
     } else {
       requestsBtn.style.display = 'none';
+    }
+  }
+
+  // Invites button (shows your pending invites in a modal)
+  if (invitesBtn) {
+    const me = (playersCache || []).find(p => p?.id === st.userId);
+    const invites = Array.isArray(me?.invites) ? me.invites : [];
+    if (invites.length) {
+      invitesBtn.style.display = 'inline-flex';
+      invitesBtn.textContent = `Invites (${invites.length})`;
+    } else {
+      invitesBtn.style.display = 'none';
     }
   }
 
@@ -2209,6 +2227,94 @@ function renderRequestsModal() {
       if (!uid) return;
       await declineRequest(st.teamId, uid);
       renderRequestsModal();
+      renderMyTeam(teamsCache);
+    });
+  });
+}
+
+/* =========================
+   Invites modal
+========================= */
+function initInvitesModal() {
+  const modal = document.getElementById('invites-modal');
+  document.getElementById('invites-modal-close')?.addEventListener('click', closeInvitesModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeInvitesModal();
+  });
+}
+
+function openInvitesModal() {
+  const modal = document.getElementById('invites-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+  renderInvitesModal();
+}
+
+function closeInvitesModal() {
+  const modal = document.getElementById('invites-modal');
+  if (modal) {
+    modal.classList.remove('modal-open');
+    setTimeout(() => { modal.style.display = 'none'; }, 200);
+  }
+  setHint('invites-modal-hint', '');
+}
+
+function renderInvitesModal() {
+  const st = computeUserState(teamsCache);
+  const list = document.getElementById('invites-modal-list');
+  if (!list) return;
+
+  const me = (playersCache || []).find(p => p?.id === st.userId);
+  const invites = Array.isArray(me?.invites) ? me.invites : [];
+
+  if (!invites.length) {
+    list.innerHTML = '<div class="empty-state">No invites</div>';
+    return;
+  }
+
+  const noName = !st.name;
+  if (noName) setHint('invites-modal-hint', 'Set your name on Home first.');
+  else setHint('invites-modal-hint', '');
+
+  list.innerHTML = invites.map(inv => {
+    const teamName = truncateTeamName(inv?.teamName || 'Team');
+    const teamId = inv?.teamId || '';
+    const t = (teamsCache || []).find(x => x?.id === teamId);
+    const c = t ? getDisplayTeamColor(t) : null;
+    const nameStyle = c ? `style="color:${esc(c)}"` : '';
+    return `
+      <div class="invite-row">
+        <div class="invite-left">
+          <div class="invite-title profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" ${nameStyle}>${esc(teamName)}</div>
+          <div class="invite-sub">You've been invited to join</div>
+        </div>
+        <div class="invite-actions">
+          <button class="btn primary small" type="button" data-invite-accept="${esc(teamId)}" ${noName ? 'disabled' : ''}>Join</button>
+          <button class="btn danger small" type="button" data-invite-decline="${esc(teamId)}">Decline</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-invite-accept]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-invite-accept');
+      if (!teamId) return;
+      await acceptInvite(teamId);
+      renderInvites(playersCache, teamsCache);
+      renderMyTeam(teamsCache);
+      renderInvitesModal();
+    });
+  });
+
+  list.querySelectorAll('[data-invite-decline]')?.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const teamId = btn.getAttribute('data-invite-decline');
+      if (!teamId) return;
+      await declineInvite(teamId);
+      renderInvites(playersCache, teamsCache);
+      renderInvitesModal();
       renderMyTeam(teamsCache);
     });
   });

@@ -203,14 +203,6 @@
             <p class="subtitle small" id="myteam-subtitle">Create a team or manage your current team.</p>
 
             <div class="stack">
-              <div class="team-card invites" id="invites-card" style="display:none;">
-                <div class="team-body">
-                  <div class="team-section-title">Invites</div>
-                  <div id="invites-list"></div>
-                  <div class="hint" id="invites-hint" style="margin-top:10px;"></div>
-                </div>
-              </div>
-
               <button class="btn" id="join-team-btn" type="button" style="display:none;">Join a team</button>
               <button class="btn primary" id="open-create-team" type="button">Create a team</button>
 
@@ -239,9 +231,19 @@
                   </div>
 
                   <div class="myteam-footer">
-<button class="btn small" id="open-requests" type="button" style="display:none;">Requests</button>
+                    <button class="btn small" id="open-requests" type="button" style="display:none;">Requests</button>
+                    <button class="btn small" id="open-invites" type="button" style="display:none;">Invites</button>
                     <button class="btn danger" id="leave-or-delete" type="button" style="display:none;">Leave team</button>
                   </div>
+                </div>
+              </div>
+
+              <!-- Invites (moved below My Team + Requests) -->
+              <div class="team-card invites" id="invites-card" style="display:none;">
+                <div class="team-body">
+                  <div class="team-section-title">Invites</div>
+                  <div id="invites-list"></div>
+                  <div class="hint" id="invites-hint" style="margin-top:10px;"></div>
                 </div>
               </div>
             </div>
@@ -808,6 +810,20 @@
             <div class="team-section-title">Pending</div>
             <div id="requests-modal-list"></div>
             <div class="hint" id="requests-modal-hint" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Invites Modal -->
+      <div class="modal" id="invites-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Invites</div>
+            <button class="icon-btn" id="invites-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <div id="invites-modal-list"></div>
+            <div class="hint" id="invites-modal-hint" style="margin-top:10px;"></div>
           </div>
         </div>
       </div>
