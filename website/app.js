@@ -1641,15 +1641,17 @@ function renderTeams(teams) {
 
     const tc = getDisplayTeamColor(t);
     const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
+    const itemStyle = isFull && tc ? `style="--team-accent:${esc(tc)}"` : '';
+    const pillClass = isFull ? 'pill-full' : 'pill-incomplete';
 
     return `
-      <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}">
+      <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}" ${itemStyle}>
         <div class="team-list-left">
           <div class="team-list-name ${isMine ? 'team-accent' : ''}"><span class="team-list-name-text" ${nameStyle}>${esc(t.teamName || 'Unnamed')}</span></div>
           <div class="team-list-members" ${nameStyle}>${esc(memberNames)}</div>
         </div>
         <div class="team-list-right">
-          <div class="team-list-count ${isFull ? 'pill-full' : ''}">${members.length}/${TEAM_MAX}</div>
+          <div class="team-list-count ${pillClass}">${members.length}/${TEAM_MAX}</div>
         </div>
       </button>
     `;
