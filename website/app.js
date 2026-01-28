@@ -216,6 +216,7 @@ function enterAppFromLaunch(mode) {
     try { refreshHeaderIdentity?.(); } catch (_) {}
     setBrowserTitle('quick');
     switchToPanel('panel-game');
+    try { window.bumpPresence?.(); } catch (_) {}
     try {
       if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
     } catch (_) {}
@@ -231,6 +232,7 @@ function enterAppFromLaunch(mode) {
   try { refreshHeaderIdentity?.(); } catch (_) {}
   setBrowserTitle('tournament');
   switchToPanel('panel-home');
+  try { window.bumpPresence?.(); } catch (_) {}
 }
 
 /* =========================
@@ -273,6 +275,7 @@ function switchToPanel(panelId) {
   }
   activePanelId = targetId;
   recomputeUnreadBadges();
+  try { window.bumpPresence?.(); } catch (_) {}
 
   // Ensure the Tournament "Play" tab never shows Quick Play options.
   // In tournament mode, the Play panel should always render the tournament lobby.
@@ -1726,7 +1729,7 @@ function renderTeamModal(teamId) {
   if (!team) return;
 
   const tc = getDisplayTeamColor(team);
-  setHTML('team-modal-title', `<span class="team-title-inline" style="color:${esc(tc)}">${esc(truncateTeamName(team.teamName || 'Team'))}</span>`);
+  setHTML('team-modal-title', `<span class="team-title-inline profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" style="color:${esc(tc)}">${esc(truncateTeamName(team.teamName || 'Team'))}</span>`);
 
   const membersEl = document.getElementById('team-modal-members');
   const members = getMembers(team);
@@ -3568,6 +3571,47 @@ const PRESENCE_INACTIVE_MS = 5 * 60 * 1000;  // 5 minutes
 const PRESENCE_OFFLINE_MS = 15 * 60 * 1000;  // 15 minutes
 const PRESENCE_UPDATE_INTERVAL_MS = 60 * 1000; // Update every 1 minute
 
+
+const PRESENCE_WHERE_LABELS = {
+  menus: 'In Menus',
+  tournament: 'In Tournament',
+  lobby: 'In Lobby',
+  game: 'In Game'
+};
+
+function computeLocalPresenceWhereKey() {
+  // Launch screen (choose Quick Play / Tournament)
+  if (document.body.classList.contains('launch')) return 'menus';
+
+  // Tournament UI
+  if (document.body.classList.contains('tournament')) return 'tournament';
+
+  // Quick Play lobby/game
+  if (document.body.classList.contains('quickplay')) {
+    const phase = (typeof window.getCurrentGamePhase === 'function') ? window.getCurrentGamePhase() : null;
+    if (phase && phase !== 'waiting') return 'game';
+    return 'lobby';
+  }
+
+  return 'menus';
+}
+
+function getPresenceWhereLabel(presenceOrUserId) {
+  const presence = resolvePresenceArg(presenceOrUserId);
+  if (!presence) return '';
+  const key = (presence.whereKey || presence.where || '').toString().trim();
+  if (!key) return '';
+  return presence.whereLabel || PRESENCE_WHERE_LABELS[key] || key;
+}
+
+// Expose for game.js or other modules
+window.getPresenceWhereLabel = getPresenceWhereLabel;
+
+// Debounced helper: bump presence after UI state changes
+window.bumpPresence = throttle(() => {
+  try { updatePresence(); } catch (_) {}
+}, 3000);
+
 let presenceUnsub = null;
 let presenceCache = [];
 let presenceUpdateInterval = null;
@@ -3637,9 +3681,13 @@ async function updatePresence() {
 
   try {
     const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
+    const whereKey = computeLocalPresenceWhereKey();
     await presenceRef.set({
       odId: userId,
       name: name,
+      whereKey: whereKey,
+      whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
+      activePanelId: activePanelId,
       lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -3858,7 +3906,7 @@ function renderOnlineUsersList() {
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
-          <div class="online-user-status">active</div>
+          <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Active')}</div>
         </div>
       `;
     }
@@ -3881,7 +3929,7 @@ function renderOnlineUsersList() {
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot inactive"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
-          <div class="online-user-status">${getTimeSinceActivity(p)}</div>
+          <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Idle')} • ${getTimeSinceActivity(p)}</div>
         </div>
       `;
     }
@@ -4459,16 +4507,18 @@ function renderPlayerProfile(playerId) {
   const presenceStatus = getPresenceStatus(player.id);
   const isOnline = presenceStatus === 'online';
   const lastSeen = getPlayerLastSeen(player.id);
+  const whereLabel = getPresenceWhereLabel(player.id);
+  const statusText = isOnline ? (`Online${whereLabel ? ' — ' + whereLabel : ''}`) : 'Offline';
 
   titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
 
   bodyEl.innerHTML = `
     <div class="profile-stats">
       <div class="profile-stat-row">
-        <span class="profile-stat-label">Status</span>
+        <span class="profile-stat-label">Status<span class="profile-stat-sub">In Menus (if they're in the choose Quick Play or Tournament page), or In Tournament (if they're in the tournament page), or In Lobby (if they're in the lobby for a game), or In Game (if they're playing a codenames game)</span></span>
         <span class="profile-status ${isOnline ? 'online' : 'offline'}">
           <span class="profile-status-dot"></span>
-          ${isOnline ? 'Online' : 'Offline'}
+          ${esc(statusText)}
         </span>
       </div>
       <div class="profile-stat-row">

@@ -44,6 +44,9 @@ function getWordsForDeck(deckId) {
 }
 
 let currentGame = null;
+// Expose current game phase for presence (app.js)
+window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
+
 let gameUnsub = null;
 let challengesUnsub = null;
 let quickGamesUnsub = null;
@@ -2431,10 +2434,12 @@ function startGameListener(gameId, options = {}) {
     if (!snap.exists) {
       currentGame = null;
       showGameLobby();
+      try { window.bumpPresence?.(); } catch (_) {}
       return;
     }
 
     currentGame = { id: snap.id, ...snap.data() };
+    try { window.bumpPresence?.(); } catch (_) {}
 
     // If a game ever reaches 0 players, end it.
     if (currentGame?.type === 'quick') {
