@@ -6963,88 +6963,102 @@ body.tournament.has-team-color .input:focus {
   .game-sidebar-right.mobile-visible {
     display: flex;
     position: fixed;
+    top: 0;
     bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    width: 100%;
-    max-height: 70vh;
-    background: rgba(20, 20, 25, 0.98);
+    width: min(86vw, 392px);
+    max-width: calc(100vw - 56px);
+    background: rgba(20, 20, 25, 0.96);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     z-index: 100;
-    padding: 0;
-    border: none;
-    border-radius: 18px 18px 0 0;
-    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
-    animation: bottomSheetSlideUp 0.25s ease;
-    overflow-y: auto;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom, 0px));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    overflow: hidden;
     flex-direction: column;
+    gap: 10px;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Handle / grab indicator */
+  .game-sidebar-left.mobile-visible {
+    left: 0;
+    right: auto;
+    border-radius: 0 18px 18px 0;
+    animation: sideSheetInLeft 0.25s ease;
+  }
+
+  .game-sidebar-right.mobile-visible {
+    right: 0;
+    left: auto;
+    border-radius: 18px 0 0 18px;
+    animation: sideSheetInRight 0.25s ease;
+  }
+
+  /* Subtle grab indicator (keeps the "sheet" vibe) */
   .game-sidebar-left.mobile-visible::before,
   .game-sidebar-right.mobile-visible::before {
     content: '';
     display: block;
-    width: 36px;
+    width: 44px;
     height: 4px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 2px;
-    margin: 10px auto 2px;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    margin: 6px auto 2px;
     flex-shrink: 0;
   }
 
-  /* Remove panel chrome inside bottom sheet */
+  /* Panels keep their card feel, but get a "glass" treatment */
   .game-sidebar.mobile-visible .sidebar-panel {
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    overflow: visible;
-  }
-
-  .game-sidebar.mobile-visible .sidebar-panel + .sidebar-panel {
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    overflow: hidden;
+    min-height: 0;
   }
 
   .game-sidebar.mobile-visible .sidebar-panel-header {
-    padding: 14px 18px;
+    padding: 10px 12px;
     border-bottom-color: rgba(255, 255, 255, 0.08);
     background: transparent;
   }
 
   .game-sidebar.mobile-visible .sidebar-panel-title {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .game-sidebar.mobile-visible .team-roster-content,
   .game-sidebar.mobile-visible .clue-history-content,
   .game-sidebar.mobile-visible .operative-chat-messages,
   .game-sidebar.mobile-visible .voting-content {
-    padding: 10px 18px;
+    padding: 10px 12px;
   }
 
   .game-sidebar.mobile-visible .operative-chat-form {
-    padding: 10px 18px;
+    padding: 10px 12px;
     border-top-color: rgba(255, 255, 255, 0.08);
   }
 
   .game-sidebar.mobile-visible .voting-hint {
-    padding: 8px 18px 8px;
+    padding: 8px 12px 10px;
     border-top-color: rgba(255, 255, 255, 0.08);
   }
 
-  /* Remove max-height constraints inside bottom sheet */
+  /* Keep the sidebar itself from scrolling; let panels scroll smoothly */
+  .game-sidebar.mobile-visible {
+    overflow: hidden;
+  }
+
   .game-sidebar.mobile-visible .team-roster-panel {
-    max-height: none;
+    max-height: 40%;
   }
 
   .game-sidebar.mobile-visible .voting-panel {
-    max-height: none;
+    max-height: 35%;
   }
 
-  /* Comfortable touch targets for roster players in bottom sheet */
+  /* Comfortable touch targets in side sheets */
   .game-sidebar.mobile-visible .roster-player {
-    padding: 10px 14px;
+    padding: 10px 12px;
     font-size: 14px;
   }
 
@@ -7057,18 +7071,16 @@ body.tournament.has-team-color .input:focus {
     font-size: 12px;
   }
 
-  /* Clue history items in bottom sheet */
   .game-sidebar.mobile-visible .clue-history-item {
-    padding: 12px 14px;
+    padding: 12px 12px;
   }
 
   .game-sidebar.mobile-visible .clue-history-word {
     font-size: 17px;
   }
 
-  /* Chat messages in bottom sheet */
   .game-sidebar.mobile-visible .chat-message {
-    padding: 10px 14px;
+    padding: 10px 12px;
   }
 
   .game-sidebar.mobile-visible .chat-text {
@@ -7077,12 +7089,11 @@ body.tournament.has-team-color .input:focus {
 
   .game-sidebar.mobile-visible .chat-input {
     font-size: 15px;
-    padding: 10px 14px;
+    padding: 10px 12px;
   }
 
-  /* Voting items in bottom sheet */
   .game-sidebar.mobile-visible .voting-item {
-    padding: 12px 14px;
+    padding: 12px 12px;
   }
 
   .game-sidebar.mobile-visible .voting-word {
@@ -7093,8 +7104,7 @@ body.tournament.has-team-color .input:focus {
   .game-sidebar.mobile-visible .sidebar-panel:last-child {
     padding-bottom: env(safe-area-inset-bottom, 12px);
   }
-
-  .game-center-area {
+.game-center-area {
     grid-column: 1;
   }
 
@@ -7197,6 +7207,16 @@ body.tournament.has-team-color .input:focus {
     opacity: 1;
     transform: translateY(0);
   }
+@keyframes sideSheetInLeft {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sideSheetInRight {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 }
 
 /* Sidebar backdrop for mobile */

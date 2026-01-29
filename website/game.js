@@ -3854,11 +3854,15 @@ function renderTeamRoster() {
 ========================= */
 function toggleLeftSidebar() {
   const sidebar = document.querySelector('.game-sidebar-left');
+  const other = document.querySelector('.game-sidebar-right');
   if (!sidebar) return;
 
   if (window.innerWidth <= 1024) {
-    sidebar.classList.toggle('mobile-visible');
-    toggleSidebarBackdrop(sidebar.classList.contains('mobile-visible'));
+    const willShow = !sidebar.classList.contains('mobile-visible');
+    // Only one side sheet at a time on mobile.
+    if (willShow) other?.classList.remove('mobile-visible');
+    sidebar.classList.toggle('mobile-visible', willShow);
+    toggleSidebarBackdrop(!!document.querySelector('.game-sidebar.mobile-visible'));
   } else {
     sidebar.classList.toggle('collapsed');
   }
@@ -3866,11 +3870,15 @@ function toggleLeftSidebar() {
 
 function toggleRightSidebar() {
   const sidebar = document.querySelector('.game-sidebar-right');
+  const other = document.querySelector('.game-sidebar-left');
   if (!sidebar) return;
 
   if (window.innerWidth <= 1024) {
-    sidebar.classList.toggle('mobile-visible');
-    toggleSidebarBackdrop(sidebar.classList.contains('mobile-visible'));
+    const willShow = !sidebar.classList.contains('mobile-visible');
+    // Only one side sheet at a time on mobile.
+    if (willShow) other?.classList.remove('mobile-visible');
+    sidebar.classList.toggle('mobile-visible', willShow);
+    toggleSidebarBackdrop(!!document.querySelector('.game-sidebar.mobile-visible'));
   } else {
     sidebar.classList.toggle('collapsed');
   }
