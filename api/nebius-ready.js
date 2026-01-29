@@ -43,11 +43,6 @@ function extractTextFromContent(content) {
   }
   if (typeof content === 'object') {
     if (typeof content.text === 'string') return content.text.trim();
-    // Some providers nest the text payload.
-    if (content.text && typeof content.text === 'object') {
-      if (typeof content.text.value === 'string') return content.text.value.trim();
-      if (typeof content.text.text === 'string') return content.text.text.trim();
-    }
     if (typeof content.content === 'string') return content.content.trim();
   }
   return String(content).trim();
@@ -76,12 +71,14 @@ module.exports = async (req, res) => {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 12_000);
-    // For maximum compatibility across models/providers, send a plain string content.
-    // (Some backends accept parts but return unexpected shapes.)
-    const messages = [{
-      role: 'user',
-      content: 'Health check: reply with exactly the single word Ready. Output only Ready.'
-    }];
+    // Some models/providers are picky about the "content parts" format.
+    // For a simple readiness check, use plain string content for maximum compatibility.
+    const messages = [
+      {
+        role: 'user',
+        content: 'Reply with exactly the single word Ready. Output only: Ready',
+      },
+    ];
 
     const r = await fetch(NEBIUS_BASE, {
       method: 'POST',
@@ -93,7 +90,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model,
         temperature: 0,
-        max_tokens: 8,
+        max_tokens: 4,
         messages,
         stream: false,
       }),
@@ -121,32 +118,10 @@ module.exports = async (req, res) => {
       });
     }
 
-    // If the response body was empty or didn't contain a completion, treat as a failure so
-    // the client can surface the diagnostics instead of silently returning {text: ""}.
-    if (!data?.choices?.length) {
-      return json(res, 502, {
-        error: 'Nebius returned no completion choices',
-        text,
-        raw: data,
-        bodyText,
-        status: r.status,
-      });
-    }
-
-    // If we got choices but couldn't extract any text, treat as a failure so the client can
-    // surface diagnostics instead of silently returning {text: ""}.
-    if (!text) {
-      return json(res, 502, {
-        error: 'Nebius returned an empty completion text',
-        text,
-        raw: data,
-        bodyText,
-        status: r.status,
-      });
-    }
-
+    // Even if the provider returns an "empty" completion, don't hard-fail the endpoint.
+    // Return 200 with raw diagnostics so the client can mark yellow/red but still proceed.
     // Include raw so the browser can log what the model returned when it isn't exactly "Ready".
-    return json(res, 200, { text, raw: data });
+    return json(res, 200, { text, raw: data, bodyText });
   } catch (e) {
     return json(res, 500, { error: String(e?.message || e) });
   }
