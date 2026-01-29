@@ -148,6 +148,28 @@ let quickAutoJoinedSpectator = false;
 // Quick Play: entry prompt overlay state (when a live game is in progress)
 let qpResumeOverlayOpen = false;
 
+// Quick Play: temporary loading overlay while we attach to a live in-progress match
+let qpLoadingOverlayOpen = false;
+let qpPendingResumeOverlay = false;
+
+function showQuickPlayLoadingOverlay(text) {
+  const overlay = document.getElementById('quickplay-loading-overlay');
+  if (!overlay) return;
+  qpLoadingOverlayOpen = true;
+  const title = document.getElementById('qp-loading-title');
+  if (title) title.textContent = String(text || 'Loading…');
+  overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function hideQuickPlayLoadingOverlay() {
+  const overlay = document.getElementById('quickplay-loading-overlay');
+  if (!overlay) return;
+  qpLoadingOverlayOpen = false;
+  overlay.style.display = 'none';
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
 function initQuickPlayResumeOverlayUI() {
   const overlay = document.getElementById('quickplay-resume-overlay');
   const btnRejoin = document.getElementById('qp-resume-rejoin');
@@ -1465,6 +1487,8 @@ async function ensureQuickPlayGameExists() {
 // If a match is already in progress, show a resume/spectate prompt over the live board.
 window.enterQuickPlayFlowFromLaunch = async function enterQuickPlayFlowFromLaunch() {
   try {
+    // Show a brief loading screen while we check/attach.
+    showQuickPlayLoadingOverlay('Loading Quick Play…');
     currentPlayMode = 'quick';
     // Ensure the singleton quick play doc exists so we can check status.
     await ensureQuickPlayGameExists();
@@ -1474,18 +1498,21 @@ window.enterQuickPlayFlowFromLaunch = async function enterQuickPlayFlowFromLaunc
 
     const inProgress = !!(g && g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
     if (!inProgress) {
+      hideQuickPlayLoadingOverlay();
       hideQuickPlayResumeOverlay();
       showQuickPlayLobby();
       return;
     }
 
-    // Show the live game in the background (spectator) and prompt the user.
+    // Show the live game in the background (spectator).
+    // We keep the loading overlay up until the first snapshot renders,
+    // then we swap to the resume/spectate prompt.
+    qpPendingResumeOverlay = true;
     spectateGame(QUICKPLAY_DOC_ID);
-    showQuickPlayResumeOverlay();
-    updateQuickPlayResumeOverlayForGame(g);
   } catch (e) {
     console.warn('enterQuickPlayFlowFromLaunch failed', e);
     // Safe fallback
+    try { hideQuickPlayLoadingOverlay(); } catch (_) {}
     try { hideQuickPlayResumeOverlay(); } catch (_) {}
     try { showQuickPlayLobby(); } catch (_) {}
   }
@@ -2663,6 +2690,30 @@ function startGameListener(gameId, options = {}) {
     currentGame = { id: snap.id, ...snap.data() };
     try { window.bumpPresence?.(); } catch (_) {}
 
+    // Quick Play: if we entered via the "game in progress" path, keep a loading screen up
+    // until the first snapshot arrives, then swap to the resume/spectate prompt.
+    try {
+      if (qpLoadingOverlayOpen && snap.id === QUICKPLAY_DOC_ID) {
+        hideQuickPlayLoadingOverlay();
+      }
+      if (qpPendingResumeOverlay && snap.id === QUICKPLAY_DOC_ID) {
+        qpPendingResumeOverlay = false;
+        const inProgress = !!(currentGame && currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.winner == null);
+        if (inProgress) {
+          showQuickPlayResumeOverlay();
+          updateQuickPlayResumeOverlayForGame(currentGame);
+        } else {
+          hideQuickPlayResumeOverlay();
+          // If the game ended between click and attach, go to lobby.
+          if (currentPlayMode === 'quick') {
+            try { stopGameListener(); } catch (_) {}
+            try { showQuickPlayLobby(); } catch (_) {}
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
     // Best-effort: when a game finishes, increment player stats exactly once.
     try { applyGameResultToPlayerStatsIfNeeded(currentGame); } catch (_) {}
 
@@ -2683,6 +2734,10 @@ function stopGameListener() {
   currentGame = null;
   spectatorMode = false;
   spectatingGameId = null;
+  // Clear any Quick Play entry overlays.
+  try { qpPendingResumeOverlay = false; } catch (_) {}
+  try { hideQuickPlayLoadingOverlay(); } catch (_) {}
+  try { hideQuickPlayResumeOverlay(); } catch (_) {}
   persistGameViewState({ panel: 'panel-game', playMode: currentPlayMode, inGame: false, gameId: null, spectator: false, gameView: (currentPlayMode === 'tournament') ? 'tournamentLobby' : (currentPlayMode === 'quick' ? 'quickLobby' : 'modeSelect') });
 }
 
