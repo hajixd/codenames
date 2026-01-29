@@ -522,6 +522,19 @@
             <!-- Game Board View (shown during active game) -->
             <div id="game-board-container" class="game-container-expanded" style="display:none;">
 
+              <!-- Quick Play: If a live match is in progress when entering, show a resume/spectate overlay -->
+              <div id="quickplay-resume-overlay" class="qp-resume-overlay" style="display:none;" aria-hidden="true">
+                <div class="qp-resume-card">
+                  <div class="qp-resume-title">Game in progress</div>
+                  <div class="qp-resume-buttons">
+                    <button id="qp-resume-rejoin" class="btn primary" type="button">Rejoin</button>
+                    <button id="qp-resume-spectate" class="btn" type="button">Spectate Game</button>
+                    <button id="qp-resume-home" class="btn danger" type="button">Back to Homepage</button>
+                  </div>
+                  <div id="qp-resume-hint" class="hint" style="margin-top:10px;"></div>
+                </div>
+              </div>
+
               <!-- Enhanced Game Header with Timer -->
               <div class="game-header-expanded">
                 <div class="game-score-section">
