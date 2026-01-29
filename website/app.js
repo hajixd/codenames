@@ -236,7 +236,7 @@ function initLaunchScreen() {
   refreshNameUI();
 }
 
-function enterAppFromLaunch(mode) {
+function enterAppFromLaunch(mode, opts = {}) {
   const screen = document.getElementById('launch-screen');
   if (screen) screen.style.display = 'none';
 
@@ -265,7 +265,6 @@ function enterAppFromLaunch(mode) {
   }
 
   // TOURNAMENT
-  // - Go to the tournament home tab
   // - Normal navigation visible
   document.body.classList.remove('quickplay');
   document.body.classList.add('tournament');
@@ -274,8 +273,14 @@ function enterAppFromLaunch(mode) {
   // Apply team color/theme immediately on entry (no need to edit color).
   try { refreshHeaderIdentity?.(); } catch (_) {}
   setBrowserTitle('tournament');
-  switchToPanel('panel-home');
-  safeLSSet(LS_NAV_PANEL, 'panel-home');
+
+  // By default we land on Home, but when restoring after a refresh we let
+  // the restore logic pick the correct panel without overwriting storage.
+  if (!opts || !opts.restore) {
+    switchToPanel('panel-home');
+    safeLSSet(LS_NAV_PANEL, 'panel-home');
+  }
+
   try { window.bumpPresence?.(); } catch (_) {}
 }
 
