@@ -48,6 +48,27 @@ function extractTextFromContent(content) {
   return String(content).trim();
 }
 
+function extractTextFromChoice(choice) {
+  if (!choice) return '';
+  // Non-streaming style
+  if (choice.message && choice.message.content != null) {
+    return extractTextFromContent(choice.message.content);
+  }
+  // Streaming style (delta)
+  if (choice.delta && choice.delta.content != null) {
+    return extractTextFromContent(choice.delta.content);
+  }
+  // Some providers include "text" at the top level
+  if (choice.text != null) {
+    return extractTextFromContent(choice.text);
+  }
+  // Fallback: sometimes content is nested oddly
+  if (choice.content != null) {
+    return extractTextFromContent(choice.content);
+  }
+  return '';
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -90,7 +111,8 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model,
         temperature: 0,
-        max_tokens: 4,
+        // Give enough room for the single word response across tokenizers.
+        max_tokens: 8,
         messages,
         stream: false,
       }),
@@ -106,8 +128,8 @@ module.exports = async (req, res) => {
     } catch (_) {
       data = {};
     }
-    const rawContent = data?.choices?.[0]?.message?.content;
-    const text = extractTextFromContent(rawContent);
+    const choice0 = data?.choices?.[0];
+    const text = extractTextFromChoice(choice0);
 
     if (!r.ok) {
       return json(res, r.status, {
