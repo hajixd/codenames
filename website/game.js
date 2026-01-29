@@ -327,6 +327,9 @@ async function verifyAiReady(team, aiId, model) {
     if (text === 'Ready') {
       await updateAiInLobby(team, aiId, { aiStatus: 'green', ready: true });
     } else {
+      // When a model returns something other than exactly "Ready", surface it for debugging.
+      // (We still mark yellow so the UI reflects "not ready".)
+      console.warn('AI ready check returned (expected "Ready"):', text);
       await updateAiInLobby(team, aiId, { aiStatus: 'yellow', ready: false, lastReadyText: text.slice(0, 120) });
     }
   } catch (e) {
@@ -1681,12 +1684,25 @@ function renderQuickLobby(game) {
       const playerId = p.odId || '';
       const isAI = !!p?.isAI;
       const aiStatus = String(p?.aiStatus || 'none');
-      const aiDot = isAI ? `<span class="qp-ai-dot ${aiStatus === 'green' ? 'green' : aiStatus === 'yellow' ? 'yellow' : aiStatus === 'red' ? 'red' : ''}"></span>` : '';
-      const aiChip = isAI ? `<span class="qp-ai-chip">${aiDot}<span>AI</span><span style="opacity:0.65; font-weight:800;">${escapeHtml(String(p?.aiMode || '').toUpperCase() || 'AUTO')}</span></span>` : '';
+      const statusClass = (aiStatus === 'green' ? 'green' : aiStatus === 'yellow' ? 'yellow' : aiStatus === 'red' ? 'red' : '');
+      const aiDot = isAI ? `<span class="qp-ai-dot ${statusClass}"></span>` : '';
+
+      // AI rows are rendered as a single compact chip (so we never show a blank/odd name row).
+      if (isAI) {
+        const modeTxt = escapeHtml(String(p?.aiMode || 'autonomous').toUpperCase());
+        const aiName = escapeHtml(String(p?.name || 'AI'));
+        const aiChip = `<span class="qp-ai-chip">${aiDot}<span class="qp-ai-tag">AI</span><span class="qp-ai-mode">${modeTxt}</span><span class="qp-ai-name">${aiName}</span></span>`;
+        return `
+          <div class="quick-player qp-ai-player ${ready ? 'ready' : ''}">
+            ${aiChip}
+            <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
+          </div>
+        `;
+      }
+
       return `
         <div class="quick-player ${ready ? 'ready' : ''}">
           <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
-          ${isAI ? aiChip : ''}
           <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         </div>
       `;

@@ -2548,16 +2548,20 @@ body.mode-joiner .only-joiner{ display:block; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.3px;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.06);
   color: rgba(255,255,255,0.78);
   flex: 0 0 auto;
 }
+
+.qp-ai-chip .qp-ai-tag{ opacity: 0.9; }
+.qp-ai-chip .qp-ai-mode{ opacity: 0.65; font-weight: 900; }
+.qp-ai-chip .qp-ai-name{ opacity: 0.8; font-weight: 800; font-size: 9.5px; }
 
 .qp-ai-dot{
   width: 8px;
