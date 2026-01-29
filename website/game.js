@@ -47,6 +47,21 @@ let currentGame = null;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
+// Best-effort local resume: remember the last active game so a page refresh can jump straight back in.
+// NOTE: This is purely device-local (localStorage) and does not write anything to Firestore.
+window.restoreLastGameFromStorage = function restoreLastGameFromStorage() {
+  try {
+    const gameId = (typeof safeLSGet === 'function' ? safeLSGet(LS_ACTIVE_GAME_ID) : (localStorage.getItem(LS_ACTIVE_GAME_ID) || ''));
+    const spectator = (typeof safeLSGet === 'function' ? safeLSGet(LS_ACTIVE_GAME_SPECTATOR) : (localStorage.getItem(LS_ACTIVE_GAME_SPECTATOR) || ''));
+    const gid = String(gameId || '').trim();
+    if (!gid) return;
+    const isSpec = String(spectator || '') === '1';
+    startGameListener(gid, { spectator: isSpec });
+  } catch (e) {
+    console.warn('restoreLastGameFromStorage failed (best-effort)', e);
+  }
+};
+
 /* =========================
    Player Stats (Wins/Losses)
    - Stored on players/<userId>: gamesPlayed, wins, losses
@@ -2479,6 +2494,17 @@ function startGameListener(gameId, options = {}) {
   spectatorMode = !!options.spectator;
   spectatingGameId = spectatorMode ? gameId : null;
 
+  // Persist last active game (device-local) for refresh resume.
+  try {
+    if (typeof safeLSSet === 'function') {
+      safeLSSet(LS_ACTIVE_GAME_ID, String(gameId || ''));
+      safeLSSet(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
+    } else {
+      localStorage.setItem(LS_ACTIVE_GAME_ID, String(gameId || ''));
+      localStorage.setItem(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
+    }
+  } catch (_) {}
+
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
     if (!snap.exists) {
       currentGame = null;
@@ -2488,6 +2514,16 @@ function startGameListener(gameId, options = {}) {
     }
 
     currentGame = { id: snap.id, ...snap.data() };
+    // Keep resume info fresh in case the game id changes due to edge cases.
+    try {
+      if (typeof safeLSSet === 'function') {
+        safeLSSet(LS_ACTIVE_GAME_ID, String(currentGame?.id || ''));
+        safeLSSet(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
+      } else {
+        localStorage.setItem(LS_ACTIVE_GAME_ID, String(currentGame?.id || ''));
+        localStorage.setItem(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
+      }
+    } catch (_) {}
     try { window.bumpPresence?.(); } catch (_) {}
 
     // Best-effort: when a game finishes, increment player stats exactly once.
@@ -2510,6 +2546,12 @@ function stopGameListener() {
   currentGame = null;
   spectatorMode = false;
   spectatingGameId = null;
+
+  // Clear resume info when the user intentionally leaves the game.
+  try {
+    localStorage.removeItem(LS_ACTIVE_GAME_ID);
+    localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR);
+  } catch (_) {}
 }
 
 /* =========================

@@ -30,6 +30,9 @@ const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
 const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
+// Game resume keys (game.js owns the values; app.js only triggers restore)
+const LS_ACTIVE_GAME_ID = 'ct_activeGameId_v1';
+const LS_ACTIVE_GAME_SPECTATOR = 'ct_activeGameSpectator_v1';
 // Account model:
 // - Accounts are keyed by normalized player name so "same name" = same account across devices.
 // - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
@@ -84,6 +87,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initProfileDetailsModal();
   listenToTeams();
   listenToPlayers();
+
+  // Restore the last mode + tab (device-local) so refresh doesn't kick the user back to the launch/sign-in flow.
+  // This is best-effort and intentionally avoids any database writes.
+  try { restoreLastNavigation(); } catch (e) { console.warn('Failed to restore navigation (best-effort)', e); }
 
   // If user already has a name, proactively merge any case-insensitive duplicates
   if (getUserName()) {
@@ -150,6 +157,8 @@ function showLaunchScreen() {
 }
 
 function returnToLaunchScreen() {
+  // Logo = "start over". Clear any device-local resume state so a refresh doesn't jump back into the previous mode.
+  clearLastNavigation();
   // Show loading screen during navigation transition
   showAuthLoadingScreen();
   setTimeout(() => {
@@ -239,6 +248,9 @@ function enterAppFromLaunch(mode) {
   // - Full-screen lobby/game
   // - No tabs (top band stays)
   if (mode === 'quick') {
+    // Persist mode so a refresh keeps the user in Quick Play.
+    safeLSSet(LS_NAV_MODE, 'quick');
+    safeLSSet(LS_NAV_PANEL, 'panel-game');
     document.body.classList.add('quickplay');
     document.body.classList.remove('tournament');
     // Ensure any tournament-only chrome (team glow/text) is off.
@@ -257,10 +269,13 @@ function enterAppFromLaunch(mode) {
   // - Normal navigation visible
   document.body.classList.remove('quickplay');
   document.body.classList.add('tournament');
+  // Persist mode so a refresh keeps the user in Tournament.
+  safeLSSet(LS_NAV_MODE, 'tournament');
   // Apply team color/theme immediately on entry (no need to edit color).
   try { refreshHeaderIdentity?.(); } catch (_) {}
   setBrowserTitle('tournament');
   switchToPanel('panel-home');
+  safeLSSet(LS_NAV_PANEL, 'panel-home');
   try { window.bumpPresence?.(); } catch (_) {}
 }
 
@@ -306,6 +321,10 @@ function switchToPanel(panelId) {
   recomputeUnreadBadges();
   try { window.bumpPresence?.(); } catch (_) {}
 
+  // Persist the user's last-viewed panel in Tournament mode (and mode itself), so refresh restores it.
+  // In Quick Play we still store the mode so the launch screen is skipped on refresh.
+  persistLastNavigation();
+
   // Ensure the Tournament "Play" tab never shows Quick Play options.
   // In tournament mode, the Play panel should always render the tournament lobby.
   if (targetId === 'panel-game') {
@@ -318,6 +337,66 @@ function switchToPanel(panelId) {
       }
     } catch (_) {}
   }
+}
+
+/* =========================
+   Device-local navigation restore
+========================= */
+
+function clearLastNavigation() {
+  try { localStorage.removeItem(LS_NAV_MODE); } catch (_) {}
+  try { localStorage.removeItem(LS_NAV_PANEL); } catch (_) {}
+  // Also clear any "resume game" hint (game.js will re-set this when a game is joined).
+  try { localStorage.removeItem(LS_ACTIVE_GAME_ID); } catch (_) {}
+  try { localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR); } catch (_) {}
+}
+
+function persistLastNavigation() {
+  try {
+    if (document.body.classList.contains('tournament')) {
+      safeLSSet(LS_NAV_MODE, 'tournament');
+      safeLSSet(LS_NAV_PANEL, activePanelId || 'panel-home');
+      return;
+    }
+    if (document.body.classList.contains('quickplay')) {
+      safeLSSet(LS_NAV_MODE, 'quick');
+      safeLSSet(LS_NAV_PANEL, 'panel-game');
+      return;
+    }
+    // Launch mode: don't persist a resume target.
+  } catch (_) {}
+}
+
+function restoreLastNavigation() {
+  const mode = (safeLSGet(LS_NAV_MODE) || '').trim();
+  if (!mode) return;
+
+  // If they haven't set a name yet, don't auto-enter a mode.
+  const name = (getUserName() || '').trim();
+  if (!name) {
+    clearLastNavigation();
+    return;
+  }
+
+  // Avoid showing the launch screen when we know where the user was.
+  showAuthLoadingScreen('Restoring');
+
+  // Let the DOM settle, then restore.
+  setTimeout(() => {
+    try {
+      enterAppFromLaunch(mode === 'tournament' ? 'tournament' : 'quick');
+
+      if (mode === 'tournament') {
+        const savedPanel = (safeLSGet(LS_NAV_PANEL) || 'panel-home').trim();
+        if (savedPanel) switchToPanel(savedPanel);
+      }
+
+      // If the user was in an active game, resume it (best-effort).
+      try { window.restoreLastGameFromStorage?.(); } catch (_) {}
+    } finally {
+      hideAuthLoadingScreen();
+    }
+  }, 0);
 }
 
 /* =========================
