@@ -6441,6 +6441,7 @@ body.tournament.has-team-color .input:focus {
 }
 
 .game-center-area .game-card {
+  aspect-ratio: unset;
   display: flex;
   align-items: center;
   justify-content: center;
