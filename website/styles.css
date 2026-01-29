@@ -2465,23 +2465,24 @@ body.mode-joiner .only-joiner{ display:block; }
 /* Quick Play: choose Operatives vs Spymasters inside the team box */
 /* These are used as section headers (clickable), not a separate row of buttons. */
 .quick-seat-choice{
-  /* Section headers (Spymasters / Operatives) should read like headers, not like player "pills". */
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 900;
   font-size: 12px;
   letter-spacing: 0.35px;
   padding: 4px 2px;
-  border-radius: 0;
+  border-radius: 8px;
   background: transparent;
   border: none;
   user-select: none;
   cursor: pointer;
   opacity: 0.85;
-  transition: opacity 120ms ease, color 120ms ease;
+  transition: opacity 120ms ease, color 120ms ease, text-decoration-color 120ms ease;
 }
+.quick-seat-choice:focus
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
 .quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
@@ -2508,6 +2509,18 @@ body.mode-joiner .only-joiner{ display:block; }
 .quick-role-title{
   /* When combined with .quick-seat-choice this becomes the clickable section header */
   margin-bottom: 10px;
+}
+
+
+/* Quick Play: header row now contains a seat button + a separate +AI button */
+.quick-role-title{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.quick-role-title .btn.tiny.qp-add-ai{
+  flex: 0 0 auto;
 }
 
 /* Quick Play AI controls */
