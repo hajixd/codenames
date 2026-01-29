@@ -27,6 +27,28 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Nebius can return message.content as either a string or an array of content parts.
+function extractTextFromContent(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((c) => {
+        if (!c) return '';
+        if (typeof c === 'string') return c;
+        if (typeof c === 'object') return String(c.text || c.content || '');
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+  if (typeof content === 'object') {
+    if (typeof content.text === 'string') return content.text.trim();
+    if (typeof content.content === 'string') return content.content.trim();
+  }
+  return String(content).trim();
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -55,7 +77,11 @@ module.exports = async (req, res) => {
   const safeMessages = messages
     .filter(m => m && typeof m === 'object' && typeof m.role === 'string')
     .slice(0, 24)
-    .map(m => ({ role: String(m.role), content: String(m.content || '') }));
+    .map(m => {
+      const c = m.content;
+      const content = (typeof c === 'string' || Array.isArray(c)) ? c : String(c || '');
+      return { role: String(m.role), content };
+    });
 
   try {
     const controller = new AbortController();
@@ -85,7 +111,8 @@ module.exports = async (req, res) => {
     }
 
     const content = data?.choices?.[0]?.message?.content ?? '';
-    return json(res, 200, { content, raw: data });
+    const text = extractTextFromContent(content);
+    return json(res, 200, { content, text, raw: data });
   } catch (e) {
     return json(res, 500, { error: String(e?.message || e) });
   }

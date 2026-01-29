@@ -329,7 +329,11 @@ async function verifyAiReady(team, aiId, model) {
     } else {
       // When a model returns something other than exactly "Ready", surface it for debugging.
       // (We still mark yellow so the UI reflects "not ready".)
-      console.warn('AI ready check returned (expected "Ready"):', text);
+      if (text) {
+        console.warn('AI ready check returned (expected "Ready"):', text);
+      } else {
+        console.warn('AI ready check returned empty content; full response:', data);
+      }
       await updateAiInLobby(team, aiId, { aiStatus: 'yellow', ready: false, lastReadyText: text.slice(0, 120) });
     }
   } catch (e) {
@@ -1147,9 +1151,13 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
 
   for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
     const status = presenceMap.get(p.odId);
-    // Remove players who are inactive or offline (or not in presence at all)
-    // Remove players who are idle or offline (or not in presence at all)
-    if (!status || status === 'idle' || status === 'offline') {
+    // Never auto-remove AI players (they have no presence heartbeat).
+    if (p && p.isAI) continue;
+
+    // Remove players who are idle/offline. We DO NOT remove users just because
+    // their presence is missing, since presence can be briefly absent during
+    // reloads / network hiccups.
+    if (status === 'idle' || status === 'offline') {
       inactivePlayers.push(p.odId);
     }
   }

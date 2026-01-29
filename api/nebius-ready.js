@@ -26,6 +26,28 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Nebius models may return message.content as either a string or a "content parts" array.
+function extractTextFromContent(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((c) => {
+        if (!c) return '';
+        if (typeof c === 'string') return c;
+        if (typeof c === 'object') return String(c.text || c.content || '');
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+  if (typeof content === 'object') {
+    if (typeof content.text === 'string') return content.text.trim();
+    if (typeof content.content === 'string') return content.content.trim();
+  }
+  return String(content).trim();
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -70,7 +92,8 @@ module.exports = async (req, res) => {
     clearTimeout(t);
 
     const data = await r.json().catch(() => ({}));
-    const text = String(data?.choices?.[0]?.message?.content || '').trim();
+    const rawContent = data?.choices?.[0]?.message?.content;
+    const text = extractTextFromContent(rawContent);
 
     if (!r.ok) {
       return json(res, r.status, { error: data?.error?.message || data?.error || 'Nebius request failed', text });
