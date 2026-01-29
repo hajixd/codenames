@@ -4330,6 +4330,7 @@ button.player-tag.pill-action:disabled{
 .game-container-compact .game-board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
   gap: 6px;
   width: 100%;
   max-width: min(100%, calc((100dvh - 280px) * 1.25)); /* Maintain aspect ratio */
@@ -6434,7 +6435,7 @@ body.tournament.has-team-color .input:focus {
   grid-template-rows: repeat(5, 1fr);
   gap: 7px;
   width: 100%;
-  height: 100%;
+  aspect-ratio: 5 / 4;
   max-width: min(100%, calc((100dvh - 220px) * 1.2));
   max-height: 100%;
 }
