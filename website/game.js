@@ -179,10 +179,34 @@ function formatQuickRules(settings) {
   return `Deck: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
 }
 
-// Rule agreement was removed: Quick Play settings apply immediately (or to the next round)
-// without a negotiation/acceptance step.
-function quickRulesAreAgreed(_game) { return true; }
-function teamHasAgreed(_game, _team) { return true; }
+function quickRulesAreAgreed(game) {
+  const accepted = game?.settingsAccepted || {};
+  const hasPending = !!game?.settingsPending;
+
+  // Check if teams are empty - empty teams auto-DISAGREE (can't agree if no one is there)
+  const redPlayers = Array.isArray(game?.redPlayers) ? game.redPlayers : [];
+  const bluePlayers = Array.isArray(game?.bluePlayers) ? game.bluePlayers : [];
+  const redEmpty = redPlayers.length === 0;
+  const blueEmpty = bluePlayers.length === 0;
+
+  // A team must have players AND have explicitly accepted to be considered "agreed"
+  const redAgreed = !!accepted.red && !redEmpty;
+  const blueAgreed = !!accepted.blue && !blueEmpty;
+
+  return redAgreed && blueAgreed && !hasPending;
+}
+
+// Check if a specific team has agreed to the current rules
+function teamHasAgreed(game, team) {
+  const accepted = game?.settingsAccepted || {};
+  const hasPending = !!game?.settingsPending;
+  const players = Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
+  const isEmpty = players.length === 0;
+
+  // A team must have players AND have explicitly accepted to be "agreed"
+  // Empty teams auto-disagree
+  return !!accepted[team] && !isEmpty && !hasPending;
+}
 
 // Check if a team is fully ready (all players ready)
 function teamIsFullyReady(game, team) {
@@ -402,34 +426,13 @@ function initGameUI() {
   document.getElementById('quick-ready-btn')?.addEventListener('click', quickReadyOrJoin);
   document.getElementById('quick-leave-btn')?.addEventListener('click', leaveQuickLobby);
 
-  // Quick Play settings
+  // Quick Play settings & rule negotiation
   document.getElementById('quick-settings-btn')?.addEventListener('click', openQuickSettingsModal);
   document.getElementById('quick-settings-close')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-backdrop')?.addEventListener('click', closeQuickSettingsModal);
-  document.getElementById('quick-settings-apply')?.addEventListener('click', applyQuickSettingsFromModal);
-
-  // Quick Play AI (anyone can add)
-  document.querySelectorAll('.ai-add-btn')?.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const team = btn.getAttribute('data-team');
-      const seat = btn.getAttribute('data-seat');
-      addQuickAI(team, seat);
-    });
-  });
-
-  // Remove AI buttons (rendered dynamically in lobby lists)
-  document.getElementById('quick-setup')?.addEventListener('click', (e) => {
-    const t = e.target;
-    if (!t) return;
-    if (t.classList && t.classList.contains('ai-remove-btn')) {
-      e.preventDefault();
-      e.stopPropagation();
-      const id = t.getAttribute('data-ai-id');
-      if (id) removeQuickAI(id);
-    }
-  });
+  document.getElementById('quick-settings-offer')?.addEventListener('click', offerQuickRulesFromModal);
+  document.getElementById('quick-settings-accept')?.addEventListener('click', acceptQuickRulesFromModal);
+  document.getElementById('quick-rules-accept-btn')?.addEventListener('click', acceptQuickRulesInline);
 
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
@@ -769,7 +772,7 @@ function openQuickSettingsModal() {
 
   // Fill current values from the live lobby if we have it.
   const g = quickLobbyGame;
-  const s = getQuickSettings(g);
+  const s = g?.settingsPending?.settings ? g.settingsPending.settings : getQuickSettings(g);
 
   const blackCardsEl = document.getElementById('qp-black-cards');
   const clueTimerEl = document.getElementById('qp-clue-timer');
@@ -796,61 +799,233 @@ function closeQuickSettingsModal() {
 }
 
 function updateQuickRulesUI(game) {
-  // We keep the old function name to minimize churn: it now just updates the
-  // small "Settings" summary in the lobby (no rule agreement/negotiation).
+  const summaryEl = document.getElementById('quick-rules-summary');
   const summaryTextEl = document.getElementById('quick-rules-text');
+  const summaryBadgeEl = document.getElementById('quick-rules-badge');
+  const acceptInline = document.getElementById('quick-rules-accept-btn');
   const hintEl = document.getElementById('quick-lobby-hint');
 
-  const s = getQuickSettings(game);
-  const summary = formatQuickRules(s);
-  if (summaryTextEl) summaryTextEl.textContent = summary;
-  if (hintEl) hintEl.textContent = '';
+  const modalStatus = document.getElementById('quick-settings-status');
+  const offerBtn = document.getElementById('quick-settings-offer');
+  const acceptBtn = document.getElementById('quick-settings-accept');
+
+  // Negotiation UI (inside settings modal)
+  const negWrap = document.getElementById('qp-negotiation');
+  const negChip = document.getElementById('qp-neg-chip');
+  const negRed = document.getElementById('qp-neg-red');
+  const negBlue = document.getElementById('qp-neg-blue');
+  const negRedState = document.getElementById('qp-neg-red-state');
+  const negBlueState = document.getElementById('qp-neg-blue-state');
+  const negPreview = document.getElementById('qp-neg-preview');
+
+  const odId = getUserId();
+  const myRole = game ? getQuickPlayerRole(game, odId) : null;
+  const myTeam = (myRole === 'red' || myRole === 'blue') ? myRole : null;
+  const accepted = (game?.settingsAccepted && typeof game.settingsAccepted === 'object') ? game.settingsAccepted : { red: false, blue: false };
+  const pending = game?.settingsPending || null;
+  const agreed = quickRulesAreAgreed(game);
+
+  // Determine a UI state string we can reuse across multiple widgets
+  let uiState = 'needs';
+  if (!myTeam) uiState = 'no-team';
+  else if (agreed) uiState = 'agreed';
+  else if (pending && pending.by === 'red') uiState = 'pending-red';
+  else if (pending && pending.by === 'blue') uiState = 'pending-blue';
+
+  // Summary line
+  const summaryText = (pending && pending.settings)
+    ? `Offer from ${(String(pending.by || 'red')).toUpperCase()}: ${formatQuickRules(pending.settings)}`
+    : `Rules: ${formatQuickRules(getQuickSettings(game))}${agreed ? ' (Agreed)' : ' (Needs agreement)'}`;
+  if (summaryTextEl) {
+    summaryTextEl.textContent = summaryText;
+    summaryTextEl.classList.toggle('rules-agreed', agreed);
+  } else if (summaryEl) {
+    summaryEl.textContent = summaryText;
+    summaryEl.classList.toggle('rules-agreed', agreed);
+  }
+
+  // Summary badge
+  if (summaryBadgeEl) {
+    summaryBadgeEl.dataset.state = uiState;
+    if (uiState === 'agreed') summaryBadgeEl.textContent = 'Agreed';
+    else if (uiState === 'no-team') summaryBadgeEl.textContent = 'Pick a team';
+    else if (uiState === 'pending-red') summaryBadgeEl.textContent = 'Offer: Red';
+    else if (uiState === 'pending-blue') summaryBadgeEl.textContent = 'Offer: Blue';
+    else summaryBadgeEl.textContent = 'Needs OK';
+  }
+
+  // Inline accept button
+  const canAccept = !!(pending && myTeam && pending.by && pending.by !== myTeam && !accepted[myTeam]);
+  if (acceptInline) acceptInline.style.display = canAccept ? 'inline-flex' : 'none';
+
+  // Lobby hint
+  if (hintEl) {
+    if (!myTeam) {
+      hintEl.textContent = '';
+    } else if (pending) {
+      hintEl.textContent = canAccept
+        ? 'New rules offered — accept (or counter-offer) in Settings.'
+        : 'Waiting for the other team to accept rules…';
+    } else if (!agreed) {
+      hintEl.textContent = 'Open Settings and offer rules to the other team.';
+    } else {
+      hintEl.textContent = '';
+    }
+  }
+
+  // Modal controls
+  if (offerBtn) offerBtn.disabled = !myTeam;
+  if (acceptBtn) acceptBtn.style.display = canAccept ? 'inline-flex' : 'none';
+  if (modalStatus) {
+    if (!myTeam) {
+      modalStatus.textContent = 'Join a team to offer or accept rules.';
+    } else if (pending) {
+      const by = String(pending.by || 'red').toUpperCase();
+      modalStatus.textContent = canAccept
+        ? `Rules offered by ${by}. Accept, or change settings and send a counter-offer.`
+        : `Your team has an offer active. Waiting for the other team to accept.`;
+    } else if (!agreed) {
+      modalStatus.textContent = 'Send an offer from your team. The other team must accept before you can ready up.';
+    } else {
+      modalStatus.textContent = 'Rules are agreed. If you change anything, send a new offer.';
+    }
+  }
+
+  // Negotiation widget in modal
+  if (negWrap) negWrap.dataset.state = uiState;
+  if (negChip) {
+    if (uiState === 'agreed') negChip.textContent = 'Agreed';
+    else if (uiState === 'no-team') negChip.textContent = 'Join a team';
+    else if (uiState === 'pending-red') negChip.textContent = canAccept ? 'Incoming offer (Red)' : 'Offer pending (Red)';
+    else if (uiState === 'pending-blue') negChip.textContent = canAccept ? 'Incoming offer (Blue)' : 'Offer pending (Blue)';
+    else negChip.textContent = 'Needs agreement';
+  }
+
+  const redAccepted = !!accepted.red;
+  const blueAccepted = !!accepted.blue;
+  if (negRed) negRed.dataset.accepted = redAccepted ? 'true' : 'false';
+  if (negBlue) negBlue.dataset.accepted = blueAccepted ? 'true' : 'false';
+  if (negRedState) negRedState.textContent = !myTeam && !pending && !agreed ? '—' : (redAccepted ? 'Accepted' : 'Waiting');
+  if (negBlueState) negBlueState.textContent = !myTeam && !pending && !agreed ? '—' : (blueAccepted ? 'Accepted' : 'Waiting');
+
+  // Preview pills
+  if (negPreview) {
+    const s = (pending && pending.settings) ? pending.settings : getQuickSettings(game);
+    const pills = [];
+    if (pending && pending.by) {
+      const by = String(pending.by);
+      pills.push(`<span class="qp-neg-pill ${by === 'red' ? 'red' : 'blue'}">Offered by ${by.toUpperCase()}</span>`);
+    } else if (agreed) {
+      pills.push('<span class="qp-neg-pill teal">Locked in</span>');
+    }
+    const deckMeta = getDeckMeta(s.deckId || 'standard');
+    pills.push(`<span class="qp-neg-pill ${deckMeta.tone}">${deckMeta.emoji} ${deckMeta.label}</span>`);
+    const black = Number(s.blackCards ?? 1);
+    pills.push(`<span class="qp-neg-pill slate">Assassins: ${black}</span>`);
+    const clue = Number(s.clueTimerSeconds ?? 0);
+    const guess = Number(s.guessTimerSeconds ?? 0);
+    pills.push(`<span class="qp-neg-pill purple">Clue: ${clue === 0 ? '∞' : `${clue}s`}</span>`);
+    pills.push(`<span class="qp-neg-pill teal">Guess: ${guess === 0 ? '∞' : `${guess}s`}</span>`);
+    negPreview.innerHTML = pills.join('');
+  }
+
+  // Button copy tweaks to make the offer/accept flow feel more intentional
+  if (offerBtn) {
+    if (!myTeam) offerBtn.textContent = 'Join a team to offer';
+    else if (pending && pending.by === myTeam) offerBtn.textContent = 'Offer sent';
+    else if (pending && pending.by && pending.by !== myTeam) offerBtn.textContent = canAccept ? 'Counter-offer' : 'Send offer';
+    else offerBtn.textContent = 'Send offer';
+  }
 }
 
-async function applyQuickSettingsFromModal() {
-  const settings = readQuickSettingsFromUI();
+async function offerQuickRulesFromModal() {
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-
+  const odId = getUserId();
+  const settings = readQuickSettingsFromUI();
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('Lobby not found');
-      const g = snap.data();
+      const game = snap.data();
+      if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
+      const role = getQuickPlayerRole(game, odId);
+      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to offer rules.');
 
-      // Settings apply to the next round. If we're still in the lobby, also
-      // clear ready states so everyone re-readies with the new settings.
-      const updates = {
-        quickSettings: { ...settings },
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      };
+      const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
+      const nextBlue = (game.bluePlayers || []).map(p => ({ ...p, ready: false }));
 
-      if (g.currentPhase === 'waiting') {
-        // Everyone (including bots) re-readies after a settings change.
-        updates.redPlayers = (g.redPlayers || []).map(p => ({ ...p, ready: false }));
-        updates.bluePlayers = (g.bluePlayers || []).map(p => ({ ...p, ready: false }));
-      }
-
-      tx.update(ref, updates);
+      tx.update(ref, {
+        settingsPending: { by: role, settings, createdAt: firebase.firestore.FieldValue.serverTimestamp() },
+        settingsAccepted: { red: role === 'red', blue: role === 'blue' },
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        log: firebase.firestore.FieldValue.arrayUnion(`${role.toUpperCase()} offered rules: ${formatQuickRules(settings)}`)
+      });
     });
-
-    closeQuickSettingsModal();
-
-    // Best-effort: re-run ready handshakes for any bots after settings changes.
-    if (hasNebiusKeyConfigured()) {
-      const snap = await ref.get().catch(() => null);
-      const g = snap?.exists ? snap.data() : null;
-      if (g) {
-        const bots = [...(g.redPlayers || []), ...(g.bluePlayers || [])].filter(p => (p?.isAI || String(p?.odId||'').startsWith('ai_')));
-        for (const b of bots) {
-          const t = (g.redPlayers || []).some(p => p?.odId === b?.odId) ? 'red' : 'blue';
-          aiReadyHandshake(QUICKPLAY_DOC_ID, t, b.odId, b.name).catch(() => {});
-        }
-      }
-    }
   } catch (e) {
-    console.error('Apply settings failed:', e);
-    alert(e.message || 'Failed to apply settings.');
+    console.error('Offer rules failed:', e);
+    alert(e.message || 'Failed to offer rules.');
   }
+}
+
+async function acceptQuickRules(updateOnly = false) {
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const odId = getUserId();
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Lobby not found');
+      const game = snap.data();
+      if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
+
+      const role = getQuickPlayerRole(game, odId);
+      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to accept rules.');
+
+      const pending = game.settingsPending;
+      if (!pending || !pending.settings) throw new Error('No rules to accept.');
+      if (pending.by === role) throw new Error('Your team already offered these rules.');
+
+      const accepted = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? { ...game.settingsAccepted } : { red: false, blue: false };
+      accepted[role] = true;
+
+      const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
+      const nextBlue = (game.bluePlayers || []).map(p => ({ ...p, ready: false }));
+
+      const bothAccepted = !!accepted.red && !!accepted.blue;
+      if (bothAccepted) {
+        tx.update(ref, {
+          quickSettings: { ...pending.settings },
+          settingsPending: null,
+          settingsAccepted: { red: true, blue: true },
+          redPlayers: nextRed,
+          bluePlayers: nextBlue,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          log: firebase.firestore.FieldValue.arrayUnion('Rules agreed. Everyone must ready up.')
+        });
+      } else {
+        tx.update(ref, {
+          settingsAccepted: accepted,
+          redPlayers: nextRed,
+          bluePlayers: nextBlue,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          log: firebase.firestore.FieldValue.arrayUnion(`${role.toUpperCase()} accepted the rules offer.`)
+        });
+      }
+    });
+    if (!updateOnly) closeQuickSettingsModal();
+  } catch (e) {
+    console.error('Accept rules failed:', e);
+    alert(e.message || 'Failed to accept rules.');
+  }
+}
+
+function acceptQuickRulesInline() {
+  acceptQuickRules(true);
+}
+
+function acceptQuickRulesFromModal() {
+  acceptQuickRules(false);
 }
 
 /* =========================
@@ -1039,10 +1214,13 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
         redPlayers: nextRed,
         bluePlayers: nextBlue,
         spectators: nextSpec,
+        // Reset rule agreement when someone goes offline
+        settingsAccepted: { red: false, blue: false },
+        settingsPending: null,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby.`);
+      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby. Rules reset.`);
     });
   } catch (e) {
     console.warn('Failed to remove inactive players:', e);
@@ -1129,6 +1307,9 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
       guessTimerSeconds: settings.guessTimerSeconds,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
     },
+    // Negotiation state: one team offers rules, the other accepts.
+    settingsPending: null,
+    settingsAccepted: { red: false, blue: false },
     log: [],
     winner: null,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1163,6 +1344,8 @@ async function ensureQuickPlayGameExists() {
       deckId: 'standard',
     };
   }
+  if (!g.settingsAccepted) updates.settingsAccepted = { red: false, blue: false };
+  if (typeof g.settingsPending === 'undefined') updates.settingsPending = null;
   if (typeof g.activeJoinOn === 'undefined') updates.activeJoinOn = true;
   if (Object.keys(updates).length) {
     await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -1231,12 +1414,29 @@ async function joinQuickLobby(role, seatRole) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
-      // If this is the first player entering an empty lobby, seed settings from UI.
-      // Settings can be edited by anyone from the Settings modal.
+      // Rule negotiation: a team offers settings, the other team accepts.
+      // If the lobby is fresh (or has no agreed rules yet), auto-create a default offer
+      // from the first team member to join.
       const prevCount = redPlayers.length + bluePlayers.length + spectators.length;
+      const myTeam = (role === 'red' || role === 'blue') ? role : null;
+      const accepted = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? game.settingsAccepted : { red: false, blue: false };
+      const hasPending = !!game.settingsPending;
+
       if (prevCount === 0) {
         const ui = readQuickSettingsFromUI();
         updates.quickSettings = { ...ui };
+        // Reset acceptance for a new lobby
+        updates.settingsAccepted = { red: false, blue: false };
+        updates.settingsPending = null;
+      }
+
+      // If there is no pending offer and both teams haven't accepted rules yet,
+      // have the first team member create an offer (using current rules as the base).
+      if (myTeam && !hasPending && !(accepted.red && accepted.blue)) {
+        const base = (prevCount === 0) ? readQuickSettingsFromUI() : getQuickSettings(game);
+        const offer = { by: myTeam, settings: base, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+        updates.settingsPending = offer;
+        updates.settingsAccepted = { red: myTeam === 'red', blue: myTeam === 'blue' };
       }
 
       tx.update(ref, updates);
@@ -1252,770 +1452,6 @@ async function joinQuickLobby(role, seatRole) {
   } catch (e) {
     console.error('Failed to join Quick Play lobby:', e);
     alert(e.message || 'Failed to join lobby.');
-  }
-}
-
-// =========================
-// Quick Play AI helpers
-// =========================
-function makeAIId(team, seat) {
-  const rand = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(16).slice(2);
-  return `ai_${team}_${seat}_${Date.now()}_${rand}`;
-}
-
-function makeAIName(team, seat) {
-  const roleName = seat === 'spymaster' ? 'Spymaster' : 'Operative';
-  const teamName = team === 'red' ? 'Red' : 'Blue';
-  return `LLM Bot (${teamName} ${roleName})`;
-}
-
-async function addQuickAI(team, seatRole) {
-  if (team !== 'red' && team !== 'blue') return;
-  const seat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-  await ensureQuickPlayGameExists();
-
-  const aiId = makeAIId(team, seat);
-  const aiName = makeAIName(team, seat);
-
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Lobby not found');
-      const g = snap.data();
-      if (g.currentPhase && g.currentPhase !== 'waiting') {
-        throw new Error('AIs can only be added while in the lobby.');
-      }
-
-      const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
-      const players = Array.isArray(g[key]) ? [...g[key]] : [];
-
-      const ai = {
-        odId: aiId,
-        name: aiName,
-        // Bots are NOT auto-ready. After being added, they "ready up" by calling the LLM
-        // and expecting it to respond with the single word "Ready".
-        ready: false,
-        role: seat,
-        isAI: true
-      };
-
-      players.push(ai);
-      tx.update(ref, {
-        [key]: players,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-
-    // Kick off the bot's "ready" handshake.
-    // This is intentionally best-effort; if the LLM call fails, the bot stays NOT READY.
-    aiReadyHandshake(QUICKPLAY_DOC_ID, team, aiId, aiName).catch((e) => console.warn('AI ready handshake failed:', e));
-  } catch (e) {
-    console.error('Failed to add AI:', e);
-    alert(e.message || 'Failed to add AI.');
-  }
-}
-
-async function aiReadyHandshake(gameId, team, aiId, aiName) {
-  // Only run if we have a key configured.
-  // If not, mark the bot as having an API error so it's visually obvious.
-  if (!hasNebiusKeyConfigured()) {
-    await setAIReadyStatus(gameId, team, aiId, 'api_error');
-    return;
-  }
-
-  // Ask the model to return exactly "Ready".
-  // Use a single USER message (no system) to match the Nebius TokenFactory examples and
-  // avoid any provider quirks around the system role.
-  let text = '';
-  try {
-    text = await callNebiusChatCompletions({
-      user:
-        'Reply with exactly one word: Ready
-' +
-        'Rules: output MUST be exactly Ready (case-sensitive). No other words. No punctuation. No quotes. No emojis. No newlines.
-' +
-        'Examples (correct):
-' +
-        'User: hi
-Assistant: Ready
-' +
-        'User: ping
-Assistant: Ready
-' +
-        'Now respond with exactly this single word and nothing else: Ready',
-      temperature: 0,
-      max_tokens: 10,
-      stop: ['
-']
-    });
-  } catch (e) {
-    console.warn('AI ready LLM call failed:', e);
-    await setAIReadyStatus(gameId, team, aiId, 'api_error');
-    return;
-  }
-
-  const cleaned = String(text || '').trim().replace(/^['"`]+|['"`]+$/g, '');
-  // Some models may prepend a short acknowledgement despite instructions (e.g., "I'm ready").
-  // Treat any standalone "ready" as success for the lobby handshake.
-  const ok = /\bready\b/i.test(cleaned);
-  if (!ok) {
-    console.warn('AI ready handshake: model did not return Ready. Raw response:', cleaned);
-    await setAIReadyStatus(gameId, team, aiId, 'bad_ready');
-    return;
-  }
-
-  const ref = db.collection('games').doc(gameId);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) return;
-    const g = snap.data();
-    if (g.currentPhase && g.currentPhase !== 'waiting') return;
-
-    const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
-    const players = Array.isArray(g[key]) ? [...g[key]] : [];
-    const idx = players.findIndex(p => p?.odId === aiId);
-    if (idx === -1) return;
-    if (players[idx]?.ready) return;
-
-    players[idx] = { ...players[idx], ready: true, aiStatus: 'ok' };
-    tx.update(ref, {
-      [key]: players,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      log: firebase.firestore.FieldValue.arrayUnion(`${aiName} is ready.`)
-    });
-  });
-}
-
-// Update an AI player's readiness diagnostic status in the lobby.
-// status: 'api_error' | 'bad_ready' | 'ok' | null
-async function setAIReadyStatus(gameId, team, aiId, status) {
-  const ref = db.collection('games').doc(gameId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const g = snap.data();
-      if (g.currentPhase && g.currentPhase !== 'waiting') return;
-
-      const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
-      const players = Array.isArray(g[key]) ? [...g[key]] : [];
-      const idx = players.findIndex(p => p?.odId === aiId);
-      if (idx === -1) return;
-
-      const prev = players[idx] || {};
-      // Only AI diagnostics for AIs
-      const isAI = !!prev.isAI || String(prev.odId || '').startsWith('ai_');
-      if (!isAI) return;
-
-      const next = { ...prev, aiStatus: status || null };
-      players[idx] = next;
-      tx.update(ref, {
-        [key]: players,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-  } catch (e) {
-    console.warn('Failed to set AI status', e);
-  }
-}
-
-async function removeQuickAI(aiId) {
-  if (!aiId || !String(aiId).startsWith('ai_')) return;
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const g = snap.data();
-      if (g.currentPhase && g.currentPhase !== 'waiting') return;
-
-      const nextRed = (g.redPlayers || []).filter(p => p.odId !== aiId);
-      const nextBlue = (g.bluePlayers || []).filter(p => p.odId !== aiId);
-
-      tx.update(ref, {
-        redPlayers: nextRed,
-        bluePlayers: nextBlue,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-  } catch (e) {
-    console.error('Failed to remove AI:', e);
-  }
-}
-
-// =========================
-// GPT-5 Nano bot gameplay (Quick Play)
-// =========================
-const AI_LEASE_MS = 15000;
-let aiLastStateKey = null;
-
-function getAIClientId() {
-  try {
-    const k = 'cn_ai_client_id';
-    const existing = localStorage.getItem(k);
-    if (existing) return existing;
-    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(16).slice(2);
-    localStorage.setItem(k, id);
-    return id;
-  } catch (_) {
-    return Math.random().toString(16).slice(2);
-  }
-}
-
-function hasNebiusKeyConfigured() {
-  const k = String(window.NEBIUS_API_KEY || '').trim();
-  return !!k && !k.startsWith('PASTE_');
-}
-
-async function tryAcquireAiLease(gameId) {
-  const ref = db.collection('games').doc(gameId);
-  const me = getAIClientId();
-  const now = Date.now();
-  const expiresAt = firebase.firestore.Timestamp.fromMillis(now + AI_LEASE_MS);
-
-  try {
-    return await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return false;
-      const g = snap.data();
-      const lease = g.aiLease || null;
-      const leaseExpMs = lease?.expiresAt?.toMillis ? lease.expiresAt.toMillis() : 0;
-      const leaseHolder = lease?.holder || null;
-
-      if (leaseHolder && leaseExpMs > now && leaseHolder !== me) return false;
-
-      tx.update(ref, {
-        aiLease: { holder: me, expiresAt },
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      return true;
-    });
-  } catch (e) {
-    console.warn('AI lease error', e);
-    return false;
-  }
-}
-
-function getTeamPlayers(game, team) {
-  return Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
-}
-
-function getTeamSpymasterPlayer(game, team) {
-  return getTeamPlayers(game, team).find(p => String(p?.role || '') === 'spymaster') || null;
-}
-
-function teamHasHumanOperative(game, team) {
-  return getTeamPlayers(game, team).some(p => String(p?.role || 'operative') !== 'spymaster' && !(p?.isAI || String(p?.odId||'').startsWith('ai_')));
-}
-
-function teamHasAnyAI(game, team) {
-  return getTeamPlayers(game, team).some(p => (p?.isAI || String(p?.odId||'').startsWith('ai_')));
-}
-
-function getAIOperatives(game, team) {
-  return getTeamPlayers(game, team).filter(p => {
-    const isAI = (p?.isAI || String(p?.odId || '').startsWith('ai_'));
-    const isSpy = String(p?.role || '') === 'spymaster';
-    return isAI && !isSpy;
-  });
-}
-
-function getNextAIOperativeActor(game, team) {
-  const ops = getAIOperatives(game, team).slice();
-  if (ops.length === 0) return null;
-  // Stable ordering so rotation is predictable across clients.
-  ops.sort((a, b) => String(a.odId).localeCompare(String(b.odId)));
-
-  const lastId = team === 'red' ? game.aiLastOperativeIdRed : game.aiLastOperativeIdBlue;
-  if (!lastId) return ops[0];
-  const idx = ops.findIndex(p => p.odId === lastId);
-  return ops[(idx >= 0 ? (idx + 1) : 0) % ops.length];
-}
-
-async function maybeRunQuickPlayAI(game) {
-  if (!game || game.type !== 'quick') return;
-  if (game.winner || game.currentPhase === 'waiting' || game.currentPhase === 'ended') return;
-  if (!hasNebiusKeyConfigured()) return;
-  if (!teamHasAnyAI(game, 'red') && !teamHasAnyAI(game, 'blue')) return;
-
-  const phase = String(game.currentPhase || '');
-  const team = String(game.currentTeam || '');
-  if (team !== 'red' && team !== 'blue') return;
-
-  // Prevent tight loops on repeated renders with unchanged state.
-  const key = JSON.stringify({
-    id: game.id,
-    phase,
-    team,
-    clue: game.currentClue ? { w: game.currentClue.word, n: game.currentClue.number } : null,
-    gr: game.guessesRemaining,
-    cardsRev: (game.cards || []).map(c => (c.revealed ? 1 : 0)).join('')
-  });
-  if (key === aiLastStateKey) return;
-  aiLastStateKey = key;
-
-  const acquired = await tryAcquireAiLease(game.id);
-  if (!acquired) return;
-
-  if (phase === 'spymaster') {
-    const spy = getTeamSpymasterPlayer(game, team);
-    if (spy && (spy.isAI || String(spy.odId || '').startsWith('ai_')) && !game.currentClue) {
-      await aiGiveClue(game.id, team);
-    }
-    return;
-  }
-
-  if (phase === 'operatives') {
-    // Need a clue to do anything useful.
-    if (!game.currentClue) return;
-
-    const actor = getNextAIOperativeActor(game, team);
-    if (!actor) return;
-
-    // If there are human operatives on the current team, don't auto-guess.
-    // Instead, post a single suggestion into the team chat.
-    if (teamHasHumanOperative(game, team)) {
-      await aiSuggestInChat(game.id, team, actor);
-      return;
-    }
-
-    if (!(game.guessesRemaining > 0)) return;
-    await aiMakeGuess(game.id, team, actor);
-  }
-}
-
-function extractResponsesText(respJson) {
-  if (!respJson) return '';
-  if (typeof respJson.output_text === 'string') return respJson.output_text;
-  // Attempt to pull from output->content->text
-  try {
-    const out = respJson.output;
-    if (Array.isArray(out)) {
-      for (const item of out) {
-        const content = item?.content;
-        if (Array.isArray(content)) {
-          for (const c of content) {
-            const t = c?.text || c?.content || c?.value;
-            if (typeof t === 'string' && t.trim()) return t;
-          }
-        }
-      }
-    }
-  } catch (_) {}
-  // Fallback
-  return (typeof respJson.text === 'string') ? respJson.text : '';
-}
-
-function normalizeBaseUrl(url) {
-  const u = String(url || '').trim();
-  if (!u) return 'https://api.tokenfactory.nebius.com/v1/';
-  return u.endsWith('/') ? u : (u + '/');
-}
-
-async function callNebiusChatCompletions({ system, user, temperature = 0.7, max_tokens = 256, stop = null }) {
-  const apiKey = String(window.NEBIUS_API_KEY || '').trim();
-  const model = String(window.NEBIUS_MODEL || 'nvidia/Nemotron-Nano-V2-12b').trim();
-  const baseUrl = normalizeBaseUrl(window.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1/');
-
-  // Nebius TokenFactory supports OpenAI-compatible chat completions. Their examples use
-  // "content" as an array of parts (e.g., [{type:"text",text:"..."}]). We send that shape
-  // to maximize compatibility.
-  const messages = [
-    ...(system ? [{ role: 'system', content: [{ type: 'text', text: String(system) }] }] : []),
-    { role: 'user', content: [{ type: 'text', text: String(user || '') }] }
-  ];
-
-  const res = await fetch(baseUrl + 'chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      temperature,
-      max_tokens,
-      ...(stop ? { stop } : {}),
-      messages
-    })
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`LLM error (${res.status}): ${txt}`);
-  }
-
-  const json = await res.json();
-  const content = json?.choices?.[0]?.message?.content;
-  if (typeof content === 'string') return content;
-  // Some providers return content as an array of parts.
-  if (Array.isArray(content)) {
-    return content.map(p => (typeof p?.text === 'string' ? p.text : '')).join('');
-  }
-  return '';
-}
-
-async function callLLMFromInstructions({ instructions, input, temperature = 0.7 }) {
-  return callNebiusChatCompletions({ system: instructions, user: input, temperature });
-}
-
-function safeParseJSON(text) {
-  if (!text) return null;
-  // Strip code fences if the model adds them.
-  const cleaned = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  try { return JSON.parse(cleaned); } catch (_) { return null; }
-}
-
-function normalizeClueWord(word) {
-  const w = String(word || '').trim();
-  if (!w) return null;
-  if (!/^[A-Za-z]{2,20}$/.test(w)) return null;
-  return w.toUpperCase();
-}
-
-function clampNumber(n) {
-  const x = parseInt(n, 10);
-  if (!Number.isFinite(x)) return 1;
-  return Math.max(0, Math.min(9, x));
-}
-
-async function aiGiveClue(gameId, team) {
-  const ref = db.collection('games').doc(gameId);
-  const snap = await ref.get();
-  if (!snap.exists) return;
-  const g = { id: snap.id, ...snap.data() };
-  if (g.winner || g.currentPhase !== 'spymaster' || g.currentTeam !== team) return;
-
-  const cards = Array.isArray(g.cards) ? g.cards : [];
-  const unrevealed = cards.filter(c => !c.revealed);
-  const boardWords = new Set(unrevealed.map(c => String(c.word || '').toUpperCase()));
-
-  const myTargets = unrevealed.filter(c => c.type === team).map(c => c.word);
-  const oppTeam = team === 'red' ? 'blue' : 'red';
-  const oppTargets = unrevealed.filter(c => c.type === oppTeam).map(c => c.word);
-  const neutrals = unrevealed.filter(c => c.type === 'neutral').map(c => c.word);
-  const assassins = unrevealed.filter(c => c.type === 'assassin').map(c => c.word);
-
-  const instructions = `You are the spymaster for team ${team.toUpperCase()} in the board game Codenames.\n` +
-    `Give ONE clue (a single English word, letters only) and a number (0-9) to connect as many of your team's remaining words as possible.\n` +
-    `Rules: The clue must NOT be any word currently on the board. Avoid clues that could suggest the assassin or opponent words.\n` +
-    `Respond ONLY with JSON: {"clue":"WORD","number":N}.`;
-
-  const input = `BOARD (UNREVEALED):\n` +
-    `Your team words: ${myTargets.join(', ')}\n` +
-    `Opponent words: ${oppTargets.join(', ')}\n` +
-    `Neutral words: ${neutrals.join(', ')}\n` +
-    `Assassin word(s): ${assassins.join(', ')}\n`;
-
-  let clue = null;
-  let number = 1;
-  try {
-    const text = await callLLMFromInstructions({ instructions, input });
-    const obj = safeParseJSON(text) || {};
-    clue = normalizeClueWord(obj.clue);
-    number = clampNumber(obj.number);
-  } catch (e) {
-    console.warn('AI clue failed:', e);
-  }
-
-  if (!clue || boardWords.has(clue)) {
-    // Safe fallback
-    const fallback = ['ORBIT', 'MYSTERY', 'SIGNAL', 'VECTOR', 'SPARK', 'SHADOW'];
-    clue = fallback.find(w => !boardWords.has(w)) || 'MYSTERY';
-    number = 1;
-  }
-
-  // Apply clue (transactional) to avoid double-posts.
-  try {
-    await db.runTransaction(async (tx) => {
-      const s2 = await tx.get(ref);
-      if (!s2.exists) return;
-      const game = s2.data();
-      if (game.winner) return;
-      if (game.currentPhase !== 'spymaster' || game.currentTeam !== team) return;
-      if (game.currentClue) return;
-
-      const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
-      const clueEntry = {
-        team,
-        word: clue,
-        number,
-        results: [],
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-      };
-
-      tx.update(ref, {
-        currentClue: { word: clue, number },
-        guessesRemaining: number + 1,
-        currentPhase: 'operatives',
-        clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
-        log: firebase.firestore.FieldValue.arrayUnion(`${teamName}'s Spymaster (AI) gave clue: "${clue}" (${number})`),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        aiLease: { holder: getAIClientId(), expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 1000) }
-      });
-    });
-  } catch (e) {
-    console.error('Failed to apply AI clue:', e);
-  }
-}
-
-async function fetchTeamChatContext(gameId, team, limit = 20) {
-  try {
-    const snap = await db.collection('games').doc(gameId)
-      .collection(`${team}Chat`)
-      .orderBy('createdAt', 'desc')
-      .limit(limit)
-      .get();
-    const msgs = snap.docs.map(d => d.data()).reverse();
-    return msgs.map(m => `${String(m?.senderName||'Someone')}: ${String(m?.text||'')}`.trim()).filter(Boolean).join('\n');
-  } catch (_) {
-    return '';
-  }
-}
-
-async function aiPostTeamChat(gameId, team, senderId, senderName, text) {
-  const t = String(text || '').trim();
-  if (!t) return;
-  try {
-    await db.collection('games').doc(gameId)
-      .collection(`${team}Chat`)
-      .add({
-        senderId: String(senderId || 'ai'),
-        senderName: String(senderName || 'AI'),
-        text: t,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-  } catch (e) {
-    console.warn('AI chat post failed', e);
-  }
-}
-
-async function aiSuggestInChat(gameId, team, actor) {
-  const ref = db.collection('games').doc(gameId);
-  const snap = await ref.get();
-  if (!snap.exists) return;
-  const g = { id: snap.id, ...snap.data() };
-  if (g.winner || g.currentPhase !== 'operatives' || g.currentTeam !== team) return;
-  if (!g.currentClue) return;
-
-  const actorId = actor?.odId || 'ai';
-  const actorName = actor?.name || 'AI Operative';
-
-  const cards = Array.isArray(g.cards) ? g.cards : [];
-  const unrevealed = cards.filter(c => !c.revealed).map(c => String(c.word || '')).filter(Boolean);
-  if (unrevealed.length === 0) return;
-
-  const clueWord = String(g.currentClue.word || '');
-  const clueNum = parseInt(g.currentClue.number || 0, 10);
-  const chat = await fetchTeamChatContext(gameId, team, 15);
-
-  const instructions = `You are an operative on team ${team.toUpperCase()} in Codenames.
-Your job here is NOT to click cards.
-Instead, post ONE suggestion to your team's chat: a single best guess word from the unrevealed list, or PASS.
-Respond ONLY with JSON: {"suggest":"WORD","message":"short reason"} or {"pass":true}.`;
-
-  const input = `CLUE: ${clueWord} (${clueNum})
-UNREVEALED WORDS: ${unrevealed.join(', ')}
-TEAM CHAT (recent):\n${chat || '(none)'}\n`;
-
-  let suggest = null;
-  let pass = false;
-  let message = '';
-  try {
-    const text = await callLLMFromInstructions({ instructions, input, temperature: 0.6 });
-    const obj = safeParseJSON(text) || {};
-    if (obj && obj.pass === true) pass = true;
-    if (obj && obj.suggest) suggest = String(obj.suggest || '').trim();
-    if (obj && obj.message) message = String(obj.message || '').trim();
-  } catch (e) {
-    console.warn('AI suggestion failed:', e);
-    return;
-  }
-
-  if (pass) {
-    await aiPostTeamChat(gameId, team, actorId, actorName, `PASS`);
-    return;
-  }
-
-  const normalized = String(suggest || '').trim();
-  const ok = unrevealed.some(w => w.toLowerCase() === normalized.toLowerCase());
-  if (!ok) return;
-
-  const line = message ? `${normalized} — ${message}` : normalized;
-  await aiPostTeamChat(gameId, team, actorId, actorName, line);
-}
-
-async function aiMakeGuess(gameId, team, actor) {
-  const ref = db.collection('games').doc(gameId);
-  const snap = await ref.get();
-  if (!snap.exists) return;
-  const g = { id: snap.id, ...snap.data() };
-  if (g.winner || g.currentPhase !== 'operatives' || g.currentTeam !== team) return;
-  if (!g.currentClue) return;
-  if (!(g.guessesRemaining > 0)) return;
-
-  const actorId = actor?.odId || 'ai';
-  const actorName = actor?.name || 'AI Operative';
-
-  const cards = Array.isArray(g.cards) ? g.cards : [];
-  const unrevealed = cards.filter(c => !c.revealed).map(c => String(c.word || '')).filter(Boolean);
-  if (unrevealed.length === 0) return;
-
-  const clueWord = String(g.currentClue.word || '');
-  const clueNum = parseInt(g.currentClue.number || 0, 10);
-  const chat = await fetchTeamChatContext(gameId, team, 20);
-
-  const instructions = `You are an operative for team ${team.toUpperCase()} in Codenames.\n` +
-    `Given a clue, choose ONE best guess from the unrevealed board words, or PASS if uncertain.\n` +
-    `Coordinate using the team's chat context if helpful.\n` +
-    `Respond ONLY with JSON: {"guess":"WORD"} or {"pass":true}.`;
-
-  const input = `CLUE: ${clueWord} (${clueNum})\n` +
-    `GUESSES REMAINING THIS TURN: ${g.guessesRemaining}\n` +
-    `UNREVEALED WORDS: ${unrevealed.join(', ')}\n\n` +
-    `TEAM CHAT (recent):\n${chat || '(none)'}\n`;
-
-  let guess = null;
-  let pass = false;
-  try {
-    const text = await callLLMFromInstructions({ instructions, input });
-    const obj = safeParseJSON(text) || {};
-    if (obj && obj.pass === true) pass = true;
-    if (obj && obj.guess) guess = String(obj.guess || '').trim();
-  } catch (e) {
-    console.warn('AI guess failed:', e);
-    pass = true;
-  }
-
-  if (pass) {
-    await aiPostTeamChat(gameId, team, actorId, actorName, 'PASS');
-    await aiEndTurn(gameId, team, `${actorName} passed.`, actorName, actorId);
-    return;
-  }
-
-  const normalizedGuess = String(guess || '').trim();
-  const idx = cards.findIndex(c => !c.revealed && String(c.word || '').toLowerCase() === normalizedGuess.toLowerCase());
-  if (idx < 0) {
-    // Fallback: random unrevealed
-    const fallbackIdx = cards.findIndex(c => !c.revealed);
-    if (fallbackIdx < 0) return;
-    await aiPostTeamChat(gameId, team, actorId, actorName, `Guessing (fallback): ${cards[fallbackIdx]?.word || ''}`.trim());
-    await aiRevealCard(gameId, team, fallbackIdx, actorName, actorId);
-    return;
-  }
-
-  await aiPostTeamChat(gameId, team, actorId, actorName, `Guessing: ${cards[idx]?.word || normalizedGuess}`.trim());
-  await aiRevealCard(gameId, team, idx, actorName, actorId);
-}
-
-async function aiEndTurn(gameId, team, note, actorName = null, actorId = null) {
-  const ref = db.collection('games').doc(gameId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const g = snap.data();
-      if (g.winner) return;
-      if (g.currentPhase !== 'operatives' || g.currentTeam !== team) return;
-
-      const teamName = team === 'red' ? (g.redTeamName || 'Red Team') : (g.blueTeamName || 'Blue Team');
-      const lastField = team === 'red' ? 'aiLastOperativeIdRed' : 'aiLastOperativeIdBlue';
-      const actorLabel = actorName ? ` (${actorName})` : '';
-      tx.update(ref, {
-        currentTeam: team === 'red' ? 'blue' : 'red',
-        currentPhase: 'spymaster',
-        currentClue: null,
-        guessesRemaining: 0,
-        [lastField]: actorId || firebase.firestore.FieldValue.delete(),
-        log: firebase.firestore.FieldValue.arrayUnion(`${teamName}${actorLabel} ended their turn. ${note || ''}`.trim()),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        aiLease: { holder: getAIClientId(), expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 1000) }
-      });
-    });
-  } catch (e) {
-    console.warn('AI end turn failed', e);
-  }
-}
-
-async function aiRevealCard(gameId, team, cardIndex, actorName = null, actorId = null) {
-  const ref = db.collection('games').doc(gameId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const g = snap.data();
-      if (g.winner) return;
-      if (g.currentPhase !== 'operatives' || g.currentTeam !== team) return;
-      const cards = Array.isArray(g.cards) ? g.cards : [];
-      const card = cards[cardIndex];
-      if (!card || card.revealed) return;
-
-      const updatedCards = [...cards];
-      updatedCards[cardIndex] = { ...card, revealed: true };
-
-      const teamName = team === 'red' ? (g.redTeamName || 'Red Team') : (g.blueTeamName || 'Blue Team');
-      const lastField = team === 'red' ? 'aiLastOperativeIdRed' : 'aiLastOperativeIdBlue';
-      const actorLabel = actorName ? ` (${actorName})` : '';
-      const updates = {
-        cards: updatedCards,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        [lastField]: actorId || firebase.firestore.FieldValue.delete(),
-        aiLease: { holder: getAIClientId(), expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 1000) }
-      };
-
-      let logEntry = `${teamName}${actorLabel} guessed "${card.word}" - `;
-      let endTurn = false;
-      let winner = null;
-
-      if (card.type === 'assassin') {
-        winner = team === 'red' ? 'blue' : 'red';
-        logEntry += 'ASSASSIN! Game over.';
-      } else if (card.type === team) {
-        logEntry += 'Correct!';
-        if (team === 'red') {
-          updates.redCardsLeft = (g.redCardsLeft || 0) - 1;
-          if (updates.redCardsLeft === 0) winner = 'red';
-        } else {
-          updates.blueCardsLeft = (g.blueCardsLeft || 0) - 1;
-          if (updates.blueCardsLeft === 0) winner = 'blue';
-        }
-
-        updates.guessesRemaining = (g.guessesRemaining || 0) - 1;
-        if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
-      } else if (card.type === 'neutral') {
-        logEntry += 'Neutral. Turn ends.';
-        endTurn = true;
-      } else {
-        logEntry += `Wrong! (${card.type === 'red' ? (g.redTeamName || 'Red Team') : (g.blueTeamName || 'Blue Team')}'s card)`;
-        if (card.type === 'red') {
-          updates.redCardsLeft = (g.redCardsLeft || 0) - 1;
-          if (updates.redCardsLeft === 0) winner = 'red';
-        } else {
-          updates.blueCardsLeft = (g.blueCardsLeft || 0) - 1;
-          if (updates.blueCardsLeft === 0) winner = 'blue';
-        }
-        endTurn = true;
-      }
-
-      updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
-
-      if (winner) {
-        updates.winner = winner;
-        updates.currentPhase = 'ended';
-        const winnerName = truncateTeamNameGame(winner === 'red' ? (g.redTeamName || 'Red Team') : (g.blueTeamName || 'Blue Team'));
-        updates.log = firebase.firestore.FieldValue.arrayUnion(`${winnerName} wins!`);
-      } else if (endTurn) {
-        updates.currentTeam = team === 'red' ? 'blue' : 'red';
-        updates.currentPhase = 'spymaster';
-        updates.currentClue = null;
-        updates.guessesRemaining = 0;
-      }
-
-      tx.update(ref, updates);
-    });
-  } catch (e) {
-    console.warn('AI reveal failed', e);
   }
 }
 
@@ -2291,8 +1727,6 @@ function renderQuickLobby(game) {
     presenceMap.set(pr.odId || pr.id, status);
   }
   const isActive = (id) => {
-    // AIs don't have presence; treat them as always active.
-    if (String(id || '').startsWith('ai_')) return true;
     if (!presenceData.length) return true;
     return presenceMap.get(id) === 'online';
   };
@@ -2311,21 +1745,10 @@ function renderQuickLobby(game) {
       const isYou = p.odId === odId;
       const ready = !!p.ready;
       const playerId = p.odId || '';
-      const isAI = !!p.isAI || String(p.odId || '').startsWith('ai_');
-      const aiStatus = isAI ? String(p.aiStatus || '') : '';
-      const aiStatusClass = !isAI ? '' : (
-        aiStatus === 'api_error' ? ' ai-status-red' :
-        aiStatus === 'bad_ready' ? ' ai-status-yellow' :
-        aiStatus === 'ok' ? ' ai-status-green' : ''
-      );
       return `
-        <div class="quick-player ${ready ? 'ready' : ''}${aiStatusClass}">
-          <span class="quick-player-name ${playerId && !isAI ? 'profile-link' : ''}" ${playerId && !isAI ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
-          <span class="quick-player-actions">
-            ${isAI ? '<span class="quick-ai-pill">AI</span>' : ''}
-            ${isAI ? `<button class="ai-remove-btn" type="button" title="Remove AI" aria-label="Remove AI" data-ai-id="${escapeHtml(playerId)}">×</button>` : ''}
-            <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
-          </span>
+        <div class="quick-player ${ready ? 'ready' : ''}">
+          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         </div>
       `;
     }).join('');
@@ -2369,7 +1792,17 @@ function renderQuickLobby(game) {
 
   const renderTeamStatus = (team, players) => {
     const chips = [];
+    const agreed = teamHasAgreed(game, team);
     const allReady = teamIsFullyReady(game, team);
+
+    // Agreement status (subtle)
+    if (players.length > 0) {
+      if (agreed) {
+        chips.push('<span class="quick-status-chip agreed">Rules OK</span>');
+      } else {
+        chips.push('<span class="quick-status-chip not-agreed">Awaiting rules</span>');
+      }
+    }
 
     // Ready status (more prominent when all ready)
     if (players.length > 0) {
@@ -3211,10 +2644,6 @@ function renderGame() {
 
   // Settings: show in-game actions whenever a user is actively in a game.
   updateSettingsInGameActions(true);
-
-  // Let AI bots play in Quick Play. Any client with an API key configured can drive them;
-  // a short Firestore lease prevents duplicate moves when multiple clients are open.
-  try { maybeRunQuickPlayAI(currentGame); } catch (e) { console.warn('AI loop error', e); }
 
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
