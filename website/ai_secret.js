@@ -8,6 +8,6 @@
 // Nebius TokenFactory (OpenAI-compatible)
 // Paste your key once here.
 // NOTE: This is loaded by the browser (client-side). Anyone who can load the site can view it.
-window.NEBIUS_API_KEY = v1.CmMKHHN0YXRpY2tleS1lMDB3YzJhcmphZDlyYWphZHgSIXNlcnZpY2VhY2NvdW50LWUwMHZhY2FrMnpkY216cG0xNDIMCLaG7MsGEI-wxcQCOgsItomElwcQwLqZBkACWgNlMDA.AAAAAAAAAAF_tRJN6h-5Qic99apg-d2st3ACT73m9g-wsEEJXm72O69VoIXducC_7AwEe6np4DA7da11QIdLCgfb2oh8PccP;
+window.NEBIUS_API_KEY = 'v1.CmMKHHN0YXRpY2tleS1lMDBtdjVneTFhMXl2eTM1eWoSIXNlcnZpY2VhY2NvdW50LWUwMGs4NWd6cHhuZDd6ejEwczILCJGQ7MsGEJrIwnY6DAiQk4SXBxCA8_GNAkACWgNlMDA.AAAAAAAAAAGqCbDNhNm-HyjOvy27pTZRXtnMAW-Tr-YVJrm6-UZ93S7WnCCKSE94T6KSyjCS5gchx5zNjAD-GtDpa4XhBccM';
 window.NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
 window.NEBIUS_MODEL = 'nvidia/Nemotron-Nano-V2-12b';
