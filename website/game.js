@@ -2582,6 +2582,9 @@ function stopGameListener() {
   spectatorMode = false;
   spectatingGameId = null;
 
+  // Hide in-game controls in settings once we are out of a game.
+  updateSettingsInGameActions(false);
+
   // Clear resume info when the user intentionally leaves the game.
   try {
     localStorage.removeItem(LS_ACTIVE_GAME_ID);
@@ -2593,6 +2596,7 @@ function stopGameListener() {
    Game Rendering
 ========================= */
 function showGameLobby() {
+  updateSettingsInGameActions(false);
   // Go back to mode selection
   showModeSelect();
 }
@@ -2605,6 +2609,31 @@ function showGameBoard() {
   document.getElementById('panel-game').classList.add('game-active');
 }
 
+// Settings modal: show/hide in-game actions when a user is inside a game.
+function updateSettingsInGameActions(isInGame) {
+  const section = document.getElementById('settings-in-game-actions');
+  if (!section) return;
+
+  section.style.display = isInGame ? 'block' : 'none';
+
+  const leaveBtn = document.getElementById('leave-game-btn');
+  const endBtn = document.getElementById('end-game-btn');
+
+  // End Game should only be enabled for active players (not spectators) and typically only for spymasters.
+  const spectator = (typeof isSpectating === 'function') ? !!isSpectating() : false;
+  const canEnd = !spectator && (typeof isCurrentUserSpymaster === 'function' ? !!isCurrentUserSpymaster() : true);
+
+  if (leaveBtn) {
+    // Label updated in renderGame (Leave vs Stop Spectating)
+    leaveBtn.disabled = !isInGame;
+  }
+
+  if (endBtn) {
+    endBtn.disabled = !canEnd;
+    endBtn.title = canEnd ? '' : (spectator ? 'Spectators cannot end the game' : 'Only spymasters can end the game');
+  }
+}
+
 function renderGame() {
   if (!currentGame) {
     showGameLobby();
@@ -2613,6 +2642,9 @@ function renderGame() {
 
   showGameBoard();
 
+  // Settings: show in-game actions whenever a user is actively in a game.
+  updateSettingsInGameActions(true);
+
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
   const isSpymaster = !spectator && isCurrentUserSpymaster();
@@ -2620,6 +2652,13 @@ function renderGame() {
   // Leave button label
   const leaveBtn = document.getElementById('leave-game-btn');
   if (leaveBtn) leaveBtn.textContent = spectator ? 'Stop Spectating' : 'Leave Game';
+
+  const endBtn = document.getElementById('end-game-btn');
+  if (endBtn) {
+    // Keep the action visible in settings, but only allow active players to end.
+    endBtn.disabled = !!spectator || !isSpymaster;
+    endBtn.title = endBtn.disabled ? 'Only your team\'s spymaster can end the game' : 'End the game for everyone';
+  }
 
   // Update header with team names and player counts for quick play
   const redTeamEl = document.getElementById('game-red-team');
@@ -3372,6 +3411,11 @@ function initAdvancedFeatures() {
   document.getElementById('toggle-left-sidebar')?.addEventListener('click', toggleLeftSidebar);
   document.getElementById('toggle-right-sidebar')?.addEventListener('click', toggleRightSidebar);
 
+  // Mobile: players popup
+  document.getElementById('mobile-players-popup-btn')?.addEventListener('click', openPlayersPopup);
+  document.getElementById('players-popup-close')?.addEventListener('click', closePlayersPopup);
+  document.getElementById('players-popup-backdrop')?.addEventListener('click', closePlayersPopup);
+
   // Operative chat form
   document.getElementById('operative-chat-form')?.addEventListener('submit', handleOperativeChatSubmit);
 
@@ -3871,7 +3915,7 @@ function renderTopbarTeamNames() {
 
   const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
 
-  const render = (players, el) => {
+  const render = (players, el, team) => {
     if (!el) return;
 
     const list = Array.isArray(players) ? players : [];
@@ -3901,12 +3945,19 @@ function renderTopbarTeamNames() {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
       const name = escapeHtml(String(p?.name || '—'));
-      return `<div class="topbar-player ${isMe ? 'is-me' : ''}">${name}</div>`;
+
+      // Clickable names: reuse the existing profile popup system.
+      const attrs = pid
+        ? `class="topbar-player ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
+        : `class="topbar-player ${isMe ? 'is-me' : ''}"`;
+
+      // Use a button for better a11y + consistent click targets.
+      return `<button type="button" ${attrs}>${name}</button>`;
     }).join('');
   };
 
-  render(currentGame.redPlayers, redEl);
-  render(currentGame.bluePlayers, blueEl);
+  render(currentGame.redPlayers, redEl, 'red');
+  render(currentGame.bluePlayers, blueEl, 'blue');
 }
 
 /* =========================
@@ -3961,6 +4012,59 @@ function closeMobileSidebars() {
     sb.classList.remove('mobile-visible');
   });
   toggleSidebarBackdrop(false);
+}
+
+/* =========================
+   Mobile Players Popup
+========================= */
+function openPlayersPopup() {
+  const popup = document.getElementById('players-popup');
+  if (!popup) return;
+  renderPlayersPopup();
+  popup.style.display = 'block';
+  // trigger CSS transition
+  void popup.offsetWidth;
+  popup.classList.add('visible');
+}
+
+function closePlayersPopup() {
+  const popup = document.getElementById('players-popup');
+  if (!popup) return;
+  popup.classList.remove('visible');
+  setTimeout(() => {
+    if (!popup.classList.contains('visible')) popup.style.display = 'none';
+  }, 180);
+}
+
+function renderPlayersPopup() {
+  if (!currentGame) return;
+  const redEl = document.getElementById('players-popup-red');
+  const blueEl = document.getElementById('players-popup-blue');
+  if (!redEl || !blueEl) return;
+
+  const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
+
+  const render = (players, container, team) => {
+    const list = Array.isArray(players) ? players : [];
+    if (list.length === 0) {
+      container.innerHTML = `<div class="players-popup-item empty">—</div>`;
+      return;
+    }
+
+    container.innerHTML = list.map(p => {
+      const pid = String(p?.odId || p?.userId || '').trim();
+      const isMe = !!(myId && pid && pid === myId);
+      const name = escapeHtml(String(p?.name || '—'));
+      const role = (team === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster) === p?.name ? 'Spy' : 'Op';
+      const attrs = pid
+        ? `class="players-popup-item ${team} ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
+        : `class="players-popup-item ${team} ${isMe ? 'is-me' : ''}"`;
+      return `<div ${attrs}><span class="pp-name">${name}</span><span class="pp-role">${role}</span></div>`;
+    }).join('');
+  };
+
+  render(currentGame.redPlayers, redEl, 'red');
+  render(currentGame.bluePlayers, blueEl, 'blue');
 }
 
 /* =========================

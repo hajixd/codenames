@@ -6193,6 +6193,14 @@ body.tournament.has-team-color .input:focus {
 .topbar-team-blue .topbar-team-names.cols-2 { justify-items: center; }
 
 .topbar-player {
+  /* Render as a clean text button (the markup uses <button> for a11y/click targets) */
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  line-height: inherit;
+  cursor: default;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6200,10 +6208,14 @@ body.tournament.has-team-color .input:focus {
   color: var(--text-dim);
 }
 
+.topbar-player.profile-link {
+  cursor: pointer;
+}
+
 .topbar-player.is-me {
   /* Rectangle highlight (not a pill) */
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: 4px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
 
@@ -8290,6 +8302,156 @@ body.qp-gate-open .app {
   .clue-history-team { font-size: 11px; }
   .clue-history-number { font-size: 12px; }
   .clue-result-chip { font-size: 11px; padding: 3px 8px; border-radius: 6px; }
+}
+
+/* Mobile quick action row (Clue History / Chat / Players) */
+.mobile-game-actions {
+  display: none;
+  width: 100%;
+  flex: 0 0 100%;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+@media (max-width: 1024px) {
+  .mobile-game-actions { display: flex; }
+}
+
+/* Players popup (mobile) */
+.players-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+}
+
+.players-popup.visible { display: block; }
+
+.players-popup-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.players-popup.visible .players-popup-backdrop { opacity: 1; }
+
+.players-popup-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.98);
+  width: min(92vw, 380px);
+  max-height: min(72vh, 560px);
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgba(20, 20, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+
+.players-popup.visible .players-popup-card {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.players-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.players-popup-title {
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.players-popup-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px 12px 14px;
+  overflow: auto;
+  max-height: calc(min(72vh, 560px) - 52px);
+}
+
+.players-popup-team {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.players-popup-team-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.players-popup-team-title .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.players-popup-team-title .dot.red { background: var(--game-red); }
+.players-popup-team-title .dot.blue { background: var(--game-blue); }
+
+.players-popup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.players-popup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.players-popup-item.red { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12) inset; }
+.players-popup-item.blue { box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12) inset; }
+
+.players-popup-item.is-me {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.players-popup-item .pp-name {
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.players-popup-item .pp-role {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+
+.players-popup-item.empty {
+  justify-content: center;
+  color: var(--text-dim);
 }
 
 /* Accessibility: visually hidden */
