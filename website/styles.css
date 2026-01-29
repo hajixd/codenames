@@ -2485,57 +2485,6 @@ body.mode-joiner .only-joiner{ display:block; }
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
 .quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
-
-/* Quick Play: Add AI button in lobby headers */
-.qp-ai-btn{
-  margin-left: 10px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.82);
-  font-size: 11px;
-  line-height: 1.6;
-  font-weight: 700;
-  cursor: pointer;
-  user-select: none;
-}
-.qp-ai-btn:hover{ background: rgba(255,255,255,0.10); }
-.qp-ai-btn:active{ transform: translateY(0.5px); }
-.qp-ai-btn:disabled{
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-
-/* Quick Play Settings modal actions */
-.qp-settings-actions{
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.qp-settings-buttons{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-/* Quick Play: AI remove button inside player rows */
-.qp-ai-remove{
-  margin-left: 8px;
-  border: none;
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.7);
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 11px;
-  cursor: pointer;
-}
-.qp-ai-remove:hover{ background: rgba(255,255,255,0.12); }
-.qp-ai-remove:active{ transform: translateY(0.5px); }
-.qp-ai-remove:hover{ background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.9); }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
@@ -2559,7 +2508,56 @@ body.mode-joiner .only-joiner{ display:block; }
 .quick-role-title{
   /* When combined with .quick-seat-choice this becomes the clickable section header */
   margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
+
+.ai-add-btn{
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.9);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+.ai-add-btn:hover{ background: rgba(255,255,255,0.12); }
+.ai-add-btn:active{ transform: translateY(1px); }
+
+.quick-player-actions{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.quick-ai-pill{
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(120, 180, 255, 0.12);
+  color: rgba(180, 220, 255, 0.95);
+  border: 1px solid rgba(160, 210, 255, 0.15);
+}
+.ai-remove-btn{
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.75);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1;
+}
+.ai-remove-btn:hover{ background: rgba(255,255,255,0.10); }
 .quick-role-divider{
   height: 1px;
   width: 100%;
@@ -2616,12 +2614,6 @@ body.mode-joiner .only-joiner{ display:block; }
   border-radius: 12px;
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
-}
-
-.quick-player-right{
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 }
 .quick-player.ready{
   border-color: rgba(45, 210, 120, 0.35);
@@ -8515,41 +8507,3 @@ body.qp-gate-open .app {
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 
 .game-header-meta{position:absolute;width:0;height:0;overflow:hidden;}
-
-
-/* =========================
-   Quick Play - AI controls
-========================= */
-.quick-ai-bar{
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.04);
-}
-.quick-ai-title{
-  font-size: 12px;
-  opacity: 0.85;
-  margin-bottom: 8px;
-}
-.quick-ai-actions{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.quick-player .ai-tag{
-  display: inline-block;
-  margin-left: 8px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  opacity: 0.9;
-  border: 1px solid rgba(255,255,255,0.18);
-}
-.quick-player .ai-remove{
-  margin-left: 10px;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 999px;
-}

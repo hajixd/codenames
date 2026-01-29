@@ -400,7 +400,7 @@
                         <div class="quick-role-section">
                           <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">
                             <span>Spymasters</span>
-                            <button class="qp-ai-btn" type="button" data-ai-team="red" data-ai-role="spymaster" aria-label="Add Red Spymaster AI">+AI</button>
+                            <button class="ai-add-btn" type="button" data-team="red" data-seat="spymaster" aria-label="Add Spymaster AI to Red">+AI</button>
                           </div>
                           <div class="quick-team-list" id="quick-red-spymaster-list"></div>
                         </div>
@@ -408,7 +408,7 @@
                         <div class="quick-role-section">
                           <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">
                             <span>Operatives</span>
-                            <button class="qp-ai-btn" type="button" data-ai-team="red" data-ai-role="operative" aria-label="Add Red Operative AI">+AI</button>
+                            <button class="ai-add-btn" type="button" data-team="red" data-seat="operative" aria-label="Add Operative AI to Red">+AI</button>
                           </div>
                           <div class="quick-team-list" id="quick-red-operative-list"></div>
                         </div>
@@ -435,7 +435,7 @@
                         <div class="quick-role-section">
                           <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">
                             <span>Spymasters</span>
-                            <button class="qp-ai-btn" type="button" data-ai-team="blue" data-ai-role="spymaster" aria-label="Add Blue Spymaster AI">+AI</button>
+                            <button class="ai-add-btn" type="button" data-team="blue" data-seat="spymaster" aria-label="Add Spymaster AI to Blue">+AI</button>
                           </div>
                           <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
                         </div>
@@ -443,7 +443,7 @@
                         <div class="quick-role-section">
                           <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">
                             <span>Operatives</span>
-                            <button class="qp-ai-btn" type="button" data-ai-team="blue" data-ai-role="operative" aria-label="Add Blue Operative AI">+AI</button>
+                            <button class="ai-add-btn" type="button" data-team="blue" data-seat="operative" aria-label="Add Operative AI to Blue">+AI</button>
                           </div>
                           <div class="quick-team-list" id="quick-blue-operative-list"></div>
                         </div>
@@ -457,20 +457,20 @@
                   <div class="quick-lobby-status" id="quick-lobby-status"></div>
                   <div class="quick-rules-bar" id="quick-rules-bar" aria-live="polite">
                     <div class="quick-rules-summary" id="quick-rules-summary">
-                      <span class="qp-rules-badge" id="quick-rules-badge">Rules</span>
-                      <span class="qp-rules-text" id="quick-rules-text">Rules: —</span>
+                      <span class="qp-rules-badge" id="quick-rules-badge">Settings</span>
+                      <span class="qp-rules-text" id="quick-rules-text">Deck: —</span>
                     </div>
                     <div class="quick-rules-actions">
                       <button class="btn small qp-settings-open" id="quick-settings-btn" type="button">Settings</button>
                     </div>
                   </div>
-
                   <div class="quick-lobby-actions">
                     <button class="btn primary" id="quick-ready-btn" type="button" disabled>Ready Up</button>
                     <button class="btn" id="quick-leave-btn" type="button" disabled>Leave</button>
                   </div>
                   <div class="hint" id="quick-lobby-hint" style="margin-top:10px;"></div>
                 </div>
+
                 <!-- Settings modal -->
                 <div class="modal" id="quick-settings-modal" aria-hidden="true" style="display:none;">
                   <div class="modal-backdrop" id="quick-settings-backdrop"></div>
@@ -529,18 +529,22 @@
                         </label>
                       </div>
 
-                      <div class="qp-settings-actions">
-                        <div class="hint" id="quick-settings-status">Changes apply to the next game. Updating settings will unready human players.</div>
-                        <div class="qp-settings-buttons">
-                          <button class="btn primary" id="quick-settings-apply" type="button">Apply</button>
+                      <div class="qp-negotiation" id="qp-negotiation">
+                        <div class="qp-neg-head">
+                          <div class="qp-neg-title">Lobby Settings</div>
+                          <div class="qp-neg-chip" id="qp-neg-chip">Applies to next game</div>
+                        </div>
+                        <div class="qp-neg-copy hint" id="quick-settings-status">Anyone can adjust Quick Play settings. Changes take effect for the next round.</div>
+
+                        <div class="qp-neg-actions">
+                          <button class="btn primary qp-neg-btn" id="quick-settings-apply" type="button">Apply settings</button>
                         </div>
                       </div>
                     </div>
+
+
                   </div>
                 </div>
-
-
-
               </div>
             </div>
 
@@ -1059,6 +1063,7 @@
       </div>
     </div>
 
+    <script src="ai_secret.js"></script>
     <script src="app.js"></script>
     <script src="game.js"></script>
   </body>
