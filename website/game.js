@@ -1328,8 +1328,11 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
   let text = '';
   try {
     text = await callNebiusChatCompletions({
-      system: 'You are a bot joining a Codenames lobby. Respond with exactly one word: Ready',
-      user: 'Say ready.'
+      system: 'You are a bot joining a Codenames lobby. Reply with exactly the single word Ready. No punctuation, no quotes, no extra words.',
+      user: 'Reply now.',
+      temperature: 0,
+      max_tokens: 3,
+      stop: ['\n']
     });
   } catch (e) {
     console.warn('AI ready LLM call failed:', e);
@@ -1337,7 +1340,9 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
     return;
   }
 
-  const ok = String(text || '').trim().toLowerCase() === 'ready';
+  const cleaned = String(text || '').trim().replace(/^['"`]+|['"`]+$/g, '');
+  const firstWord = (cleaned.match(/[A-Za-z]+/) || [''])[0].toLowerCase();
+  const ok = firstWord === 'ready';
   if (!ok) {
     await setAIReadyStatus(gameId, team, aiId, 'bad_ready');
     return;
@@ -1591,7 +1596,7 @@ function normalizeBaseUrl(url) {
   return u.endsWith('/') ? u : (u + '/');
 }
 
-async function callNebiusChatCompletions({ system, user, temperature = 0.7 }) {
+async function callNebiusChatCompletions({ system, user, temperature = 0.7, max_tokens = 256, stop = null }) {
   const apiKey = String(window.NEBIUS_API_KEY || '').trim();
   const model = String(window.NEBIUS_MODEL || 'nvidia/Nemotron-Nano-V2-12b').trim();
   const baseUrl = normalizeBaseUrl(window.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1/');
@@ -1605,6 +1610,8 @@ async function callNebiusChatCompletions({ system, user, temperature = 0.7 }) {
     body: JSON.stringify({
       model,
       temperature,
+      max_tokens,
+      ...(stop ? { stop } : {}),
       messages: [
         ...(system ? [{ role: 'system', content: String(system) }] : []),
         { role: 'user', content: String(user || '') }
