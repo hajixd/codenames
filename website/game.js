@@ -529,6 +529,7 @@ function showModeSelect() {
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'none';
+  document.getElementById('panel-game').classList.remove('game-active');
   renderSpectateGames();
 }
 
@@ -538,6 +539,7 @@ function showQuickPlayLobby() {
   document.getElementById('quick-play-lobby').style.display = 'block';
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'none';
+  document.getElementById('panel-game').classList.remove('game-active');
 
   // Check if user has a name
   const userName = getUserName();
@@ -561,6 +563,7 @@ function showTournamentLobby() {
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'block';
   document.getElementById('game-board-container').style.display = 'none';
+  document.getElementById('panel-game').classList.remove('game-active');
   renderTournamentLobby();
 }
 
@@ -2599,6 +2602,7 @@ function showGameBoard() {
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'flex';
+  document.getElementById('panel-game').classList.add('game-active');
 }
 
 function renderGame() {

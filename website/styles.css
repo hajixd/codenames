@@ -3553,6 +3553,16 @@ button.player-tag.pill-action:disabled{
   max-width: 900px;
 }
 
+/* When game board is active, remove panel constraints */
+.panel-game.game-active .panel-inner {
+  max-width: 100%;
+  padding: 0;
+}
+
+.panel-game.game-active {
+  overflow: hidden;
+}
+
 /* Game Lobby */
 #game-lobby h2 {
   font-size: 20px;
@@ -6044,23 +6054,25 @@ body.tournament.has-team-color .input:focus {
 .game-container-expanded {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 120px);
-  max-height: calc(100dvh - 120px);
+  height: calc(100dvh - 64px);
+  max-height: calc(100dvh - 64px);
   overflow: hidden;
-  padding: 12px;
-  gap: 12px;
+  padding: 16px 20px;
+  gap: 10px;
   background: var(--bg);
 }
 
 /* Enhanced Game Header */
 .game-header-expanded {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 20px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px 24px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   flex-shrink: 0;
 }
 
@@ -6068,7 +6080,7 @@ body.tournament.has-team-color .input:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .game-team-expanded {
@@ -6088,9 +6100,9 @@ body.tournament.has-team-color .input:focus {
 }
 
 .game-team-expanded .cards-count {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
-  min-width: 40px;
+  min-width: 36px;
   text-align: center;
 }
 
@@ -6101,8 +6113,8 @@ body.tournament.has-team-color .input:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  min-width: 100px;
+  gap: 4px;
+  min-width: 80px;
 }
 
 .game-vs-expanded {
@@ -6157,8 +6169,9 @@ body.tournament.has-team-color .input:focus {
 .game-turn-expanded {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  gap: 8px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
 }
 
 .turn-phase {
@@ -6170,8 +6183,8 @@ body.tournament.has-team-color .input:focus {
 .game-main-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 260px 1fr 280px;
-  gap: 12px;
+  grid-template-columns: 250px 1fr 280px;
+  gap: 16px;
   min-height: 0;
   overflow: hidden;
 }
@@ -6180,7 +6193,7 @@ body.tournament.has-team-color .input:focus {
 .game-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   overflow: hidden;
 }
@@ -6206,13 +6219,14 @@ body.tournament.has-team-color .input:focus {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  background: var(--surface);
 }
 
 .sidebar-panel-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: var(--text-dim);
 }
 
@@ -6271,10 +6285,12 @@ body.tournament.has-team-color .input:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   background: var(--surface2);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
 }
 
 .roster-player-name {
@@ -6389,7 +6405,8 @@ body.tournament.has-team-color .input:focus {
   color: var(--text-dim);
   font-size: 12px;
   text-align: center;
-  padding: 20px;
+  padding: 24px 16px;
+  font-style: italic;
 }
 
 /* Game Center Area */
@@ -6397,7 +6414,7 @@ body.tournament.has-team-color .input:focus {
   grid-column: 2;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
   overflow: hidden;
 }
@@ -6408,47 +6425,52 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   justify-content: center;
   min-height: 0;
+  padding: 4px 0;
 }
 
 .game-center-area .game-board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
   gap: 8px;
   width: 100%;
-  max-width: min(100%, calc((100dvh - 320px) * 1.25));
-  aspect-ratio: 5 / 4;
+  height: 100%;
+  max-width: min(100%, calc((100dvh - 240px) * 1.35));
+  max-height: 100%;
 }
 
 .game-center-area .game-card {
-  aspect-ratio: unset;
-  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  padding: 8px 10px;
   background: var(--surface);
   border: 2px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  min-height: 0;
 }
 
 .game-center-area .game-card .card-word {
-  font-size: clamp(10px, 1.8vw, 14px);
+  font-size: clamp(10px, 1.4vw, 15px);
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  word-break: break-word;
-  line-height: 1.2;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-height: 1.25;
 }
 
 .game-center-area .game-card:hover:not(.revealed):not(.disabled) {
   border-color: var(--accent);
-  transform: scale(1.02);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transform: scale(1.03);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  z-index: 2;
 }
 
 /* Card Tags */
@@ -6529,7 +6551,7 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 8px 16px;
+  padding: 6px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -6590,10 +6612,10 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 8px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
@@ -6658,25 +6680,27 @@ body.tournament.has-team-color .input:focus {
 }
 
 .waiting-expanded {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-dim);
+  font-style: italic;
 }
 
 /* Operative Chat Panel */
 .operative-chat-panel {
   flex: 1;
-  min-height: 200px;
+  min-height: 180px;
 }
 
 .chat-privacy-badge {
   font-size: 9px;
   padding: 3px 8px;
-  background: rgba(34, 197, 94, 0.2);
+  background: rgba(34, 197, 94, 0.15);
   color: var(--green);
   border-radius: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .chat-privacy-badge.spymaster-visible {
@@ -6707,11 +6731,12 @@ body.tournament.has-team-color .input:focus {
   padding: 8px 10px;
   background: var(--surface2);
   border-radius: 8px;
+  border: 1px solid transparent;
 }
 
 .chat-message.my-message {
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.25);
 }
 
 .chat-message-header {
@@ -6785,7 +6810,8 @@ body.tournament.has-team-color .input:focus {
   color: var(--text-dim);
   font-size: 12px;
   text-align: center;
-  padding: 15px 10px;
+  padding: 16px 12px;
+  font-style: italic;
 }
 
 .voting-item {
@@ -6795,6 +6821,13 @@ body.tournament.has-team-color .input:focus {
   padding: 8px 10px;
   background: var(--surface2);
   border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.voting-item:hover {
+  border-color: var(--border);
 }
 
 .voting-word {
@@ -6900,12 +6933,22 @@ body.tournament.has-team-color .input:focus {
   }
 
   .game-container-expanded {
+    height: calc(100dvh - 60px);
+    max-height: calc(100dvh - 60px);
     padding: 8px;
     gap: 8px;
   }
 
   .game-header-expanded {
-    padding: 10px 14px;
+    padding: 8px 14px;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .game-turn-expanded {
+    padding-left: 0;
+    border-left: none;
+    justify-content: center;
   }
 
   .game-team-expanded .cards-count {
@@ -6953,6 +6996,28 @@ body.tournament.has-team-color .input:focus {
 
   .clue-form-expanded .btn {
     width: 100%;
+  }
+}
+
+/* Wide screen layout */
+@media (min-width: 1600px) {
+  .game-main-layout {
+    grid-template-columns: 280px 1fr 300px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .game-main-layout {
+    grid-template-columns: 300px 1fr 320px;
+    gap: 20px;
+  }
+
+  .game-container-expanded {
+    padding: 20px 28px;
+  }
+
+  .game-center-area .game-card .card-word {
+    font-size: 15px;
   }
 }
 
