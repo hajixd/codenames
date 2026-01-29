@@ -1318,7 +1318,11 @@ async function addQuickAI(team, seatRole) {
 
 async function aiReadyHandshake(gameId, team, aiId, aiName) {
   // Only run if we have a key configured.
-  if (!hasNebiusKeyConfigured()) return;
+  // If not, mark the bot as having an API error so it's visually obvious.
+  if (!hasNebiusKeyConfigured()) {
+    await setAIReadyStatus(gameId, team, aiId, 'api_error');
+    return;
+  }
 
   // Ask the model to return exactly "Ready".
   let text = '';
@@ -1329,11 +1333,15 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
     });
   } catch (e) {
     console.warn('AI ready LLM call failed:', e);
+    await setAIReadyStatus(gameId, team, aiId, 'api_error');
     return;
   }
 
   const ok = String(text || '').trim().toLowerCase() === 'ready';
-  if (!ok) return;
+  if (!ok) {
+    await setAIReadyStatus(gameId, team, aiId, 'bad_ready');
+    return;
+  }
 
   const ref = db.collection('games').doc(gameId);
   await db.runTransaction(async (tx) => {
@@ -1348,13 +1356,46 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
     if (idx === -1) return;
     if (players[idx]?.ready) return;
 
-    players[idx] = { ...players[idx], ready: true };
+    players[idx] = { ...players[idx], ready: true, aiStatus: 'ok' };
     tx.update(ref, {
       [key]: players,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       log: firebase.firestore.FieldValue.arrayUnion(`${aiName} is ready.`)
     });
   });
+}
+
+// Update an AI player's readiness diagnostic status in the lobby.
+// status: 'api_error' | 'bad_ready' | 'ok' | null
+async function setAIReadyStatus(gameId, team, aiId, status) {
+  const ref = db.collection('games').doc(gameId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (g.currentPhase && g.currentPhase !== 'waiting') return;
+
+      const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+      const players = Array.isArray(g[key]) ? [...g[key]] : [];
+      const idx = players.findIndex(p => p?.odId === aiId);
+      if (idx === -1) return;
+
+      const prev = players[idx] || {};
+      // Only AI diagnostics for AIs
+      const isAI = !!prev.isAI || String(prev.odId || '').startsWith('ai_');
+      if (!isAI) return;
+
+      const next = { ...prev, aiStatus: status || null };
+      players[idx] = next;
+      tx.update(ref, {
+        [key]: players,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch (e) {
+    console.warn('Failed to set AI status', e);
+  }
 }
 
 async function removeQuickAI(aiId) {
@@ -2237,8 +2278,14 @@ function renderQuickLobby(game) {
       const ready = !!p.ready;
       const playerId = p.odId || '';
       const isAI = !!p.isAI || String(p.odId || '').startsWith('ai_');
+      const aiStatus = isAI ? String(p.aiStatus || '') : '';
+      const aiStatusClass = !isAI ? '' : (
+        aiStatus === 'api_error' ? ' ai-status-red' :
+        aiStatus === 'bad_ready' ? ' ai-status-yellow' :
+        aiStatus === 'ok' ? ' ai-status-green' : ''
+      );
       return `
-        <div class="quick-player ${ready ? 'ready' : ''}">
+        <div class="quick-player ${ready ? 'ready' : ''}${aiStatusClass}">
           <span class="quick-player-name ${playerId && !isAI ? 'profile-link' : ''}" ${playerId && !isAI ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
           <span class="quick-player-actions">
             ${isAI ? '<span class="quick-ai-pill">AI</span>' : ''}
