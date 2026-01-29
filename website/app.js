@@ -4649,7 +4649,27 @@ function initProfilePopup() {
     const id = link.dataset.profileId;
 
     if (type && id) {
-      showProfilePopup(type, id, link);
+      // If we're inside the centered profile details modal, treat profile links as
+      // in-modal navigation (swap the current details content instead of stacking popups).
+      const detailsModal = document.getElementById('profile-details-modal');
+      if (detailsModal?.classList?.contains('modal-open') && link.closest('#profile-details-modal')) {
+        renderProfileDetailsModal(id, type);
+        const body = document.getElementById('profile-details-body');
+        if (body) body.scrollTop = 0;
+        return;
+      }
+
+      // If we're in the team modal, close it and open the new profile popup.
+      // (Keeps navigation feeling like "one popup at a time".)
+      let anchorForPopup = link;
+      if (link.closest('#team-modal')) {
+        try { closeTeamModal(); } catch (_) {}
+        // The clicked element will be removed when the modal closes; avoid trying to
+        // position the popup against a detached node.
+        anchorForPopup = null;
+      }
+
+      showProfilePopup(type, id, anchorForPopup);
     }
   });
 
@@ -4723,7 +4743,11 @@ function showProfilePopup(type, id, anchorEl) {
   } else {
     // Desktop: position near anchor element
     backdrop.style.display = 'none';
-    positionPopupNearAnchor(popup, anchorEl);
+    // If the anchor is inside the popup (e.g., clicking a link within the popup),
+    // keep the current position instead of jumping.
+    if (anchorEl && !popup.contains(anchorEl)) {
+      positionPopupNearAnchor(popup, anchorEl);
+    }
   }
 
   popup.style.display = 'flex';
@@ -4853,11 +4877,16 @@ function renderTeamProfile(teamId) {
     <div class="profile-members">
       <div class="profile-members-title">Team Members</div>
       ${members.length ? members.map(m => {
+        const mid = entryAccountId(m);
+        const mname = (m?.name || '—').trim();
         const isLeader = isSameAccount(m, creatorId);
         const memberColor = tc || 'var(--text)';
+        const link = mid
+          ? `<span class="profile-member-name profile-link" data-profile-type="player" data-profile-id="${esc(mid)}" style="color:${esc(memberColor)}">${esc(mname)}</span>`
+          : `<span class="profile-member-name" style="color:${esc(memberColor)}">${esc(mname)}</span>`;
         return `
           <div class="profile-member">
-            <span class="profile-member-name" style="color:${esc(memberColor)}">${esc(m.name || '—')}</span>
+            ${link}
             ${isLeader ? '<span class="profile-member-badge leader">Leader</span>' : ''}
           </div>
         `;
@@ -4924,7 +4953,9 @@ function renderPlayerProfile(playerId) {
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Team</span>
-        <span class="profile-stat-value ${memberTeam ? 'highlight' : ''}" style="${memberTeam && tc ? `color:${esc(tc)}` : ''}">${memberTeam ? esc(truncateTeamName(memberTeam.teamName || 'Team')) : 'No team'}</span>
+        ${memberTeam
+          ? `<span class="profile-stat-value highlight profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}" style="${tc ? `color:${esc(tc)}` : ''}">${esc(truncateTeamName(memberTeam.teamName || 'Team'))}</span>`
+          : `<span class="profile-stat-value">No team</span>`}
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Joined</span>
