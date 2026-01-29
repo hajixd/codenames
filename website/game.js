@@ -1325,13 +1325,16 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
   }
 
   // Ask the model to return exactly "Ready".
+  // Use a single USER message (no system) to match the Nebius TokenFactory examples and
+  // avoid any provider quirks around the system role.
   let text = '';
   try {
     text = await callNebiusChatCompletions({
-      system: 'You are a bot joining a Codenames lobby. Reply with exactly the single word Ready. No punctuation, no quotes, no extra words.',
-      user: 'Reply now.',
+      user: 'IMPORTANT: Output MUST be exactly this single word with exact casing: Ready\n' +
+            'Do not add punctuation. Do not add quotes. Do not add any other words.\n' +
+            'Your entire reply must be: Ready',
       temperature: 0,
-      max_tokens: 3,
+      max_tokens: 5,
       stop: ['\n']
     });
   } catch (e) {
@@ -1341,8 +1344,9 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
   }
 
   const cleaned = String(text || '').trim().replace(/^['"`]+|['"`]+$/g, '');
-  const firstWord = (cleaned.match(/[A-Za-z]+/) || [''])[0].toLowerCase();
-  const ok = firstWord === 'ready';
+  // Some models may prepend a short acknowledgement despite instructions (e.g., "I'm ready").
+  // Treat any standalone "ready" as success for the lobby handshake.
+  const ok = /\bready\b/i.test(cleaned);
   if (!ok) {
     await setAIReadyStatus(gameId, team, aiId, 'bad_ready');
     return;
@@ -1601,6 +1605,14 @@ async function callNebiusChatCompletions({ system, user, temperature = 0.7, max_
   const model = String(window.NEBIUS_MODEL || 'nvidia/Nemotron-Nano-V2-12b').trim();
   const baseUrl = normalizeBaseUrl(window.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1/');
 
+  // Nebius TokenFactory supports OpenAI-compatible chat completions. Their examples use
+  // "content" as an array of parts (e.g., [{type:"text",text:"..."}]). We send that shape
+  // to maximize compatibility.
+  const messages = [
+    ...(system ? [{ role: 'system', content: [{ type: 'text', text: String(system) }] }] : []),
+    { role: 'user', content: [{ type: 'text', text: String(user || '') }] }
+  ];
+
   const res = await fetch(baseUrl + 'chat/completions', {
     method: 'POST',
     headers: {
@@ -1612,10 +1624,7 @@ async function callNebiusChatCompletions({ system, user, temperature = 0.7, max_
       temperature,
       max_tokens,
       ...(stop ? { stop } : {}),
-      messages: [
-        ...(system ? [{ role: 'system', content: String(system) }] : []),
-        { role: 'user', content: String(user || '') }
-      ]
+      messages
     })
   });
 
@@ -1626,7 +1635,12 @@ async function callNebiusChatCompletions({ system, user, temperature = 0.7, max_
 
   const json = await res.json();
   const content = json?.choices?.[0]?.message?.content;
-  return (typeof content === 'string') ? content : '';
+  if (typeof content === 'string') return content;
+  // Some providers return content as an array of parts.
+  if (Array.isArray(content)) {
+    return content.map(p => (typeof p?.text === 'string' ? p.text : '')).join('');
+  }
+  return '';
 }
 
 async function callLLMFromInstructions({ instructions, input, temperature = 0.7 }) {
