@@ -43,6 +43,11 @@ function extractTextFromContent(content) {
   }
   if (typeof content === 'object') {
     if (typeof content.text === 'string') return content.text.trim();
+    // Some providers nest the text payload.
+    if (content.text && typeof content.text === 'object') {
+      if (typeof content.text.value === 'string') return content.text.value.trim();
+      if (typeof content.text.text === 'string') return content.text.text.trim();
+    }
     if (typeof content.content === 'string') return content.content.trim();
   }
   return String(content).trim();
@@ -71,17 +76,12 @@ module.exports = async (req, res) => {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 12_000);
-    // Nebius docs commonly show message.content as an array of parts.
-    // Using that format here improves compatibility across models.
-    // Some providers/models behave oddly with system messages. Keep this as a single user instruction.
-    const messages = [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Health check: reply with exactly the single word Ready. Output only Ready.' },
-        ],
-      },
-    ];
+    // For maximum compatibility across models/providers, send a plain string content.
+    // (Some backends accept parts but return unexpected shapes.)
+    const messages = [{
+      role: 'user',
+      content: 'Health check: reply with exactly the single word Ready. Output only Ready.'
+    }];
 
     const r = await fetch(NEBIUS_BASE, {
       method: 'POST',
@@ -126,6 +126,18 @@ module.exports = async (req, res) => {
     if (!data?.choices?.length) {
       return json(res, 502, {
         error: 'Nebius returned no completion choices',
+        text,
+        raw: data,
+        bodyText,
+        status: r.status,
+      });
+    }
+
+    // If we got choices but couldn't extract any text, treat as a failure so the client can
+    // surface diagnostics instead of silently returning {text: ""}.
+    if (!text) {
+      return json(res, 502, {
+        error: 'Nebius returned an empty completion text',
         text,
         raw: data,
         bodyText,

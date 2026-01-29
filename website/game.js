@@ -247,6 +247,10 @@ function countAIsForTeam(game, team) {
 }
 
 async function addAiToQuickPlayLobby(team, seatRole, name, mode, model) {
+  // Ensure the singleton lobby doc exists before we try to update it.
+  // Otherwise Firestore may throw FAILED_PRECONDITION on tx.update.
+  await ensureQuickPlayGameExists();
+
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   const aiId = genAiId();
   const safeName = (name || '').trim() || `AI-${aiId.slice(-4).toUpperCase()}`;
@@ -255,8 +259,16 @@ async function addAiToQuickPlayLobby(team, seatRole, name, mode, model) {
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) throw new Error('Quick Play lobby not found');
-    const g = snap.data();
+    // If the lobby doc is missing for any reason, create it on the fly rather than erroring.
+    // This prevents commit FAILED_PRECONDITION from tx.update.
+    let g;
+    if (!snap.exists) {
+      const uiSettings = readQuickSettingsFromUI();
+      g = buildQuickPlayGameData(uiSettings);
+      tx.set(ref, g);
+    } else {
+      g = snap.data();
+    }
     if (g.currentPhase && g.currentPhase !== 'waiting') {
       throw new Error('Cannot add AI while a Quick Play game is in progress.');
     }
@@ -350,7 +362,8 @@ async function verifyAiReady(team, aiId, model) {
       if (text) {
         console.warn('AI ready check returned (expected "Ready"):', text);
       } else {
-        console.warn('AI ready check returned empty content; full response:', data);
+        // Prefer logging the raw provider payload if present.
+        console.warn('AI ready check returned empty content; full response:', data?.raw || data);
       }
       await updateAiInLobby(team, aiId, { aiStatus: 'yellow', ready: false, lastReadyText: text.slice(0, 120) });
     }
