@@ -361,9 +361,6 @@ async function verifyAiReady(team, aiId, model) {
     }
 
     const text = String(data?.text || data?.content || '').trim();
-    if (data?.usedModel && String(data.usedModel) !== String(model || QP_AI_DEFAULT_MODEL)) {
-      console.info('[AI] Ready check used fallback model:', data.usedModel);
-    }
     if (text === 'Ready') {
       await updateAiInLobby(team, aiId, { aiStatus: 'green', ready: true });
     } else {
@@ -373,8 +370,6 @@ async function verifyAiReady(team, aiId, model) {
         console.warn('AI ready check returned (expected "Ready"):', text);
       } else {
         console.warn('AI ready check returned empty content; full response:', data);
-        // If the server tried multiple prompts/models, also make that obvious.
-        if (data?.attempt) console.warn('[AI] Ready check attempts:', data.attempt, 'See `prev` for earlier attempts.');
       }
       await updateAiInLobby(team, aiId, { aiStatus: 'yellow', ready: false, lastReadyText: text.slice(0, 120) });
     }
