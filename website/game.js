@@ -106,112 +106,11 @@ let selectedQuickSeatRole = 'operative'; // 'operative' | 'spymaster' (Quick Pla
 let latestQuickGame = null; // last observed Quick Play game doc for UI decisions
 let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
-/* =========================
-   View State Persistence (device-local)
-   - Uses app.js helpers when available.
-========================= */
-function persistGameViewState(patch = {}) {
-  try {
-    if (typeof window.setViewState === 'function') {
-      window.setViewState(patch);
-      return;
-    }
-  } catch (_) {}
-  // Fallback (should rarely happen): write directly
-  try {
-    const raw = safeLSGet('ct_view_state_v1');
-    const base = raw ? JSON.parse(raw) : {};
-    const next = { ...base, ...(patch || {}), updatedAtMs: Date.now() };
-    safeLSSet('ct_view_state_v1', JSON.stringify(next));
-  } catch (_) {}
-}
-
-function readGameViewState() {
-  try {
-    if (typeof window.getViewState === 'function') return window.getViewState();
-  } catch (_) {}
-  try {
-    const raw = safeLSGet('ct_view_state_v1');
-    return raw ? JSON.parse(raw) : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-
 // Quick Play is a single shared lobby/game.
 const QUICKPLAY_DOC_ID = 'quickplay';
 let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
-
-// Quick Play: entry prompt overlay state (when a live game is in progress)
-let qpResumeOverlayOpen = false;
-
-function initQuickPlayResumeOverlayUI() {
-  const overlay = document.getElementById('quickplay-resume-overlay');
-  const btnRejoin = document.getElementById('qp-resume-rejoin');
-  const btnSpectate = document.getElementById('qp-resume-spectate');
-  const btnHome = document.getElementById('qp-resume-home');
-
-  if (!overlay || !btnRejoin || !btnSpectate || !btnHome) return;
-
-  btnRejoin.addEventListener('click', () => {
-    // Only allow if enabled
-    if (btnRejoin.disabled) return;
-    hideQuickPlayResumeOverlay();
-    try { joinGame(QUICKPLAY_DOC_ID); } catch (_) {}
-  });
-
-  btnSpectate.addEventListener('click', () => {
-    hideQuickPlayResumeOverlay();
-    // Stay in spectator mode on the live board.
-    try { spectateGame(QUICKPLAY_DOC_ID); } catch (_) {}
-  });
-
-  btnHome.addEventListener('click', () => {
-    hideQuickPlayResumeOverlay();
-    try { stopGameListener(); } catch (_) {}
-    try { stopQuickLobbyListener(); } catch (_) {}
-    try {
-      if (typeof window.returnToLaunchScreen === 'function') window.returnToLaunchScreen();
-    } catch (_) {}
-  });
-}
-
-function showQuickPlayResumeOverlay() {
-  const overlay = document.getElementById('quickplay-resume-overlay');
-  if (!overlay) return;
-  qpResumeOverlayOpen = true;
-  overlay.style.display = 'flex';
-  overlay.setAttribute('aria-hidden', 'false');
-}
-
-function hideQuickPlayResumeOverlay() {
-  const overlay = document.getElementById('quickplay-resume-overlay');
-  if (!overlay) return;
-  qpResumeOverlayOpen = false;
-  overlay.style.display = 'none';
-  overlay.setAttribute('aria-hidden', 'true');
-}
-
-function updateQuickPlayResumeOverlayForGame(game) {
-  if (!qpResumeOverlayOpen) return;
-  const btnRejoin = document.getElementById('qp-resume-rejoin');
-  const hint = document.getElementById('qp-resume-hint');
-  if (!btnRejoin) return;
-
-  const odId = getUserId();
-  const role = game ? getQuickPlayerRole(game, odId) : null;
-  const canRejoin = role === 'red' || role === 'blue';
-  btnRejoin.disabled = !canRejoin;
-
-  if (hint) {
-    hint.textContent = canRejoin
-      ? 'You were already in this match.'
-      : 'You aren\'t in this match — you can spectate.';
-  }
-}
 
 // Quick Play settings / negotiation
 function readQuickSettingsFromUI() {
@@ -363,9 +262,6 @@ function generateKeyCard(firstTeam, assassinCards = 1) {
    Game UI Initialization
 ========================= */
 function initGameUI() {
-  // Quick Play entry prompt overlay
-  initQuickPlayResumeOverlayUI();
-
   // Mode selection buttons
   document.getElementById('select-quick-play')?.addEventListener('click', () => showQuickPlayLobby());
   document.getElementById('select-tournament')?.addEventListener('click', () => showTournamentLobby());
@@ -539,37 +435,6 @@ function initGameUI() {
   } else {
     showModeSelect();
   }
-
-// Restore in-progress game view (local-only) AFTER the initial render picks a mode.
-// This prevents the initial render from overwriting a restored game board.
-try {
-  const st = readGameViewState();
-  if (st && st.panel === 'panel-game' && st.inGame) {
-    // Tournament: if we were mid-game, rejoin the active match.
-    if (document.body.classList.contains('tournament')) {
-      if (st.gameId) {
-        startGameListener(st.gameId, { spectator: !!st.spectator });
-      } else {
-        // Fallback: find the active game for the team.
-        rejoinCurrentGame();
-      }
-    }
-    // Quick Play: re-open the lobby; lobby listener will auto-jump into the match if you're on a team.
-    if (document.body.classList.contains('quickplay')) {
-      showQuickPlayLobby();
-      // Re-apply last selected role/seat (best-effort UI restoration).
-      const qt = st.quickTeam;
-      const qs = st.quickSeat;
-      if (qt === 'red' || qt === 'blue' || qt === 'spectator') {
-        selectedQuickSeatRole = (qs === 'spymaster') ? 'spymaster' : 'operative';
-        // Delay so the lobby DOM is visible and listeners are attached.
-        setTimeout(() => {
-          try { selectQuickRole(qt); } catch (_) {}
-        }, 0);
-      }
-    }
-  }
-} catch (_) {}
 }
 
 /* =========================
@@ -631,7 +496,6 @@ function showModeSelect() {
     return;
   }
   currentPlayMode = 'select';
-  persistGameViewState({ panel: 'panel-game', gameView: 'modeSelect', playMode: 'select', inGame: false, gameId: null, spectator: false });
   document.getElementById('play-mode-select').style.display = 'block';
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
@@ -641,7 +505,6 @@ function showModeSelect() {
 
 function showQuickPlayLobby() {
   currentPlayMode = 'quick';
-  persistGameViewState({ panel: 'panel-game', gameView: 'quickLobby', playMode: 'quick', inGame: false, gameId: 'quickplay', spectator: false, quickTeam: selectedQuickTeam || null, quickSeat: selectedQuickSeatRole || 'operative' });
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'block';
   document.getElementById('tournament-lobby').style.display = 'none';
@@ -665,7 +528,6 @@ function showQuickPlayLobby() {
 
 function showTournamentLobby() {
   currentPlayMode = 'tournament';
-  persistGameViewState({ panel: 'panel-game', gameView: 'tournamentLobby', playMode: 'tournament', inGame: false, gameId: null, spectator: false });
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'block';
@@ -680,7 +542,6 @@ const QUICK_ROLES = ['red', 'spectator', 'blue'];
 
 function selectQuickRole(role) {
   selectedQuickTeam = role;
-  persistGameViewState({ panel: 'panel-game', playMode: 'quick', gameView: 'quickLobby', quickTeam: role, quickSeat: selectedQuickSeatRole || 'operative' });
 
   const hint = document.getElementById('team-select-hint');
 
@@ -771,8 +632,6 @@ function stepQuickSeatRole(targetRole) {
 }
 
 function selectQuickSeat(team, seatRole) {
-  // Persist the user's last chosen quick-play seat so reload restores the same UI.
-  persistGameViewState({ panel: 'panel-game', playMode: 'quick', gameView: 'quickLobby', quickTeam: team, quickSeat: seatRole });
   const nextTeam = (team === 'red' || team === 'blue') ? team : 'spectator';
   const nextSeat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
   selectedQuickSeatRole = nextSeat;
@@ -1460,36 +1319,6 @@ async function ensureQuickPlayGameExists() {
     await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
   }
 }
-
-// Called when the user chooses Quick Play from the launch screen.
-// If a match is already in progress, show a resume/spectate prompt over the live board.
-window.enterQuickPlayFlowFromLaunch = async function enterQuickPlayFlowFromLaunch() {
-  try {
-    currentPlayMode = 'quick';
-    // Ensure the singleton quick play doc exists so we can check status.
-    await ensureQuickPlayGameExists();
-
-    const snap = await db.collection('games').doc(QUICKPLAY_DOC_ID).get();
-    const g = snap.exists ? ({ id: snap.id, ...snap.data() }) : null;
-
-    const inProgress = !!(g && g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
-    if (!inProgress) {
-      hideQuickPlayResumeOverlay();
-      showQuickPlayLobby();
-      return;
-    }
-
-    // Show the live game in the background (spectator) and prompt the user.
-    spectateGame(QUICKPLAY_DOC_ID);
-    showQuickPlayResumeOverlay();
-    updateQuickPlayResumeOverlayForGame(g);
-  } catch (e) {
-    console.warn('enterQuickPlayFlowFromLaunch failed', e);
-    // Safe fallback
-    try { hideQuickPlayResumeOverlay(); } catch (_) {}
-    try { showQuickPlayLobby(); } catch (_) {}
-  }
-};
 
 function getQuickPlayerRole(game, odId) {
   const inRed = (game.redPlayers || []).some(p => p.odId === odId);
@@ -2650,8 +2479,6 @@ function startGameListener(gameId, options = {}) {
   spectatorMode = !!options.spectator;
   spectatingGameId = spectatorMode ? gameId : null;
 
-  persistGameViewState({ panel: 'panel-game', gameView: 'board', playMode: currentPlayMode, inGame: true, gameId: gameId, spectator: !!spectatorMode });
-
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
     if (!snap.exists) {
       currentGame = null;
@@ -2683,7 +2510,6 @@ function stopGameListener() {
   currentGame = null;
   spectatorMode = false;
   spectatingGameId = null;
-  persistGameViewState({ panel: 'panel-game', playMode: currentPlayMode, inGame: false, gameId: null, spectator: false, gameView: (currentPlayMode === 'tournament') ? 'tournamentLobby' : (currentPlayMode === 'quick' ? 'quickLobby' : 'modeSelect') });
 }
 
 /* =========================
@@ -2695,7 +2521,6 @@ function showGameLobby() {
 }
 
 function showGameBoard() {
-  persistGameViewState({ panel: 'panel-game', gameView: 'board', playMode: currentPlayMode, inGame: true, gameId: (currentGame && currentGame.id) ? currentGame.id : null, spectator: !!spectatorMode });
   document.getElementById('play-mode-select').style.display = 'none';
   document.getElementById('quick-play-lobby').style.display = 'none';
   document.getElementById('tournament-lobby').style.display = 'none';
@@ -2709,20 +2534,6 @@ function renderGame() {
   }
 
   showGameBoard();
-
-  // If we are showing the Quick Play entry overlay, keep its button state in sync
-  // and auto-dismiss it if the match ends.
-  try {
-    if (qpResumeOverlayOpen && currentGame?.type === 'quick' && currentGame?.id === QUICKPLAY_DOC_ID) {
-      const inProgress = !!(currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.winner == null);
-      if (!inProgress) {
-        hideQuickPlayResumeOverlay();
-        if (currentPlayMode === 'quick') showQuickPlayLobby();
-        return;
-      }
-      updateQuickPlayResumeOverlayForGame(currentGame);
-    }
-  } catch (_) {}
 
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
