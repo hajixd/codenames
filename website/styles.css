@@ -4512,6 +4512,20 @@ button.player-tag.pill-action:disabled{
   overflow: hidden;
 }
 
+/* Game Log Panel (Desktop sidebar) */
+.game-log-panel {
+  min-height: 120px;
+}
+
+.game-log-panel .game-log-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .popover-header {
   display: flex;
   align-items: center;
@@ -6142,6 +6156,8 @@ body.tournament.has-team-color .input:focus {
   flex: 1 1 0;
   display: flex;
   min-width: 0;
+  /* Center the roster block within its half of the header so names sit between the edge and the score */
+  justify-content: center;
 }
 
 .topbar-team-names {
@@ -6154,11 +6170,15 @@ body.tournament.has-team-color .input:focus {
   font-weight: 650;
   line-height: 1.05;
   min-width: 0;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  align-items: center;
+  text-align: center;
 }
 
-.topbar-team-red .topbar-team-names { align-items: flex-start; text-align: left; }
-.topbar-team-blue .topbar-team-names { align-items: flex-end; text-align: right; }
+/* Team name colors */
+.topbar-team-red .topbar-player { color: var(--game-red); }
+.topbar-team-blue .topbar-player { color: var(--game-blue); }
 
 .topbar-team-names.cols-2 {
   display: grid;
@@ -6169,8 +6189,8 @@ body.tournament.has-team-color .input:focus {
   align-content: center;
 }
 
-.topbar-team-red .topbar-team-names.cols-2 { justify-items: start; }
-.topbar-team-blue .topbar-team-names.cols-2 { justify-items: end; }
+.topbar-team-red .topbar-team-names.cols-2 { justify-items: center; }
+.topbar-team-blue .topbar-team-names.cols-2 { justify-items: center; }
 
 .topbar-player {
   max-width: 100%;
@@ -6181,13 +6201,24 @@ body.tournament.has-team-color .input:focus {
 }
 
 .topbar-player.is-me {
-  color: var(--text);
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  /* Rectangle highlight (not a pill) */
   padding: 2px 8px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.10) inset;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
+
+.topbar-team-red .topbar-player.is-me {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.topbar-team-blue .topbar-player.is-me {
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+}
+
+/* In 2-column mode we still center the grid inside the team half */
+.topbar-team-names.cols-2 { justify-items: center; }
 
 .topbar-center {
   flex: 0 0 auto;
@@ -8237,8 +8268,13 @@ body.qp-gate-open .app {
   /* Remove the separate Players box on desktop (names live in the top bar) */
   .team-roster-panel { display: none; }
 
-  /* Let clue history fully own the left column */
-  .clue-history-panel { flex: 1; min-height: 0; }
+  /* Desktop left column: Clue History + Game Log */
+  .clue-history-panel { flex: 1.15; min-height: 0; }
+  .game-log-panel { flex: 0.85; min-height: 0; }
+
+  /* Game log lives in the sidebar on desktop, so hide the floating popover trigger */
+  #game-log-toggle { display: none !important; }
+  .game-log-popover { display: none !important; }
 
   .clue-history-content {
     padding: 12px;

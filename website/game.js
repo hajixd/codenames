@@ -2850,16 +2850,21 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 }
 
 function renderGameLog() {
-  const logEl = document.getElementById('game-log-entries');
-  if (!logEl || !currentGame?.log) return;
+  const popoverEl = document.getElementById('game-log-entries');
+  const sidebarEl = document.getElementById('game-log-entries-sidebar');
+  if ((!popoverEl && !sidebarEl) || !currentGame?.log) return;
 
-  logEl.innerHTML = currentGame.log.map(entry => {
+  const html = currentGame.log.map(entry => {
     return `<div class="log-entry">${entry}</div>`;
   }).join('');
 
-  // Auto-scroll to bottom
-  const container = document.getElementById('game-log');
-  if (container) container.scrollTop = container.scrollHeight;
+  if (popoverEl) popoverEl.innerHTML = html;
+  if (sidebarEl) sidebarEl.innerHTML = html;
+
+  // Auto-scroll to bottom (popover container + sidebar scroller)
+  const popover = document.getElementById('game-log');
+  if (popover) popover.scrollTop = popover.scrollHeight;
+  if (sidebarEl) sidebarEl.scrollTop = sidebarEl.scrollHeight;
 }
 
 function updateRoleButtons() {
