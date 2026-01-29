@@ -287,7 +287,7 @@ function initGameUI() {
     // with a chooser overlay (rejoin/spectate/back to homepage).
     try {
       if (typeof window.maybeGateQuickPlayWithLiveGame === 'function') {
-        window.maybeGateQuickPlayWithLiveGame({ onProceed: () => showQuickPlayLobby() });
+        window.maybeGateQuickPlayWithLiveGame({ onProceed: () => showQuickPlayLobby(), showLoading: true, loadingLabel: 'Loading', minDelayMs: 250 });
         return;
       }
     } catch (_) {}
@@ -2563,6 +2563,9 @@ window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {
   // Ensure the Play UI is in a state where the game board can render.
   // This hides the lobby UI and shows the board container.
   try { currentPlayMode = 'quick'; } catch (_) {}
+
+  // Prevent any lobby flash while we wait for the first snapshot.
+  try { showGameBoard(); } catch (_) {}
 
   // Start the live game listener for the Quick Play singleton.
   // This will render the game board (and keep it updating) in the background.

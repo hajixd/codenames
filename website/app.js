@@ -230,7 +230,7 @@ function showQuickPlayGate({ gameId, canRejoin } = {}) {
   qpGateState = { gameId: gameId || null, canRejoin: !!canRejoin };
   document.body.classList.add('qp-gate-open');
   qpGateEl.classList.remove('hidden');
-  if (qpGateStatus) qpGateStatus.textContent = gameId ? `Live game detected (${gameId})` : 'Live game detected';
+  if (qpGateStatus) qpGateStatus.textContent = 'A live game is in progress.';
 
   if (qpGateRejoinBtn) {
     qpGateRejoinBtn.disabled = !qpGateState.canRejoin;
@@ -245,19 +245,28 @@ function hideQuickPlayGate() {
 }
 
 async function maybeGateQuickPlayWithLiveGame(opts = {}) {
-  const proceed = (typeof opts.onProceed === 'function')
+  // Checks the authoritative Quick Play singleton game doc.
+  // If a live game is in progress, we enter Quick Play (skipping the lobby),
+  // start a live backdrop, then present the 3-button chooser.
+  const QUICKPLAY_DOC_ID = 'quickplay';
+
+  const minDelayMs = Number.isFinite(opts.minDelayMs) ? Math.max(0, opts.minDelayMs) : 350;
+
+  // Default: if the caller provided onProceed (already inside the app), avoid flashing a loader unless requested.
+  const showLoading = (typeof opts.showLoading === 'boolean')
+    ? opts.showLoading
+    : (typeof opts.onProceed !== 'function');
+
+  const loadingLabel = String(opts.loadingLabel || 'Loading');
+  const onProceed = (typeof opts.onProceed === 'function')
     ? opts.onProceed
     : (() => {
-        showAuthLoadingScreen();
-        setTimeout(() => {
-          enterAppFromLaunch('quick');
-          hideAuthLoadingScreen();
-        }, 300);
+        enterAppFromLaunch('quick');
       });
 
-  // IMPORTANT: Do NOT gate based on locally-stored "last game".
-  // We gate based on the authoritative Quick Play singleton doc.
-  const QUICKPLAY_DOC_ID = 'quickplay';
+  const startedAtMs = Date.now();
+  if (showLoading) showAuthLoadingScreen(loadingLabel);
+
   let snap = null;
   try {
     snap = await db.collection('games').doc(QUICKPLAY_DOC_ID).get();
@@ -265,19 +274,35 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
     console.warn('Quick Play gate lookup failed (best-effort):', e);
   }
 
+  const finish = () => {
+    if (showLoading) hideAuthLoadingScreen();
+  };
+
+  const scheduleAfterMinDelay = (fn) => {
+    const elapsed = Date.now() - startedAtMs;
+    const wait = Math.max(minDelayMs - elapsed, 0);
+    setTimeout(fn, wait);
+  };
+
+  // No doc -> treat as no live game.
   if (!snap || !snap.exists) {
-    proceed();
+    scheduleAfterMinDelay(() => {
+      try { onProceed(); } finally { finish(); }
+    });
     return;
   }
 
   const g = snap.data() || {};
   const inProgress = !!(g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
+
   if (!inProgress) {
-    proceed();
+    scheduleAfterMinDelay(() => {
+      try { onProceed(); } finally { finish(); }
+    });
     return;
   }
 
-  // Live Quick Play game is in progress. Show the options UI and keep the game running behind it.
+  // Live Quick Play game is in progress.
   const uid = String(getUserId?.() || '').trim();
   const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
   const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
@@ -287,18 +312,20 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
   ]);
   const canRejoin = !!uid && ids.has(uid);
 
-  showAuthLoadingScreen();
-  setTimeout(() => {
+  scheduleAfterMinDelay(() => {
     try {
-      // Enter Quick Play, but skip the lobby so they only see the 3-button chooser.
+      // Enter Quick Play, but skip the lobby so users never see it flash.
       enterAppFromLaunch('quick', { skipQuickLobby: true, restore: true });
+
       // Start a spectator preview of the live game so it plays behind the overlay.
       try { window.startQuickPlayLiveBackdrop?.({ spectator: true }); } catch (_) {}
+
+      // Show the chooser.
       showQuickPlayGate({ gameId: QUICKPLAY_DOC_ID, canRejoin });
     } finally {
-      hideAuthLoadingScreen();
+      finish();
     }
-  }, 0);
+  });
 }
 
 // Allow game.js to gate quick-play navigation too.
@@ -528,9 +555,7 @@ function restoreLastNavigation() {
   const mode = (safeLSGet(LS_NAV_MODE) || '').trim();
   if (!mode) return;
 
-  // Capture the saved panel *synchronously* before any other init logic might
-  // touch localStorage (best-effort). This prevents accidental overwrites from
-  // causing restores to always land on Home.
+  // Capture the saved panel *synchronously* before any other init logic might touch localStorage (best-effort).
   const savedPanel = (mode === 'tournament')
     ? String(safeLSGet(LS_NAV_PANEL) || 'panel-home').trim()
     : '';
@@ -542,17 +567,47 @@ function restoreLastNavigation() {
     return;
   }
 
+  // QUICK PLAY restore:
+  // - Avoid flashing the Quick Play lobby on refresh.
+  // - If a live Quick Play game is in progress, show the smooth "live game" chooser.
+  if (mode === 'quick') {
+    try {
+      maybeGateQuickPlayWithLiveGame({
+        showLoading: true,
+        loadingLabel: 'Loading',
+        minDelayMs: 300,
+        onProceed: () => {
+          // No live game in progress -> enter Quick Play normally.
+          enterAppFromLaunch('quick', { restore: true });
+        }
+      });
+    } catch (e) {
+      console.warn('Quick Play restore failed (best-effort)', e);
+      showAuthLoadingScreen('Loading');
+      setTimeout(() => {
+        try { enterAppFromLaunch('quick', { restore: true }); }
+        finally { hideAuthLoadingScreen(); }
+      }, 0);
+    }
+    return;
+  }
+
+  // TOURNAMENT restore:
   // Avoid showing the launch screen when we know where the user was.
   showAuthLoadingScreen('Restoring');
 
   // Let the DOM settle, then restore.
   setTimeout(() => {
     try {
-      if (mode === 'tournament') {
-        enterAppFromLaunch('tournament', { restore: true });
-        if (savedPanel) switchToPanel(savedPanel);
-      } else {
-        enterAppFromLaunch('quick', { restore: true });
+      enterAppFromLaunch('tournament', { restore: true });
+      if (savedPanel) {
+        switchToPanel(savedPanel);
+        // Some init code can fire shortly after load; re-assert the saved tab once.
+        setTimeout(() => {
+          try {
+            if (savedPanel && activePanelId !== savedPanel) switchToPanel(savedPanel);
+          } catch (_) {}
+        }, 60);
       }
 
       // If the user was in an active game, resume it (best-effort).
