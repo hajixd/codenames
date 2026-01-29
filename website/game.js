@@ -123,6 +123,10 @@ let currentPlayMode = 'select'; // 'select', 'quick', 'tournament'
 
 // Quick Play is a single shared lobby/game.
 const QUICKPLAY_DOC_ID = 'quickplay';
+
+// Expose the Quick Play doc id so other modules can reference it without
+// duplicating constants.
+window.QUICKPLAY_DOC_ID = QUICKPLAY_DOC_ID;
 let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
@@ -2549,6 +2553,21 @@ function startGameListener(gameId, options = {}) {
     console.error('Game listener error:', err);
   });
 }
+
+// Allows app.js to show a live Quick Play game behind the 3-button chooser.
+// - spectator=true: view-only background (default)
+// - spectator=false: interactive rejoin (only if you're already a participant)
+window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {}) {
+  const spectator = (typeof opts.spectator === 'boolean') ? opts.spectator : true;
+
+  // Ensure the Play UI is in a state where the game board can render.
+  // This hides the lobby UI and shows the board container.
+  try { currentPlayMode = 'quick'; } catch (_) {}
+
+  // Start the live game listener for the Quick Play singleton.
+  // This will render the game board (and keep it updating) in the background.
+  startGameListener(QUICKPLAY_DOC_ID, { spectator });
+};
 
 function stopGameListener() {
   if (gameUnsub) gameUnsub();

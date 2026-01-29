@@ -64,6 +64,9 @@ let unreadGlobalCount = 0;
 let unreadTeamCount = 0;
 let lastReadWriteAtMs = 0;
 let activePanelId = 'panel-game';
+// Used to suppress quick-play lobby rendering on the *next* panel-game switch.
+// (Needed for the live-game chooser so users don't briefly see the lobby.)
+let skipQuickPlayLobbyOnce = false;
 
 // Profile sync
 let profileUnsub = null;
@@ -180,6 +183,7 @@ let qpGateRejoinBtn = null;
 let qpGateSpectateBtn = null;
 let qpGateBackBtn = null;
 let qpGateStatus = null;
+let qpGateState = { gameId: null, canRejoin: false };
 
 function initQuickPlayGate() {
   qpGateEl = document.getElementById('qp-gate');
@@ -204,42 +208,34 @@ function initQuickPlayGate() {
     try { hide(); } catch (_) {}
     logoutLocal('Returning');
   });
+
+  // Rejoin the in-progress Quick Play game (only if eligible).
+  qpGateRejoinBtn?.addEventListener('click', () => {
+    if (!qpGateState?.canRejoin) return;
+    hideQuickPlayGate();
+    // Switch from spectator preview to player mode.
+    try { window.startQuickPlayLiveBackdrop?.({ spectator: false }); } catch (_) {}
+  });
+
+  // Spectate: keep the live game running behind the overlay.
+  qpGateSpectateBtn?.addEventListener('click', () => {
+    hideQuickPlayGate();
+    // Ensure we're in spectator mode.
+    try { window.startQuickPlayLiveBackdrop?.({ spectator: true }); } catch (_) {}
+  });
 }
 
 function showQuickPlayGate({ gameId, canRejoin } = {}) {
   if (!qpGateEl) return;
+  qpGateState = { gameId: gameId || null, canRejoin: !!canRejoin };
   document.body.classList.add('qp-gate-open');
   qpGateEl.classList.remove('hidden');
   if (qpGateStatus) qpGateStatus.textContent = gameId ? `Live game detected (${gameId})` : 'Live game detected';
 
   if (qpGateRejoinBtn) {
-    qpGateRejoinBtn.disabled = !canRejoin;
-    qpGateRejoinBtn.classList.toggle('disabled', !canRejoin);
+    qpGateRejoinBtn.disabled = !qpGateState.canRejoin;
+    qpGateRejoinBtn.classList.toggle('disabled', !qpGateState.canRejoin);
   }
-
-  // Rejoin = return to the live game as a player (if eligible)
-  qpGateRejoinBtn?.addEventListener('click', () => {
-    if (qpGateRejoinBtn.disabled) return;
-    try { safeLSSet(LS_ACTIVE_GAME_SPECTATOR, '0'); } catch (_) {}
-    try { safeLSSet(LS_NAV_MODE, 'tournament'); } catch (_) {}
-    try { safeLSSet(LS_NAV_PANEL, 'panel-game'); } catch (_) {}
-    hideQuickPlayGate();
-    // Ensure the app is in tournament mode and the Play panel is visible.
-    try { enterAppFromLaunch('tournament', { restore: true }); } catch (_) {}
-    try { switchToPanel('panel-game'); } catch (_) {}
-    try { window.restoreLastGameFromStorage?.(); } catch (_) {}
-  }, { once: true });
-
-  // Spectate = return to the live game in spectator mode
-  qpGateSpectateBtn?.addEventListener('click', () => {
-    try { safeLSSet(LS_ACTIVE_GAME_SPECTATOR, '1'); } catch (_) {}
-    try { safeLSSet(LS_NAV_MODE, 'tournament'); } catch (_) {}
-    try { safeLSSet(LS_NAV_PANEL, 'panel-game'); } catch (_) {}
-    hideQuickPlayGate();
-    try { enterAppFromLaunch('tournament', { restore: true }); } catch (_) {}
-    try { switchToPanel('panel-game'); } catch (_) {}
-    try { window.restoreLastGameFromStorage?.(); } catch (_) {}
-  }, { once: true });
 }
 
 function hideQuickPlayGate() {
@@ -259,49 +255,50 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
         }, 300);
       });
 
-  const gameId = String(safeLSGet(LS_ACTIVE_GAME_ID) || '').trim();
-  if (!gameId) {
-    // No live game hint; proceed normally.
+  // IMPORTANT: Do NOT gate based on locally-stored "last game".
+  // We gate based on the authoritative Quick Play singleton doc.
+  const QUICKPLAY_DOC_ID = 'quickplay';
+  let snap = null;
+  try {
+    snap = await db.collection('games').doc(QUICKPLAY_DOC_ID).get();
+  } catch (e) {
+    console.warn('Quick Play gate lookup failed (best-effort):', e);
+  }
+
+  if (!snap || !snap.exists) {
     proceed();
     return;
   }
 
-  // Best-effort: confirm the game doc still exists and is still active.
-  let canRejoin = false;
-  try {
-    const snap = await db.collection('games').doc(gameId).get();
-    if (!snap.exists) {
-      // Stale local hint; clear and proceed.
-      try { localStorage.removeItem(LS_ACTIVE_GAME_ID); } catch (_) {}
-      try { localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR); } catch (_) {}
-      proceed();
-      return;
-    }
-    const g = snap.data() || {};
-
-    // If winner is set, treat the game as done.
-    if (g.winner === 'red' || g.winner === 'blue') {
-      try { localStorage.removeItem(LS_ACTIVE_GAME_ID); } catch (_) {}
-      try { localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR); } catch (_) {}
-      proceed();
-      return;
-    }
-
-    const isSpec = String(safeLSGet(LS_ACTIVE_GAME_SPECTATOR) || '') === '1';
-    const uid = String(getUserId?.() || '').trim();
-    const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
-    const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
-    const ids = new Set([
-      ...redPlayers.map(p => String(p?.odId || '').trim()).filter(Boolean),
-      ...bluePlayers.map(p => String(p?.odId || '').trim()).filter(Boolean),
-    ]);
-    canRejoin = !!uid && !isSpec && ids.has(uid);
-  } catch (e) {
-    console.warn('Quick Play gate check failed (best-effort):', e);
+  const g = snap.data() || {};
+  const inProgress = !!(g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null);
+  if (!inProgress) {
+    proceed();
+    return;
   }
 
-  // Show gate instead of entering quick play.
-  showQuickPlayGate({ gameId, canRejoin });
+  // Live Quick Play game is in progress. Show the options UI and keep the game running behind it.
+  const uid = String(getUserId?.() || '').trim();
+  const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
+  const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
+  const ids = new Set([
+    ...redPlayers.map(p => String(p?.odId || '').trim()).filter(Boolean),
+    ...bluePlayers.map(p => String(p?.odId || '').trim()).filter(Boolean),
+  ]);
+  const canRejoin = !!uid && ids.has(uid);
+
+  showAuthLoadingScreen();
+  setTimeout(() => {
+    try {
+      // Enter Quick Play, but skip the lobby so they only see the 3-button chooser.
+      enterAppFromLaunch('quick', { skipQuickLobby: true, restore: true });
+      // Start a spectator preview of the live game so it plays behind the overlay.
+      try { window.startQuickPlayLiveBackdrop?.({ spectator: true }); } catch (_) {}
+      showQuickPlayGate({ gameId: QUICKPLAY_DOC_ID, canRejoin });
+    } finally {
+      hideAuthLoadingScreen();
+    }
+  }, 0);
 }
 
 // Allow game.js to gate quick-play navigation too.
@@ -401,10 +398,17 @@ function enterAppFromLaunch(mode, opts = {}) {
     // Ensure any tournament-only chrome (team glow/text) is off.
     try { refreshHeaderIdentity?.(); } catch (_) {}
     setBrowserTitle('quick');
+    if (opts && opts.skipQuickLobby) {
+      skipQuickPlayLobbyOnce = true;
+    }
     switchToPanel('panel-game');
     try { window.bumpPresence?.(); } catch (_) {}
     try {
-      if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
+      // Normally Quick Play shows its lobby. But when a live game is in-progress
+      // and the user clicks Quick Play, we skip the lobby and show the 3-button chooser.
+      if (!opts || !opts.skipQuickLobby) {
+        if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
+      }
     } catch (_) {}
     return;
   }
@@ -483,7 +487,10 @@ function switchToPanel(panelId) {
         window.showTournamentLobby();
       }
       if (document.body.classList.contains('quickplay') && typeof window.showQuickPlayLobby === 'function') {
-        window.showQuickPlayLobby();
+        if (!skipQuickPlayLobbyOnce) {
+          window.showQuickPlayLobby();
+        }
+        skipQuickPlayLobbyOnce = false;
       }
     } catch (_) {}
   }
@@ -521,6 +528,13 @@ function restoreLastNavigation() {
   const mode = (safeLSGet(LS_NAV_MODE) || '').trim();
   if (!mode) return;
 
+  // Capture the saved panel *synchronously* before any other init logic might
+  // touch localStorage (best-effort). This prevents accidental overwrites from
+  // causing restores to always land on Home.
+  const savedPanel = (mode === 'tournament')
+    ? String(safeLSGet(LS_NAV_PANEL) || 'panel-home').trim()
+    : '';
+
   // If they haven't set a name yet, don't auto-enter a mode.
   const name = (getUserName() || '').trim();
   if (!name) {
@@ -534,10 +548,6 @@ function restoreLastNavigation() {
   // Let the DOM settle, then restore.
   setTimeout(() => {
     try {
-      // IMPORTANT: capture the saved panel BEFORE entering tournament mode,
-      // because entering normally would otherwise default to Home and overwrite storage.
-      const savedPanel = (mode === 'tournament') ? (safeLSGet(LS_NAV_PANEL) || 'panel-home').trim() : '';
-
       if (mode === 'tournament') {
         enterAppFromLaunch('tournament', { restore: true });
         if (savedPanel) switchToPanel(savedPanel);
