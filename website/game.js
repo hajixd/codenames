@@ -210,7 +210,12 @@ function openAiAddModal(team, seatRole) {
   if (nameIn) nameIn.value = '';
   if (modeSel) modeSel.value = 'autonomous';
   if (modelIn) modelIn.value = QP_AI_DEFAULT_MODEL;
+
+  // This app's modals use the `modal-open` class to control visibility/animations.
+  // Simply setting display isn't enough because CSS sets opacity/visibility by default.
   modal.style.display = 'flex';
+  void modal.offsetWidth; // trigger reflow so animation applies
+  modal.classList.add('modal-open');
   modal.setAttribute('aria-hidden', 'false');
   setTimeout(() => { try { nameIn?.focus?.(); } catch (_) {} }, 50);
 }
@@ -218,7 +223,14 @@ function openAiAddModal(team, seatRole) {
 function closeAiAddModal() {
   const modal = document.getElementById('ai-add-modal');
   if (!modal) return;
-  modal.style.display = 'none';
+
+  modal.classList.remove('modal-open');
+  // Match other modals: allow the fade-out animation, then hide.
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) {
+      modal.style.display = 'none';
+    }
+  }, 200);
   modal.setAttribute('aria-hidden', 'true');
   aiAddContext = { team: null, seatRole: null };
   const hint = document.getElementById('ai-add-hint');
