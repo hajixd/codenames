@@ -127,6 +127,541 @@ const QUICKPLAY_DOC_ID = 'quickplay';
 // Expose the Quick Play doc id so other modules can reference it without
 // duplicating constants.
 window.QUICKPLAY_DOC_ID = QUICKPLAY_DOC_ID;
+
+/* =========================
+   Quick Play AI (Lobby + Autoplay)
+   - AIs are stored as normal Quick Play players with odId starting with "ai_".
+   - To avoid duplicate moves with multiple clients, a lightweight controller lock
+     is held on the game doc (aiController).
+========================= */
+
+const AI_CONTROLLER_TTL_MS = 45 * 1000; // lock expires if not heartbeated
+const AI_CONTROLLER_HEARTBEAT_MS = 12 * 1000;
+const AI_THINK_DELAY_MS = 800;
+
+let aiHeartbeatTimer = null;
+let aiActionInFlight = false;
+let aiLastActionKey = '';
+
+function isAIPlayerId(id) {
+  return String(id || '').startsWith('ai_');
+}
+
+function isAIPlayer(p) {
+  return isAIPlayerId(p?.odId);
+}
+
+function quickGameHasAnyAI(game) {
+  if (!game) return false;
+  const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
+  const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
+  return red.some(isAIPlayer) || blue.some(isAIPlayer);
+}
+
+function getTeamPlayers(game, team) {
+  return Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
+}
+
+function getTeamSpymasterPlayer(game, team) {
+  const players = getTeamPlayers(game, team);
+  // Prefer explicit role assignment from lobby.
+  const p = players.find(x => String(x?.role || 'operative') === 'spymaster');
+  if (p) return p;
+  // Fallback: match current spymaster name.
+  const smName = team === 'red' ? game?.redSpymaster : game?.blueSpymaster;
+  return players.find(x => String(x?.name || '') === String(smName || '')) || null;
+}
+
+function getTeamOperativePlayers(game, team) {
+  const players = getTeamPlayers(game, team);
+  const smName = team === 'red' ? game?.redSpymaster : game?.blueSpymaster;
+  return players.filter(p => String(p?.name || '') !== String(smName || ''));
+}
+
+function teamHasHumanOperatives(game, team) {
+  return getTeamOperativePlayers(game, team).some(p => !isAIPlayer(p));
+}
+
+function teamHasAnyAIOperative(game, team) {
+  return getTeamOperativePlayers(game, team).some(p => isAIPlayer(p));
+}
+
+function isMyAIController(game) {
+  const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
+  if (!myId) return false;
+  return String(game?.aiController?.odId || '') === myId;
+}
+
+function controllerExpired(lock) {
+  const hb = lock?.heartbeatAt;
+  const hbMs = typeof hb?.toMillis === 'function' ? hb.toMillis() : 0;
+  if (!hbMs) return true;
+  return (Date.now() - hbMs) > AI_CONTROLLER_TTL_MS;
+}
+
+async function claimOrHeartbeatAIController(gameId) {
+  const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
+  const myName = (typeof getUserName === 'function') ? String(getUserName() || '').trim() : '';
+  if (!gameId || !myId) return;
+
+  const ref = db.collection('games').doc(gameId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (g.winner != null) return;
+      if (!quickGameHasAnyAI(g)) return;
+
+      const lock = g.aiController || null;
+      const mine = lock && String(lock.odId || '') === myId;
+      const expired = !lock || controllerExpired(lock);
+
+      // Only touch the doc if we can claim or we should heartbeat our existing lock.
+      if (!mine && !expired) return;
+
+      // Heartbeat throttling (best-effort): if we're already the controller and the
+      // last heartbeat is fresh, avoid rewriting.
+      if (mine && lock?.heartbeatAt?.toMillis && (Date.now() - lock.heartbeatAt.toMillis()) < (AI_CONTROLLER_HEARTBEAT_MS * 0.8)) {
+        return;
+      }
+
+      tx.update(ref, {
+        aiController: {
+          odId: myId,
+          name: myName || null,
+          acquiredAt: lock?.acquiredAt || firebase.firestore.FieldValue.serverTimestamp(),
+          heartbeatAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }
+      });
+    });
+  } catch (e) {
+    // Lock races are expected; keep it quiet.
+    console.warn('AI controller claim/heartbeat failed (best-effort)', e);
+  }
+}
+
+function ensureAIHeartbeatTimer() {
+  if (aiHeartbeatTimer) return;
+  aiHeartbeatTimer = setInterval(() => {
+    try {
+      if (!currentGame || currentGame.id !== QUICKPLAY_DOC_ID) return;
+      if (currentGame.winner != null) return;
+      if (!quickGameHasAnyAI(currentGame)) return;
+      if (!isMyAIController(currentGame)) return;
+      claimOrHeartbeatAIController(currentGame.id);
+    } catch (_) {}
+  }, AI_CONTROLLER_HEARTBEAT_MS);
+}
+
+function stopAIHeartbeatTimer() {
+  if (!aiHeartbeatTimer) return;
+  clearInterval(aiHeartbeatTimer);
+  aiHeartbeatTimer = null;
+}
+
+function pickAIClueWord(game) {
+  const boardWords = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+  const pool = [
+    'NEXUS','ORBIT','VECTOR','PHOENIX','MYSTERY','SIGNAL','EMBER','OASIS','QUARTZ','HARBOR',
+    'SPECTRUM','ECHO','CIPHER','AURORA','COMET','TEMPO','CITADEL','VORTEX','ANCHOR','SPARK'
+  ];
+  for (const w of pool) {
+    if (!boardWords.has(w)) return w;
+  }
+  // Fallback: generate something extremely unlikely to be on the board.
+  const rnd = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `CLUE${rnd}`;
+}
+
+function chooseAIGuessIndex(game) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const team = game?.currentTeam;
+  if (team !== 'red' && team !== 'blue') return -1;
+
+  const unrevealed = cards
+    .map((c, i) => ({ c, i }))
+    .filter(x => x.c && !x.c.revealed);
+  if (!unrevealed.length) return -1;
+
+  const mine = unrevealed.filter(x => x.c.type === team);
+  const neutral = unrevealed.filter(x => x.c.type === 'neutral');
+  const other = unrevealed.filter(x => x.c.type !== team && x.c.type !== 'neutral' && x.c.type !== 'assassin');
+  const assassin = unrevealed.filter(x => x.c.type === 'assassin');
+
+  // Simple, imperfect behavior so the game still feels like a game.
+  const clueNum = Number.isFinite(+game?.currentClue?.number) ? +game.currentClue.number : 1;
+  let pCorrect = 0.70;
+  if (clueNum === 0) pCorrect = 0.45;
+  if ((game?.guessesRemaining || 0) <= 1) pCorrect -= 0.08;
+  pCorrect = Math.max(0.35, Math.min(0.85, pCorrect));
+
+  const roll = Math.random();
+  const buckets = [
+    { name: 'mine', p: pCorrect, arr: mine },
+    { name: 'neutral', p: 0.15, arr: neutral },
+    { name: 'other', p: 0.14, arr: other },
+    { name: 'assassin', p: 0.01, arr: assassin },
+  ];
+
+  let acc = 0;
+  for (const b of buckets) {
+    acc += b.p;
+    if (roll <= acc && b.arr.length) {
+      return b.arr[Math.floor(Math.random() * b.arr.length)].i;
+    }
+  }
+
+  // Fallback: pick a safe-ish card if available.
+  const pref = mine.length ? mine : (neutral.length ? neutral : (other.length ? other : assassin));
+  return pref.length ? pref[Math.floor(Math.random() * pref.length)].i : -1;
+}
+
+async function aiHandleRoleSelectionIfNeeded(game) {
+  if (!game || game.id !== QUICKPLAY_DOC_ID) return;
+  if (game.currentPhase !== 'role-selection') return;
+
+  const ref = db.collection('games').doc(game.id);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (g.currentPhase !== 'role-selection') return;
+      if (g.winner != null) return;
+      if (!isMyAIController({ ...g, id: game.id })) return;
+
+      const updates = {};
+
+      const redSpy = getTeamSpymasterPlayer(g, 'red');
+      const blueSpy = getTeamSpymasterPlayer(g, 'blue');
+      if (!g.redSpymaster && redSpy && isAIPlayer(redSpy)) updates.redSpymaster = redSpy.name;
+      if (!g.blueSpymaster && blueSpy && isAIPlayer(blueSpy)) updates.blueSpymaster = blueSpy.name;
+
+      const willHaveRed = updates.redSpymaster || g.redSpymaster;
+      const willHaveBlue = updates.blueSpymaster || g.blueSpymaster;
+      if (willHaveRed && willHaveBlue) {
+        updates.currentPhase = 'spymaster';
+        updates.log = firebase.firestore.FieldValue.arrayUnion('All roles assigned. Starting…');
+      }
+      if (!Object.keys(updates).length) return;
+      updates.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+      tx.update(ref, updates);
+    });
+  } catch (e) {
+    console.warn('AI role-selection update failed (best-effort)', e);
+  }
+}
+
+async function aiGiveClueIfNeeded(game) {
+  if (!game || game.id !== QUICKPLAY_DOC_ID) return;
+  if (game.currentPhase !== 'spymaster') return;
+  if (game.winner != null) return;
+  if (game.currentClue) return;
+
+  const team = game.currentTeam;
+  if (team !== 'red' && team !== 'blue') return;
+
+  const spymasterP = getTeamSpymasterPlayer(game, team);
+  if (!spymasterP || !isAIPlayer(spymasterP)) return;
+
+  const ref = db.collection('games').doc(game.id);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (g.winner != null) return;
+      if (g.currentPhase !== 'spymaster') return;
+      if (g.currentClue) return;
+      if (!isMyAIController({ ...g, id: game.id })) return;
+
+      const t = g.currentTeam;
+      if (t !== 'red' && t !== 'blue') return;
+      const sm = getTeamSpymasterPlayer(g, t);
+      if (!sm || !isAIPlayer(sm)) return;
+
+      const remaining = (Array.isArray(g.cards) ? g.cards : []).filter(c => !c?.revealed && c?.type === t).length;
+      const number = Math.max(0, Math.min(3, remaining, 2));
+      const word = pickAIClueWord(g);
+
+      const teamName = t === 'red' ? g.redTeamName : g.blueTeamName;
+      const clueEntry = {
+        team: t,
+        word,
+        number,
+        results: [],
+        timestamp: new Date().toISOString()
+      };
+
+      tx.update(ref, {
+        currentClue: { word, number },
+        guessesRemaining: number + 1,
+        currentPhase: 'operatives',
+        log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
+        clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch (e) {
+    console.warn('AI clue update failed (best-effort)', e);
+  }
+}
+
+async function aiGuessIfNeeded(game) {
+  if (!game || game.id !== QUICKPLAY_DOC_ID) return;
+  if (game.currentPhase !== 'operatives') return;
+  if (game.winner != null) return;
+  const team = game.currentTeam;
+  if (team !== 'red' && team !== 'blue') return;
+
+  // Safety: if there are human operatives on the current team, don't have the AI "race" them.
+  if (teamHasHumanOperatives(game, team)) return;
+  if (!teamHasAnyAIOperative(game, team)) return;
+
+  const ref = db.collection('games').doc(game.id);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (g.winner != null) return;
+      if (g.currentPhase !== 'operatives') return;
+      if ((g.currentTeam !== 'red' && g.currentTeam !== 'blue')) return;
+      if (!isMyAIController({ ...g, id: game.id })) return;
+      if (teamHasHumanOperatives(g, g.currentTeam)) return;
+      if (!teamHasAnyAIOperative(g, g.currentTeam)) return;
+
+      const cardIndex = chooseAIGuessIndex(g);
+      if (cardIndex < 0) return;
+
+      const card = (Array.isArray(g.cards) ? g.cards : [])[cardIndex];
+      if (!card || card.revealed) return;
+
+      const updatedCards = [...g.cards];
+      updatedCards[cardIndex] = { ...card, revealed: true };
+
+      const teamName = g.currentTeam === 'red' ? g.redTeamName : g.blueTeamName;
+      const updates = {
+        cards: updatedCards,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      let logEntry = `${teamName} guessed "${card.word}" - `;
+      let endTurn = false;
+      let winner = null;
+
+      if (card.type === 'assassin') {
+        winner = g.currentTeam === 'red' ? 'blue' : 'red';
+        logEntry += 'ASSASSIN! Game over.';
+      } else if (card.type === g.currentTeam) {
+        logEntry += 'Correct!';
+        if (g.currentTeam === 'red') {
+          updates.redCardsLeft = (g.redCardsLeft || 0) - 1;
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = (g.blueCardsLeft || 0) - 1;
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+        updates.guessesRemaining = (g.guessesRemaining || 0) - 1;
+        if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
+      } else if (card.type === 'neutral') {
+        logEntry += 'Neutral. Turn ends.';
+        endTurn = true;
+      } else {
+        logEntry += `Wrong! (${card.type === 'red' ? g.redTeamName : g.blueTeamName}'s card)`;
+        if (card.type === 'red') {
+          updates.redCardsLeft = (g.redCardsLeft || 0) - 1;
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = (g.blueCardsLeft || 0) - 1;
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+        endTurn = true;
+      }
+
+      updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
+
+      if (winner) {
+        updates.winner = winner;
+        updates.currentPhase = 'ended';
+        const winnerName = truncateTeamNameGame(winner === 'red' ? g.redTeamName : g.blueTeamName);
+        updates.log = firebase.firestore.FieldValue.arrayUnion(`${winnerName} wins!`);
+      } else if (endTurn) {
+        updates.currentTeam = g.currentTeam === 'red' ? 'blue' : 'red';
+        updates.currentPhase = 'spymaster';
+        updates.currentClue = null;
+        updates.guessesRemaining = 0;
+      }
+
+      tx.update(ref, updates);
+    });
+  } catch (e) {
+    console.warn('AI guess update failed (best-effort)', e);
+  }
+}
+
+async function maybeRunAIActions(game) {
+  if (!game || game.id !== QUICKPLAY_DOC_ID) return;
+  if (game.winner != null) return;
+  if (!quickGameHasAnyAI(game)) {
+    stopAIHeartbeatTimer();
+    return;
+  }
+
+  // Only run when a Quick Play game is in progress.
+  const inProgress = !!(game.currentPhase && game.currentPhase !== 'waiting' && game.currentPhase !== 'ended');
+  if (!inProgress) {
+    stopAIHeartbeatTimer();
+    return;
+  }
+
+  ensureAIHeartbeatTimer();
+  await claimOrHeartbeatAIController(game.id);
+  if (!isMyAIController(game)) return;
+
+  // Debounce: snapshot storms + multi-phase updates.
+  const key = `${game.currentPhase}|${game.currentTeam}|${game.currentClue?.word || ''}|${game.guessesRemaining || 0}|${game.updatedAt?.seconds || ''}`;
+  if (key === aiLastActionKey) return;
+  aiLastActionKey = key;
+
+  if (aiActionInFlight) return;
+  aiActionInFlight = true;
+  try {
+    // Small think delay to keep UI smooth and reduce write races.
+    await new Promise(r => setTimeout(r, AI_THINK_DELAY_MS));
+    // Re-check currentGame (it may have moved on while we waited).
+    const g = currentGame;
+    if (!g || g.id !== QUICKPLAY_DOC_ID) return;
+    if (!isMyAIController(g)) return;
+
+    await aiHandleRoleSelectionIfNeeded(g);
+    await aiGiveClueIfNeeded(g);
+    await aiGuessIfNeeded(g);
+  } finally {
+    aiActionInFlight = false;
+  }
+}
+
+async function addQuickAI(team, seatRole) {
+  const t = (team === 'red' || team === 'blue') ? team : null;
+  if (!t) return;
+  const seat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
+  await ensureQuickPlayGameExists();
+
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Lobby not found');
+      const g = snap.data();
+      if (String(g.currentPhase || 'waiting') !== 'waiting') {
+        throw new Error('You can only add AI while the lobby is waiting for the next game.');
+      }
+
+      const redPlayers = Array.isArray(g.redPlayers) ? [...g.redPlayers] : [];
+      const bluePlayers = Array.isArray(g.bluePlayers) ? [...g.bluePlayers] : [];
+      const spectators = Array.isArray(g.spectators) ? [...g.spectators] : [];
+
+      const prevCount = redPlayers.length + bluePlayers.length + spectators.length;
+
+      const key = t === 'red' ? 'redPlayers' : 'bluePlayers';
+      const list = (t === 'red') ? redPlayers : bluePlayers;
+
+      // Derive a stable "next number" per team+seat.
+      const prefix = `ai_${t}_${seat}_`;
+      const existing = list
+        .map(p => String(p?.odId || ''))
+        .filter(id => id.startsWith(prefix));
+      let maxN = 0;
+      for (const id of existing) {
+        const m = id.match(/^ai_[a-z]+_[a-z]+_(\d+)_/i);
+        if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+      }
+      const n = maxN + 1;
+      const suffix = Math.random().toString(36).slice(2, 6);
+      const odId = `${prefix}${n}_${suffix}`;
+      const niceTeam = t === 'red' ? 'Red' : 'Blue';
+      const niceSeat = seat === 'spymaster' ? 'Spymaster' : 'Operative';
+      const name = `🤖 ${niceTeam} ${niceSeat} AI ${n}`;
+
+      list.push({ odId, name, ready: true, role: seat });
+
+      const updates = {
+        [key]: list,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      // If this is the first thing in the lobby, initialize default rules to avoid edge cases.
+      if (prevCount === 0) {
+        const ui = readQuickSettingsFromUI();
+        updates.quickSettings = { ...ui };
+        updates.settingsAccepted = { red: false, blue: false };
+        updates.settingsPending = null;
+      }
+
+      tx.update(ref, updates);
+    });
+  } catch (e) {
+    console.error('Failed to add AI:', e);
+    alert(e.message || 'Failed to add AI.');
+  }
+}
+
+async function removeQuickAI(aiId) {
+  const id = String(aiId || '').trim();
+  if (!isAIPlayerId(id)) return;
+
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      if (String(g.currentPhase || 'waiting') !== 'waiting') {
+        throw new Error('You can only remove AI while waiting in the lobby.');
+      }
+
+      const nextRed = (g.redPlayers || []).filter(p => p?.odId !== id);
+      const nextBlue = (g.bluePlayers || []).filter(p => p?.odId !== id);
+      const nextSpec = (g.spectators || []).filter(p => p?.odId !== id);
+
+      tx.update(ref, {
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        spectators: nextSpec,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch (e) {
+    console.error('Failed to remove AI:', e);
+    alert(e.message || 'Failed to remove AI.');
+  }
+}
+
+function initQuickPlayAIButtons() {
+  // Add AI buttons
+  document.querySelectorAll('.qp-ai-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const team = btn.getAttribute('data-ai-team');
+      const role = btn.getAttribute('data-ai-role');
+      addQuickAI(team, role);
+    });
+  });
+
+  // Remove AI (event delegation)
+  const lobby = document.getElementById('quick-play-lobby');
+  lobby?.addEventListener('click', (e) => {
+    const t = e?.target;
+    const id = t?.getAttribute?.('data-remove-ai');
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    removeQuickAI(id);
+  });
+}
 let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
@@ -455,6 +990,9 @@ function initGameUI() {
 
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
+
+  // Quick Play AI controls (lobby)
+  try { initQuickPlayAIButtons(); } catch (e) { console.warn('AI UI init failed', e); }
 
   // Initial render - defer to current app mode
   if (document.body.classList.contains('tournament')) {
@@ -1179,6 +1717,8 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
   const inactivePlayers = [];
 
   for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
+    // Never auto-remove AI slots (they have no presence records).
+    if (String(p?.odId || '').startsWith('ai_')) continue;
     const status = presenceMap.get(p.odId);
     // Remove players who are inactive or offline (or not in presence at all)
     // Remove players who are idle or offline (or not in presence at all)
@@ -1699,8 +2239,14 @@ function renderQuickLobby(game) {
     status.textContent = 'Loading lobby…';
     readyBtn.disabled = true;
     leaveBtn.disabled = true;
+    // Disable AI buttons while lobby loads.
+    document.querySelectorAll('.qp-ai-btn').forEach(b => { b.disabled = true; });
     return;
   }
+
+  // Enable AI buttons only while waiting in the lobby.
+  const canAddAI = String(game.currentPhase || 'waiting') === 'waiting';
+  document.querySelectorAll('.qp-ai-btn').forEach(b => { b.disabled = !canAddAI; });
 
   const odId = getUserId();
   const userName = getUserName();
@@ -1727,6 +2273,7 @@ function renderQuickLobby(game) {
     presenceMap.set(pr.odId || pr.id, status);
   }
   const isActive = (id) => {
+    if (String(id || '').startsWith('ai_')) return true;
     if (!presenceData.length) return true;
     return presenceMap.get(id) === 'online';
   };
@@ -1745,10 +2292,15 @@ function renderQuickLobby(game) {
       const isYou = p.odId === odId;
       const ready = !!p.ready;
       const playerId = p.odId || '';
+      const isAI = String(playerId || '').startsWith('ai_');
+      const canRemoveAI = isAI && String(game?.currentPhase || 'waiting') === 'waiting';
       return `
         <div class="quick-player ${ready ? 'ready' : ''}">
-          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
-          <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
+          <span class="quick-player-name ${(playerId && !isAI) ? 'profile-link' : ''}" ${(playerId && !isAI) ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <div class="quick-player-right">
+            <span class="quick-player-badge">${isAI ? 'AI' : (ready ? 'READY' : 'NOT READY')}</span>
+            ${canRemoveAI ? `<button class="qp-ai-remove" type="button" data-remove-ai="${escapeHtml(playerId)}" aria-label="Remove AI">Remove</button>` : ''}
+          </div>
         </div>
       `;
     }).join('');
@@ -2552,6 +3104,10 @@ function startGameListener(gameId, options = {}) {
     }
 
     renderGame();
+
+    // Quick Play AI: only one client acts as controller to avoid duplicate moves.
+    // Run best-effort and never block rendering.
+    try { void maybeRunAIActions(currentGame); } catch (_) {}
   }, (err) => {
     console.error('Game listener error:', err);
   });

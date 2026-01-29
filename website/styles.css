@@ -2485,6 +2485,42 @@ body.mode-joiner .only-joiner{ display:block; }
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
 .quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
+
+/* Quick Play: Add AI button in lobby headers */
+.qp-ai-btn{
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.82);
+  font-size: 11px;
+  line-height: 1.6;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+.qp-ai-btn:hover{ background: rgba(255,255,255,0.10); }
+.qp-ai-btn:active{ transform: translateY(0.5px); }
+.qp-ai-btn:disabled{
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Quick Play: AI remove button inside player rows */
+.qp-ai-remove{
+  margin-left: 8px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.qp-ai-remove:hover{ background: rgba(255,255,255,0.12); }
+.qp-ai-remove:active{ transform: translateY(0.5px); }
+.qp-ai-remove:hover{ background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.9); }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
@@ -2565,6 +2601,12 @@ body.mode-joiner .only-joiner{ display:block; }
   border-radius: 12px;
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
+}
+
+.quick-player-right{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .quick-player.ready{
   border-color: rgba(45, 210, 120, 0.35);
