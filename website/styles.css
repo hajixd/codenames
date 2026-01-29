@@ -7737,3 +7737,75 @@ body.tournament.has-team-color .input:focus {
     min-width: 80px;
   }
 }
+
+/* =========================
+   Quick Play gate (live game chooser)
+========================= */
+
+body.qp-gate-open .app {
+  filter: blur(10px);
+  transform: scale(0.995);
+  pointer-events: none;
+  user-select: none;
+}
+
+.qp-gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 10000;
+}
+
+.qp-gate.hidden {
+  display: none;
+}
+
+.qp-gate-card {
+  width: min(520px, 100%);
+  border-radius: 16px;
+  background: rgba(18, 22, 34, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  padding: 22px 20px;
+  text-align: center;
+}
+
+.qp-gate-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin-bottom: 6px;
+}
+
+.qp-gate-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+}
+
+.qp-gate-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qp-gate-actions .btn.disabled,
+.qp-gate-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (min-width: 520px) {
+  .qp-gate-actions {
+    flex-direction: row;
+  }
+  .qp-gate-actions .btn {
+    flex: 1;
+  }
+}

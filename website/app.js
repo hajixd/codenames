@@ -72,6 +72,7 @@ let lastLocalNameSetAtMs = 0;
 document.addEventListener('DOMContentLoaded', () => {
   initSettings();
   initConfirmDialog();
+  initQuickPlayGate();
   initLaunchScreen();
   initHeaderLogoNav();
   initTabs();
@@ -171,6 +172,142 @@ function returnToLaunchScreen() {
 window.returnToLaunchScreen = returnToLaunchScreen;
 
 /* =========================
+   Quick Play gate (live game in progress)
+========================= */
+
+let qpGateEl = null;
+let qpGateRejoinBtn = null;
+let qpGateSpectateBtn = null;
+let qpGateBackBtn = null;
+let qpGateStatus = null;
+
+function initQuickPlayGate() {
+  qpGateEl = document.getElementById('qp-gate');
+  if (!qpGateEl) return;
+  qpGateRejoinBtn = document.getElementById('qp-gate-rejoin');
+  qpGateSpectateBtn = document.getElementById('qp-gate-spectate');
+  qpGateBackBtn = document.getElementById('qp-gate-back');
+  qpGateStatus = document.getElementById('qp-gate-status');
+
+  const hide = () => hideQuickPlayGate();
+  qpGateEl.addEventListener('click', (e) => {
+    // Click-out closes the gate.
+    if (e.target === qpGateEl) hide();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (!document.body.classList.contains('qp-gate-open')) return;
+    if (e.key === 'Escape') hide();
+  });
+
+  qpGateBackBtn?.addEventListener('click', () => {
+    // Back to Homepage = sign-in screen (local-only logout).
+    try { hide(); } catch (_) {}
+    logoutLocal('Returning');
+  });
+}
+
+function showQuickPlayGate({ gameId, canRejoin } = {}) {
+  if (!qpGateEl) return;
+  document.body.classList.add('qp-gate-open');
+  qpGateEl.classList.remove('hidden');
+  if (qpGateStatus) qpGateStatus.textContent = gameId ? `Live game detected (${gameId})` : 'Live game detected';
+
+  if (qpGateRejoinBtn) {
+    qpGateRejoinBtn.disabled = !canRejoin;
+    qpGateRejoinBtn.classList.toggle('disabled', !canRejoin);
+  }
+
+  // Rejoin = return to the live game as a player (if eligible)
+  qpGateRejoinBtn?.addEventListener('click', () => {
+    if (qpGateRejoinBtn.disabled) return;
+    try { safeLSSet(LS_ACTIVE_GAME_SPECTATOR, '0'); } catch (_) {}
+    try { safeLSSet(LS_NAV_MODE, 'tournament'); } catch (_) {}
+    try { safeLSSet(LS_NAV_PANEL, 'panel-game'); } catch (_) {}
+    hideQuickPlayGate();
+    // Ensure the app is in tournament mode and the Play panel is visible.
+    try { enterAppFromLaunch('tournament', { restore: true }); } catch (_) {}
+    try { switchToPanel('panel-game'); } catch (_) {}
+    try { window.restoreLastGameFromStorage?.(); } catch (_) {}
+  }, { once: true });
+
+  // Spectate = return to the live game in spectator mode
+  qpGateSpectateBtn?.addEventListener('click', () => {
+    try { safeLSSet(LS_ACTIVE_GAME_SPECTATOR, '1'); } catch (_) {}
+    try { safeLSSet(LS_NAV_MODE, 'tournament'); } catch (_) {}
+    try { safeLSSet(LS_NAV_PANEL, 'panel-game'); } catch (_) {}
+    hideQuickPlayGate();
+    try { enterAppFromLaunch('tournament', { restore: true }); } catch (_) {}
+    try { switchToPanel('panel-game'); } catch (_) {}
+    try { window.restoreLastGameFromStorage?.(); } catch (_) {}
+  }, { once: true });
+}
+
+function hideQuickPlayGate() {
+  if (!qpGateEl) return;
+  qpGateEl.classList.add('hidden');
+  document.body.classList.remove('qp-gate-open');
+}
+
+async function maybeGateQuickPlayWithLiveGame(opts = {}) {
+  const proceed = (typeof opts.onProceed === 'function')
+    ? opts.onProceed
+    : (() => {
+        showAuthLoadingScreen();
+        setTimeout(() => {
+          enterAppFromLaunch('quick');
+          hideAuthLoadingScreen();
+        }, 300);
+      });
+
+  const gameId = String(safeLSGet(LS_ACTIVE_GAME_ID) || '').trim();
+  if (!gameId) {
+    // No live game hint; proceed normally.
+    proceed();
+    return;
+  }
+
+  // Best-effort: confirm the game doc still exists and is still active.
+  let canRejoin = false;
+  try {
+    const snap = await db.collection('games').doc(gameId).get();
+    if (!snap.exists) {
+      // Stale local hint; clear and proceed.
+      try { localStorage.removeItem(LS_ACTIVE_GAME_ID); } catch (_) {}
+      try { localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR); } catch (_) {}
+      proceed();
+      return;
+    }
+    const g = snap.data() || {};
+
+    // If winner is set, treat the game as done.
+    if (g.winner === 'red' || g.winner === 'blue') {
+      try { localStorage.removeItem(LS_ACTIVE_GAME_ID); } catch (_) {}
+      try { localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR); } catch (_) {}
+      proceed();
+      return;
+    }
+
+    const isSpec = String(safeLSGet(LS_ACTIVE_GAME_SPECTATOR) || '') === '1';
+    const uid = String(getUserId?.() || '').trim();
+    const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
+    const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
+    const ids = new Set([
+      ...redPlayers.map(p => String(p?.odId || '').trim()).filter(Boolean),
+      ...bluePlayers.map(p => String(p?.odId || '').trim()).filter(Boolean),
+    ]);
+    canRejoin = !!uid && !isSpec && ids.has(uid);
+  } catch (e) {
+    console.warn('Quick Play gate check failed (best-effort):', e);
+  }
+
+  // Show gate instead of entering quick play.
+  showQuickPlayGate({ gameId, canRejoin });
+}
+
+// Allow game.js to gate quick-play navigation too.
+window.maybeGateQuickPlayWithLiveGame = maybeGateQuickPlayWithLiveGame;
+
+/* =========================
    Launch screen (mode-first)
 ========================= */
 function initLaunchScreen() {
@@ -187,7 +324,7 @@ function initLaunchScreen() {
   const hint = document.getElementById('launch-name-hint');
   const input = document.getElementById('launch-name-input');
 
-  const requireNameThen = (mode) => {
+  const requireNameThen = (mode, opts = {}) => {
     const name = getUserName();
     if (!name) {
       if (hint) hint.textContent = 'Enter your name to continue.';
@@ -198,6 +335,12 @@ function initLaunchScreen() {
       return;
     }
     if (hint) hint.textContent = '';
+    // Quick Play can be gated if there's a live game in progress.
+    if (mode === 'quick' && opts && opts.gateIfLiveGame) {
+      maybeGateQuickPlayWithLiveGame();
+      return;
+    }
+
     // Show loading screen during navigation transition
     showAuthLoadingScreen();
     setTimeout(() => {
@@ -206,7 +349,9 @@ function initLaunchScreen() {
     }, 300);
   };
 
-  quickBtn?.addEventListener('click', () => requireNameThen('quick'));
+  // Quick Play can be gated if there's already a live game in progress.
+  // In that case we keep the game running in the background and show a chooser.
+  quickBtn?.addEventListener('click', () => requireNameThen('quick', { gateIfLiveGame: true }));
   tournBtn?.addEventListener('click', () => requireNameThen('tournament'));
 
   // Name + logout on launch (mirrors Tournament Home)
@@ -389,11 +534,15 @@ function restoreLastNavigation() {
   // Let the DOM settle, then restore.
   setTimeout(() => {
     try {
-      enterAppFromLaunch(mode === 'tournament' ? 'tournament' : 'quick');
+      // IMPORTANT: capture the saved panel BEFORE entering tournament mode,
+      // because entering normally would otherwise default to Home and overwrite storage.
+      const savedPanel = (mode === 'tournament') ? (safeLSGet(LS_NAV_PANEL) || 'panel-home').trim() : '';
 
       if (mode === 'tournament') {
-        const savedPanel = (safeLSGet(LS_NAV_PANEL) || 'panel-home').trim();
+        enterAppFromLaunch('tournament', { restore: true });
         if (savedPanel) switchToPanel(savedPanel);
+      } else {
+        enterAppFromLaunch('quick', { restore: true });
       }
 
       // If the user was in an active game, resume it (best-effort).

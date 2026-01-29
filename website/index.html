@@ -1043,6 +1043,19 @@
 
     </div>
 
+    <!-- Quick Play Gate (shown if a live game is already in progress) -->
+    <div class="qp-gate hidden" id="qp-gate" role="dialog" aria-modal="true" aria-label="Live game options">
+      <div class="qp-gate-card">
+        <div class="qp-gate-title">A live game is in progress</div>
+        <div class="qp-gate-sub" id="qp-gate-status">Live game detected</div>
+        <div class="qp-gate-actions">
+          <button class="btn primary" id="qp-gate-rejoin" type="button">Rejoin</button>
+          <button class="btn" id="qp-gate-spectate" type="button">Spectate Game</button>
+          <button class="btn logout" id="qp-gate-back" type="button">Back to Homepage</button>
+        </div>
+      </div>
+    </div>
+
     <script src="app.js"></script>
     <script src="game.js"></script>
   </body>

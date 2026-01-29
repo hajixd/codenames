@@ -278,7 +278,17 @@ function generateKeyCard(firstTeam, assassinCards = 1) {
 ========================= */
 function initGameUI() {
   // Mode selection buttons
-  document.getElementById('select-quick-play')?.addEventListener('click', () => showQuickPlayLobby());
+  document.getElementById('select-quick-play')?.addEventListener('click', () => {
+    // If there's a live game already in progress (typically tournament), gate quick play
+    // with a chooser overlay (rejoin/spectate/back to homepage).
+    try {
+      if (typeof window.maybeGateQuickPlayWithLiveGame === 'function') {
+        window.maybeGateQuickPlayWithLiveGame({ onProceed: () => showQuickPlayLobby() });
+        return;
+      }
+    } catch (_) {}
+    showQuickPlayLobby();
+  });
   document.getElementById('select-tournament')?.addEventListener('click', () => showTournamentLobby());
 
   // Back buttons
