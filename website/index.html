@@ -589,28 +589,37 @@
 
               <!-- Enhanced Game Header with Timer -->
               <div class="game-header-expanded">
-                <div class="game-score-section">
-                  <div class="game-team-expanded red">
-                    <span class="team-badge" id="game-red-team"></span>
-                    <span class="cards-count" id="game-red-left">9</span>
+                <div class="game-topbar">
+                  <div class="topbar-team topbar-team-red">
+                    <div class="topbar-team-names" id="topbar-red-names"></div>
                   </div>
-                  <div class="game-center-info">
-                    <span class="game-vs-expanded">VS</span>
-                    <div class="game-timer-display" id="game-timer" style="display:none;">
+
+                  <div class="topbar-center">
+                    <div class="topbar-score" aria-label="Score">
+                      <span class="topbar-score-num red" id="game-red-left">9</span>
+                      <span class="topbar-score-sep">v</span>
+                      <span class="topbar-score-num blue" id="game-blue-left">8</span>
+                    </div>
+
+                    <div class="game-timer-display topbar-timer" id="game-timer" style="display:none;">
                       <div class="timer-bar">
                         <div class="timer-fill" id="timer-fill"></div>
                       </div>
                       <span class="timer-text" id="timer-text">0:00</span>
                     </div>
                   </div>
-                  <div class="game-team-expanded blue">
-                    <span class="cards-count" id="game-blue-left">8</span>
-                    <span class="team-badge" id="game-blue-team"></span>
+
+                  <div class="topbar-team topbar-team-blue">
+                    <div class="topbar-team-names" id="topbar-blue-names"></div>
                   </div>
                 </div>
-                <div class="game-turn-expanded">
-                  <span class="turn-indicator" id="game-turn-team">Red</span>
-                  <span class="turn-phase" id="game-turn-role">Spymaster</span>
+
+                <!-- Legacy header fields still referenced by game logic -->
+                <div class="game-header-meta" aria-hidden="true">
+                  <span class="sr-only" id="game-red-team"></span>
+                  <span class="sr-only" id="game-blue-team"></span>
+                  <span class="sr-only" id="game-turn-team"></span>
+                  <span class="sr-only" id="game-turn-role"></span>
                 </div>
               </div>
 

@@ -2637,29 +2637,33 @@ function renderGame() {
 
   document.getElementById('game-red-left').textContent = currentGame.redCardsLeft;
   document.getElementById('game-blue-left').textContent = currentGame.blueCardsLeft;
-
-  // Update turn display
+  // Update turn display (kept for mobile / a11y, hidden on desktop)
   const turnTeamEl = document.getElementById('game-turn-team');
   const turnRoleEl = document.getElementById('game-turn-role');
 
-  if (currentGame.currentPhase === 'waiting') {
-    // Waiting for players
-    turnTeamEl.textContent = 'Waiting';
-    turnTeamEl.className = 'turn-team';
-    turnRoleEl.textContent = '(Players joining)';
-  } else if (currentGame.winner) {
-    turnTeamEl.textContent = truncateTeamNameGame(currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
-    turnTeamEl.className = `turn-team ${currentGame.winner}`;
-    turnRoleEl.textContent = 'WINS!';
-  } else {
-    turnTeamEl.textContent = truncateTeamNameGame(currentGame.currentTeam === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
-    turnTeamEl.className = `turn-team ${currentGame.currentTeam}`;
-    if (spectator) {
-      turnRoleEl.textContent = '(Spectating)';
+  if (turnTeamEl && turnRoleEl) {
+    if (currentGame.currentPhase === 'waiting') {
+      // Waiting for players
+      turnTeamEl.textContent = 'Waiting';
+      turnTeamEl.className = 'turn-team';
+      turnRoleEl.textContent = '(Players joining)';
+    } else if (currentGame.winner) {
+      turnTeamEl.textContent = truncateTeamNameGame(currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
+      turnTeamEl.className = `turn-team ${currentGame.winner}`;
+      turnRoleEl.textContent = 'WINS!';
     } else {
-      turnRoleEl.textContent = currentGame.currentPhase === 'spymaster' ? '(Spymaster)' : '(Operatives)';
+      turnTeamEl.textContent = truncateTeamNameGame(currentGame.currentTeam === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
+      turnTeamEl.className = `turn-team ${currentGame.currentTeam}`;
+      if (spectator) {
+        turnRoleEl.textContent = '(Spectating)';
+      } else {
+        turnRoleEl.textContent = currentGame.currentPhase === 'spymaster' ? '(Spymaster)' : '(Operatives)';
+      }
     }
   }
+
+  // Top bar names (desktop)
+  renderTopbarTeamNames();
 
   // Role selection
   const roleSelectionEl = document.getElementById('role-selection');
@@ -3847,6 +3851,57 @@ function renderTeamRoster() {
     currentGame.blueSpymaster,
     isBlueTurn
   );
+}
+
+
+/* =========================
+   Top Bar Team Names (Desktop)
+========================= */
+function renderTopbarTeamNames() {
+  if (!currentGame) return;
+
+  const redEl = document.getElementById('topbar-red-names');
+  const blueEl = document.getElementById('topbar-blue-names');
+  if (!redEl && !blueEl) return;
+
+  const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
+
+  const render = (players, el) => {
+    if (!el) return;
+
+    const list = Array.isArray(players) ? players : [];
+    const count = Math.max(1, list.length);
+
+    // Fit names nicely in the header height by scaling font size + gaps based on how many players are on the team.
+    // For larger teams, we switch to a 2-column grid so everything still fits cleanly.
+    const cols = count > 4 ? 2 : 1;
+    const rows = Math.ceil(count / cols);
+
+    el.classList.toggle('cols-2', cols === 2);
+    el.style.setProperty('--topbar-rows', String(rows));
+
+    const available = 42; // px (approx usable height inside header)
+    const gap = Math.max(2, Math.min(8, Math.floor(available / (rows * 7))));
+    const size = Math.max(9, Math.min(14, Math.floor((available - gap * (rows - 1)) / rows)));
+
+    el.style.setProperty('--topbar-name-size', `${size}px`);
+    el.style.setProperty('--topbar-name-gap', `${Math.max(2, Math.min(8, Math.floor(size * 0.35)))}px`);
+
+    if (list.length === 0) {
+      el.innerHTML = `<div class="topbar-player" style="color: var(--text-dim);">—</div>`;
+      return;
+    }
+
+    el.innerHTML = list.map(p => {
+      const pid = String(p?.odId || p?.userId || '').trim();
+      const isMe = !!(myId && pid && pid === myId);
+      const name = escapeHtml(String(p?.name || '—'));
+      return `<div class="topbar-player ${isMe ? 'is-me' : ''}">${name}</div>`;
+    }).join('');
+  };
+
+  render(currentGame.redPlayers, redEl);
+  render(currentGame.bluePlayers, blueEl);
 }
 
 /* =========================

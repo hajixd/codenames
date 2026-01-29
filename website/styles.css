@@ -6123,13 +6123,127 @@ body.tournament.has-team-color .input:focus {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 7px 20px;
+  padding: 6px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   flex-shrink: 0;
 }
+
+/* Desktop Top Bar (Score centered, team names left/right) */
+.game-topbar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.topbar-team {
+  flex: 1 1 0;
+  display: flex;
+  min-width: 0;
+}
+
+.topbar-team-names {
+  --topbar-name-size: 12px;
+  --topbar-name-gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--topbar-name-gap);
+  font-size: var(--topbar-name-size);
+  font-weight: 650;
+  line-height: 1.05;
+  min-width: 0;
+  width: 100%;
+}
+
+.topbar-team-red .topbar-team-names { align-items: flex-start; text-align: left; }
+.topbar-team-blue .topbar-team-names { align-items: flex-end; text-align: right; }
+
+.topbar-team-names.cols-2 {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--topbar-rows, 3), auto);
+  row-gap: var(--topbar-name-gap);
+  column-gap: 10px;
+  align-content: center;
+}
+
+.topbar-team-red .topbar-team-names.cols-2 { justify-items: start; }
+.topbar-team-blue .topbar-team-names.cols-2 { justify-items: end; }
+
+.topbar-player {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.topbar-player.is-me {
+  color: var(--text);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  padding: 2px 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.10) inset;
+}
+
+.topbar-center {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 150px;
+}
+
+.topbar-score {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.topbar-score-num {
+  font-size: 22px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.topbar-score-num.red { color: var(--game-red); }
+.topbar-score-num.blue { color: var(--game-blue); }
+
+.topbar-score-sep {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.topbar-timer {
+  width: 120px;
+  margin-top: 4px;
+}
+
+.topbar-timer .timer-text {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.topbar-timer .timer-bar {
+  height: 3px;
+  border-radius: 999px;
+}
+
+@media (max-width: 720px) {
+  .topbar-team { display: none; }
+  .topbar-center { min-width: 0; }
+  .game-header-expanded { padding: 6px 10px; }
+}
+
 
 .game-score-section {
   display: flex;
@@ -8117,3 +8231,32 @@ body.qp-gate-open .app {
     animation: none !important;
   }
 }
+
+
+@media (min-width: 1025px) {
+  /* Remove the separate Players box on desktop (names live in the top bar) */
+  .team-roster-panel { display: none; }
+
+  /* Let clue history fully own the left column */
+  .clue-history-panel { flex: 1; min-height: 0; }
+
+  .clue-history-content {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .clue-history-item {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .clue-history-word { font-size: 18px; letter-spacing: 1.2px; }
+  .clue-history-team { font-size: 11px; }
+  .clue-history-number { font-size: 12px; }
+  .clue-result-chip { font-size: 11px; padding: 3px 8px; border-radius: 6px; }
+}
+
+/* Accessibility: visually hidden */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+.game-header-meta{position:absolute;width:0;height:0;overflow:hidden;}
