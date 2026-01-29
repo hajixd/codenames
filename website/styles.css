@@ -4734,17 +4734,71 @@ button.player-tag.pill-action:disabled{
     height: 16px;
   }
 
-  /* Popovers Mobile */
+  /* Popovers Mobile — bottom sheet style */
   .game-log-popover,
   .game-menu-popover {
-    bottom: 80px;
-    right: 10px;
-    left: 10px;
-    width: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 18px 18px 0 0;
+    border: none;
+    background: rgba(20, 20, 25, 0.98);
+    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    animation: bottomSheetSlideUp 0.25s ease;
   }
 
   .game-log-popover {
-    max-height: 250px;
+    max-height: 60vh;
+  }
+
+  /* Handle indicator */
+  .game-log-popover::before,
+  .game-menu-popover::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    margin: 10px auto 2px;
+    flex-shrink: 0;
+  }
+
+  .game-log-popover .popover-header {
+    padding: 10px 18px 12px;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .game-log-popover .game-log-entries {
+    padding: 12px 18px;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  .game-menu-popover {
+    padding: 4px 16px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .game-menu-popover .menu-btn {
+    padding: 16px 16px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+
+  .game-menu-popover .menu-btn + .menu-btn {
+    margin-top: 2px;
+  }
+
+  /* Log entries comfortable sizing on mobile */
+  .game-log-popover .log-entry {
+    font-size: 14px;
+    padding: 8px 0;
+  }
+
+  .popover-backdrop {
+    background: rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -6909,25 +6963,135 @@ body.tournament.has-team-color .input:focus {
   .game-sidebar-right.mobile-visible {
     display: flex;
     position: fixed;
-    top: 60px;
-    bottom: 60px;
-    width: 300px;
-    background: var(--bg);
-    z-index: 100;
-    padding: 12px;
-    border: 1px solid var(--border);
-  }
-
-  .game-sidebar-left.mobile-visible {
+    bottom: 0;
     left: 0;
-    border-left: none;
-    border-radius: 0 12px 12px 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    max-height: 70vh;
+    background: rgba(20, 20, 25, 0.98);
+    z-index: 100;
+    padding: 0;
+    border: none;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    animation: bottomSheetSlideUp 0.25s ease;
+    overflow-y: auto;
+    flex-direction: column;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .game-sidebar-right.mobile-visible {
-    right: 0;
-    border-right: none;
-    border-radius: 12px 0 0 12px;
+  /* Handle / grab indicator */
+  .game-sidebar-left.mobile-visible::before,
+  .game-sidebar-right.mobile-visible::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    margin: 10px auto 2px;
+    flex-shrink: 0;
+  }
+
+  /* Remove panel chrome inside bottom sheet */
+  .game-sidebar.mobile-visible .sidebar-panel {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .game-sidebar.mobile-visible .sidebar-panel + .sidebar-panel {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .game-sidebar.mobile-visible .sidebar-panel-header {
+    padding: 14px 18px;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    background: transparent;
+  }
+
+  .game-sidebar.mobile-visible .sidebar-panel-title {
+    font-size: 13px;
+  }
+
+  .game-sidebar.mobile-visible .team-roster-content,
+  .game-sidebar.mobile-visible .clue-history-content,
+  .game-sidebar.mobile-visible .operative-chat-messages,
+  .game-sidebar.mobile-visible .voting-content {
+    padding: 10px 18px;
+  }
+
+  .game-sidebar.mobile-visible .operative-chat-form {
+    padding: 10px 18px;
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .game-sidebar.mobile-visible .voting-hint {
+    padding: 8px 18px 8px;
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Remove max-height constraints inside bottom sheet */
+  .game-sidebar.mobile-visible .team-roster-panel {
+    max-height: none;
+  }
+
+  .game-sidebar.mobile-visible .voting-panel {
+    max-height: none;
+  }
+
+  /* Comfortable touch targets for roster players in bottom sheet */
+  .game-sidebar.mobile-visible .roster-player {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .game-sidebar.mobile-visible .roster-player-role {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  .game-sidebar.mobile-visible .roster-team-name {
+    font-size: 12px;
+  }
+
+  /* Clue history items in bottom sheet */
+  .game-sidebar.mobile-visible .clue-history-item {
+    padding: 12px 14px;
+  }
+
+  .game-sidebar.mobile-visible .clue-history-word {
+    font-size: 17px;
+  }
+
+  /* Chat messages in bottom sheet */
+  .game-sidebar.mobile-visible .chat-message {
+    padding: 10px 14px;
+  }
+
+  .game-sidebar.mobile-visible .chat-text {
+    font-size: 14px;
+  }
+
+  .game-sidebar.mobile-visible .chat-input {
+    font-size: 15px;
+    padding: 10px 14px;
+  }
+
+  /* Voting items in bottom sheet */
+  .game-sidebar.mobile-visible .voting-item {
+    padding: 12px 14px;
+  }
+
+  .game-sidebar.mobile-visible .voting-word {
+    font-size: 14px;
+  }
+
+  /* Extra bottom padding for safe area */
+  .game-sidebar.mobile-visible .sidebar-panel:last-child {
+    padding-bottom: env(safe-area-inset-bottom, 12px);
   }
 
   .game-center-area {
@@ -7023,6 +7187,18 @@ body.tournament.has-team-color .input:focus {
   }
 }
 
+/* Bottom sheet slide-up animation (shared by sidebars & popovers on mobile) */
+@keyframes bottomSheetSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Sidebar backdrop for mobile */
 .sidebar-backdrop {
   display: none;
@@ -7034,6 +7210,12 @@ body.tournament.has-team-color .input:focus {
 
 .sidebar-backdrop.visible {
   display: block;
+  animation: backdropFadeIn 0.2s ease;
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ==================== PROFILE POPUP ==================== */
