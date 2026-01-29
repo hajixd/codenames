@@ -1330,12 +1330,24 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
   let text = '';
   try {
     text = await callNebiusChatCompletions({
-      user: 'IMPORTANT: Output MUST be exactly this single word with exact casing: Ready\n' +
-            'Do not add punctuation. Do not add quotes. Do not add any other words.\n' +
-            'Your entire reply must be: Ready',
+      user:
+        'Reply with exactly one word: Ready
+' +
+        'Rules: output MUST be exactly Ready (case-sensitive). No other words. No punctuation. No quotes. No emojis. No newlines.
+' +
+        'Examples (correct):
+' +
+        'User: hi
+Assistant: Ready
+' +
+        'User: ping
+Assistant: Ready
+' +
+        'Now respond with exactly this single word and nothing else: Ready',
       temperature: 0,
-      max_tokens: 5,
-      stop: ['\n']
+      max_tokens: 10,
+      stop: ['
+']
     });
   } catch (e) {
     console.warn('AI ready LLM call failed:', e);
@@ -1348,6 +1360,7 @@ async function aiReadyHandshake(gameId, team, aiId, aiName) {
   // Treat any standalone "ready" as success for the lobby handshake.
   const ok = /\bready\b/i.test(cleaned);
   if (!ok) {
+    console.warn('AI ready handshake: model did not return Ready. Raw response:', cleaned);
     await setAIReadyStatus(gameId, team, aiId, 'bad_ready');
     return;
   }
