@@ -768,7 +768,13 @@ async function mergePlayerIntoCanonical({ nameKey, displayName, canonicalId, dup
         ...(nameSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
       }, { merge: true });
 
-      tx.delete(dropRef);
+      // Don't erase the old doc: keep it as an alias so existing links/history don't break.
+      tx.set(dropRef, {
+        aliasTo: keepId,
+        migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        name: nextName,
+        legacy: true,
+      }, { merge: true });
     });
   } catch (e) {
     console.warn('Could not merge player docs', e);
@@ -849,6 +855,170 @@ function getLocalAccountId() {
     safeLSSet(LS_USER_ID, id);
   }
   return String(id || '').trim();
+}
+
+function isUuidV4Like(id) {
+  const s = String(id || '').trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
+function looksLegacyAccountId(id, displayName) {
+  const s = String(id || '').trim();
+  const nm = String(displayName || '').trim();
+  if (!s) return false;
+
+  // Legacy bug: account id accidentally set to the normalized name (or the raw name).
+  const key = nameToAccountId(nm);
+  if (nm && (s === nm || (key && s === key))) return true;
+
+  // Valid modern ids are UUIDv4 or our u_* fallback format.
+  if (isUuidV4Like(s)) return false;
+  if (s.startsWith('u_') && s.length >= 10) return false;
+
+  // Very short ids are almost certainly legacy.
+  return s.length < 12;
+}
+
+async function migrateLegacyAccountIdKeepAlias(fromId, toId, displayName) {
+  const oldId = String(fromId || '').trim();
+  const newId = String(toId || '').trim();
+  const name = String(displayName || '').trim();
+  if (!oldId || !newId || oldId === newId) return;
+
+  // 0) Remove any presence doc keyed to the old ID to avoid "ghost" online users.
+  try { await db.collection('presence').doc(oldId).delete(); } catch (_) {}
+
+  // 1) Copy/merge player doc -> new id (keep old doc as an alias).
+  const oldRef = db.collection('players').doc(oldId);
+  const newRef = db.collection('players').doc(newId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const [oldSnap, newSnap] = await Promise.all([tx.get(oldRef), tx.get(newRef)]);
+      const old = oldSnap.exists ? ({ id: oldSnap.id, ...oldSnap.data() }) : null;
+      const cur = newSnap.exists ? ({ id: newSnap.id, ...newSnap.data() }) : null;
+
+      const nextName = (cur?.name || old?.name || name || '—').trim();
+      const nextInvites = dedupeInvitesByTeamId([...(cur?.invites || []), ...(old?.invites || [])]);
+
+      tx.set(newRef, {
+        name: nextName,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ...(cur?.createdAt ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() }),
+        invites: nextInvites,
+        legacyIds: Array.from(new Set([...(cur?.legacyIds || []), oldId, ...(old?.legacyIds || [])]))
+      }, { merge: true });
+
+      // Keep the old doc but mark it as an alias (do NOT delete).
+      if (oldSnap.exists) {
+        tx.set(oldRef, {
+          aliasTo: newId,
+          migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          name: nextName,
+          legacy: true,
+        }, { merge: true });
+      } else {
+        tx.set(oldRef, {
+          aliasTo: newId,
+          migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          name: nextName,
+          legacy: true,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    });
+  } catch (e) {
+    console.warn('Legacy id migration: could not copy player doc', e);
+  }
+
+  // 2) Update name registry mapping -> new id (best effort)
+  try {
+    const key = nameToAccountId(name);
+    if (key) {
+      await db.collection(NAME_REGISTRY_COLLECTION).doc(key).set({
+        accountId: newId,
+        name,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn('Legacy id migration: could not update name registry', e);
+  }
+
+  // 3) Update team memberships/ownership from old -> new (best effort)
+  for (const t of (teamsCache || [])) {
+    const teamRef = db.collection('teams').doc(t.id);
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(teamRef);
+        if (!snap.exists) return;
+        const team = { id: snap.id, ...snap.data() };
+
+        let changed = false;
+        const nextMembers = getMembers(team).map(m => {
+          if (m?.userId === oldId) { changed = true; return { ...m, userId: newId }; }
+          return m;
+        });
+        const nextPending = getPending(team).map(r => {
+          if (r?.userId === oldId) { changed = true; return { ...r, userId: newId }; }
+          return r;
+        });
+
+        let nextCreatorUserId = team.creatorUserId;
+        let nextCreatorName = team.creatorName;
+        if (team.creatorUserId === oldId) {
+          changed = true;
+          nextCreatorUserId = newId;
+          nextCreatorName = (name || team.creatorName || '').trim();
+        }
+
+        if (!changed) return;
+        tx.update(teamRef, {
+          members: dedupeRosterByAccount(nextMembers),
+          pending: dedupeRosterByAccount(nextPending),
+          creatorUserId: nextCreatorUserId,
+          creatorName: nextCreatorName,
+        });
+      });
+    } catch (e) {
+      console.warn('Legacy id migration: could not update team', e);
+    }
+  }
+
+  // 4) Update Quick Play roster (best effort)
+  try {
+    const qpRef = db.collection('games').doc('quickplay');
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(qpRef);
+      if (!s.exists) return;
+      const g = s.data() || {};
+      const fixArr = (arr) => (Array.isArray(arr) ? arr.map(p => (p?.odId === oldId ? { ...p, odId: newId } : p)) : arr);
+      const next = {
+        redPlayers: fixArr(g.redPlayers),
+        bluePlayers: fixArr(g.bluePlayers),
+        spectators: fixArr(g.spectators),
+      };
+      tx.update(qpRef, next);
+    });
+  } catch (e) {
+    console.warn('Legacy id migration: could not update Quick Play roster', e);
+  }
+}
+
+async function ensureNonLegacyAccountIdForCurrentName() {
+  const nm = getUserName();
+  if (!nm) return;
+  const currentId = getLocalAccountId();
+  if (!looksLegacyAccountId(currentId, nm)) return;
+
+  const newId = (crypto?.randomUUID?.() || ('u_' + Math.random().toString(16).slice(2) + Date.now().toString(16)));
+  try {
+    await migrateLegacyAccountIdKeepAlias(currentId, newId, nm);
+    safeLSSet(LS_USER_ID, newId);
+    // After switching ids, ensure profile sync listens to the right doc.
+    startProfileNameSync();
+  } catch (e) {
+    console.warn('Could not migrate legacy account id (best-effort)', e);
+  }
 }
 
 function getUserId() {
@@ -958,6 +1128,15 @@ async function setUserName(name, opts = {}) {
   startProfileNameSync();
 
   refreshNameUI();
+
+  // If a legacy/buggy session stored the "account id" as the name (or a short token),
+  // migrate it to a real UID and keep the old doc as an alias. This prevents Quick Play
+  // rosters and other references from using names as identifiers.
+  try {
+    await ensureNonLegacyAccountIdForCurrentName();
+  } catch (e) {
+    // best-effort
+  }
 
   // Persist "signed up" players to Firestore so they can appear in the Players tab.
   await upsertPlayerProfile(getUserId(), getUserName());
@@ -1321,10 +1500,12 @@ function listenToPlayers() {
   db.collection('players')
     .orderBy('name', 'asc')
     .onSnapshot((snapshot) => {
-      playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       // Best-effort: if prior versions created duplicate player docs for the same name,
       // auto-merge them to the earliest-created doc.
-      autoMergeDuplicatePlayers(playersCache);
+      autoMergeDuplicatePlayers(all);
+      // Hide alias/legacy duplicates from the UI.
+      playersCache = all.filter(p => !p?.aliasTo);
       recomputeUnreadBadges();
       recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
@@ -5112,6 +5293,14 @@ async function verifyAccountAndInitPresence() {
         // Update local storage to use the canonical account
         safeLSSet(LS_USER_ID, canonicalAccountId);
       }
+    }
+
+    // If an older session stored a "legacy" account id (e.g., the name itself),
+    // migrate it to a real UID even on page load so game rosters use UIDs.
+    try {
+      await ensureNonLegacyAccountIdForCurrentName();
+    } catch (e) {
+      // best-effort
     }
 
     // Now that we've verified/migrated, start presence with the correct ID

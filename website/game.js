@@ -201,9 +201,11 @@ function genAiId() {
 function openAiAddModal(team, seatRole) {
   const modal = document.getElementById('ai-add-modal');
   const hint = document.getElementById('ai-add-hint');
+  const err = document.getElementById('ai-add-error');
   if (!modal) return;
   aiAddContext = { team, seatRole };
   if (hint) hint.textContent = `Adding to ${team.toUpperCase()} · ${seatRole}`;
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
   const nameIn = document.getElementById('ai-add-name');
   const modeSel = document.getElementById('ai-add-mode');
   const modelIn = document.getElementById('ai-add-model');
@@ -235,6 +237,8 @@ function closeAiAddModal() {
   aiAddContext = { team: null, seatRole: null };
   const hint = document.getElementById('ai-add-hint');
   if (hint) hint.textContent = '';
+  const err = document.getElementById('ai-add-error');
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
 }
 
 function countAIsForTeam(game, team) {
@@ -316,13 +320,27 @@ async function verifyAiReady(team, aiId, model) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: model || QP_AI_DEFAULT_MODEL }),
     });
+    // Read raw text first so we can log useful errors when the API returns non-JSON.
+    const rawText = await res.text().catch(() => '');
+    let data = {};
+    try { data = rawText ? JSON.parse(rawText) : {}; } catch (_) { data = {}; }
     if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      console.warn('AI ready check non-200', res.status, t);
-      await updateAiInLobby(team, aiId, { aiStatus: 'red', ready: false });
+      const errMsg = String(data?.error || '').trim() || rawText || `HTTP ${res.status}`;
+      console.warn('AI ready check non-200', res.status, errMsg);
+      // If the serverless endpoint is missing the API key, make that VERY obvious.
+      if (String(errMsg).toLowerCase().includes('missing nebius api key')) {
+        console.error('[AI] Nebius API key is not configured on the server. Set NEBIUS_API_KEY in Vercel env vars (Project → Settings → Environment Variables) and redeploy.');
+        // Also surface it inside the Add AI modal if it's open.
+        const el = document.getElementById('ai-add-error');
+        if (el) {
+          el.textContent = 'Nebius key missing on server. Set NEBIUS_API_KEY in Vercel env vars and redeploy.';
+          el.style.display = 'block';
+        }
+      }
+      await updateAiInLobby(team, aiId, { aiStatus: 'red', ready: false, lastReadyText: String(errMsg).slice(0, 140) });
       return;
     }
-    const data = await res.json().catch(() => ({}));
+
     const text = String(data?.text || data?.content || '').trim();
     if (text === 'Ready') {
       await updateAiInLobby(team, aiId, { aiStatus: 'green', ready: true });

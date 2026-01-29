@@ -2629,6 +2629,17 @@ body.mode-joiner .only-joiner{ display:block; }
   margin-top: 10px;
 }
 
+.ai-error{
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 90, 90, 0.35);
+  background: rgba(255, 90, 90, 0.10);
+  color: rgba(255, 200, 200, 0.95);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
 .ai-actions{
   margin-top: 12px;
   display: flex;
