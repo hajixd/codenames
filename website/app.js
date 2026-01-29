@@ -28,7 +28,6 @@ const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
-const LS_VIEW_STATE = 'ct_view_state_v1';
 // Account model:
 // - Accounts are keyed by normalized player name so "same name" = same account across devices.
 // - We keep LS_USER_ID for legacy sessions, but once a name is set we migrate to name-based IDs.
@@ -80,8 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initChatTab();
   initOnlineCounterUI();
   initProfileDetailsModal();
-  // Restore last open page (local-only) after core UI is wired.
-  restoreViewStateFromLocal();
   listenToTeams();
   listenToPlayers();
 
@@ -147,7 +144,6 @@ function showLaunchScreen() {
   document.body.classList.remove('has-team-color');
   setBrowserTitle('launch');
   try { refreshNameUI?.(); } catch (_) {}
-  try { window.setViewState?.({ mode: 'launch', panel: 'panel-game', inGame: false, gameId: null }, { replace: true }); } catch (_) {}
 }
 
 function returnToLaunchScreen() {
@@ -229,7 +225,6 @@ function enterAppFromLaunch(mode) {
   // - No tabs (top band stays)
   if (mode === 'quick') {
     document.body.classList.add('quickplay');
-    try { window.setViewState?.({ mode: 'quick', panel: 'panel-game' }, { replace: true }); } catch (_) {}
     document.body.classList.remove('tournament');
     // Ensure any tournament-only chrome (team glow/text) is off.
     try { refreshHeaderIdentity?.(); } catch (_) {}
@@ -237,12 +232,7 @@ function enterAppFromLaunch(mode) {
     switchToPanel('panel-game');
     try { window.bumpPresence?.(); } catch (_) {}
     try {
-      // If a Quick Play match is already running, show a resume/spectate prompt over the live board.
-      if (typeof window.enterQuickPlayFlowFromLaunch === 'function') {
-        window.enterQuickPlayFlowFromLaunch();
-      } else if (typeof window.showQuickPlayLobby === 'function') {
-        window.showQuickPlayLobby();
-      }
+      if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
     } catch (_) {}
     return;
   }
@@ -252,7 +242,6 @@ function enterAppFromLaunch(mode) {
   // - Normal navigation visible
   document.body.classList.remove('quickplay');
   document.body.classList.add('tournament');
-  try { window.setViewState?.({ mode: 'tournament', panel: 'panel-home' }, { replace: true }); } catch (_) {}
   // Apply team color/theme immediately on entry (no need to edit color).
   try { refreshHeaderIdentity?.(); } catch (_) {}
   setBrowserTitle('tournament');
@@ -301,8 +290,6 @@ function switchToPanel(panelId) {
   activePanelId = targetId;
   recomputeUnreadBadges();
   try { window.bumpPresence?.(); } catch (_) {}
-
-  try { window.setViewState?.({ panel: targetId }); } catch (_) {}
 
   // Ensure the Tournament "Play" tab never shows Quick Play options.
   // In tournament mode, the Play panel should always render the tournament lobby.
@@ -3284,75 +3271,11 @@ function safeLSSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
 }
 
-/* =========================
-   View State Persistence (device-local)
-   - Remembers mode (Quick Play / Tournament), active tab, and (optionally) in-game state.
-   - Stored ONLY in localStorage (no database writes).
-========================= */
-function readViewState() {
-  const raw = safeLSGet(LS_VIEW_STATE);
-  if (!raw) return null;
-  try {
-    const obj = JSON.parse(raw);
-    return (obj && typeof obj === 'object') ? obj : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function writeViewState(next) {
-  try {
-    safeLSSet(LS_VIEW_STATE, JSON.stringify(next || {}));
-  } catch (_) {}
-}
-
-function setViewState(patch = {}, opts = {}) {
-  const base = (!opts.replace) ? (readViewState() || {}) : {};
-  const next = { ...base, ...(patch || {}), updatedAtMs: Date.now() };
-  writeViewState(next);
-  return next;
-}
-
-function clearViewState() {
-  try { localStorage.removeItem(LS_VIEW_STATE); } catch (_) {}
-}
-
-// Expose for other modules (game.js)
-window.getViewState = readViewState;
-window.setViewState = setViewState;
-window.clearViewState = clearViewState;
-
-function restoreViewStateFromLocal() {
-  // Only restore if we have a saved name; otherwise keep the launch screen.
-  const name = getUserName();
-  const st = readViewState();
-  if (!st || !name) return;
-
-  // Don't restore if user explicitly logged out (name missing already handled).
-  const mode = String(st.mode || '').trim();
-  if (mode === 'quick') {
-    enterAppFromLaunch('quick');
-    return;
-  }
-  if (mode === 'tournament') {
-    enterAppFromLaunch('tournament');
-    const panel = String(st.panel || '').trim();
-    if (panel) {
-      // switchToPanel is safe even if already on that panel
-      try { switchToPanel(panel); } catch (_) {}
-    }
-    return;
-  }
-  // mode === 'launch' or unknown: do nothing (stay on launch)
-}
-
-
 function logoutLocal() {
   // Local-only "logout": clears this device's saved name + id so it is no longer
   // linked to any shared name-based account.
   try { localStorage.removeItem(LS_USER_NAME); } catch (_) {}
   try { localStorage.removeItem(LS_USER_ID); } catch (_) {}
-  try { localStorage.removeItem(LS_VIEW_STATE); } catch (_) {}
   // Full refresh keeps the app state consistent (listeners, cached state, theme).
   try { window.location.reload(); } catch (_) {}
 }
@@ -4649,27 +4572,7 @@ function initProfilePopup() {
     const id = link.dataset.profileId;
 
     if (type && id) {
-      // If we're inside the centered profile details modal, treat profile links as
-      // in-modal navigation (swap the current details content instead of stacking popups).
-      const detailsModal = document.getElementById('profile-details-modal');
-      if (detailsModal?.classList?.contains('modal-open') && link.closest('#profile-details-modal')) {
-        renderProfileDetailsModal(id, type);
-        const body = document.getElementById('profile-details-body');
-        if (body) body.scrollTop = 0;
-        return;
-      }
-
-      // If we're in the team modal, close it and open the new profile popup.
-      // (Keeps navigation feeling like "one popup at a time".)
-      let anchorForPopup = link;
-      if (link.closest('#team-modal')) {
-        try { closeTeamModal(); } catch (_) {}
-        // The clicked element will be removed when the modal closes; avoid trying to
-        // position the popup against a detached node.
-        anchorForPopup = null;
-      }
-
-      showProfilePopup(type, id, anchorForPopup);
+      showProfilePopup(type, id, link);
     }
   });
 
@@ -4743,11 +4646,7 @@ function showProfilePopup(type, id, anchorEl) {
   } else {
     // Desktop: position near anchor element
     backdrop.style.display = 'none';
-    // If the anchor is inside the popup (e.g., clicking a link within the popup),
-    // keep the current position instead of jumping.
-    if (anchorEl && !popup.contains(anchorEl)) {
-      positionPopupNearAnchor(popup, anchorEl);
-    }
+    positionPopupNearAnchor(popup, anchorEl);
   }
 
   popup.style.display = 'flex';
@@ -4877,16 +4776,11 @@ function renderTeamProfile(teamId) {
     <div class="profile-members">
       <div class="profile-members-title">Team Members</div>
       ${members.length ? members.map(m => {
-        const mid = entryAccountId(m);
-        const mname = (m?.name || '—').trim();
         const isLeader = isSameAccount(m, creatorId);
         const memberColor = tc || 'var(--text)';
-        const link = mid
-          ? `<span class="profile-member-name profile-link" data-profile-type="player" data-profile-id="${esc(mid)}" style="color:${esc(memberColor)}">${esc(mname)}</span>`
-          : `<span class="profile-member-name" style="color:${esc(memberColor)}">${esc(mname)}</span>`;
         return `
           <div class="profile-member">
-            ${link}
+            <span class="profile-member-name" style="color:${esc(memberColor)}">${esc(m.name || '—')}</span>
             ${isLeader ? '<span class="profile-member-badge leader">Leader</span>' : ''}
           </div>
         `;
@@ -4953,9 +4847,7 @@ function renderPlayerProfile(playerId) {
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Team</span>
-        ${memberTeam
-          ? `<span class="profile-stat-value highlight profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}" style="${tc ? `color:${esc(tc)}` : ''}">${esc(truncateTeamName(memberTeam.teamName || 'Team'))}</span>`
-          : `<span class="profile-stat-value">No team</span>`}
+        <span class="profile-stat-value ${memberTeam ? 'highlight' : ''}" style="${memberTeam && tc ? `color:${esc(tc)}` : ''}">${memberTeam ? esc(truncateTeamName(memberTeam.teamName || 'Team')) : 'No team'}</span>
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Joined</span>
