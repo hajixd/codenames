@@ -463,31 +463,35 @@
                 <!-- Add AI modal -->
                 <div class="modal" id="ai-add-modal" aria-hidden="true" style="display:none;">
                   <div class="modal-backdrop" id="ai-add-backdrop"></div>
-                  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Add AI Player">
+                  <div class="modal-card ai-modal-card" role="dialog" aria-modal="true" aria-label="Add AI Player">
                     <div class="modal-head">
                       <div class="modal-title">Add AI Player</div>
                       <button class="icon-btn" id="ai-add-close" type="button" aria-label="Close">✕</button>
                     </div>
                     <div class="modal-body">
-                      <div class="settings-grid qp-settings-grid" style="grid-template-columns: 1fr;">
-                        <label class="setting-row qp-setting" data-accent="deck">
-                          <span class="setting-label">AI name</span>
-                          <input class="input" id="ai-add-name" type="text" placeholder="e.g. Nova" />
+                      <div class="ai-form">
+                        <label class="ai-field">
+                          <span class="ai-label">AI name</span>
+                          <input class="input ai-input" id="ai-add-name" type="text" placeholder="e.g. Nova" />
                         </label>
-                        <label class="setting-row qp-setting" data-accent="clue">
-                          <span class="setting-label">AI mode</span>
-                          <select class="input setting-select" id="ai-add-mode">
+
+                        <label class="ai-field">
+                          <span class="ai-label">AI mode</span>
+                          <select class="input ai-input" id="ai-add-mode">
                             <option value="helper">AI Helper (chat only)</option>
                             <option value="autonomous" selected>AI Autonomous</option>
                           </select>
                         </label>
-                        <label class="setting-row qp-setting" data-accent="guess">
-                          <span class="setting-label">Model</span>
-                          <input class="input" id="ai-add-model" type="text" value="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B" />
+
+                        <label class="ai-field">
+                          <span class="ai-label">Model</span>
+                          <input class="input ai-input" id="ai-add-model" type="text" value="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B" />
                         </label>
                       </div>
-                      <div class="hint" id="ai-add-hint" style="margin-top:10px;"></div>
-                      <div class="modal-actions" style="margin-top:12px; display:flex; gap:10px; justify-content:flex-end;">
+
+                      <div class="hint ai-hint" id="ai-add-hint"></div>
+
+                      <div class="modal-actions ai-actions">
                         <button class="btn" id="ai-add-cancel" type="button">Cancel</button>
                         <button class="btn primary" id="ai-add-confirm" type="button">Add</button>
                       </div>

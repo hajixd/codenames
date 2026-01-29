@@ -71,35 +71,70 @@ module.exports = async (req, res) => {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 12_000);
+    // Nebius docs commonly show message.content as an array of parts.
+    // Using that format here improves compatibility across models.
+    // Some providers/models behave oddly with system messages. Keep this as a single user instruction.
+    const messages = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Health check: reply with exactly the single word Ready. Output only Ready.' },
+        ],
+      },
+    ];
+
     const r = await fetch(NEBIUS_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,
         temperature: 0,
-        max_tokens: 16,
-        messages: [
-          { role: 'system', content: 'You are a health check.' },
-          { role: 'user', content: 'Reply with exactly the single word: Ready' },
-        ],
+        max_tokens: 8,
+        messages,
         stream: false,
       }),
       signal: controller.signal,
     });
     clearTimeout(t);
 
-    const data = await r.json().catch(() => ({}));
+    // Some proxies / edge paths can return an empty body. Read text first for better diagnostics.
+    const bodyText = await r.text().catch(() => '');
+    let data = {};
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch (_) {
+      data = {};
+    }
     const rawContent = data?.choices?.[0]?.message?.content;
     const text = extractTextFromContent(rawContent);
 
     if (!r.ok) {
-      return json(res, r.status, { error: data?.error?.message || data?.error || 'Nebius request failed', text });
+      return json(res, r.status, {
+        error: data?.error?.message || data?.error || 'Nebius request failed',
+        text,
+        raw: data,
+        bodyText,
+      });
     }
 
-    return json(res, 200, { text });
+    // If the response body was empty or didn't contain a completion, treat as a failure so
+    // the client can surface the diagnostics instead of silently returning {text: ""}.
+    if (!data?.choices?.length) {
+      return json(res, 502, {
+        error: 'Nebius returned no completion choices',
+        text,
+        raw: data,
+        bodyText,
+        status: r.status,
+      });
+    }
+
+    // Include raw so the browser can log what the model returned when it isn't exactly "Ready".
+    return json(res, 200, { text, raw: data });
   } catch (e) {
     return json(res, 500, { error: String(e?.message || e) });
   }

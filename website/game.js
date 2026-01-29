@@ -1685,8 +1685,14 @@ function renderQuickLobby(game) {
   specCount.textContent = String(specs.length);
 
   const renderTeamList = (players) => {
-    if (!players.length) return '<div class="quick-empty">No one yet</div>';
-    return players.map(p => {
+    const cleaned = (players || []).filter(p => {
+      if (!p) return false;
+      if (p?.isAI) return true;
+      const nm = String(p?.name || '').trim();
+      return !!nm;
+    });
+    if (!cleaned.length) return '<div class="quick-empty">No one yet</div>';
+    return cleaned.map(p => {
       const isYou = p.odId === odId;
       const ready = !!p.ready;
       const playerId = p.odId || '';
