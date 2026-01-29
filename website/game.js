@@ -179,35 +179,6 @@ function formatQuickRules(settings) {
   return `Deck: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
 }
 
-function quickRulesAreAgreed(game) {
-  const accepted = game?.settingsAccepted || {};
-  const hasPending = !!game?.settingsPending;
-
-  // Check if teams are empty - empty teams auto-DISAGREE (can't agree if no one is there)
-  const redPlayers = Array.isArray(game?.redPlayers) ? game.redPlayers : [];
-  const bluePlayers = Array.isArray(game?.bluePlayers) ? game.bluePlayers : [];
-  const redEmpty = redPlayers.length === 0;
-  const blueEmpty = bluePlayers.length === 0;
-
-  // A team must have players AND have explicitly accepted to be considered "agreed"
-  const redAgreed = !!accepted.red && !redEmpty;
-  const blueAgreed = !!accepted.blue && !blueEmpty;
-
-  return redAgreed && blueAgreed && !hasPending;
-}
-
-// Check if a specific team has agreed to the current rules
-function teamHasAgreed(game, team) {
-  const accepted = game?.settingsAccepted || {};
-  const hasPending = !!game?.settingsPending;
-  const players = Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
-  const isEmpty = players.length === 0;
-
-  // A team must have players AND have explicitly accepted to be "agreed"
-  // Empty teams auto-disagree
-  return !!accepted[team] && !isEmpty && !hasPending;
-}
-
 // Check if a team is fully ready (all players ready)
 function teamIsFullyReady(game, team) {
   const players = Array.isArray(game?.[team + 'Players']) ? game[team + 'Players'] : [];
@@ -232,19 +203,6 @@ function teamHasOnlyAI(players) {
 function resetReadyPreserveAI(players) {
   const arr = Array.isArray(players) ? players : [];
   return arr.map(p => ({ ...p, ready: isAIPlayer(p) ? true : false }));
-}
-
-/**
- * If a team is AI-only, it auto-accepts any pending rules offer.
- * Returns a new accepted object.
- */
-function applyAutoRuleAcceptanceForAI(game, acceptedIn) {
-  const accepted = (acceptedIn && typeof acceptedIn === 'object') ? { ...acceptedIn } : { red: false, blue: false };
-  const redPlayers = Array.isArray(game?.redPlayers) ? game.redPlayers : [];
-  const bluePlayers = Array.isArray(game?.bluePlayers) ? game.bluePlayers : [];
-  if (teamHasOnlyAI(redPlayers)) accepted.red = true;
-  if (teamHasOnlyAI(bluePlayers)) accepted.blue = true;
-  return accepted;
 }
 
 function makeAiId() {
@@ -474,15 +432,19 @@ function initGameUI() {
   document.getElementById('quick-settings-btn')?.addEventListener('click', openQuickSettingsModal);
   document.getElementById('quick-settings-close')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-backdrop')?.addEventListener('click', closeQuickSettingsModal);
-  document.getElementById('quick-settings-offer')?.addEventListener('click', offerQuickRulesFromModal);
-  document.getElementById('quick-settings-accept')?.addEventListener('click', acceptQuickRulesFromModal);
-  document.getElementById('quick-rules-accept-btn')?.addEventListener('click', acceptQuickRulesInline);
+  document.getElementById('quick-settings-apply')?.addEventListener('click', applyQuickSettingsFromModal);
+  // Quick Play - AI controls (inline +AI buttons in headers)
 
-  // Quick Play - add AI buttons (anyone in the lobby can add/remove bots)
-  document.getElementById('quick-add-red-spy-ai')?.addEventListener('click', () => addQuickAI('red', 'spymaster'));
-  document.getElementById('quick-add-red-op-ai')?.addEventListener('click', () => addQuickAI('red', 'operative'));
-  document.getElementById('quick-add-blue-spy-ai')?.addEventListener('click', () => addQuickAI('blue', 'spymaster'));
-  document.getElementById('quick-add-blue-op-ai')?.addEventListener('click', () => addQuickAI('blue', 'operative'));
+  // Add AI buttons (+AI in lobby headers)
+  document.getElementById('quick-play-lobby')?.addEventListener('click', (e) => {
+    const btn = e?.target?.closest?.('.qp-ai-btn');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const team = btn.getAttribute('data-ai-team');
+    const seat = btn.getAttribute('data-ai-role');
+    if (team && seat) addQuickAI(team, seat);
+  }, { capture: true });
 
   // Remove AI buttons (event delegation)
   document.getElementById('quick-play-lobby')?.addEventListener('click', (e) => {
@@ -832,7 +794,7 @@ function openQuickSettingsModal() {
 
   // Fill current values from the live lobby if we have it.
   const g = quickLobbyGame;
-  const s = g?.settingsPending?.settings ? g.settingsPending.settings : getQuickSettings(g);
+  const s = getQuickSettings(g);
 
   const blackCardsEl = document.getElementById('qp-black-cards');
   const clueTimerEl = document.getElementById('qp-clue-timer');
@@ -859,233 +821,47 @@ function closeQuickSettingsModal() {
 }
 
 function updateQuickRulesUI(game) {
-  const summaryEl = document.getElementById('quick-rules-summary');
   const summaryTextEl = document.getElementById('quick-rules-text');
   const summaryBadgeEl = document.getElementById('quick-rules-badge');
-  const acceptInline = document.getElementById('quick-rules-accept-btn');
   const hintEl = document.getElementById('quick-lobby-hint');
 
-  const modalStatus = document.getElementById('quick-settings-status');
-  const offerBtn = document.getElementById('quick-settings-offer');
-  const acceptBtn = document.getElementById('quick-settings-accept');
-
-  // Negotiation UI (inside settings modal)
-  const negWrap = document.getElementById('qp-negotiation');
-  const negChip = document.getElementById('qp-neg-chip');
-  const negRed = document.getElementById('qp-neg-red');
-  const negBlue = document.getElementById('qp-neg-blue');
-  const negRedState = document.getElementById('qp-neg-red-state');
-  const negBlueState = document.getElementById('qp-neg-blue-state');
-  const negPreview = document.getElementById('qp-neg-preview');
-
-  const odId = getUserId();
-  const myRole = game ? getQuickPlayerRole(game, odId) : null;
-  const myTeam = (myRole === 'red' || myRole === 'blue') ? myRole : null;
-  const accepted = (game?.settingsAccepted && typeof game.settingsAccepted === 'object') ? game.settingsAccepted : { red: false, blue: false };
-  const pending = game?.settingsPending || null;
-  const agreed = quickRulesAreAgreed(game);
-
-  // Determine a UI state string we can reuse across multiple widgets
-  let uiState = 'needs';
-  if (!myTeam) uiState = 'no-team';
-  else if (agreed) uiState = 'agreed';
-  else if (pending && pending.by === 'red') uiState = 'pending-red';
-  else if (pending && pending.by === 'blue') uiState = 'pending-blue';
-
-  // Summary line
-  const summaryText = (pending && pending.settings)
-    ? `Offer from ${(String(pending.by || 'red')).toUpperCase()}: ${formatQuickRules(pending.settings)}`
-    : `Rules: ${formatQuickRules(getQuickSettings(game))}${agreed ? ' (Agreed)' : ' (Needs agreement)'}`;
-  if (summaryTextEl) {
-    summaryTextEl.textContent = summaryText;
-    summaryTextEl.classList.toggle('rules-agreed', agreed);
-  } else if (summaryEl) {
-    summaryEl.textContent = summaryText;
-    summaryEl.classList.toggle('rules-agreed', agreed);
-  }
-
-  // Summary badge
+  const s = getQuickSettings(game);
+  const summaryText = `Rules: ${formatQuickRules(s)}`;
+  if (summaryTextEl) summaryTextEl.textContent = summaryText;
   if (summaryBadgeEl) {
-    summaryBadgeEl.dataset.state = uiState;
-    if (uiState === 'agreed') summaryBadgeEl.textContent = 'Agreed';
-    else if (uiState === 'no-team') summaryBadgeEl.textContent = 'Pick a team';
-    else if (uiState === 'pending-red') summaryBadgeEl.textContent = 'Offer: Red';
-    else if (uiState === 'pending-blue') summaryBadgeEl.textContent = 'Offer: Blue';
-    else summaryBadgeEl.textContent = 'Needs OK';
+    summaryBadgeEl.textContent = 'Rules';
+    summaryBadgeEl.removeAttribute('data-state');
   }
-
-  // Inline accept button
-  const canAccept = !!(pending && myTeam && pending.by && pending.by !== myTeam && !accepted[myTeam]);
-  if (acceptInline) acceptInline.style.display = canAccept ? 'inline-flex' : 'none';
-
-  // Lobby hint
-  if (hintEl) {
-    if (!myTeam) {
-      hintEl.textContent = '';
-    } else if (pending) {
-      hintEl.textContent = canAccept
-        ? 'New rules offered — accept (or counter-offer) in Settings.'
-        : 'Waiting for the other team to accept rules…';
-    } else if (!agreed) {
-      hintEl.textContent = 'Open Settings and offer rules to the other team.';
-    } else {
-      hintEl.textContent = '';
-    }
-  }
-
-  // Modal controls
-  if (offerBtn) offerBtn.disabled = !myTeam;
-  if (acceptBtn) acceptBtn.style.display = canAccept ? 'inline-flex' : 'none';
-  if (modalStatus) {
-    if (!myTeam) {
-      modalStatus.textContent = 'Join a team to offer or accept rules.';
-    } else if (pending) {
-      const by = String(pending.by || 'red').toUpperCase();
-      modalStatus.textContent = canAccept
-        ? `Rules offered by ${by}. Accept, or change settings and send a counter-offer.`
-        : `Your team has an offer active. Waiting for the other team to accept.`;
-    } else if (!agreed) {
-      modalStatus.textContent = 'Send an offer from your team. The other team must accept before you can ready up.';
-    } else {
-      modalStatus.textContent = 'Rules are agreed. If you change anything, send a new offer.';
-    }
-  }
-
-  // Negotiation widget in modal
-  if (negWrap) negWrap.dataset.state = uiState;
-  if (negChip) {
-    if (uiState === 'agreed') negChip.textContent = 'Agreed';
-    else if (uiState === 'no-team') negChip.textContent = 'Join a team';
-    else if (uiState === 'pending-red') negChip.textContent = canAccept ? 'Incoming offer (Red)' : 'Offer pending (Red)';
-    else if (uiState === 'pending-blue') negChip.textContent = canAccept ? 'Incoming offer (Blue)' : 'Offer pending (Blue)';
-    else negChip.textContent = 'Needs agreement';
-  }
-
-  const redAccepted = !!accepted.red;
-  const blueAccepted = !!accepted.blue;
-  if (negRed) negRed.dataset.accepted = redAccepted ? 'true' : 'false';
-  if (negBlue) negBlue.dataset.accepted = blueAccepted ? 'true' : 'false';
-  if (negRedState) negRedState.textContent = !myTeam && !pending && !agreed ? '—' : (redAccepted ? 'Accepted' : 'Waiting');
-  if (negBlueState) negBlueState.textContent = !myTeam && !pending && !agreed ? '—' : (blueAccepted ? 'Accepted' : 'Waiting');
-
-  // Preview pills
-  if (negPreview) {
-    const s = (pending && pending.settings) ? pending.settings : getQuickSettings(game);
-    const pills = [];
-    if (pending && pending.by) {
-      const by = String(pending.by);
-      pills.push(`<span class="qp-neg-pill ${by === 'red' ? 'red' : 'blue'}">Offered by ${by.toUpperCase()}</span>`);
-    } else if (agreed) {
-      pills.push('<span class="qp-neg-pill teal">Locked in</span>');
-    }
-    const deckMeta = getDeckMeta(s.deckId || 'standard');
-    pills.push(`<span class="qp-neg-pill ${deckMeta.tone}">${deckMeta.emoji} ${deckMeta.label}</span>`);
-    const black = Number(s.blackCards ?? 1);
-    pills.push(`<span class="qp-neg-pill slate">Assassins: ${black}</span>`);
-    const clue = Number(s.clueTimerSeconds ?? 0);
-    const guess = Number(s.guessTimerSeconds ?? 0);
-    pills.push(`<span class="qp-neg-pill purple">Clue: ${clue === 0 ? '∞' : `${clue}s`}</span>`);
-    pills.push(`<span class="qp-neg-pill teal">Guess: ${guess === 0 ? '∞' : `${guess}s`}</span>`);
-    negPreview.innerHTML = pills.join('');
-  }
-
-  // Button copy tweaks to make the offer/accept flow feel more intentional
-  if (offerBtn) {
-    if (!myTeam) offerBtn.textContent = 'Join a team to offer';
-    else if (pending && pending.by === myTeam) offerBtn.textContent = 'Offer sent';
-    else if (pending && pending.by && pending.by !== myTeam) offerBtn.textContent = canAccept ? 'Counter-offer' : 'Send offer';
-    else offerBtn.textContent = 'Send offer';
-  }
+  if (hintEl) hintEl.textContent = '';
 }
 
-async function offerQuickRulesFromModal() {
+async function applyQuickSettingsFromModal() {
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  const odId = getUserId();
   const settings = readQuickSettingsFromUI();
+
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('Lobby not found');
       const game = snap.data();
       if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
-      const role = getQuickPlayerRole(game, odId);
-      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to offer rules.');
 
-      const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
-      const nextBlue = (game.bluePlayers || []).map(p => ({ ...p, ready: false }));
+      const nextRed = resetReadyPreserveAI(game.redPlayers || []);
+      const nextBlue = resetReadyPreserveAI(game.bluePlayers || []);
 
       tx.update(ref, {
-        settingsPending: { by: role, settings, createdAt: firebase.firestore.FieldValue.serverTimestamp() },
-        settingsAccepted: { red: role === 'red', blue: role === 'blue' },
+        quickSettings: { ...settings },
         redPlayers: nextRed,
         bluePlayers: nextBlue,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        log: firebase.firestore.FieldValue.arrayUnion(`${role.toUpperCase()} offered rules: ${formatQuickRules(settings)}`)
+        log: firebase.firestore.FieldValue.arrayUnion(`Updated rules: ${formatQuickRules(settings)}`)
       });
     });
+    closeQuickSettingsModal();
   } catch (e) {
-    console.error('Offer rules failed:', e);
-    alert(e.message || 'Failed to offer rules.');
+    console.error('Apply settings failed:', e);
+    alert(e.message || 'Failed to apply settings.');
   }
-}
-
-async function acceptQuickRules(updateOnly = false) {
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  const odId = getUserId();
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Lobby not found');
-      const game = snap.data();
-      if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
-
-      const role = getQuickPlayerRole(game, odId);
-      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to accept rules.');
-
-      const pending = game.settingsPending;
-      if (!pending || !pending.settings) throw new Error('No rules to accept.');
-      if (pending.by === role) throw new Error('Your team already offered these rules.');
-
-      const accepted = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? { ...game.settingsAccepted } : { red: false, blue: false };
-      accepted[role] = true;
-
-      const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
-      const nextBlue = (game.bluePlayers || []).map(p => ({ ...p, ready: false }));
-
-      const bothAccepted = !!accepted.red && !!accepted.blue;
-      if (bothAccepted) {
-        tx.update(ref, {
-          quickSettings: { ...pending.settings },
-          settingsPending: null,
-          settingsAccepted: { red: true, blue: true },
-          redPlayers: nextRed,
-          bluePlayers: nextBlue,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          log: firebase.firestore.FieldValue.arrayUnion('Rules agreed. Everyone must ready up.')
-        });
-      } else {
-        tx.update(ref, {
-          settingsAccepted: accepted,
-          redPlayers: nextRed,
-          bluePlayers: nextBlue,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          log: firebase.firestore.FieldValue.arrayUnion(`${role.toUpperCase()} accepted the rules offer.`)
-        });
-      }
-    });
-    if (!updateOnly) closeQuickSettingsModal();
-  } catch (e) {
-    console.error('Accept rules failed:', e);
-    alert(e.message || 'Failed to accept rules.');
-  }
-}
-
-function acceptQuickRulesInline() {
-  acceptQuickRules(true);
-}
-
-function acceptQuickRulesFromModal() {
-  acceptQuickRules(false);
 }
 
 /* =========================
@@ -1274,13 +1050,10 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
         redPlayers: nextRed,
         bluePlayers: nextBlue,
         spectators: nextSpec,
-        // Reset rule agreement when someone goes offline
-        settingsAccepted: { red: false, blue: false },
-        settingsPending: null,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby. Rules reset.`);
+      console.log(`Removed ${beforeCount - afterCount} inactive player(s) from lobby.`);
     });
   } catch (e) {
     console.warn('Failed to remove inactive players:', e);
@@ -1367,9 +1140,6 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
       guessTimerSeconds: settings.guessTimerSeconds,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
     },
-    // Negotiation state: one team offers rules, the other accepts.
-    settingsPending: null,
-    settingsAccepted: { red: false, blue: false },
     log: [],
     winner: null,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1404,8 +1174,6 @@ async function ensureQuickPlayGameExists() {
       deckId: 'standard',
     };
   }
-  if (!g.settingsAccepted) updates.settingsAccepted = { red: false, blue: false };
-  if (typeof g.settingsPending === 'undefined') updates.settingsPending = null;
   if (typeof g.activeJoinOn === 'undefined') updates.activeJoinOn = true;
   if (Object.keys(updates).length) {
     await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -1473,41 +1241,6 @@ async function joinQuickLobby(role, seatRole) {
         spectators: nextSpec,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
-
-      // Rule negotiation: a team offers settings, the other team accepts.
-      // If the lobby is fresh (or has no agreed rules yet), auto-create a default offer
-      // from the first team member to join.
-      const prevCount = redPlayers.length + bluePlayers.length + spectators.length;
-      const myTeam = (role === 'red' || role === 'blue') ? role : null;
-      const accepted = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? game.settingsAccepted : { red: false, blue: false };
-      const hasPending = !!game.settingsPending;
-
-      if (prevCount === 0) {
-        const ui = readQuickSettingsFromUI();
-        updates.quickSettings = { ...ui };
-        // Reset acceptance for a new lobby
-        updates.settingsAccepted = { red: false, blue: false };
-        updates.settingsPending = null;
-      }
-
-      // If there is no pending offer and both teams haven't accepted rules yet,
-      // have the first team member create an offer (using current rules as the base).
-      if (myTeam && !hasPending && !(accepted.red && accepted.blue)) {
-        const base = (prevCount === 0) ? readQuickSettingsFromUI() : getQuickSettings(game);
-        const offer = { by: myTeam, settings: base, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
-
-        const acceptedOffer = applyAutoRuleAcceptanceForAI({ redPlayers: nextRed, bluePlayers: nextBlue }, { red: myTeam === 'red', blue: myTeam === 'blue' });
-
-        if (acceptedOffer.red && acceptedOffer.blue) {
-          // If the other team is AI-only, the lobby can immediately agree without a pending offer.
-          updates.quickSettings = { ...base };
-          updates.settingsPending = null;
-          updates.settingsAccepted = { red: true, blue: true };
-        } else {
-          updates.settingsPending = offer;
-          updates.settingsAccepted = acceptedOffer;
-        }
-      }
 
       tx.update(ref, updates);
     });
@@ -1624,44 +1357,6 @@ async function addQuickAI(team, seatRole) {
       if (prevCount === 0) {
         const ui = readQuickSettingsFromUI();
         updates.quickSettings = { ...ui };
-        updates.settingsAccepted = { red: false, blue: false };
-        updates.settingsPending = null;
-      }
-
-      // If there is an outstanding offer, AI-only teams auto-accept.
-      const pending = game.settingsPending;
-      const acceptedBase = (game.settingsAccepted && typeof game.settingsAccepted === 'object') ? { ...game.settingsAccepted } : { red: false, blue: false };
-      const accepted = applyAutoRuleAcceptanceForAI({ redPlayers, bluePlayers }, acceptedBase);
-
-      if (pending && pending.settings) {
-        // If both accepted, finalize immediately (mirrors acceptQuickRules)
-        if (accepted.red && accepted.blue) {
-          updates.quickSettings = { ...pending.settings };
-          updates.settingsPending = null;
-          updates.settingsAccepted = { red: true, blue: true };
-
-          // Reset human readiness on agreement; keep bots ready.
-          updates.redPlayers = resetReadyPreserveAI(redPlayers);
-          updates.bluePlayers = resetReadyPreserveAI(bluePlayers);
-
-          updates.log = firebase.firestore.FieldValue.arrayUnion(`Added ${aiPlayer.name}.`, 'Rules agreed. Everyone must ready up.');
-        } else {
-          updates.settingsAccepted = accepted;
-        }
-      } else if (!(accepted.red && accepted.blue)) {
-        // If no pending offer exists, let the first team present "own" the offer.
-        const base = getQuickSettings(game) || readQuickSettingsFromUI();
-        const offer = { by: aiTeam, settings: base, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
-        const acceptedOffer = applyAutoRuleAcceptanceForAI({ redPlayers, bluePlayers }, { red: aiTeam === 'red', blue: aiTeam === 'blue' });
-
-        if (acceptedOffer.red && acceptedOffer.blue) {
-          updates.quickSettings = { ...base };
-          updates.settingsPending = null;
-          updates.settingsAccepted = { red: true, blue: true };
-        } else {
-          updates.settingsPending = offer;
-          updates.settingsAccepted = acceptedOffer;
-        }
       }
 
       tx.update(ref, updates);
@@ -1808,7 +1503,6 @@ function bothTeamsFullyReady(game) {
 
 async function maybeAutoStartQuickPlay(game) {
   if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
-  if (!quickRulesAreAgreed(game)) return;
   if (!bothTeamsFullyReady(game)) return;
 
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
@@ -1818,7 +1512,6 @@ async function maybeAutoStartQuickPlay(game) {
       if (!snap.exists) return;
       const g = snap.data();
       if (g.currentPhase !== 'waiting' || g.winner != null) return;
-      if (!quickRulesAreAgreed(g)) return;
       if (!bothTeamsFullyReady(g)) return;
 
       const s = getQuickSettings(g);
@@ -1983,23 +1676,11 @@ function renderQuickLobby(game) {
 
   const renderTeamStatus = (team, players) => {
     const chips = [];
-    const agreed = teamHasAgreed(game, team);
     const allReady = teamIsFullyReady(game, team);
 
-    // Agreement status (subtle)
-    if (players.length > 0) {
-      if (agreed) {
-        chips.push('<span class="quick-status-chip agreed">Rules OK</span>');
-      } else {
-        chips.push('<span class="quick-status-chip not-agreed">Awaiting rules</span>');
-      }
-    }
-
     // Ready status (more prominent when all ready)
-    if (players.length > 0) {
-      if (allReady) {
-        chips.push('<span class="quick-status-chip all-ready">All Ready</span>');
-      }
+    if ((players || []).length > 0 && allReady) {
+      chips.push('<span class="quick-status-chip all-ready">All Ready</span>');
     }
 
     return chips.join('');
@@ -2063,8 +1744,6 @@ function renderQuickLobby(game) {
     } else {
       status.textContent = 'Game in progress…';
     }
-  } else if (!quickRulesAreAgreed(game)) {
-    status.textContent = 'Waiting for rule agreement…';
   } else if (bothTeamsFullyReady(game)) {
     status.textContent = 'Everyone is ready — starting…';
   } else if (red.length === 0 || blue.length === 0) {

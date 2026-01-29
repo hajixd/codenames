@@ -2507,6 +2507,21 @@ body.mode-joiner .only-joiner{ display:block; }
   cursor: not-allowed;
 }
 
+
+/* Quick Play Settings modal actions */
+.qp-settings-actions{
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.qp-settings-buttons{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 /* Quick Play: AI remove button inside player rows */
 .qp-ai-remove{
   margin-left: 8px;
