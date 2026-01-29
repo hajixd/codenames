@@ -1643,8 +1643,13 @@ function renderQuickLobby(game) {
     const status = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
     presenceMap.set(pr.odId || pr.id, status);
   }
+  // IMPORTANT:
+  // - AI players do not create presence entries.
+  // - Presence can lag behind on first load.
+  // If we don't have a presence record for an id, treat them as active so they still render.
   const isActive = (id) => {
     if (!presenceData.length) return true;
+    if (!presenceMap.has(id)) return true;
     return presenceMap.get(id) === 'online';
   };
 

@@ -2479,13 +2479,19 @@ body.mode-joiner .only-joiner{ display:block; }
   border: none;
   user-select: none;
   cursor: pointer;
-  opacity: 0.85;
+  /* Ensure section titles (Spymasters / Operatives) are always legible */
+  color: rgba(255,255,255,0.78);
+  opacity: 0.92;
   transition: opacity 120ms ease, color 120ms ease, text-decoration-color 120ms ease;
 }
 .quick-seat-choice:focus
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
 .quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
+
+/* Slight team tint even when not selected (keeps titles readable) */
+.quick-team-col.red .quick-seat-choice{ color: rgba(255, 210, 210, 0.80); }
+.quick-team-col.blue .quick-seat-choice{ color: rgba(200, 220, 255, 0.82); }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
