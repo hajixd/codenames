@@ -1048,6 +1048,15 @@
                 <button class="btn" id="settings-logout-btn" type="button">Log Out</button>
               </div>
 
+              <!-- Temporary: wipe username registry so all usernames become available again -->
+              <div class="settings-danger" id="settings-danger">
+                <div class="settings-section-title">Danger</div>
+                <div class="settings-admin-actions">
+                  <button class="btn danger" id="settings-wipe-users-btn" type="button">Wipe All Users (free usernames)</button>
+                </div>
+                <div class="hint" id="settings-wipe-users-hint">This clears the username registry (<span class="mono">/usernames</span>) so anyone can re-register usernames. Old accounts may become unreachable.</div>
+              </div>
+
               <!-- Admin Actions (only visible for admin users) -->
               <div class="settings-admin" id="settings-admin" style="display:none;">
                 <div class="settings-section-title">Admin</div>

@@ -8,19 +8,24 @@ service cloud.firestore {
     // Users sign in with "username + password" in the UI, but under the hood we
     // map usernames to Firebase Auth accounts. This registry enforces uniqueness.
     match /usernames/{username} {
-      allow read: if signedIn();
+      // Needed so the login screen can look up the alias email before a user
+      // is authenticated.
+      allow read: if true;
       // Claim a username once (no overwrites). Username doc id is the normalized username.
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
+        && request.resource.data.emailAlias is string
         && username.matches('^[a-z0-9_]{3,20}$')
         && !exists(/databases/$(database)/documents/usernames/$(username));
-      allow update, delete: if isAdmin();
+      // TEMPORARY: allow any signed-in user to wipe this registry from the UI.
+      allow update, delete: if signedIn();
     }
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create, update: if signedIn() && request.auth.uid == uid;
-      allow delete: if isAdmin();
+      // TEMPORARY: allow any signed-in user to wipe all user profile docs.
+      allow delete: if signedIn();
     }
 
     // ===== players =====
@@ -29,7 +34,8 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow delete: if isAdmin();
+      // TEMPORARY: allow any signed-in user to wipe all player docs.
+      allow delete: if signedIn();
     }
 
     // ===== teams =====

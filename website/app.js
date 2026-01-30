@@ -630,10 +630,27 @@ function initLaunchScreen() {
   function isValidUsername(v) {
     return /^[a-z0-9_]{3,20}$/.test(v);
   }
-  function usernameToEmail(username) {
-    // Firebase Auth requires an email format. We map usernames to a private
-    // pseudo-email so users only ever see username + password.
-    return `${username}@user.codenames.local`;
+  function makeEmailAlias(username) {
+    // Firebase Auth requires an email format. We use an alias email under the hood
+    // so players only ever see "username + password".
+    //
+    // IMPORTANT: The alias is intentionally NOT deterministic. We store it in
+    // Firestore under /usernames/{username}. That means if we wipe that registry,
+    // all usernames become available again (old accounts become orphaned).
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `${username}.${rand}@user.codenames.local`;
+  }
+
+  async function lookupEmailAliasForUsername(username) {
+    try {
+      const doc = await db.collection('usernames').doc(username).get();
+      if (!doc.exists) return null;
+      const data = doc.data() || {};
+      return String(data.emailAlias || data.email || '').trim() || null;
+    } catch (e) {
+      console.warn('Failed reading username registry (best-effort)', e);
+      return null;
+    }
   }
 
   function setAuthTab(which) {
@@ -662,7 +679,12 @@ function initLaunchScreen() {
     if (loginHint) loginHint.textContent = '';
     try {
       showAuthLoadingScreen('Logging in');
-      await auth.signInWithEmailAndPassword(usernameToEmail(username), pass);
+      const alias = await lookupEmailAliasForUsername(username);
+      if (!alias) {
+        if (loginHint) loginHint.textContent = 'No account found. Try creating one.';
+        return;
+      }
+      await auth.signInWithEmailAndPassword(alias, pass);
       // Best-effort: ensure display name is set (older accounts).
       const u = auth.currentUser;
       if (u && !String(u.displayName || '').trim()) {
@@ -694,8 +716,18 @@ function initLaunchScreen() {
     if (createHint) createHint.textContent = '';
     try {
       showAuthLoadingScreen('Creating account');
-      // Create the auth user.
-      await auth.createUserWithEmailAndPassword(usernameToEmail(username), pass);
+      // Fast pre-check to give a nice message.
+      // (The transaction below is the real enforcement.)
+      try {
+        const existsSnap = await db.collection('usernames').doc(username).get();
+        if (existsSnap.exists) throw new Error('USERNAME_TAKEN');
+      } catch (e) {
+        if (String(e?.message || '').includes('USERNAME_TAKEN')) throw e;
+      }
+
+      // Create the auth user using a non-deterministic alias email.
+      const emailAlias = makeEmailAlias(username);
+      await auth.createUserWithEmailAndPassword(emailAlias, pass);
 
       const u = auth.currentUser;
       if (!u) throw new Error('No auth user after signup');
@@ -709,6 +741,7 @@ function initLaunchScreen() {
         }
         tx.set(unameRef, {
           uid: u.uid,
+          emailAlias,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
       });
@@ -738,9 +771,9 @@ function initLaunchScreen() {
       console.warn('Signup failed', err);
       const code = String(err?.message || '');
       if (code.includes('USERNAME_TAKEN')) {
-        if (createHint) createHint.textContent = 'That username is already taken.';
+        if (createHint) createHint.textContent = "There's already an account. Try logging in.";
       } else if (String(err?.code || '').includes('auth/email-already-in-use')) {
-        if (createHint) createHint.textContent = 'That username is already taken.';
+        if (createHint) createHint.textContent = "There's already an account. Try logging in.";
       } else {
         if (createHint) createHint.textContent = 'Could not create account. Try a different username.';
       }
@@ -3836,6 +3869,10 @@ function initSettings() {
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
+  // Temporary danger action: wipe username registry so usernames are reusable.
+  const wipeUsersBtn = document.getElementById('settings-wipe-users-btn');
+  const wipeUsersHint = document.getElementById('settings-wipe-users-hint');
+
   const refreshAdminUI = () => {
     const isAdmin = !!isAdminUser();
     if (adminSection) adminSection.style.display = isAdmin ? 'block' : 'none';
@@ -3846,6 +3883,10 @@ function initSettings() {
 
   const setAdminHint = (msg) => {
     if (adminHintEl) adminHintEl.textContent = msg;
+  };
+
+  const setWipeHint = (msg) => {
+    if (wipeUsersHint) wipeUsersHint.innerHTML = String(msg || '');
   };
 
   refreshAdminUI();
@@ -3894,6 +3935,35 @@ function initSettings() {
     } finally {
       adminBackupBtn && (adminBackupBtn.disabled = false);
       adminRestoreBtn.disabled = false;
+    }
+  });
+
+  wipeUsersBtn?.addEventListener('click', async () => {
+    playSound('click');
+    const ok = await showCustomConfirm({
+      title: 'Wipe all users?',
+      message: `This will delete <span class="mono">/usernames</span>, <span class="mono">/users</span>, and <span class="mono">/players</span> so all usernames become available again.<br><br><b>This is temporary and not safe for production.</b>`,
+      okText: 'Wipe',
+      danger: true
+    });
+    if (!ok) return;
+
+    wipeUsersBtn.disabled = true;
+    try {
+      setWipeHint('Wiping users…');
+      // Clear registries first (this is what makes usernames reusable).
+      await adminDeleteAllDocs('usernames');
+      await adminDeleteAllDocs('users');
+      await adminDeleteAllDocs('players');
+      setWipeHint('Wiped. Signing out…');
+      try { await auth.signOut(); } catch (_) {}
+      try { clearLastNavigation(); } catch (_) {}
+      try { showAuthScreen(); } catch (_) {}
+    } catch (e) {
+      console.warn('Wipe failed', e);
+      setWipeHint(e?.message || 'Wipe failed.');
+    } finally {
+      wipeUsersBtn.disabled = false;
     }
   });
 
