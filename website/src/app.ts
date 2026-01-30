@@ -28,13 +28,72 @@ function setHash(tab: TabId) {
   if (location.hash.replace('#', '') !== tab) location.hash = tab;
 }
 
+type Team = {
+  name: string;
+  players: string[]; // always 4
+};
+
+const STORAGE_KEY = 'tournament_teams_v1';
+
+function defaultTeams(): Team[] {
+  return Array.from({ length: 8 }, (_, i) => {
+    const teamNo = i + 1;
+    const base = i * 4;
+    return {
+      name: `Team ${teamNo}`,
+      players: [
+        `Player ${base + 1}`,
+        `Player ${base + 2}`,
+        `Player ${base + 3}`,
+        `Player ${base + 4}`,
+      ],
+    };
+  });
+}
+
+function loadTeams(): Team[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultTeams();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return defaultTeams();
+    const teams = parsed
+      .map((t: any, i: number) => {
+        const name = typeof t?.name === 'string' ? t.name : `Team ${i + 1}`;
+        const playersIn = Array.isArray(t?.players) ? t.players : [];
+        const players = Array.from({ length: 4 }, (_, pi) => {
+          const v = playersIn[pi];
+          return typeof v === 'string' && v.trim() ? v : `Player ${i * 4 + pi + 1}`;
+        });
+        return { name, players } as Team;
+      })
+      .slice(0, 64);
+
+    // Ensure we always have 8 teams.
+    while (teams.length < 8) teams.push(defaultTeams()[teams.length]);
+    return teams.slice(0, 8);
+  } catch {
+    return defaultTeams();
+  }
+}
+
+function saveTeams(teams: Team[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(teams));
+  } catch {
+    // ignore
+  }
+}
+
+let teamsState: Team[] = loadTeams();
+
 function renderTeams(): string {
-  const teamNames = Array.from({ length: 8 }, (_, i) => `Team ${i + 1}`);
+  const teams = teamsState;
   return `
     <header class="pageHeader">
       <div>
         <h1 class="h1">Teams</h1>
-        <p class="subtle">Placeholders — swap these with your real roster.</p>
+        <p class="subtle">Double-click a player name to edit. Changes save automatically on this device.</p>
       </div>
       <div class="hint" aria-hidden="true">
         <span class="kbd">←</span><span class="kbd">→</span> switch tabs
@@ -42,31 +101,30 @@ function renderTeams(): string {
     </header>
 
     <section class="grid" aria-label="Teams list">
-      ${teamNames.map((name, i) => {
+      ${teams.map((t, i) => {
         const seed = i + 1;
-        const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2);
+        const initials = t.name.split(' ').map(w => w[0]).join('').slice(0, 2);
         return `
           <article class="card teamCard">
             <div class="teamTop">
               <div class="avatar" aria-hidden="true">${initials}</div>
               <div class="teamMeta">
-                <div class="teamName">${name}</div>
+                <div class="teamName">${t.name}</div>
                 <div class="teamSubtle">Seed <span class="mono">#${seed}</span> • Record <span class="mono">0–0</span></div>
               </div>
             </div>
-            <div class="teamStats" aria-hidden="true">
-              <div class="stat">
-                <div class="statLabel">Points</div>
-                <div class="statValue mono">—</div>
-              </div>
-              <div class="stat">
-                <div class="statLabel">Rank</div>
-                <div class="statValue mono">—</div>
-              </div>
-              <div class="stat">
-                <div class="statLabel">Notes</div>
-                <div class="statValue mono">—</div>
-              </div>
+            <div class="players" aria-label="Players for ${t.name}">
+              ${t.players.map((p, pi) => `
+                <div class="playerRow">
+                  <span class="playerSlot mono">${pi + 1}</span>
+                  <span
+                    class="playerName"
+                    title="Double-click to edit"
+                    data-team="${i}"
+                    data-player="${pi}"
+                  >${escapeHtml(p)}</span>
+                </div>
+              `).join('')}
             </div>
           </article>
         `;
@@ -75,10 +133,86 @@ function renderTeams(): string {
   `;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function attachTeamsEditing(root: ParentNode) {
+  const names = qsa<HTMLElement>('.playerName', root);
+  names.forEach((el) => {
+    el.addEventListener('dblclick', () => startInlineEdit(el));
+  });
+}
+
+function startInlineEdit(target: HTMLElement) {
+  const ti = Number(target.dataset.team ?? '');
+  const pi = Number(target.dataset.player ?? '');
+  if (!Number.isFinite(ti) || !Number.isFinite(pi)) return;
+
+  const current = teamsState?.[ti]?.players?.[pi] ?? target.textContent ?? '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'playerEdit';
+  input.value = current;
+  input.setAttribute('aria-label', `Edit player ${pi + 1} for team ${ti + 1}`);
+
+  const parent = target.parentElement;
+  if (!parent) return;
+  parent.replaceChild(input, target);
+  input.focus();
+  input.select();
+
+  const commit = () => {
+    const next = input.value.trim() || current;
+    if (teamsState[ti] && teamsState[ti].players[pi] !== undefined) {
+      teamsState[ti].players[pi] = next;
+      saveTeams(teamsState);
+    }
+
+    const span = document.createElement('span');
+    span.className = 'playerName';
+    span.title = 'Double-click to edit';
+    span.dataset.team = String(ti);
+    span.dataset.player = String(pi);
+    span.textContent = next;
+    span.addEventListener('dblclick', () => startInlineEdit(span));
+    parent.replaceChild(span, input);
+  };
+
+  const cancel = () => {
+    const span = document.createElement('span');
+    span.className = 'playerName';
+    span.title = 'Double-click to edit';
+    span.dataset.team = String(ti);
+    span.dataset.player = String(pi);
+    span.textContent = current;
+    span.addEventListener('dblclick', () => startInlineEdit(span));
+    parent.replaceChild(span, input);
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancel();
+    }
+  });
+}
+
 type Match = { a: string; b: string; time: string; };
 
 function renderBracket(): string {
-  const teams = Array.from({ length: 8 }, (_, i) => `Team ${i + 1}`);
+  const teams = teamsState.map(t => t.name);
 
   const round1: Match[] = [
     { a: teams[0], b: teams[7], time: 'TBD' },
@@ -208,6 +342,10 @@ function render(tab: TabId) {
   page.innerHTML = tab === 'teams' ? renderTeams()
     : tab === 'bracket' ? renderBracket()
     : renderRules();
+
+  if (tab === 'teams') {
+    attachTeamsEditing(page);
+  }
 
   // Update selected tab UI
   const tabButtons = qsa<HTMLButtonElement>('.tab');

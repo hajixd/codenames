@@ -107,6 +107,11 @@ a{ color: inherit; }
   gap: 18px;
 }
 
+.loading{
+  color: rgba(255,255,255,0.80);
+  padding: 18px 2px;
+}
+
 /* Tabs */
 .tabs{
   display:flex;
@@ -293,6 +298,70 @@ a{ color: inherit; }
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+/* Players list */
+.players{
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.playerRow{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.playerSlot{
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display:grid;
+  place-items:center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.78);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  flex: 0 0 auto;
+}
+
+.playerName{
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(255,255,255,0.92);
+  cursor: text;
+}
+
+.playerName:hover{
+  color: rgba(255,255,255,0.98);
+}
+
+.playerEdit{
+  flex: 1;
+  width: 100%;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  color: rgba(255,255,255,0.95);
+  font: inherit;
+  outline: none;
+}
+
+.playerEdit:focus{
+  border-color: rgba(255,255,255,0.30);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.10);
 }
 
 .statLabel{

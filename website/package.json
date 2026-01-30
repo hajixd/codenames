@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp dist/app.js app.js",
     "watch": "tsc -p tsconfig.json --watch --preserveWatchOutput"
   },
   "devDependencies": {
