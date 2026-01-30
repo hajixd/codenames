@@ -253,63 +253,44 @@ async function addAiToQuickPlayLobby(team, seatRole, name, mode, model) {
   const aiMode = (mode === 'helper') ? 'helper' : 'autonomous';
   const aiModel = (model || '').trim() || QP_AI_DEFAULT_MODEL;
 
-  // Adding an AI often coincides with presence cleanup in the lobby (which updates the same doc).
-  // To reduce transaction contention, briefly pause lobby cleanup while we add/verify the AI.
-  window.__aiLobbyBusyUntil = Date.now() + 5000;
-
-  // Transactions can fail with FAILED_PRECONDITION when other clients update the lobby at the same time.
-  // (e.g., presence cleanup, multiple devices). We'll retry a few times with backoff.
-  const MAX_TX_RETRIES = 8;
-  for (let attempt = 0; attempt < MAX_TX_RETRIES; attempt++) {
-    try {
-      await db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists) throw new Error('Quick Play lobby not found');
-        const g = snap.data();
-        if (g.currentPhase && g.currentPhase !== 'waiting') {
-          throw new Error('Cannot add AI while a Quick Play game is in progress.');
-        }
-        const key = `${team}Players`;
-        const players = Array.isArray(g[key]) ? [...g[key]] : [];
-
-        const aiCount = players.filter(p => !!p?.isAI).length;
-        if (aiCount >= QP_AI_MAX_PER_TEAM) {
-          throw new Error(`Max ${QP_AI_MAX_PER_TEAM} AI players per team.`);
-        }
-
-        // Prevent accidental duplicate AI ids
-        if (players.some(p => String(p?.odId || '') === aiId)) {
-          throw new Error('AI id collision (retry)');
-        }
-
-        players.push({
-          odId: aiId,
-          name: safeName,
-          role: (seatRole === 'spymaster') ? 'spymaster' : 'operative',
-          ready: false,
-          isAI: true,
-          aiMode,
-          aiModel,
-          aiStatus: 'none', // none | red | yellow | green
-          createdAtMs: Date.now(),
-        });
-
-        tx.update(ref, {
-          [key]: players,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          log: firebase.firestore.FieldValue.arrayUnion(`AI added: ${safeName} (${team} ${seatRole})`),
-        });
-      });
-      break; // success
-    } catch (e) {
-      const msg = String(e?.message || e);
-      const code = String(e?.code || '').toLowerCase();
-      const retryable = code.includes('failed-precondition') || code.includes('aborted') || msg.toLowerCase().includes('failed-precondition');
-      if (!retryable || attempt === MAX_TX_RETRIES - 1) throw e;
-      // jittered backoff
-      await new Promise(r => setTimeout(r, 120 + Math.floor(Math.random() * 180) + attempt * 120));
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error('Quick Play lobby not found');
+    const g = snap.data();
+    if (g.currentPhase && g.currentPhase !== 'waiting') {
+      throw new Error('Cannot add AI while a Quick Play game is in progress.');
     }
-  }
+    const key = `${team}Players`;
+    const players = Array.isArray(g[key]) ? [...g[key]] : [];
+
+    const aiCount = players.filter(p => !!p?.isAI).length;
+    if (aiCount >= QP_AI_MAX_PER_TEAM) {
+      throw new Error(`Max ${QP_AI_MAX_PER_TEAM} AI players per team.`);
+    }
+
+    // Prevent accidental duplicate AI ids
+    if (players.some(p => String(p?.odId || '') === aiId)) {
+      throw new Error('AI id collision (retry)');
+    }
+
+    players.push({
+      odId: aiId,
+      name: safeName,
+      role: (seatRole === 'spymaster') ? 'spymaster' : 'operative',
+      ready: false,
+      isAI: true,
+      aiMode,
+      aiModel,
+      aiStatus: 'none', // none | red | yellow | green
+      createdAtMs: Date.now(),
+    });
+
+    tx.update(ref, {
+      [key]: players,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      log: firebase.firestore.FieldValue.arrayUnion(`AI added: ${safeName} (${team} ${seatRole})`),
+    });
+  });
 
   // Kick off ready verification (best effort)
   verifyAiReady(team, aiId, aiModel);
@@ -1158,13 +1139,6 @@ let lastInactivePlayerCheck = 0;
 
 async function checkAndRemoveInactiveLobbyPlayers(game) {
   if (!game) return;
-
-  // If we're in the middle of adding/verifying an AI, avoid touching the lobby doc for a moment
-  // to reduce transaction contention.
-  if (window.__aiLobbyBusyUntil && Date.now() < window.__aiLobbyBusyUntil) return;
-
-  // Avoid conflicting writes during AI add/verify bursts.
-  if (Date.now() < (window.__aiLobbyBusyUntil || 0)) return;
 
   // Only check lobby (waiting state)
   if (game.currentPhase !== 'waiting') return;

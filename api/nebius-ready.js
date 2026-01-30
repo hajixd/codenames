@@ -48,27 +48,6 @@ function extractTextFromContent(content) {
   return String(content).trim();
 }
 
-function extractTextFromChoice(choice) {
-  if (!choice) return '';
-  // Non-streaming style
-  if (choice.message && choice.message.content != null) {
-    return extractTextFromContent(choice.message.content);
-  }
-  // Streaming style (delta)
-  if (choice.delta && choice.delta.content != null) {
-    return extractTextFromContent(choice.delta.content);
-  }
-  // Some providers include "text" at the top level
-  if (choice.text != null) {
-    return extractTextFromContent(choice.text);
-  }
-  // Fallback: sometimes content is nested oddly
-  if (choice.content != null) {
-    return extractTextFromContent(choice.content);
-  }
-  return '';
-}
-
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -92,12 +71,15 @@ module.exports = async (req, res) => {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 12_000);
-    // Some models/providers are picky about the "content parts" format.
-    // For a simple readiness check, use plain string content for maximum compatibility.
+    // Nebius docs commonly show message.content as an array of parts.
+    // Using that format here improves compatibility across models.
+    // Some providers/models behave oddly with system messages. Keep this as a single user instruction.
     const messages = [
       {
         role: 'user',
-        content: 'Reply with exactly the single word Ready. Output only: Ready',
+        content: [
+          { type: 'text', text: 'Health check: reply with exactly the single word Ready. Output only Ready.' },
+        ],
       },
     ];
 
@@ -111,7 +93,6 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model,
         temperature: 0,
-        // Give enough room for the single word response across tokenizers.
         max_tokens: 8,
         messages,
         stream: false,
@@ -128,8 +109,8 @@ module.exports = async (req, res) => {
     } catch (_) {
       data = {};
     }
-    const choice0 = data?.choices?.[0];
-    const text = extractTextFromChoice(choice0);
+    const rawContent = data?.choices?.[0]?.message?.content;
+    const text = extractTextFromContent(rawContent);
 
     if (!r.ok) {
       return json(res, r.status, {
@@ -140,10 +121,20 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Even if the provider returns an "empty" completion, don't hard-fail the endpoint.
-    // Return 200 with raw diagnostics so the client can mark yellow/red but still proceed.
+    // If the response body was empty or didn't contain a completion, treat as a failure so
+    // the client can surface the diagnostics instead of silently returning {text: ""}.
+    if (!data?.choices?.length) {
+      return json(res, 502, {
+        error: 'Nebius returned no completion choices',
+        text,
+        raw: data,
+        bodyText,
+        status: r.status,
+      });
+    }
+
     // Include raw so the browser can log what the model returned when it isn't exactly "Ready".
-    return json(res, 200, { text, raw: data, bodyText });
+    return json(res, 200, { text, raw: data });
   } catch (e) {
     return json(res, 500, { error: String(e?.message || e) });
   }
