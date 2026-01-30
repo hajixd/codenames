@@ -644,17 +644,6 @@ function tsToMs(ts) {
   return Number.POSITIVE_INFINITY;
 }
 
-function withTimeout(promise, ms, label = 'op') {
-  const t = Math.max(0, Number(ms || 0));
-  if (!t) return promise;
-  let to = null;
-  const timeout = new Promise((_, reject) => {
-    to = setTimeout(() => reject(new Error(`${label} timed out after ${t}ms`)), t);
-  });
-  return Promise.race([Promise.resolve(promise).finally(() => { if (to) clearTimeout(to); }), timeout]);
-}
-
-
 function autoMergeDuplicatePlayers(players) {
   // Best-effort background cleanup: if duplicates exist (multiple docs with same name),
   // merge them to the earliest-created doc.
@@ -779,13 +768,7 @@ async function mergePlayerIntoCanonical({ nameKey, displayName, canonicalId, dup
         ...(nameSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
       }, { merge: true });
 
-      // Don't erase the old doc: keep it as an alias so existing links/history don't break.
-      tx.set(dropRef, {
-        aliasTo: keepId,
-        migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        name: nextName,
-        legacy: true,
-      }, { merge: true });
+      tx.delete(dropRef);
     });
   } catch (e) {
     console.warn('Could not merge player docs', e);
@@ -868,170 +851,6 @@ function getLocalAccountId() {
   return String(id || '').trim();
 }
 
-function isUuidV4Like(id) {
-  const s = String(id || '').trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
-}
-
-function looksLegacyAccountId(id, displayName) {
-  const s = String(id || '').trim();
-  const nm = String(displayName || '').trim();
-  if (!s) return false;
-
-  // Legacy bug: account id accidentally set to the normalized name (or the raw name).
-  const key = nameToAccountId(nm);
-  if (nm && (s === nm || (key && s === key))) return true;
-
-  // Valid modern ids are UUIDv4 or our u_* fallback format.
-  if (isUuidV4Like(s)) return false;
-  if (s.startsWith('u_') && s.length >= 10) return false;
-
-  // Very short ids are almost certainly legacy.
-  return s.length < 12;
-}
-
-async function migrateLegacyAccountIdKeepAlias(fromId, toId, displayName) {
-  const oldId = String(fromId || '').trim();
-  const newId = String(toId || '').trim();
-  const name = String(displayName || '').trim();
-  if (!oldId || !newId || oldId === newId) return;
-
-  // 0) Remove any presence doc keyed to the old ID to avoid "ghost" online users.
-  try { await db.collection('presence').doc(oldId).delete(); } catch (_) {}
-
-  // 1) Copy/merge player doc -> new id (keep old doc as an alias).
-  const oldRef = db.collection('players').doc(oldId);
-  const newRef = db.collection('players').doc(newId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const [oldSnap, newSnap] = await Promise.all([tx.get(oldRef), tx.get(newRef)]);
-      const old = oldSnap.exists ? ({ id: oldSnap.id, ...oldSnap.data() }) : null;
-      const cur = newSnap.exists ? ({ id: newSnap.id, ...newSnap.data() }) : null;
-
-      const nextName = (cur?.name || old?.name || name || '—').trim();
-      const nextInvites = dedupeInvitesByTeamId([...(cur?.invites || []), ...(old?.invites || [])]);
-
-      tx.set(newRef, {
-        name: nextName,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        ...(cur?.createdAt ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() }),
-        invites: nextInvites,
-        legacyIds: Array.from(new Set([...(cur?.legacyIds || []), oldId, ...(old?.legacyIds || [])]))
-      }, { merge: true });
-
-      // Keep the old doc but mark it as an alias (do NOT delete).
-      if (oldSnap.exists) {
-        tx.set(oldRef, {
-          aliasTo: newId,
-          migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          name: nextName,
-          legacy: true,
-        }, { merge: true });
-      } else {
-        tx.set(oldRef, {
-          aliasTo: newId,
-          migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          name: nextName,
-          legacy: true,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    });
-  } catch (e) {
-    console.warn('Legacy id migration: could not copy player doc', e);
-  }
-
-  // 2) Update name registry mapping -> new id (best effort)
-  try {
-    const key = nameToAccountId(name);
-    if (key) {
-      await db.collection(NAME_REGISTRY_COLLECTION).doc(key).set({
-        accountId: newId,
-        name,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
-  } catch (e) {
-    console.warn('Legacy id migration: could not update name registry', e);
-  }
-
-  // 3) Update team memberships/ownership from old -> new (best effort)
-  for (const t of (teamsCache || [])) {
-    const teamRef = db.collection('teams').doc(t.id);
-    try {
-      await db.runTransaction(async (tx) => {
-        const snap = await tx.get(teamRef);
-        if (!snap.exists) return;
-        const team = { id: snap.id, ...snap.data() };
-
-        let changed = false;
-        const nextMembers = getMembers(team).map(m => {
-          if (m?.userId === oldId) { changed = true; return { ...m, userId: newId }; }
-          return m;
-        });
-        const nextPending = getPending(team).map(r => {
-          if (r?.userId === oldId) { changed = true; return { ...r, userId: newId }; }
-          return r;
-        });
-
-        let nextCreatorUserId = team.creatorUserId;
-        let nextCreatorName = team.creatorName;
-        if (team.creatorUserId === oldId) {
-          changed = true;
-          nextCreatorUserId = newId;
-          nextCreatorName = (name || team.creatorName || '').trim();
-        }
-
-        if (!changed) return;
-        tx.update(teamRef, {
-          members: dedupeRosterByAccount(nextMembers),
-          pending: dedupeRosterByAccount(nextPending),
-          creatorUserId: nextCreatorUserId,
-          creatorName: nextCreatorName,
-        });
-      });
-    } catch (e) {
-      console.warn('Legacy id migration: could not update team', e);
-    }
-  }
-
-  // 4) Update Quick Play roster (best effort)
-  try {
-    const qpRef = db.collection('games').doc('quickplay');
-    await db.runTransaction(async (tx) => {
-      const s = await tx.get(qpRef);
-      if (!s.exists) return;
-      const g = s.data() || {};
-      const fixArr = (arr) => (Array.isArray(arr) ? arr.map(p => (p?.odId === oldId ? { ...p, odId: newId } : p)) : arr);
-      const next = {
-        redPlayers: fixArr(g.redPlayers),
-        bluePlayers: fixArr(g.bluePlayers),
-        spectators: fixArr(g.spectators),
-      };
-      tx.update(qpRef, next);
-    });
-  } catch (e) {
-    console.warn('Legacy id migration: could not update Quick Play roster', e);
-  }
-}
-
-async function ensureNonLegacyAccountIdForCurrentName() {
-  const nm = getUserName();
-  if (!nm) return;
-  const currentId = getLocalAccountId();
-  if (!looksLegacyAccountId(currentId, nm)) return;
-
-  const newId = (crypto?.randomUUID?.() || ('u_' + Math.random().toString(16).slice(2) + Date.now().toString(16)));
-  try {
-    await migrateLegacyAccountIdKeepAlias(currentId, newId, nm);
-    safeLSSet(LS_USER_ID, newId);
-    // After switching ids, ensure profile sync listens to the right doc.
-    startProfileNameSync();
-  } catch (e) {
-    console.warn('Could not migrate legacy account id (best-effort)', e);
-  }
-}
-
 function getUserId() {
   // All app logic should use the current linked account id.
   return getLocalAccountId();
@@ -1045,7 +864,6 @@ async function setUserName(name, opts = {}) {
   const silent = !!opts.silent;
   const nextName = (name || '').trim();
   const prevName = (safeLSGet(LS_USER_NAME) || '').trim();
-  const isInitialLogin = !prevName;
 
   // Used to avoid profile listener bouncing the UI during a local rename.
   lastLocalNameSetAtMs = Date.now();
@@ -1067,22 +885,12 @@ async function setUserName(name, opts = {}) {
 
   let targetAccountId = myAccountId;
 
-  // Fast pre-read (best-effort) so we can show the right loading message.
-  let preExists = false;
-  let preExistingAccountId = '';
-  try {
-    const s = await withTimeout(nextRef.get(), 1800, 'name lookup');
-    preExists = !!s.exists;
-    preExistingAccountId = s.exists ? String(s.data()?.accountId || '').trim() : '';
-  } catch (_) {
-    // best-effort
-  }
-
   // If the name is already mapped to another account, ask for verification before linking.
   if (!silent) {
     try {
-      const existing = preExistingAccountId;
-      if (preExists && existing && existing !== myAccountId) {
+      const s = await nextRef.get();
+      const existing = s.exists ? String(s.data()?.accountId || '').trim() : '';
+      if (existing && existing !== myAccountId) {
         const ok = await showConfirmDialog(nextName);
         if (!ok) {
           // Revert to previous name and keep this device on its current account.
@@ -1090,14 +898,11 @@ async function setUserName(name, opts = {}) {
           refreshNameUI();
           return;
         }
-        // Show loading screen AFTER user confirms.
-        showAuthLoadingScreen('Signing in');
-      } else if (isInitialLogin) {
-        // New login on this device (no previous name). Show an explicit message.
-        showAuthLoadingScreen(preExists ? 'Signing in' : 'Creating Account');
+        // Show loading screen AFTER user confirms (not before)
+        showAuthLoadingScreen();
       }
-    } catch (_) {
-      if (isInitialLogin) showAuthLoadingScreen('Signing in');
+    } catch (e) {
+      // best-effort
     }
   }
 
@@ -1108,7 +913,7 @@ async function setUserName(name, opts = {}) {
   startProfileNameSync();
 
   try {
-    await withTimeout(db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx) => {
       const nextSnap = await tx.get(nextRef);
 
       // If the name already belongs to someone else, link to that account.
@@ -1133,20 +938,20 @@ async function setUserName(name, opts = {}) {
           tx.delete(prevRef);
         }
       }
-    }), 4500, 'name transaction');
+    });
   } catch (e) {
     console.warn('Name linking failed (best-effort). Continuing locally.', e);
     targetAccountId = myAccountId;
   }
 
-  // If this name belongs to another account, switch to it.
+  // If this name belongs to another account, switch to it (and migrate any local data best-effort).
   if (targetAccountId && targetAccountId !== myAccountId) {
-    // IMPORTANT: hop to canonical id immediately so the rest of the app uses the right UID.
+    try {
+      await migrateIdentity(myAccountId, targetAccountId, nextName);
+    } catch (e) {
+      console.warn('Identity migration failed (best-effort)', e);
+    }
     safeLSSet(LS_USER_ID, targetAccountId);
-
-    // Migrate in the background (don't block sign-in UI).
-    withTimeout(migrateIdentity(myAccountId, targetAccountId, nextName), 6000, 'identity migration')
-      .catch(e => console.warn('Identity migration failed (best-effort)', e));
   }
 
   // Ensure we are listening to the correct profile doc for cross-device name sync.
@@ -1154,26 +959,23 @@ async function setUserName(name, opts = {}) {
 
   refreshNameUI();
 
-  // Keep sign-in fast: do the heavier cleanup tasks asynchronously.
-  try {
-    withTimeout(upsertPlayerProfile(getUserId(), getUserName()), 2200, 'upsert profile')
-      .catch(() => {});
-  } catch (_) {}
+  // Persist "signed up" players to Firestore so they can appear in the Players tab.
+  await upsertPlayerProfile(getUserId(), getUserName());
 
+  // If older/buggy sessions created multiple player docs with the same name, merge them
+  // to the earliest-created one. This prevents "two accounts with the same name".
   try {
-    withTimeout(ensureNonLegacyAccountIdForCurrentName(), 5000, 'legacy id cleanup')
-      .catch(() => {});
-  } catch (_) {}
+    await mergeDuplicatePlayersForName(nextName);
+  } catch (e) {
+    console.warn('Duplicate-player merge failed (best-effort)', e);
+  }
 
+  // If user is a member/creator, update their stored display name in their team doc (best-effort)
   try {
-    mergeDuplicatePlayersForName(nextName)
-      .catch(e => console.warn('Duplicate-player merge failed (best-effort)', e));
-  } catch (_) {}
-
-  try {
-    updateNameInAllTeams(getUserId(), getUserName())
-      .catch(() => {});
-  } catch (_) {}
+    await updateNameInAllTeams(getUserId(), getUserName());
+  } catch (e) {
+    // best-effort
+  }
 }
 
 
@@ -1519,12 +1321,10 @@ function listenToPlayers() {
   db.collection('players')
     .orderBy('name', 'asc')
     .onSnapshot((snapshot) => {
-      const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       // Best-effort: if prior versions created duplicate player docs for the same name,
       // auto-merge them to the earliest-created doc.
-      autoMergeDuplicatePlayers(all);
-      // Hide alias/legacy duplicates from the UI.
-      playersCache = all.filter(p => !p?.aliasTo);
+      autoMergeDuplicatePlayers(playersCache);
       recomputeUnreadBadges();
       recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
@@ -5277,67 +5077,63 @@ function initConfirmDialog() {
 async function verifyAccountAndInitPresence() {
   const storedName = getUserName();
 
-  // No stored name - nothing to verify.
+  // No stored name - nothing to verify, hide loading screen immediately
   if (!storedName) {
     hideAuthLoadingScreen();
     return;
   }
 
-  // Show loading screen while we verify, but never let it hang.
+  // Show loading screen while we verify
   showAuthLoadingScreen('Signing in');
-
-  const finish = () => {
-    try { hideAuthLoadingScreen(); } catch (_) {}
-    // Ensure presence starts even if verification was slow.
-    if (!presenceInitialized) {
-      presenceInitialized = true;
-      initPresence();
-    }
-    try { startProfileNameSync(); } catch (_) {}
-  };
-
-  // Hard fail-safe: if something stalls, we still complete sign-in quickly.
-  const hardTimeout = setTimeout(finish, 2500);
 
   try {
     const nameKey = nameToAccountId(storedName);
     if (!nameKey) {
-      finish();
+      // Invalid name, just proceed
+      hideAuthLoadingScreen();
       return;
     }
 
     const myDeviceId = getLocalAccountId();
     const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
+    const nameDoc = await namesCol.doc(nameKey).get();
 
-    let canonicalAccountId = '';
-    try {
-      const nameDoc = await withTimeout(namesCol.doc(nameKey).get(), 1800, 'verify name');
-      if (nameDoc.exists) canonicalAccountId = String(nameDoc.data()?.accountId || '').trim();
-    } catch (e) {
-      console.warn('Name verification read failed (best-effort)', e);
+    if (nameDoc.exists) {
+      const canonicalAccountId = String(nameDoc.data()?.accountId || '').trim();
+
+      // If the name belongs to a different account, migrate silently
+      if (canonicalAccountId && canonicalAccountId !== myDeviceId) {
+        // Migrate identity (this also cleans up old presence doc)
+        try {
+          await migrateIdentity(myDeviceId, canonicalAccountId, storedName);
+        } catch (e) {
+          console.warn('Identity migration during verification failed (best-effort)', e);
+        }
+        // Update local storage to use the canonical account
+        safeLSSet(LS_USER_ID, canonicalAccountId);
+      }
     }
 
-    if (canonicalAccountId && canonicalAccountId !== myDeviceId) {
-      // Switch immediately so the app uses the canonical UID.
-      safeLSSet(LS_USER_ID, canonicalAccountId);
-
-      // Migrate in background (do not block sign-in).
-      withTimeout(migrateIdentity(myDeviceId, canonicalAccountId, storedName), 6000, 'identity migration (verify)')
-        .catch(e => console.warn('Identity migration during verification failed (best-effort)', e));
+    // Now that we've verified/migrated, start presence with the correct ID
+    if (!presenceInitialized) {
+      presenceInitialized = true;
+      initPresence();
     }
 
-    // Legacy cleanup can be slow; do it in the background.
-    try {
-      withTimeout(ensureNonLegacyAccountIdForCurrentName(), 5000, 'legacy id cleanup (verify)')
-        .catch(() => {});
-    } catch (_) {}
+    // Also ensure profile sync is active
+    startProfileNameSync();
 
   } catch (e) {
-    console.warn('Account verification failed (best-effort)', e);
-  } finally {
-    clearTimeout(hardTimeout);
-    finish();
+    console.warn('Account verification failed (best-effort), starting presence anyway', e);
+    // Even if verification fails, start presence to maintain functionality
+    if (!presenceInitialized) {
+      presenceInitialized = true;
+      initPresence();
+    }
   }
+
+  // Hide loading screen after verification completes
+  hideAuthLoadingScreen();
 }
 
 // Initialize presence on DOMContentLoaded - but verify account first

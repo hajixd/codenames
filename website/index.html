@@ -398,22 +398,12 @@
                       <div class="quick-team-status" id="quick-red-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title spymaster qp-role-head">
-  <button class="quick-seat-choice spymaster qp-role-h" id="quick-red-seat-spymaster" type="button" aria-label="Join Red as Spymaster">
-    <span class="qp-role-label">Spymasters</span>
-  </button>
-  <button class="btn tiny qp-add-ai" type="button" data-ai-team="red" data-ai-seat="spymaster" aria-label="Add AI Spymaster to Red">+AI</button>
-</div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters</div>
                           <div class="quick-team-list" id="quick-red-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title operative qp-role-head">
-  <button class="quick-seat-choice operative qp-role-h" id="quick-red-seat-operative" type="button" aria-label="Join Red as Operative">
-    <span class="qp-role-label">Operatives</span>
-  </button>
-  <button class="btn tiny qp-add-ai" type="button" data-ai-team="red" data-ai-seat="operative" aria-label="Add AI Operative to Red">+AI</button>
-</div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives</div>
                           <div class="quick-team-list" id="quick-red-operative-list"></div>
                         </div>
                       </div>
@@ -437,65 +427,14 @@
                       <div class="quick-team-status" id="quick-blue-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title spymaster qp-role-head">
-  <button class="quick-seat-choice spymaster qp-role-h" id="quick-blue-seat-spymaster" type="button" aria-label="Join Blue as Spymaster">
-    <span class="qp-role-label">Spymasters</span>
-  </button>
-  <button class="btn tiny qp-add-ai" type="button" data-ai-team="blue" data-ai-seat="spymaster" aria-label="Add AI Spymaster to Blue">+AI</button>
-</div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters</div>
                           <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title operative qp-role-head">
-  <button class="quick-seat-choice operative qp-role-h" id="quick-blue-seat-operative" type="button" aria-label="Join Blue as Operative">
-    <span class="qp-role-label">Operatives</span>
-  </button>
-  <button class="btn tiny qp-add-ai" type="button" data-ai-team="blue" data-ai-seat="operative" aria-label="Add AI Operative to Blue">+AI</button>
-</div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives</div>
                           <div class="quick-team-list" id="quick-blue-operative-list"></div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Add AI modal -->
-                <div class="modal" id="ai-add-modal" aria-hidden="true" style="display:none;">
-                  <div class="modal-backdrop" id="ai-add-backdrop"></div>
-                  <div class="modal-card ai-modal-card" role="dialog" aria-modal="true" aria-label="Add AI Player">
-                    <div class="modal-head">
-                      <div class="modal-title">Add AI Player</div>
-                      <button class="icon-btn" id="ai-add-close" type="button" aria-label="Close">✕</button>
-                    </div>
-                    <div class="modal-body">
-                      <div class="ai-form">
-                        <label class="ai-field">
-                          <span class="ai-label">AI name</span>
-                          <input class="input ai-input" id="ai-add-name" type="text" placeholder="e.g. Nova" />
-                        </label>
-
-                        <label class="ai-field">
-                          <span class="ai-label">AI mode</span>
-                          <select class="input ai-input" id="ai-add-mode">
-                            <option value="helper">AI Helper (chat only)</option>
-                            <option value="autonomous" selected>AI Autonomous</option>
-                          </select>
-                        </label>
-
-                        <label class="ai-field">
-                          <span class="ai-label">Model</span>
-                          <input class="input ai-input" id="ai-add-model" type="text" value="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B" />
-                        </label>
-                      </div>
-
-                      <div class="hint ai-hint" id="ai-add-hint"></div>
-
-                      <div class="hint ai-error" id="ai-add-error" style="display:none;"></div>
-
-                      <div class="modal-actions ai-actions">
-                        <button class="btn" id="ai-add-cancel" type="button">Cancel</button>
-                        <button class="btn primary" id="ai-add-confirm" type="button">Add</button>
                       </div>
                     </div>
                   </div>

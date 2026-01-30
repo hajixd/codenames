@@ -2465,33 +2465,26 @@ body.mode-joiner .only-joiner{ display:block; }
 /* Quick Play: choose Operatives vs Spymasters inside the team box */
 /* These are used as section headers (clickable), not a separate row of buttons. */
 .quick-seat-choice{
-  appearance: none;
-  -webkit-appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  /* Section headers (Spymasters / Operatives) should read like headers, not like player "pills". */
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
   font-weight: 900;
   font-size: 12px;
   letter-spacing: 0.35px;
   padding: 4px 2px;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
   border: none;
   user-select: none;
   cursor: pointer;
-  /* Ensure section titles (Spymasters / Operatives) are always legible */
-  color: rgba(255,255,255,0.78);
-  opacity: 0.92;
-  transition: opacity 120ms ease, color 120ms ease, text-decoration-color 120ms ease;
+  opacity: 0.85;
+  transition: opacity 120ms ease, color 120ms ease;
 }
-.quick-seat-choice:focus
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
 .quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
-
-/* Slight team tint even when not selected (keeps titles readable) */
-.quick-team-col.red .quick-seat-choice{ color: rgba(255, 210, 210, 0.80); }
-.quick-team-col.blue .quick-seat-choice{ color: rgba(200, 220, 255, 0.82); }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
@@ -2516,140 +2509,12 @@ body.mode-joiner .only-joiner{ display:block; }
   /* When combined with .quick-seat-choice this becomes the clickable section header */
   margin-bottom: 10px;
 }
-
-
-/* Quick Play: header row now contains a seat button + a separate +AI button */
-.quick-role-title{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.quick-role-title .btn.tiny.qp-add-ai{
-  flex: 0 0 auto;
-}
-
-/* Quick Play AI controls */
-.qp-role-head{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.btn.tiny{
-  padding: 4px 8px;
-  font-size: 11px;
-  line-height: 1;
-  border-radius: 999px;
-}
-
-.qp-ai-chip{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.3px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.78);
-  flex: 0 0 auto;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.qp-ai-chip .qp-ai-tag{ opacity: 0.9; }
-.qp-ai-chip .qp-ai-mode{ opacity: 0.65; font-weight: 900; }
-.qp-ai-chip .qp-ai-name{
-  opacity: 0.8;
-  font-weight: 800;
-  font-size: 9px;
-  display: inline-block;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.qp-ai-dot{
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.25);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.10) inset;
-}
-.qp-ai-dot.green{ background: rgba(45, 210, 120, 0.9); }
-.qp-ai-dot.yellow{ background: rgba(255, 196, 77, 0.95); }
-.qp-ai-dot.red{ background: rgba(255, 90, 90, 0.95); }
 .quick-role-divider{
-  height: 0;
+  height: 1px;
   width: 100%;
-  border-top: 1px solid rgba(255,255,255,0.10);
-  margin: 10px 0;
+  background: rgba(255,255,255,0.10);
+  margin: 4px 0;
 }
-
-/* Add-AI modal: compact, matches other in-app popups */
-.modal-card.ai-modal-card{
-  width: min(460px, 100%);
-}
-
-.ai-form{
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ai-field{
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
-}
-
-.ai-label{
-  font-weight: 800;
-  font-size: 12px;
-  color: rgba(255,255,255,0.78);
-}
-
-.ai-input{
-  width: 100%;
-  font-size: 13px;
-  padding: 10px 12px;
-}
-
-.ai-hint{
-  margin-top: 10px;
-}
-
-.ai-error{
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 90, 90, 0.35);
-  background: rgba(255, 90, 90, 0.10);
-  color: rgba(255, 200, 200, 0.95);
-  font-size: 12px;
-  line-height: 1.25;
-}
-
-.ai-actions{
-  margin-top: 12px;
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-/* AI rows in lobby: keep badge visible and allow chip to shrink */
-.qp-ai-player{ gap: 8px; }
-.qp-ai-player .qp-ai-chip{ flex: 1 1 auto; }
 .quick-team-status:empty {
   display: none;
 }
