@@ -133,10 +133,15 @@ async function bootFirebase() {
 /* ---------------- Rendering ---------------- */
 function renderTopbar() {
   const nav = qs('#tabs');
-  nav.innerHTML = tabs.map((id) => {
-    const active = id === activeTab ? 'true' : 'false';
-    return `<button class="tabBtn" data-tab="${id}" aria-selected="${active}" role="tab">${tabTitle[id]}</button>`;
-  }).join('');
+  // IMPORTANT: keep the moving highlight element in the DOM.
+  // We render it first, then the buttons.
+  nav.innerHTML = `
+    <span class="tabHighlight" id="tabIndicator" aria-hidden="true"></span>
+    ${tabs.map((id) => {
+      const active = id === activeTab ? 'true' : 'false';
+      return `<button class="tabBtn" data-tab="${id}" aria-selected="${active}" role="tab">${tabTitle[id]}</button>`;
+    }).join('')}
+  `;
 
   const indicator = qs('#tabIndicator');
   const activeBtn = nav.querySelector(`button[data-tab="${activeTab}"]`);
