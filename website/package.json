@@ -1,0 +1,12 @@
+{
+  "name": "black-tabs-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

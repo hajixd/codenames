@@ -1,24 +1,27 @@
-const tabs = ['teams', 'bracket', 'rules'];
+type TabId = 'teams' | 'bracket' | 'rules';
 
-const tabTitle = {
+const tabs: TabId[] = ['teams', 'bracket', 'rules'];
+
+const tabTitle: Record<TabId, string> = {
   teams: 'Teams',
   bracket: 'Bracket',
   rules: 'Rules',
 };
 
-function qs(sel, root = document) {
+function qs<T extends Element>(sel: string, root: ParentNode = document): T {
   const el = root.querySelector(sel);
   if (!el) throw new Error(`Missing element: ${sel}`);
-  return el;
+  return el as T;
 }
 
-function safeTab(input) {
+function safeTab(input: string | null | undefined): TabId {
   if (input === 'bracket' || input === 'rules' || input === 'teams') return input;
   return 'teams';
 }
 
-function renderTeams() {
+function renderTeams(): string {
   const teamNames = Array.from({ length: 8 }, (_, i) => `Team ${i + 1}`);
+
   return `
     <h1 class="h1">Teams</h1>
     <p class="subtle">Placeholder teams. Replace these with your real roster.</p>
@@ -31,7 +34,8 @@ function renderTeams() {
   `;
 }
 
-function renderBracket() {
+function renderBracket(): string {
+  // Simple 8-team bracket placeholder (Quarterfinals only)
   const matches = [
     ['Team 1', 'Team 2'],
     ['Team 3', 'Team 4'],
@@ -60,7 +64,7 @@ function renderBracket() {
   `;
 }
 
-function renderRules() {
+function renderRules(): string {
   return `
     <h1 class="h1">Rules</h1>
     <p class="subtle">Placeholder rules. Edit this section with your real tournament rules.</p>
@@ -76,14 +80,16 @@ function renderRules() {
   `;
 }
 
-function render(tab) {
-  const tabButtons = Array.from(document.querySelectorAll('.tab'));
+function render(tab: TabId): void {
+  // Update selected state
+  const tabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'));
   for (const btn of tabButtons) {
     const isSelected = btn.dataset.tab === tab;
     btn.setAttribute('aria-selected', String(isSelected));
   }
 
-  const content = qs('#content');
+  const content = qs<HTMLElement>('#content');
+
   switch (tab) {
     case 'teams':
       content.innerHTML = renderTeams();
@@ -94,25 +100,32 @@ function render(tab) {
     case 'rules':
       content.innerHTML = renderRules();
       break;
+    default: {
+      const _exhaustive: never = tab;
+      void _exhaustive;
+    }
   }
 
   document.title = `${tabTitle[tab]}`;
 }
 
-function onTabClick(ev) {
-  const target = ev.target;
-  const btn = target?.closest?.('button.tab');
+function onTabClick(ev: MouseEvent): void {
+  const target = ev.target as HTMLElement | null;
+  const btn = target?.closest<HTMLButtonElement>('button.tab');
   if (!btn) return;
   const tab = safeTab(btn.dataset.tab);
   location.hash = tab;
 }
 
-function init() {
-  const tabButtons = Array.from(document.querySelectorAll('.tab'));
-  for (const btn of tabButtons) btn.setAttribute('role', 'tab');
-
-  const nav = qs('.tabs');
+function init(): void {
+  // Set ARIA attributes for accessibility
+  const tabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'));
+  for (const btn of tabButtons) {
+    btn.setAttribute('role', 'tab');
+  }
+  const nav = qs<HTMLElement>('.tabs');
   nav.setAttribute('role', 'tablist');
+
   nav.addEventListener('click', onTabClick);
 
   const initial = safeTab(location.hash.replace('#', ''));
@@ -123,6 +136,7 @@ function init() {
     render(next);
   });
 
+  // Keyboard support: left/right arrows to switch tabs
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
 
