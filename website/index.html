@@ -398,18 +398,12 @@
                       <div class="quick-team-status" id="quick-red-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">
-                            <span>Spymasters</span>
-                            <button class="ai-add-btn" type="button" data-ai-team="red" data-ai-seat="spymaster" aria-label="Add AI Spymaster to Red">+AI</button>
-                          </div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters</div>
                           <div class="quick-team-list" id="quick-red-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">
-                            <span>Operatives</span>
-                            <button class="ai-add-btn" type="button" data-ai-team="red" data-ai-seat="operative" aria-label="Add AI Operative to Red">+AI</button>
-                          </div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives</div>
                           <div class="quick-team-list" id="quick-red-operative-list"></div>
                         </div>
                       </div>
@@ -433,57 +427,15 @@
                       <div class="quick-team-status" id="quick-blue-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">
-                            <span>Spymasters</span>
-                            <button class="ai-add-btn" type="button" data-ai-team="blue" data-ai-seat="spymaster" aria-label="Add AI Spymaster to Blue">+AI</button>
-                          </div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters</div>
                           <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">
-                            <span>Operatives</span>
-                            <button class="ai-add-btn" type="button" data-ai-team="blue" data-ai-seat="operative" aria-label="Add AI Operative to Blue">+AI</button>
-                          </div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives</div>
                           <div class="quick-team-list" id="quick-blue-operative-list"></div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Add AI modal -->
-                <div class="modal" id="ai-add-modal" aria-hidden="true" style="display:none;">
-                  <div class="modal-backdrop" id="ai-add-backdrop"></div>
-                  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Add AI Player">
-                    <div class="modal-head">
-                      <div class="modal-title">Add AI Player</div>
-                      <button class="icon-btn" id="ai-add-close" type="button" aria-label="Close">✕</button>
-                    </div>
-                    <div class="modal-body">
-                      <div class="form-row">
-                        <label class="form-label" for="ai-add-mode">Mode</label>
-                        <select id="ai-add-mode" class="input">
-                          <option value="helper">AI Helper (chat only)</option>
-                          <option value="autonomous">AI Autonomous (plays)</option>
-                        </select>
-                      </div>
-                      <div class="form-row">
-                        <label class="form-label" for="ai-add-name">Name</label>
-                        <input id="ai-add-name" class="input" placeholder="e.g., Nemotron Bot" />
-                      </div>
-                      <div class="form-row">
-                        <label class="form-label" for="ai-add-model">Model</label>
-                        <input id="ai-add-model" class="input" placeholder="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B" />
-                        <div class="hint" style="margin-top:6px;">Uses the Nebius Token Factory OpenAI-compatible API.</div>
-                      </div>
-                      <div class="form-row">
-                        <div class="hint" id="ai-add-target-hint"></div>
-                      </div>
-                    </div>
-                    <div class="modal-actions">
-                      <button class="btn" id="ai-add-cancel" type="button">Cancel</button>
-                      <button class="btn primary" id="ai-add-confirm" type="button">Add</button>
                     </div>
                   </div>
                 </div>
@@ -1060,8 +1012,7 @@
 
               <!-- In-Game Actions (shown whenever a user is in an active game) -->
               <div class="settings-in-game-actions" id="settings-in-game-actions" style="display:none;">
-                <div class="settings-section-label">In Game</div>
-                <div class="settings-account-actions">
+                                <div class="settings-account-actions">
                   <button class="btn" id="leave-game-btn" type="button">Leave Game</button>
                   <button class="btn danger" id="end-game-btn" type="button">End Game</button>
                 </div>

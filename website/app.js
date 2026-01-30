@@ -204,9 +204,10 @@ function initQuickPlayGate() {
   });
 
   qpGateBackBtn?.addEventListener('click', () => {
-    // Back to Homepage = sign-in screen (local-only logout).
+    // Back to Homepage should NOT sign you out. Just exit the live-game chooser.
     try { hide(); } catch (_) {}
-    logoutLocal('Returning');
+    try { stopGameListener?.(); } catch (_) {}
+    try { window.returnToLaunchScreen?.(); } catch (_) {}
   });
 
   // Rejoin the in-progress Quick Play game (only if eligible).
@@ -899,12 +900,17 @@ async function setUserName(name, opts = {}) {
           return;
         }
         // Show loading screen AFTER user confirms (not before)
-        showAuthLoadingScreen();
+        showAuthLoadingScreen('Signing in');
       }
     } catch (e) {
       // best-effort
     }
   }
+  // For initial sign-in, show a clear 'Signing in' state.
+  if (!silent && !prevName && nextName) {
+    showAuthLoadingScreen('Signing in');
+  }
+
 
   // Update local name after verification.
   safeLSSet(LS_USER_NAME, nextName);
@@ -958,24 +964,12 @@ async function setUserName(name, opts = {}) {
   startProfileNameSync();
 
   refreshNameUI();
-
-  // Persist "signed up" players to Firestore so they can appear in the Players tab.
-  await upsertPlayerProfile(getUserId(), getUserName());
-
-  // If older/buggy sessions created multiple player docs with the same name, merge them
-  // to the earliest-created one. This prevents "two accounts with the same name".
-  try {
-    await mergeDuplicatePlayersForName(nextName);
-  } catch (e) {
-    console.warn('Duplicate-player merge failed (best-effort)', e);
-  }
-
-  // If user is a member/creator, update their stored display name in their team doc (best-effort)
-  try {
-    await updateNameInAllTeams(getUserId(), getUserName());
-  } catch (e) {
-    // best-effort
-  }
+  // Persist player profile (best-effort). Don't block the UI on network.
+  upsertPlayerProfile(getUserId(), getUserName()).catch(e => console.warn('Could not upsert player profile', e));
+  // Merge any duplicate players for this name (best-effort). Don't block sign-in.
+  mergeDuplicatePlayersForName(nextName).catch(e => console.warn('Duplicate-player merge failed (best-effort)', e));
+  // Update display name inside any team docs (best-effort). Don't block sign-in.
+  updateNameInAllTeams(getUserId(), getUserName()).catch(() => {});
 }
 
 
