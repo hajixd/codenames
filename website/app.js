@@ -22,7 +22,15 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 const db = firebase.firestore();
+
+// Keep users signed in across refreshes.
+try {
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+} catch (e) {
+  console.warn('Auth persistence not set (best-effort)', e);
+}
 
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
@@ -42,14 +50,221 @@ const LS_ACTIVE_GAME_SPECTATOR = 'ct_activeGameSpectator_v1';
 let teamsCache = [];
 let playersCache = [];
 
+// Live listeners (only when signed in)
+let teamsUnsub = null;
+let playersUnsub = null;
+
 // Avoid spamming Firestore with repeated legacy-migration writes.
 const migratedCreatorIds = new Set();
 let openTeamId = null;
 let mergeNamesInFlight = new Set();
 
 // Admin controls
+// IMPORTANT: admin status is determined by Firebase Auth custom claims.
+// The UI also hides admin features for non-admins, but the real security must
+// be enforced by Firestore security rules + (ideally) server-side functions.
+let cachedIsAdmin = false;
+async function refreshAdminClaims() {
+  try {
+    const u = auth.currentUser;
+    if (!u) { cachedIsAdmin = false; return false; }
+    const token = await u.getIdTokenResult(true);
+    cachedIsAdmin = !!token?.claims?.admin;
+    return cachedIsAdmin;
+  } catch (_) {
+    cachedIsAdmin = false;
+    return false;
+  }
+}
 function isAdminUser() {
-  return ((getUserName() || '').trim().toLowerCase() === 'admin');
+  return !!cachedIsAdmin;
+}
+
+// App-level backups (client-driven, admin-only)
+// These backups live in Firestore under:
+//   adminBackups/{backupId}
+//     - meta fields (createdAtMs, createdAt, reason, createdBy)
+//     - subcollections: teams/{teamId}, players/{playerId}
+const ADMIN_BACKUPS_COLL = 'adminBackups';
+const ADMIN_BACKUP_KEEP_MS = 2 * 60 * 60 * 1000; // keep ~2 hours by default
+let adminBackupInterval = null;
+let adminBackupInFlight = false;
+
+async function adminCreateBackup(reason = 'manual') {
+  if (!isAdminUser()) throw new Error('Admin only');
+  if (adminBackupInFlight) return null;
+  adminBackupInFlight = true;
+  try {
+    const createdAtMs = Date.now();
+    const backupId = String(createdAtMs);
+    const backupRef = db.collection(ADMIN_BACKUPS_COLL).doc(backupId);
+
+    // Read current collections
+    const [teamsSnap, playersSnap] = await Promise.all([
+      db.collection('teams').get(),
+      db.collection('players').get()
+    ]);
+
+    await backupRef.set({
+      createdAtMs,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      reason: String(reason || 'manual'),
+      createdBy: String(getUserName() || 'unknown')
+    });
+
+    // Write teams + players into subcollections (chunked batches)
+    await adminWriteSnapshotSubcollection(backupRef.collection('teams'), teamsSnap);
+    await adminWriteSnapshotSubcollection(backupRef.collection('players'), playersSnap);
+
+    // Best-effort prune old backups
+    adminPruneOldBackups().catch(e => console.warn('Backup prune failed (best-effort)', e));
+    return { backupId, createdAtMs, teams: teamsSnap.size, players: playersSnap.size };
+  } finally {
+    adminBackupInFlight = false;
+  }
+}
+
+async function adminWriteSnapshotSubcollection(targetCollRef, snap) {
+  let batch = db.batch();
+  let count = 0;
+  let wrote = 0;
+  for (const doc of snap.docs) {
+    batch.set(targetCollRef.doc(doc.id), doc.data() || {});
+    count++;
+    wrote++;
+    if (count >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
+  return wrote;
+}
+
+async function adminFindBackupAtOrBefore(targetMs) {
+  if (!isAdminUser()) throw new Error('Admin only');
+  const q = await db.collection(ADMIN_BACKUPS_COLL)
+    .where('createdAtMs', '<=', targetMs)
+    .orderBy('createdAtMs', 'desc')
+    .limit(1)
+    .get();
+  if (q.empty) return null;
+  const doc = q.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function adminRestoreFromMinutesAgo(minutes = 5) {
+  if (!isAdminUser()) throw new Error('Admin only');
+  const mins = Math.max(1, Math.min(60, parseInt(minutes, 10) || 5));
+  const targetMs = Date.now() - mins * 60 * 1000;
+
+  const backup = await adminFindBackupAtOrBefore(targetMs);
+  if (!backup) {
+    throw new Error(`No admin backup found at or before ${mins} minutes ago.`);
+  }
+
+  const backupRef = db.collection(ADMIN_BACKUPS_COLL).doc(String(backup.id));
+  const [teamsSnap, playersSnap] = await Promise.all([
+    backupRef.collection('teams').get(),
+    backupRef.collection('players').get()
+  ]);
+
+  // Replace live collections
+  await adminDeleteAllDocs('teams');
+  await adminDeleteAllDocs('players');
+
+  await adminRestoreCollectionFromSnapshot('teams', teamsSnap);
+  await adminRestoreCollectionFromSnapshot('players', playersSnap);
+
+  return { restoredFromBackupId: backup.id, teams: teamsSnap.size, players: playersSnap.size };
+}
+
+async function adminRestoreCollectionFromSnapshot(collectionName, snap) {
+  let batch = db.batch();
+  let count = 0;
+  for (const doc of snap.docs) {
+    batch.set(db.collection(collectionName).doc(doc.id), doc.data() || {});
+    count++;
+    if (count >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
+}
+
+async function adminDeleteAllDocs(collectionName) {
+  // Deletes documents in batches to stay within Firestore limits.
+  const coll = db.collection(collectionName);
+  while (true) {
+    const snap = await coll.limit(450).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+
+async function adminPruneOldBackups() {
+  if (!isAdminUser()) return;
+  const cutoff = Date.now() - ADMIN_BACKUP_KEEP_MS;
+  const snap = await db.collection(ADMIN_BACKUPS_COLL)
+    .where('createdAtMs', '<', cutoff)
+    .orderBy('createdAtMs', 'asc')
+    .limit(25)
+    .get();
+  if (snap.empty) return;
+  // Delete backup doc + its subcollections (best-effort).
+  // Firestore doesn't support recursive delete from client; we delete subcollection docs first.
+  for (const d of snap.docs) {
+    const ref = d.ref;
+    try {
+      const [t, p] = await Promise.all([
+        ref.collection('teams').get(),
+        ref.collection('players').get()
+      ]);
+      await adminDeleteSnapshotDocs(ref.collection('teams'), t);
+      await adminDeleteSnapshotDocs(ref.collection('players'), p);
+      await ref.delete();
+    } catch (e) {
+      console.warn('Failed pruning backup', d.id, e);
+    }
+  }
+}
+
+function adminEnsureAutoBackupsRunning() {
+  // Auto backups only run for admin accounts and are client-driven.
+  // This is best-effort and intended as a "break glass" safety net.
+  if (!isAdminUser()) {
+    if (adminBackupInterval) {
+      try { clearInterval(adminBackupInterval); } catch (_) {}
+      adminBackupInterval = null;
+    }
+    return;
+  }
+  if (adminBackupInterval) return;
+  // Create an initial backup as soon as we detect an admin session.
+  adminCreateBackup('auto').catch(() => {});
+  adminBackupInterval = setInterval(() => {
+    adminCreateBackup('auto').catch(() => {});
+  }, 60 * 1000);
+}
+
+async function adminDeleteSnapshotDocs(subCollRef, snap) {
+  let batch = db.batch();
+  let count = 0;
+  for (const doc of snap.docs) {
+    batch.delete(subCollRef.doc(doc.id));
+    count++;
+    if (count >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
 }
 
 // Chat (tab)
@@ -79,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initConfirmDialog();
   initQuickPlayGate();
   initLaunchScreen();
+  initAuthGate();
   initHeaderLogoNav();
   initTabs();
   initName();
@@ -91,24 +307,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initChatTab();
   initOnlineCounterUI();
   initProfileDetailsModal();
-  listenToTeams();
-  listenToPlayers();
+  // Live Firestore listeners are started after sign-in (initAuthGate).
 
   // Restore the last mode + tab (device-local) so refresh doesn't kick the user back to the launch/sign-in flow.
   // This is best-effort and intentionally avoids any database writes.
   try { restoreLastNavigation(); } catch (e) { console.warn('Failed to restore navigation (best-effort)', e); }
 
-  // If user already has a name, proactively merge any case-insensitive duplicates
-  if (getUserName()) {
-    mergeDuplicatePlayersForName(getUserName()).catch(e => {
-      console.warn('Initial duplicate-player merge failed (best-effort)', e);
-    });
-  }
 });
 
-function isAdminUser() {
-  return String(getUserName() || '').trim().toLowerCase() === 'admin';
-}
+// (isAdminUser defined near the top)
 
 /* =========================
    Header navigation
@@ -351,14 +558,13 @@ function initLaunchScreen() {
   const hint = document.getElementById('launch-name-hint');
   const input = document.getElementById('launch-name-input');
 
-  const requireNameThen = (mode, opts = {}) => {
+  const requireAuthThen = (mode, opts = {}) => {
+    const u = auth.currentUser;
     const name = getUserName();
-    if (!name) {
-      if (hint) hint.textContent = 'Enter your name to continue.';
-      try {
-        document.getElementById('launch-name-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (_) {}
-      try { input?.focus(); } catch (_) {}
+    if (!u || !name) {
+      if (hint) hint.textContent = 'Sign in to continue.';
+      try { document.getElementById('launch-name-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      try { document.getElementById('launch-username-login')?.focus(); } catch (_) {}
       return;
     }
     if (hint) hint.textContent = '';
@@ -378,32 +584,160 @@ function initLaunchScreen() {
 
   // Quick Play can be gated if there's already a live game in progress.
   // In that case we keep the game running in the background and show a chooser.
-  quickBtn?.addEventListener('click', () => requireNameThen('quick', { gateIfLiveGame: true }));
-  tournBtn?.addEventListener('click', () => requireNameThen('tournament'));
+  quickBtn?.addEventListener('click', () => requireAuthThen('quick', { gateIfLiveGame: true }));
+  tournBtn?.addEventListener('click', () => requireAuthThen('tournament'));
 
-  // Name + logout on launch (mirrors Tournament Home)
-  const form = document.getElementById('launch-name-form');
+  // Auth UI on launch (username + password)
+  const loginForm = document.getElementById('launch-login-form');
+  const createForm = document.getElementById('launch-create-form');
+  const loginUserInput = document.getElementById('launch-username-login');
+  const loginPassInput = document.getElementById('launch-password-login');
+  const createUserInput = document.getElementById('launch-username-create');
+  const createPassInput = document.getElementById('launch-password-create');
+  const displayInput = document.getElementById('launch-name-input');
+  const loginHint = document.getElementById('launch-name-hint');
+  const createHint = document.getElementById('launch-name-hint-create');
+  const showLoginBtn = document.getElementById('launch-show-login');
+  const showCreateBtn = document.getElementById('launch-show-create');
   const logoutBtn = document.getElementById('launch-logout-btn');
 
-  form?.addEventListener('submit', async (e) => {
+  function normalizeUsername(v) {
+    return String(v || '').trim().toLowerCase();
+  }
+  function isValidUsername(v) {
+    return /^[a-z0-9_]{3,20}$/.test(v);
+  }
+  function usernameToEmail(username) {
+    // Firebase Auth requires an email format. We map usernames to a private
+    // pseudo-email so users only ever see username + password.
+    return `${username}@user.codenames.local`;
+  }
+
+  function setAuthTab(which) {
+    const loginOn = which === 'login';
+    if (loginForm) loginForm.style.display = loginOn ? '' : 'none';
+    if (createForm) createForm.style.display = loginOn ? 'none' : '';
+    if (showLoginBtn) showLoginBtn.classList.toggle('primary', loginOn);
+    if (showCreateBtn) showCreateBtn.classList.toggle('primary', !loginOn);
+    try { (loginOn ? loginUserInput : createUserInput)?.focus?.(); } catch (_) {}
+  }
+  showLoginBtn?.addEventListener('click', () => setAuthTab('login'));
+  showCreateBtn?.addEventListener('click', () => setAuthTab('create'));
+
+  loginForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const v = (input?.value || '').trim();
-    if (!v) {
-      if (hint) hint.textContent = 'Please enter a name.';
+    const username = normalizeUsername(loginUserInput?.value);
+    const pass = String(loginPassInput?.value || '');
+    if (!username || !pass) {
+      if (loginHint) loginHint.textContent = 'Enter username + password.';
       return;
     }
-    if (hint) hint.textContent = '';
-    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
+    if (!isValidUsername(username)) {
+      if (loginHint) loginHint.textContent = 'Invalid username.';
+      return;
+    }
+    if (loginHint) loginHint.textContent = '';
     try {
-      await setUserName(v);
+      showAuthLoadingScreen('Logging in');
+      await auth.signInWithEmailAndPassword(usernameToEmail(username), pass);
+      // Best-effort: ensure display name is set (older accounts).
+      const u = auth.currentUser;
+      if (u && !String(u.displayName || '').trim()) {
+        try { await u.updateProfile({ displayName: username }); } catch (_) {}
+      }
+      await refreshAdminClaims();
+      try { refreshNameUI(); } catch (_) {}
+    } catch (err) {
+      console.warn('Login failed', err);
+      if (loginHint) loginHint.textContent = 'Login failed. Check username/password.';
     } finally {
       hideAuthLoadingScreen();
     }
   });
 
-  logoutBtn?.addEventListener('click', () => {
-    logoutLocal('Logging out');
+  createForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = normalizeUsername(createUserInput?.value);
+    const pass = String(createPassInput?.value || '');
+    const display = String(displayInput?.value || '').trim() || username;
+    if (!username || !pass) {
+      if (createHint) createHint.textContent = 'Enter username + password.';
+      return;
+    }
+    if (!isValidUsername(username)) {
+      if (createHint) createHint.textContent = 'Username must be 3–20 chars: a-z, 0-9, _';
+      return;
+    }
+    if (createHint) createHint.textContent = '';
+    try {
+      showAuthLoadingScreen('Creating account');
+      // Create the auth user.
+      await auth.createUserWithEmailAndPassword(usernameToEmail(username), pass);
+
+      const u = auth.currentUser;
+      if (!u) throw new Error('No auth user after signup');
+
+      // Claim the username atomically.
+      const unameRef = db.collection('usernames').doc(username);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(unameRef);
+        if (snap.exists) {
+          throw new Error('USERNAME_TAKEN');
+        }
+        tx.set(unameRef, {
+          uid: u.uid,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+
+      // Store a user profile doc (handy for admin tooling + future features).
+      try {
+        await db.collection('users').doc(u.uid).set({
+          username,
+          displayName: display,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
+
+      // Set display name used everywhere in the UI.
+      try { await u.updateProfile({ displayName: display }); } catch (_) {}
+      // Mirror display name into players/<uid>.
+      try {
+        await db.collection('players').doc(u.uid).set({
+          name: display,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
+
+      await refreshAdminClaims();
+      try { refreshNameUI(); } catch (_) {}
+    } catch (err) {
+      console.warn('Signup failed', err);
+      const code = String(err?.message || '');
+      if (code.includes('USERNAME_TAKEN')) {
+        if (createHint) createHint.textContent = 'That username is already taken.';
+      } else if (String(err?.code || '').includes('auth/email-already-in-use')) {
+        if (createHint) createHint.textContent = 'That username is already taken.';
+      } else {
+        if (createHint) createHint.textContent = 'Could not create account. Try a different username.';
+      }
+      // Best-effort cleanup if we created an auth user but failed to claim the username.
+      try {
+        const u = auth.currentUser;
+        if (u) await u.delete();
+      } catch (_) {
+        // If delete fails (rare), leave the account; admin can clean up later.
+      }
+      try { await auth.signOut(); } catch (_) {}
+    } finally {
+      hideAuthLoadingScreen();
+    }
   });
+
+  logoutBtn?.addEventListener('click', () => logoutLocal('Logging out'));
+
+  // Default tab
+  setAuthTab('login');
 
   refreshNameUI();
 }
@@ -472,6 +806,55 @@ function enterAppFromLaunch(mode, opts = {}) {
   }
 
   try { window.bumpPresence?.(); } catch (_) {}
+}
+
+/* =========================
+   Auth gate
+   - Requires Firebase Auth (username/password UI; backed by Firebase email/password)
+   - All Firestore listeners and writes assume request.auth.uid is present
+========================= */
+function initAuthGate() {
+  try {
+    auth.onAuthStateChanged(async (u) => {
+      // Refresh admin claims best-effort.
+      try { await refreshAdminClaims(); } catch (_) {}
+
+      // Update UI immediately.
+      try { refreshNameUI(); } catch (_) {}
+
+      // Stop listeners when signed out.
+      if (!u) {
+        try { teamsUnsub?.(); } catch (_) {}
+        try { playersUnsub?.(); } catch (_) {}
+        teamsUnsub = null;
+        playersUnsub = null;
+        teamsCache = [];
+        playersCache = [];
+        // Return to launch so the user can sign in.
+        try { returnToLaunchScreen(); } catch (_) {}
+        return;
+      }
+
+      // Ensure player profile exists.
+      try {
+        const uid = u.uid;
+        const ref = db.collection('players').doc(uid);
+        await ref.set({
+          name: String(u.displayName || '').trim() || 'Player',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Failed to ensure player profile (best-effort)', e);
+      }
+
+      // Start listeners once.
+      try { listenToTeams(); } catch (_) {}
+      try { listenToPlayers(); } catch (_) {}
+    });
+  } catch (e) {
+    console.error('Auth init failed:', e);
+  }
 }
 
 /* =========================
@@ -855,246 +1238,45 @@ function teamNameToKey(name) {
   return nameToAccountId(name);
 }
 
-function getLocalAccountId() {
-  // Stable per-device (or linked) account id.
-  let id = safeLSGet(LS_USER_ID);
-  if (!id) {
-    id = (crypto?.randomUUID?.() || ('u_' + Math.random().toString(16).slice(2) + Date.now().toString(16)));
-    safeLSSet(LS_USER_ID, id);
-  }
-  return String(id || '').trim();
-}
-
 function getUserId() {
-  // All app logic should use the current linked account id.
-  return getLocalAccountId();
+  // Primary identity is Firebase Auth uid.
+  return String(auth.currentUser?.uid || '').trim();
 }
 
 function getUserName() {
-  return (safeLSGet(LS_USER_NAME) || '').trim();
+  // Display name lives on the Firebase Auth user.
+  return String(auth.currentUser?.displayName || '').trim();
 }
 
 async function setUserName(name, opts = {}) {
-  const silent = !!opts.silent;
-  const nextName = (name || '').trim();
-  const prevName = (safeLSGet(LS_USER_NAME) || '').trim();
+  const nextName = String(name || '').trim();
+  const u = auth.currentUser;
+  if (!u) throw new Error('Not signed in');
+  if (!nextName) return;
 
   // Used to avoid profile listener bouncing the UI during a local rename.
   lastLocalNameSetAtMs = Date.now();
 
-  const prevKey = nameToAccountId(prevName);
-  const nextKey = nameToAccountId(nextName);
-
-  // If clearing name, don't touch registry.
-  if (!nextKey) {
-    safeLSSet(LS_USER_NAME, nextName);
-    refreshNameUI();
-    return;
-  }
-
-  const myAccountId = getLocalAccountId();
-  const namesCol = db.collection(NAME_REGISTRY_COLLECTION);
-  const nextRef = namesCol.doc(nextKey);
-  const prevRef = (prevKey && prevKey !== nextKey) ? namesCol.doc(prevKey) : null;
-
-  let targetAccountId = myAccountId;
-
-  // If the name is already mapped to another account, ask for verification before linking.
-  if (!silent) {
-    try {
-      const s = await nextRef.get();
-      const existing = s.exists ? String(s.data()?.accountId || '').trim() : '';
-      if (existing && existing !== myAccountId) {
-        const ok = await showConfirmDialog(nextName);
-        if (!ok) {
-          // Revert to previous name and keep this device on its current account.
-          safeLSSet(LS_USER_NAME, prevName);
-          refreshNameUI();
-          return;
-        }
-        // Show loading screen AFTER user confirms (not before)
-        showAuthLoadingScreen('Signing in');
-      }
-    } catch (e) {
-      // best-effort
-    }
-  }
-  // For initial sign-in, show a clear 'Signing in' state.
-  if (!silent && !prevName && nextName) {
-    showAuthLoadingScreen('Signing in');
-  }
-
-
-  // Update local name after verification.
-  safeLSSet(LS_USER_NAME, nextName);
-
-  // Ensure cross-device profile sync is active once we have a name.
-  startProfileNameSync();
-
+  // Update auth profile.
   try {
-    await db.runTransaction(async (tx) => {
-      const nextSnap = await tx.get(nextRef);
-
-      // If the name already belongs to someone else, link to that account.
-      const existingAccountId = nextSnap.exists ? String(nextSnap.data()?.accountId || '').trim() : '';
-      if (existingAccountId && existingAccountId !== myAccountId) {
-        targetAccountId = existingAccountId;
-      } else {
-        targetAccountId = myAccountId;
-        tx.set(nextRef, {
-          accountId: myAccountId,
-          name: nextName,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          ...(nextSnap.exists ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() })
-        }, { merge: true });
-      }
-
-      // If we're renaming away from a previous name, free the old mapping (only if it points to THIS account).
-      if (prevRef) {
-        const prevSnap = await tx.get(prevRef);
-        const prevAccountId = prevSnap.exists ? String(prevSnap.data()?.accountId || '').trim() : '';
-        if (prevAccountId && prevAccountId === myAccountId) {
-          tx.delete(prevRef);
-        }
-      }
-    });
+    await u.updateProfile({ displayName: nextName });
   } catch (e) {
-    console.warn('Name linking failed (best-effort). Continuing locally.', e);
-    targetAccountId = myAccountId;
+    console.warn('Failed updating auth display name (best-effort)', e);
   }
 
-  // If this name belongs to another account, switch to it (and migrate any local data best-effort).
-  if (targetAccountId && targetAccountId !== myAccountId) {
-    try {
-      await migrateIdentity(myAccountId, targetAccountId, nextName);
-    } catch (e) {
-      console.warn('Identity migration failed (best-effort)', e);
-    }
-    safeLSSet(LS_USER_ID, targetAccountId);
-  }
-
-  // Ensure we are listening to the correct profile doc for cross-device name sync.
-  startProfileNameSync();
-
-  refreshNameUI();
-  // Persist player profile (best-effort). Don't block the UI on network.
-  upsertPlayerProfile(getUserId(), getUserName()).catch(e => console.warn('Could not upsert player profile', e));
-  // Merge any duplicate players for this name (best-effort). Don't block sign-in.
-  mergeDuplicatePlayersForName(nextName).catch(e => console.warn('Duplicate-player merge failed (best-effort)', e));
-  // Update display name inside any team docs (best-effort). Don't block sign-in.
-  updateNameInAllTeams(getUserId(), getUserName()).catch(() => {});
-}
-
-
-async function migrateIdentity(oldId, newId, displayName) {
-  const fromId = String(oldId || '').trim();
-  const toId = String(newId || '').trim();
-  if (!fromId || !toId || fromId === toId) return;
-
-  // 0) Delete any presence doc keyed to the old ID to prevent "ghost" online users.
+  // Mirror into players/<uid> for leaderboards + UI convenience.
   try {
-    await db.collection('presence').doc(fromId).delete();
-  } catch (_) {
-    // best-effort - presence doc might not exist
-  }
-
-  // 1) Merge player docs (invites) onto the name-keyed account.
-  const fromRef = db.collection('players').doc(fromId);
-  const toRef = db.collection('players').doc(toId);
-
-  const mergeInvites = (a, b) => {
-    const out = [];
-    const seen = new Set();
-    for (const x of ([]).concat(a || [], b || [])) {
-      const tid = String(x?.teamId || '');
-      if (!tid) continue;
-      if (seen.has(tid)) continue;
-      seen.add(tid);
-      out.push(x);
-    }
-    return out;
-  };
-
-  try {
-    await db.runTransaction(async (tx) => {
-      const [fromSnap, toSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
-      const from = fromSnap.exists ? ({ id: fromSnap.id, ...fromSnap.data() }) : null;
-      const to = toSnap.exists ? ({ id: toSnap.id, ...toSnap.data() }) : null;
-
-      const nextName = (to?.name || from?.name || displayName || '').trim();
-      const nextInvites = mergeInvites(to?.invites, from?.invites);
-
-      tx.set(toRef, {
-        name: nextName || (displayName || '—'),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        ...(to?.createdAt ? {} : { createdAt: firebase.firestore.FieldValue.serverTimestamp() }),
-        invites: nextInvites
-      }, { merge: true });
-
-      if (fromSnap.exists) {
-        // Keep data tidy: once migrated, remove the legacy doc.
-        tx.delete(fromRef);
-      }
-    });
+    await db.collection('players').doc(u.uid).set({
+      name: nextName,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
   } catch (e) {
-    // best-effort
-    console.warn('Could not migrate player doc', e);
+    console.warn('Failed updating player profile (best-effort)', e);
   }
 
-  // 2) Migrate team memberships/ownership from legacy IDs onto the name-keyed ID.
-  // Teams are small (SOFT_MAX_TEAMS), so scanning client-side is fine.
-  for (const t of (teamsCache || [])) {
-    const teamRef = db.collection('teams').doc(t.id);
-    try {
-      await db.runTransaction(async (tx) => {
-        const snap = await tx.get(teamRef);
-        if (!snap.exists) return;
-        const team = { id: snap.id, ...snap.data() };
-
-        let changed = false;
-
-        const nextMembers = getMembers(team).map(m => {
-          const mName = (m?.name || '').trim();
-          const mKey = nameToAccountId(mName);
-          if (m?.userId === fromId || (mKey && mKey === toId)) {
-            changed = true;
-            return { userId: toId, name: mName || displayName || '—' };
-          }
-          return m;
-        });
-
-        const nextPending = getPending(team).map(r => {
-          const rName = (r?.name || '').trim();
-          const rKey = nameToAccountId(rName);
-          if (r?.userId === fromId || (rKey && rKey === toId)) {
-            changed = true;
-            return { ...r, userId: toId, name: rName || displayName || '—' };
-          }
-          return r;
-        });
-
-        let nextCreatorUserId = team.creatorUserId;
-        let nextCreatorName = team.creatorName;
-        const creatorKey = nameToAccountId((team.creatorName || '').trim());
-        if (team.creatorUserId === fromId || (creatorKey && creatorKey === toId)) {
-          if (team.creatorUserId !== toId) changed = true;
-          nextCreatorUserId = toId;
-          nextCreatorName = (displayName || team.creatorName || '').trim();
-        }
-
-        if (!changed) return;
-        tx.update(teamRef, {
-          members: dedupeRosterByAccount(nextMembers),
-          pending: dedupeRosterByAccount(nextPending),
-          creatorUserId: nextCreatorUserId,
-          creatorName: nextCreatorName
-        });
-      });
-    } catch (e) {
-      // best-effort
-      console.warn('Could not migrate team membership', e);
-    }
-  }
+  // Best-effort: keep team rosters up to date (for older docs that store embedded names).
+  try { updateNameInAllTeams(getUserId(), nextName).catch(() => {}); } catch (_) {}
+  try { refreshNameUI(); } catch (_) {}
 }
 
 function initName() {
@@ -1189,30 +1371,24 @@ function startProfileNameSync() {
   try { profileUnsub?.(); } catch (_) {}
   profileUnsub = null;
 
-  // Only sync when this device has a saved name (i.e., the user is "logged in" on this device).
-  if (!getUserName()) return;
-
   const uid = getUserId();
   if (!uid) return;
 
+  // Best-effort UI sync: if the players/<uid> profile gets updated (e.g. from
+  // another device), refresh the UI. We do not write to localStorage.
   profileUnsub = db.collection('players').doc(uid).onSnapshot((snap) => {
     if (!snap?.exists) return;
     const remoteName = String(snap.data()?.name || '').trim();
     if (!remoteName) return;
-
     const localName = getUserName();
-    if (remoteName && remoteName !== localName) {
-      // Remote profile is the source of truth once linked.
-      // (If the user just changed their name locally, the profile write will land shortly.)
+    if (remoteName !== localName) {
       const now = Date.now();
       if (now - lastLocalNameSetAtMs < 750) return;
-      safeLSSet(LS_USER_NAME, remoteName);
+      // If auth profile is stale, try to update it (best-effort).
+      try { auth.currentUser?.updateProfile({ displayName: remoteName }); } catch (_) {}
       refreshNameUI();
     }
-  }, (err) => {
-    // best-effort
-    console.warn('Profile name sync error', err);
-  });
+  }, (err) => console.warn('Profile sync error (best-effort)', err));
 }
 
 function refreshNameUI() {
@@ -1222,7 +1398,9 @@ function refreshNameUI() {
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
   const launchInput = document.getElementById('launch-name-input');
-  const launchForm = document.getElementById('launch-name-form');
+  const launchLoginForm = document.getElementById('launch-login-form');
+  const launchCreateForm = document.getElementById('launch-create-form');
+  const launchTabs = document.querySelector('#launch-name-card .auth-tabs');
   const launchSaved = document.getElementById('launch-name-saved');
   const launchSavedDisplay = document.getElementById('launch-name-saved-display');
   const launchQuick = document.getElementById('launch-quick-play');
@@ -1238,14 +1416,15 @@ function refreshNameUI() {
     saved.style.display = name ? 'block' : 'none';
   }
 
-  if (launchForm && launchSaved) {
-    launchForm.style.display = name ? 'none' : 'block';
-    launchSaved.style.display = name ? 'block' : 'none';
-  }
+  // Launch screen: show auth forms if not signed in; otherwise show the signed-in panel.
+  if (launchSaved) launchSaved.style.display = name ? 'block' : 'none';
+  if (launchTabs) launchTabs.style.display = name ? 'none' : 'flex';
+  if (launchLoginForm) launchLoginForm.style.display = name ? 'none' : (launchLoginForm.style.display || '');
+  if (launchCreateForm) launchCreateForm.style.display = name ? 'none' : (launchCreateForm.style.display || 'none');
 
   // Launch mode buttons are disabled until the user has a saved name ("logged in").
   // This prevents users entering Quick Play / Tournament without identity.
-  const canEnter = !!name;
+  const canEnter = !!auth.currentUser && !!name;
   if (launchQuick) launchQuick.disabled = !canEnter;
   if (launchTourn) launchTourn.disabled = !canEnter;
 
@@ -1279,7 +1458,8 @@ function refreshHeaderIdentity() {
    Real-time data
 ========================= */
 function listenToTeams() {
-  db.collection('teams')
+  if (teamsUnsub) return;
+  teamsUnsub = db.collection('teams')
     .orderBy('createdAt', 'asc')
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1325,13 +1505,12 @@ function listenToTeams() {
 
 function listenToPlayers() {
   // Players = anyone who has entered their name on this device at least once.
-  db.collection('players')
+  if (playersUnsub) return;
+  playersUnsub = db.collection('players')
     .orderBy('name', 'asc')
     .onSnapshot((snapshot) => {
       playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Best-effort: if prior versions created duplicate player docs for the same name,
-      // auto-merge them to the earliest-created doc.
-      autoMergeDuplicatePlayers(playersCache);
+      // Duplicate player docs are no longer expected with Firebase Auth (uid keys).
       recomputeUnreadBadges();
       recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
@@ -1957,7 +2136,12 @@ async function acceptInvite(teamId) {
             const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
             if (mappedId === oldTeamId) tx.delete(nameRef);
           }
-          tx.delete(db.collection('teams').doc(oldTeamId));
+          // Hard deletes are admin-only with locked-down rules.
+          // If a team becomes empty, archive it instead.
+          tx.update(db.collection('teams').doc(oldTeamId), {
+            archived: true,
+            archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
         } else if (leavingIsCreator) {
           const nextCreator = nextOldMembers[Math.floor(Math.random() * nextOldMembers.length)];
           tx.update(db.collection('teams').doc(oldTeamId), {
@@ -3153,7 +3337,11 @@ async function deleteTeam(teamId) {
         const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
         if (mappedId === tid) tx.delete(nameRef);
       }
-      tx.delete(teamRef);
+      // Hard deletes are admin-only with locked-down rules. Archive instead.
+      tx.update(teamRef, {
+        archived: true,
+        archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
     });
 
     closeRequestsModal();
@@ -3360,7 +3548,12 @@ async function acceptRequest(teamId, userId) {
             const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
             if (mappedId === oldTeamId) tx.delete(nameRef);
           }
-          tx.delete(db.collection('teams').doc(oldTeamId));
+          // Hard deletes are admin-only with locked-down rules.
+          // If a team becomes empty, archive it instead.
+          tx.update(db.collection('teams').doc(oldTeamId), {
+            archived: true,
+            archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
         } else if (leavingIsCreator) {
           const nextCreator = nextOldMembers[Math.floor(Math.random() * nextOldMembers.length)];
           tx.update(db.collection('teams').doc(oldTeamId), {
@@ -3589,15 +3782,15 @@ function logoutLocal(loadingMessage = 'Logging out') {
   // Show loading screen with appropriate message
   showAuthLoadingScreen(loadingMessage);
 
-  // Local-only "logout": clears this device's saved name + id so it is no longer
-  // linked to any shared name-based account.
-  try { localStorage.removeItem(LS_USER_NAME); } catch (_) {}
-  try { localStorage.removeItem(LS_USER_ID); } catch (_) {}
-  // Full refresh keeps the app state consistent (listeners, cached state, theme).
-  // Small delay to show the loading screen
-  setTimeout(() => {
-    try { window.location.reload(); } catch (_) {}
-  }, 300);
+  // Firebase Auth logout.
+  Promise.resolve()
+    .then(() => auth.signOut())
+    .catch(() => {})
+    .finally(() => {
+      setTimeout(() => {
+        try { window.location.reload(); } catch (_) {}
+      }, 300);
+    });
 }
 
 /* =========================
@@ -3651,9 +3844,77 @@ function initSettings() {
   if (volumeSlider) volumeSlider.value = settingsVolume;
   if (volumeValue) volumeValue.textContent = settingsVolume + '%';
 
+  // Admin actions
+  const adminSection = document.getElementById('settings-admin');
+  const adminBackupBtn = document.getElementById('admin-backup-now-btn');
+  const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
+  const adminHintEl = document.getElementById('admin-restore-hint');
+
+  const refreshAdminUI = () => {
+    const isAdmin = !!isAdminUser();
+    if (adminSection) adminSection.style.display = isAdmin ? 'block' : 'none';
+    if (isAdmin) {
+      try { adminEnsureAutoBackupsRunning(); } catch (_) {}
+    }
+  };
+
+  const setAdminHint = (msg) => {
+    if (adminHintEl) adminHintEl.textContent = msg;
+  };
+
+  refreshAdminUI();
+
+  adminBackupBtn?.addEventListener('click', async () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    adminBackupBtn.disabled = true;
+    adminRestoreBtn && (adminRestoreBtn.disabled = true);
+    try {
+      setAdminHint('Backing up teams/players…');
+      const r = await adminCreateBackup('manual');
+      if (r) {
+        setAdminHint(`Backup created (${r.teams} teams, ${r.players} players). Backup ID: ${r.backupId}`);
+      } else {
+        setAdminHint('Backup already running…');
+      }
+    } catch (e) {
+      setAdminHint(e?.message || 'Backup failed.');
+    } finally {
+      adminBackupBtn.disabled = false;
+      adminRestoreBtn && (adminRestoreBtn.disabled = false);
+    }
+  });
+
+  adminRestoreBtn?.addEventListener('click', async () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+
+    const ok = await showCustomConfirm({
+      title: 'Restore tournament data?',
+      message: `This will <b>replace</b> the live <span class="mono">teams</span> and <span class="mono">players</span> collections with the most recent admin backup from <b>at or before ~5 minutes ago</b>.<br><br><b>There is no undo.</b>`,
+      okText: 'Restore',
+      danger: true
+    });
+    if (!ok) return;
+
+    adminBackupBtn && (adminBackupBtn.disabled = true);
+    adminRestoreBtn.disabled = true;
+    try {
+      setAdminHint('Restoring teams/players from backup…');
+      const r = await adminRestoreFromMinutesAgo(5);
+      setAdminHint(`Restored from backup ${r.restoredFromBackupId} (${r.teams} teams, ${r.players} players).`);
+    } catch (e) {
+      setAdminHint(e?.message || 'Restore failed.');
+    } finally {
+      adminBackupBtn && (adminBackupBtn.disabled = false);
+      adminRestoreBtn.disabled = false;
+    }
+  });
+
   // Open modal
   gearBtn.addEventListener('click', () => {
     playSound('click');
+    refreshAdminUI();
     openSettingsModal();
   });
 
@@ -3723,6 +3984,54 @@ themeToggle?.addEventListener('change', () => {
   // Test sound button
   testSoundBtn?.addEventListener('click', () => {
     playSound('success');
+  });
+
+  // Admin backup now
+  adminBackupBtn?.addEventListener('click', async () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    adminBackupBtn.disabled = true;
+    try {
+      setAdminHint('Backing up teams/players…');
+      const res = await adminCreateBackup('manual');
+      if (res) {
+        setAdminHint(`Backup saved (${res.teams} teams, ${res.players} players).`);
+      } else {
+        setAdminHint('Backup already running…');
+      }
+      playSound('success');
+    } catch (e) {
+      console.warn(e);
+      setAdminHint(e?.message || 'Backup failed.');
+    } finally {
+      adminBackupBtn.disabled = false;
+    }
+  });
+
+  // Admin restore ~5 minutes ago
+  adminRestoreBtn?.addEventListener('click', async () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    const ok = await showCustomConfirm({
+      title: 'Restore teams/players? (Admin)',
+      message: 'This will <b>replace</b> the current <span class="mono">teams</span> and <span class="mono">players</span> collections with the newest admin backup from <b>~5 minutes ago</b> (or earlier).<br><br><b>Only works if an admin backup exists</b>. Continue?',
+      okText: 'Restore',
+      danger: true
+    });
+    if (!ok) return;
+
+    adminRestoreBtn.disabled = true;
+    try {
+      setAdminHint('Restoring from backup…');
+      const res = await adminRestoreFromMinutesAgo(5);
+      setAdminHint(`Restored from backup ${res.restoredFromBackupId} (${res.teams} teams, ${res.players} players).`);
+      playSound('success');
+    } catch (e) {
+      console.warn(e);
+      setAdminHint(e?.message || 'Restore failed.');
+    } finally {
+      adminRestoreBtn.disabled = false;
+    }
   });
 
   // Keyboard escape to close
@@ -4484,9 +4793,7 @@ function closeOnlineModal() {
 }
 
 
-function isAdminUser() {
-  return String(getUserName() || '').trim().toLowerCase() === 'admin';
-}
+// (isAdminUser defined near the top)
 
 function initOnlineAdminDeleteHandlers(listEl) {
   if (!listEl || listEl.dataset.adminDeleteBound) return;

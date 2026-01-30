@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+
+    // ===== user profiles / username registry =====
+    // Users sign in with "username + password" in the UI, but under the hood we
+    // map usernames to Firebase Auth accounts. This registry enforces uniqueness.
+    match /usernames/{username} {
+      allow read: if signedIn();
+      // Claim a username once (no overwrites). Username doc id is the normalized username.
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && username.matches('^[a-z0-9_]{3,20}$')
+        && !exists(/databases/$(database)/documents/usernames/$(username));
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if isAdmin();
+    }
+
+    // ===== players =====
+    // One doc per auth uid.
+    match /players/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ===== teams =====
+    // NOTE: This app currently stores members/pending as arrays inside the team doc.
+    // Rules can't perfectly validate array diffs, so we enforce a coarse boundary:
+    // - Any signed-in user can create a team (with creatorUserId = their uid)
+    // - Only the creator or an admin can modify a team doc
+    // - Only an admin can delete a team doc
+    match /teams/{teamId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.creatorUserId == request.auth.uid;
+      allow update: if signedIn() && (
+        isAdmin() ||
+        resource.data.creatorUserId == request.auth.uid
+      );
+      allow delete: if isAdmin();
+
+      // Team chat
+      match /chat/{msgId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      }
+    }
+
+    // ===== games (quick play + tournament games) =====
+    match /games/{gameId} {
+      allow read: if signedIn();
+      // Gameplay writes are allowed for signed-in users. If you want stricter anti-cheat,
+      // move sensitive mutations to server-side functions.
+      allow create, update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
+    // ===== presence =====
+    // Presence docs are keyed by uid.
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // ===== admin backups =====
+    match /adminBackups/{backupId} {
+      allow read, write: if isAdmin();
+      match /{sub=**} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // ===== legacy name registry (disabled) =====
+    match /nameRegistry/{docId} {
+      allow read, write: if false;
+    }
+
+    // Catch-all: deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -5524,6 +5524,26 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   margin-top: -4px;
 }
 
+/* Admin section inside Settings modal */
+.settings-admin {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-admin-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 
 /* Simplified Settings (compact) */
 .settings-simple {

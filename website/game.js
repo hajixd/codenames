@@ -2335,7 +2335,9 @@ function startGameListener(gameId, options = {}) {
     try { window.bumpPresence?.(); } catch (_) {}
 
     // Best-effort: when a game finishes, increment player stats exactly once.
-    try { applyGameResultToPlayerStatsIfNeeded(currentGame); } catch (_) {}
+    // Stats writes are intentionally disabled client-side when using Firebase Auth +
+    // locked-down Firestore rules. If you want stats, move this to a server-side
+    // Cloud Function that validates winners.
 
     // If a game ever reaches 0 players, end it.
     if (currentGame?.type === 'quick') {

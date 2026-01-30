@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="styles.css">
     <title>Codenames</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   </head>
   <body>
@@ -99,16 +100,47 @@
             </button>
           </div>
 
-          <!-- Name + logout (same UI as Tournament Home) -->
+          <!-- Account (username + password) -->
           <div class="name-dock launch-name-dock" id="launch-name-card">
-            <form id="launch-name-form" class="form name-dock-form" autocomplete="off">
+            <div class="auth-tabs" style="display:flex; gap:8px; margin-bottom:10px;">
+              <button type="button" class="btn primary" id="launch-show-login" style="flex:1;">Log in</button>
+              <button type="button" class="btn" id="launch-show-create" style="flex:1;">Create account</button>
+            </div>
+
+            <form id="launch-login-form" class="form name-dock-form" autocomplete="on">
               <label class="field" style="margin:0;">
-                <span class="label">Your name</span>
-                <input type="text" id="launch-name-input" class="input" placeholder="Name" required>
+                <span class="label">Username</span>
+                <input type="text" id="launch-username-login" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
               </label>
-              <div class="form-actions" style="margin:0;">
-                <button type="submit" class="btn primary">Sign In</button>
+              <label class="field" style="margin:0;">
+                <span class="label">Password</span>
+                <input type="password" id="launch-password-login" class="input" placeholder="Password" autocomplete="current-password" required>
+              </label>
+              <div class="form-actions" style="margin:0; gap:8px;">
+                <button type="submit" class="btn primary" id="launch-login-btn">Log in</button>
                 <span class="hint" id="launch-name-hint"></span>
+              </div>
+            </form>
+
+            <form id="launch-create-form" class="form name-dock-form" autocomplete="on" style="display:none;">
+              <label class="field" style="margin:0;">
+                <span class="label">Username</span>
+                <input type="text" id="launch-username-create" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Password</span>
+                <input type="password" id="launch-password-create" class="input" placeholder="Password" autocomplete="new-password" required>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Display name</span>
+                <input type="text" id="launch-name-input" class="input" placeholder="Name (shown in-game)">
+              </label>
+              <div class="form-actions" style="margin:0; gap:8px;">
+                <button type="submit" class="btn primary" id="launch-create-btn">Create account</button>
+                <span class="hint" id="launch-name-hint-create"></span>
+              </div>
+              <div class="hint" style="margin-top:6px;">
+                Usernames: 3–20 chars, letters/numbers/underscore.
               </div>
             </form>
 
@@ -998,6 +1030,16 @@
                 <button class="btn" id="settings-change-name-btn" type="button">Change Name</button>
                 <button class="btn" id="settings-logout-btn" type="button">Log Out</button>
                 <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
+              </div>
+
+              <!-- Admin Actions (only visible for admin users) -->
+              <div class="settings-admin" id="settings-admin" style="display:none;">
+                <div class="settings-section-title">Admin</div>
+                <div class="settings-admin-actions">
+                  <button class="btn" id="admin-backup-now-btn" type="button">Backup Teams/Players Now</button>
+                  <button class="btn danger" id="admin-restore-5min-btn" type="button">Restore Teams/Players (5 min ago)</button>
+                </div>
+                <div class="hint" id="admin-restore-hint">Restores only from app-created backups (collection: <span class="mono">adminBackups</span>). If no backup exists from ~5 minutes ago, restore won’t be possible from inside the app.</div>
               </div>
 
               <!-- In-Game Actions (shown whenever a user is in an active game) -->
