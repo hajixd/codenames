@@ -567,6 +567,14 @@ function showTournamentLobby() {
   renderTournamentLobby();
 }
 
+// Explicitly export mode navigation helpers for app.js.
+// (Some hosting setups load scripts as modules or otherwise avoid attaching
+// top-level declarations to window, which can make Quick Play entry look
+// "broken" by leaving users on the generic mode chooser.)
+window.showModeSelect = showModeSelect;
+window.showQuickPlayLobby = showQuickPlayLobby;
+window.showTournamentLobby = showTournamentLobby;
+
 /* =========================
    Quick Play Role Selection
 ========================= */
