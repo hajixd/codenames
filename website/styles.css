@@ -34,6 +34,53 @@
   --team-glow: rgba(59,130,246,0);
 }
 
+
+body.light-mode {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface2: #f0f0f2;
+  --card: #ffffff;
+  --border: #d4d4d8;
+  --text: #0a0a0a;
+  --text-dim: #52525b;
+}
+
+/* Slightly softer shadows in light mode */
+body.light-mode .game-card .card-checkmark{
+  position:absolute;
+  top:6px;
+  right:6px;
+  width:22px;
+  height:22px;
+  border-radius:7px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events:none;
+}
+
+.game-card.pending-select .card-checkmark{
+  opacity: 1;
+  transform: scale(1);
+}
+
+.game-card.pending-select:not(.revealed):not(.disabled){
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.22);
+}
+
+.game-card:hover:not(.revealed):not(.disabled) {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+
 html, body {
   height: 100%;
   overflow: hidden;
@@ -6647,6 +6694,7 @@ body.tournament.has-team-color .input:focus {
 .clue-result-chip.correct { color: var(--green); }
 .clue-result-chip.wrong { color: var(--red); }
 .clue-result-chip.neutral { color: var(--text-dim); }
+.clue-result-chip.assassin { color: #fff; background: rgba(239, 68, 68, 0.35); }
 
 .clue-history-empty {
   color: var(--text-dim);

@@ -29,6 +29,7 @@ const LS_USER_NAME = 'ct_userName_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
+const LS_SETTINGS_THEME = 'ct_theme_v1';
 const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
 const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
 // Game resume keys (game.js owns the values; app.js only triggers restore)
@@ -3607,6 +3608,7 @@ function logoutLocal(loadingMessage = 'Logging out') {
 let settingsAnimations = true;
 let settingsSounds = true;
 let settingsVolume = 70;
+let settingsTheme = 'dark'; // 'dark' | 'light'
 
 // Audio context for sound effects
 let audioCtx = null;
@@ -3616,12 +3618,16 @@ function initSettings() {
   const savedAnimations = safeLSGet(LS_SETTINGS_ANIMATIONS);
   const savedSounds = safeLSGet(LS_SETTINGS_SOUNDS);
   const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
+  const savedTheme = safeLSGet(LS_SETTINGS_THEME);
 
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
 
+  settingsTheme = (savedTheme === 'light') ? 'light' : 'dark';
+
   // Apply initial state
+  applyThemeSetting();
   applyAnimationsSetting();
 
   // Get UI elements
@@ -3630,6 +3636,7 @@ function initSettings() {
   const backdrop = document.getElementById('settings-modal-backdrop');
   const closeBtn = document.getElementById('settings-modal-close');
   const animToggle = document.getElementById('settings-animations-toggle');
+  const themeToggle = document.getElementById('settings-theme-toggle');
   const soundToggle = document.getElementById('settings-sounds-toggle');
   const volumeSlider = document.getElementById('settings-volume-slider');
   const volumeValue = document.getElementById('settings-volume-value');
@@ -3639,6 +3646,7 @@ function initSettings() {
 
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
+  if (themeToggle) themeToggle.checked = (settingsTheme === 'light');
   if (soundToggle) soundToggle.checked = settingsSounds;
   if (volumeSlider) volumeSlider.value = settingsVolume;
   if (volumeValue) volumeValue.textContent = settingsVolume + '%';
@@ -3666,6 +3674,15 @@ function initSettings() {
     applyAnimationsSetting();
     playSound('toggle');
   });
+
+// Theme toggle (Light mode)
+themeToggle?.addEventListener('change', () => {
+  settingsTheme = themeToggle.checked ? 'light' : 'dark';
+  safeLSSet(LS_SETTINGS_THEME, settingsTheme);
+  applyThemeSetting();
+  playSound('toggle');
+});
+
 
   // Sounds toggle
   soundToggle?.addEventListener('change', () => {
@@ -3734,6 +3751,16 @@ function closeSettingsModal() {
       modal.style.display = 'none';
     }
   }, 200);
+}
+
+function applyThemeSetting() {
+  const isLight = settingsTheme === 'light';
+  document.body.classList.toggle('light-mode', isLight);
+  // Update browser theme color if present
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isLight ? '#f7f7f8' : '#09090b');
+  } catch (_) {}
 }
 
 function applyAnimationsSetting() {

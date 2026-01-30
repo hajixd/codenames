@@ -2531,12 +2531,20 @@ function renderGame() {
 function renderAdvancedFeatures() {
   if (!currentGame) return;
 
+  // Clear pending selection if you can't currently guess
+  const myTeamColor = getMyTeamColor();
+  const spectator = isSpectating();
+  const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
+  const canGuessNow = isMyTurn && currentGame.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame.winner;
+  if (!canGuessNow) {
+    pendingCardSelection = null;
+  }
+
   // Load tags from localStorage for this game
   loadTagsFromLocal();
 
   // Render advanced UI
   renderCardTags();
-  renderCardVotes();
   renderClueHistory();
   renderTeamRoster();
   updateChatPrivacyBadge();
@@ -2583,12 +2591,18 @@ function renderBoard(isSpymaster) {
       classes.push('disabled');
     }
 
-    // Allow clicking for guessing, tagging, or voting (if not revealed)
+    // Pending selection highlight
+    if (!card.revealed && pendingCardSelection === i) {
+      classes.push('pending-select');
+    }
+
+    // Allow clicking for guessing or tagging (if not revealed)
     const canClick = !card.revealed && !isSpymaster;
     const clickHandler = canClick ? `onclick="handleCardClick(${i})"` : '';
 
     return `
       <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
+        <div class="card-checkmark" aria-hidden="true">✓</div>
         <span class="card-word">${escapeHtml(card.word)}</span>
       </div>
     `;
@@ -2597,7 +2611,6 @@ function renderBoard(isSpymaster) {
   // Re-render tags and votes after board re-renders
   setTimeout(() => {
     renderCardTags();
-    renderCardVotes();
   }, 10);
 }
 
@@ -2829,6 +2842,8 @@ async function handleClueSubmit(e) {
    Card Guessing
 ========================= */
 async function handleCardClick(cardIndex) {
+  // Clear any pending selection as soon as a guess is being processed
+  pendingCardSelection = null;
   if (!currentGame || currentGame.currentPhase !== 'operatives') return;
   if (isSpectating()) return;
   if (currentGame.winner) return;
@@ -2839,6 +2854,11 @@ async function handleCardClick(cardIndex) {
 
   const card = currentGame.cards[cardIndex];
   if (!card || card.revealed) return;
+
+  // Capture current clue for history logging
+  const clueWordAtGuess = currentGame.currentClue?.word || null;
+  const clueNumberAtGuess = (currentGame.currentClue && typeof currentGame.currentClue.number !== 'undefined') ? currentGame.currentClue.number : null;
+  const guessByName = getUserName() || 'Someone';
 
   // Reveal the card
   const updatedCards = [...currentGame.cards];
@@ -2907,6 +2927,14 @@ async function handleCardClick(cardIndex) {
     endTurn = true;
   }
 
+  const guessResult = {
+    word: card.word,
+    result: (card.type === 'assassin') ? 'assassin' : (card.type === currentGame.currentTeam ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
+    type: card.type,
+    by: guessByName,
+    timestamp: new Date().toISOString()
+  };
+
   updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
 
   if (winner) {
@@ -2924,6 +2952,11 @@ async function handleCardClick(cardIndex) {
 
   try {
     await db.collection('games').doc(currentGame.id).update(updates);
+
+    // Append to clue history (guess order + outcome)
+    if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
+      await addGuessToClueHistory(currentGame.id, currentGame.currentTeam, clueWordAtGuess, clueNumberAtGuess, guessResult);
+    }
   } catch (e) {
     console.error('Failed to reveal card:', e);
   }
@@ -3188,7 +3221,6 @@ setTimeout(updateGameTabBadge, 1000);
 /* =========================
    ADVANCED GAME FEATURES
    - Card Tagging
-   - Card Voting
    - Operative Chat
    - Clue History
    - Timer Display
@@ -3197,7 +3229,7 @@ setTimeout(updateGameTabBadge, 1000);
 
 // State for advanced features
 let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
-let cardVotes = {}; // { odId: [cardIndices] }
+let pendingCardSelection = null; // cardIndex pending confirmation
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let operativeChatUnsub = null;
 let gameTimerInterval = null;
@@ -3228,9 +3260,6 @@ function initAdvancedFeatures() {
 
   // Operative chat form
   document.getElementById('operative-chat-form')?.addEventListener('submit', handleOperativeChatSubmit);
-
-  // Clear votes button
-  document.getElementById('clear-votes-btn')?.addEventListener('click', clearMyVotes);
 
   // Close sidebars on backdrop click
   document.addEventListener('click', (e) => {
@@ -3274,6 +3303,8 @@ function tagCard(cardIndex, tag) {
 
 function clearAllTags() {
   cardTags = {};
+  pendingCardSelection = null;
+  pendingCardSelection = null;
   renderCardTags();
   saveTagsToLocal();
   setActiveTagMode(null);
@@ -3326,142 +3357,32 @@ function loadTagsFromLocal() {
 }
 
 /* =========================
-   Card Voting System
+   Card Selection Confirmation
 ========================= */
-async function toggleVoteForCard(cardIndex) {
-  if (!currentGame?.id) return;
-  const odId = getUserId();
-  if (!odId) return;
-
-  const myTeamColor = getMyTeamColor();
-  if (!myTeamColor) return;
-
-  // Don't allow spymasters to vote
-  if (isCurrentUserSpymaster()) return;
-
-  const gameRef = db.collection('games').doc(currentGame.id);
-
-  try {
-    await db.runTransaction(async (tx) => {
-      const doc = await tx.get(gameRef);
-      if (!doc.exists) return;
-
-      const data = doc.data();
-      const votes = data.cardVotes || {};
-      const myVotes = votes[odId] || [];
-
-      const idx = myVotes.indexOf(cardIndex);
-      if (idx >= 0) {
-        myVotes.splice(idx, 1);
-      } else {
-        myVotes.push(cardIndex);
-      }
-
-      votes[odId] = myVotes;
-      tx.update(gameRef, { cardVotes: votes });
-    });
-  } catch (e) {
-    console.error('Vote error:', e);
-  }
+function clearPendingCardSelection() {
+  pendingCardSelection = null;
+  updatePendingCardSelectionUI();
 }
 
-function clearMyVotes() {
-  if (!currentGame?.id) return;
-  const odId = getUserId();
-  if (!odId) return;
-
-  const gameRef = db.collection('games').doc(currentGame.id);
-  gameRef.update({
-    [`cardVotes.${odId}`]: firebase.firestore.FieldValue.delete()
-  }).catch(console.error);
+function setPendingCardSelection(cardIndex) {
+  pendingCardSelection = cardIndex;
+  updatePendingCardSelectionUI();
 }
 
-function renderCardVotes() {
-  if (!currentGame?.cardVotes) return;
-
-  const myTeamColor = getMyTeamColor();
-  const odId = getUserId();
-  const myVotes = currentGame.cardVotes[odId] || [];
-
-  // Get votes only from teammates (same color)
-  const teamVotes = {};
-  const teamPlayers = myTeamColor === 'red' ? currentGame.redPlayers : currentGame.bluePlayers;
-  const teamOdIds = (teamPlayers || []).map(p => p.odId);
-
-  for (const odId of Object.keys(currentGame.cardVotes)) {
-    if (!teamOdIds.includes(odId)) continue;
-    const votes = currentGame.cardVotes[odId] || [];
-    for (const idx of votes) {
-      teamVotes[idx] = (teamVotes[idx] || 0) + 1;
-    }
-  }
-
-  // Render vote dots on cards
+function updatePendingCardSelectionUI() {
   const cards = document.querySelectorAll('.game-card');
-  cards.forEach((card, index) => {
-    const existingVotes = card.querySelector('.card-votes');
-    if (existingVotes) existingVotes.remove();
-
-    const voteCount = teamVotes[index] || 0;
-    if (voteCount > 0 && !card.classList.contains('revealed')) {
-      const votesEl = document.createElement('div');
-      votesEl.className = 'card-votes';
-
-      for (let i = 0; i < Math.min(voteCount, 5); i++) {
-        const dot = document.createElement('div');
-        dot.className = 'card-vote-dot';
-        if (myVotes.includes(index) && i === 0) {
-          dot.classList.add('my-vote');
-        }
-        votesEl.appendChild(dot);
-      }
-
-      card.appendChild(votesEl);
-    }
-  });
-
-  // Update voting panel
-  renderVotingPanel(teamVotes, myVotes);
-}
-
-function renderVotingPanel(teamVotes, myVotes) {
-  const container = document.getElementById('voting-content');
-  if (!container || !currentGame?.cards) return;
-
-  // Sort by vote count
-  const sorted = Object.entries(teamVotes)
-    .filter(([idx, count]) => count > 0 && !currentGame.cards[idx]?.revealed)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-
-  if (sorted.length === 0) {
-    container.innerHTML = '<div class="voting-empty-state">Vote on cards to coordinate with your team</div>';
-    return;
+  cards.forEach((el) => el.classList.remove('pending-select'));
+  if (pendingCardSelection === null || pendingCardSelection === undefined) return;
+  const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
+  if (target && !target.classList.contains('revealed')) {
+    target.classList.add('pending-select');
   }
-
-  container.innerHTML = sorted.map(([idx, count]) => {
-    const card = currentGame.cards[idx];
-    const hasMyVote = myVotes.includes(parseInt(idx));
-
-    return `
-      <div class="voting-item" onclick="toggleVoteForCard(${idx})">
-        <span class="voting-word">${escapeHtml(card.word)}</span>
-        <div class="voting-count">
-          <div class="voting-dots">
-            ${Array(Math.min(count, 4)).fill(0).map((_, i) =>
-              `<div class="voting-dot ${hasMyVote && i === 0 ? 'my-vote' : ''}"></div>`
-            ).join('')}
-          </div>
-          <span class="voting-number">${count}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
 }
 
 /* =========================
    Operative Team Chat
 ========================= */
+
 function initOperativeChat() {
   if (!currentGame?.id) return;
 
@@ -3584,11 +3505,15 @@ function renderClueHistory() {
   }
 
   container.innerHTML = history.map(clue => {
-    const resultsHtml = (clue.results || []).map(r => {
+    const resultsHtml = (clue.results || []).map((r, idx) => {
+      const res = (r.result || (r.correct ? 'correct' : (r.wrong ? 'wrong' : 'neutral')));
       let className = 'neutral';
-      if (r.correct) className = 'correct';
-      else if (r.wrong) className = 'wrong';
-      return `<span class="clue-result-chip ${className}">${escapeHtml(r.word)}</span>`;
+      if (res === 'correct') className = 'correct';
+      else if (res === 'wrong') className = 'wrong';
+      else if (res === 'assassin') className = 'assassin';
+      const word = String(r.word || '').trim();
+      const label = `${idx + 1}. ${word}`;
+      return `<span class="clue-result-chip ${className}">${escapeHtml(label)}</span>`;
     }).join('');
 
     return `
@@ -3891,25 +3816,21 @@ async function handleCardClickEnhanced(cardIndex) {
     return;
   }
 
-  // If shift key held, toggle vote
-  if (window.event?.shiftKey) {
-    await toggleVoteForCard(cardIndex);
-    return;
-  }
-
-  // Check if this should be a guess or just a vote click
+  // Two-tap confirmation for guesses (no voting system)
   const myTeamColor = getMyTeamColor();
   const isMyTurn = myTeamColor && currentGame?.currentTeam === myTeamColor;
   const canGuess = isMyTurn && currentGame?.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame?.winner;
 
-  if (!canGuess) {
-    // Can't guess, but maybe they want to vote - toggle vote on click
-    await toggleVoteForCard(cardIndex);
+  if (!canGuess) return;
+
+  // First tap selects (shows checkmark). Second tap confirms.
+  if (pendingCardSelection === cardIndex) {
+    clearPendingCardSelection();
+    await _originalHandleCardClick(cardIndex);
     return;
   }
 
-  // Otherwise, call original handler to guess
-  await _originalHandleCardClick(cardIndex);
+  setPendingCardSelection(cardIndex);
 }
 
 // Replace global handleCardClick
@@ -3940,6 +3861,44 @@ async function addClueToHistory(gameId, team, word, number) {
   }
 }
 
+// Helper to append a guess result to the latest clue entry
+async function addGuessToClueHistory(gameId, team, clueWord, clueNumber, guess) {
+  if (!gameId || !team || !clueWord) return;
+
+  const gameRef = db.collection('games').doc(gameId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(gameRef);
+      if (!snap.exists) return;
+      const data = snap.data() || {};
+      const history = Array.isArray(data.clueHistory) ? [...data.clueHistory] : [];
+
+      // Find the most recent matching clue entry (search from end)
+      let idx = -1;
+      for (let i = history.length - 1; i >= 0; i--) {
+        const c = history[i];
+        if (!c) continue;
+        if (String(c.team) === String(team) && String(c.word) === String(clueWord) && Number(c.number) === Number(clueNumber)) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < 0) return;
+
+      const entry = { ...history[idx] };
+      const results = Array.isArray(entry.results) ? [...entry.results] : [];
+      results.push(guess);
+      entry.results = results;
+      history[idx] = entry;
+
+      tx.update(gameRef, { clueHistory: history });
+    });
+  } catch (e) {
+    console.error('Failed to append guess to clue history:', e);
+  }
+}
+
 // Cleanup on game exit
 function cleanupAdvancedFeatures() {
   stopGameTimer();
@@ -3950,7 +3909,7 @@ function cleanupAdvancedFeatures() {
   }
 
   cardTags = {};
-  cardVotes = {};
+  pendingCardSelection = null;
   activeTagMode = null;
   setActiveTagMode(null);
   closeMobileSidebars();
