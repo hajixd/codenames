@@ -358,9 +358,25 @@ function setBrowserTitle(mode) {
   document.title = 'Codenames';
 }
 
+function showAuthScreen() {
+  const authScreen = document.getElementById('auth-screen');
+  const modeScreen = document.getElementById('launch-screen');
+  if (authScreen) authScreen.style.display = 'flex';
+  if (modeScreen) modeScreen.style.display = 'none';
+  document.body.classList.add('launch');
+  document.body.classList.remove('quickplay');
+  document.body.classList.remove('tournament');
+  document.body.classList.remove('has-team-color');
+  setBrowserTitle('launch');
+  try { refreshNameUI?.(); } catch (_) {}
+}
+
 function showLaunchScreen() {
-  const screen = document.getElementById('launch-screen');
-  if (screen) screen.style.display = 'block';
+  // Choose Mode screen (shown after sign-in).
+  const authScreen = document.getElementById('auth-screen');
+  const modeScreen = document.getElementById('launch-screen');
+  if (authScreen) authScreen.style.display = 'none';
+  if (modeScreen) modeScreen.style.display = 'flex';
   document.body.classList.add('launch');
   document.body.classList.remove('quickplay');
   document.body.classList.remove('tournament');
@@ -370,14 +386,17 @@ function showLaunchScreen() {
 }
 
 function returnToLaunchScreen() {
-  // Logo = "start over". Clear any device-local resume state so a refresh doesn't jump back into the previous mode.
+  // Logo = start over. Clear any device-local resume state so refresh doesn't jump back into the previous mode.
   clearLastNavigation();
-  // Show loading screen during navigation transition
   showAuthLoadingScreen();
   setTimeout(() => {
-    showLaunchScreen();
-    hideAuthLoadingScreen();
-  }, 300);
+    try {
+      if (auth.currentUser) showLaunchScreen();
+      else showAuthScreen();
+    } finally {
+      hideAuthLoadingScreen();
+    }
+  }, 200);
 }
 
 // Allow other modules (game.js) to return to the initial screen.
@@ -542,7 +561,9 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
 window.maybeGateQuickPlayWithLiveGame = maybeGateQuickPlayWithLiveGame;
 
 /* =========================
-   Launch screen (mode-first)
+   Launch + auth screens
+   - Auth first
+   - Then choose Quick Play vs Tournament
 ========================= */
 function initLaunchScreen() {
   const screen = document.getElementById('launch-screen');
@@ -551,19 +572,21 @@ function initLaunchScreen() {
   // Hide the rest of the app until a mode is chosen.
   document.body.classList.add('launch');
   setBrowserTitle('launch');
+  // Default to auth screen until Firebase Auth confirms a session.
+  try { showAuthScreen(); } catch (_) {}
 
   const quickBtn = document.getElementById('launch-quick-play');
   const tournBtn = document.getElementById('launch-tournament');
 
   const hint = document.getElementById('launch-name-hint');
-  const input = document.getElementById('launch-name-input');
 
   const requireAuthThen = (mode, opts = {}) => {
     const u = auth.currentUser;
     const name = getUserName();
     if (!u || !name) {
+      // If somehow they reach mode buttons while signed out, bounce to auth.
+      try { showAuthScreen(); } catch (_) {}
       if (hint) hint.textContent = 'Sign in to continue.';
-      try { document.getElementById('launch-name-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
       try { document.getElementById('launch-username-login')?.focus(); } catch (_) {}
       return;
     }
@@ -594,12 +617,11 @@ function initLaunchScreen() {
   const loginPassInput = document.getElementById('launch-password-login');
   const createUserInput = document.getElementById('launch-username-create');
   const createPassInput = document.getElementById('launch-password-create');
-  const displayInput = document.getElementById('launch-name-input');
   const loginHint = document.getElementById('launch-name-hint');
   const createHint = document.getElementById('launch-name-hint-create');
   const showLoginBtn = document.getElementById('launch-show-login');
   const showCreateBtn = document.getElementById('launch-show-create');
-  const logoutBtn = document.getElementById('launch-logout-btn');
+  const modeLogoutBtn = document.getElementById('mode-logout-btn');
 
   function normalizeUsername(v) {
     return String(v || '').trim().toLowerCase();
@@ -659,7 +681,7 @@ function initLaunchScreen() {
     e.preventDefault();
     const username = normalizeUsername(createUserInput?.value);
     const pass = String(createPassInput?.value || '');
-    const display = String(displayInput?.value || '').trim() || username;
+    const display = username; // username == name
     if (!username || !pass) {
       if (createHint) createHint.textContent = 'Enter username + password.';
       return;
@@ -694,7 +716,7 @@ function initLaunchScreen() {
       try {
         await db.collection('users').doc(u.uid).set({
           username,
-          displayName: display,
+          name: display,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
       } catch (_) {}
@@ -734,7 +756,7 @@ function initLaunchScreen() {
     }
   });
 
-  logoutBtn?.addEventListener('click', () => logoutLocal('Logging out'));
+  modeLogoutBtn?.addEventListener('click', () => logoutLocal('Logging out'));
 
   // Default tab
   setAuthTab('login');
@@ -745,6 +767,8 @@ function initLaunchScreen() {
 function enterAppFromLaunch(mode, opts = {}) {
   const screen = document.getElementById('launch-screen');
   if (screen) screen.style.display = 'none';
+  const authScreen = document.getElementById('auth-screen');
+  if (authScreen) authScreen.style.display = 'none';
 
   // Default: leave launch state.
   document.body.classList.remove('launch');
@@ -819,10 +843,10 @@ function initAuthGate() {
       // Refresh admin claims best-effort.
       try { await refreshAdminClaims(); } catch (_) {}
 
-      // Update UI immediately.
+      // Update header name immediately.
       try { refreshNameUI(); } catch (_) {}
 
-      // Stop listeners when signed out.
+      // Signed out: stop listeners + show auth page.
       if (!u) {
         try { teamsUnsub?.(); } catch (_) {}
         try { playersUnsub?.(); } catch (_) {}
@@ -830,8 +854,8 @@ function initAuthGate() {
         playersUnsub = null;
         teamsCache = [];
         playersCache = [];
-        // Return to launch so the user can sign in.
-        try { returnToLaunchScreen(); } catch (_) {}
+        try { clearLastNavigation(); } catch (_) {}
+        try { showAuthScreen(); } catch (_) {}
         return;
       }
 
@@ -851,6 +875,15 @@ function initAuthGate() {
       // Start listeners once.
       try { listenToTeams(); } catch (_) {}
       try { listenToPlayers(); } catch (_) {}
+
+      // Restore last navigation if available; otherwise show the mode chooser.
+      try {
+        restoreLastNavigation();
+        const inMode = document.body.classList.contains('quickplay') || document.body.classList.contains('tournament');
+        if (!inMode) showLaunchScreen();
+      } catch (_) {
+        try { showLaunchScreen(); } catch (_) {}
+      }
     });
   } catch (e) {
     console.error('Auth init failed:', e);
@@ -949,6 +982,8 @@ function persistLastNavigation() {
 }
 
 function restoreLastNavigation() {
+  // Only restore after Firebase Auth has hydrated.
+  if (!auth.currentUser) return;
   const mode = (safeLSGet(LS_NAV_MODE) || '').trim();
   if (!mode) return;
 
@@ -1280,49 +1315,15 @@ async function setUserName(name, opts = {}) {
 }
 
 function initName() {
-  // Home form
-  const form = document.getElementById('name-form');
-  const input = document.getElementById('name-input');
-  const hint = document.getElementById('name-hint');
-  const logoutBtn = document.getElementById('logout-btn');
-
-  form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const v = (input?.value || '').trim();
-    if (!v) {
-      if (hint) hint.textContent = 'Please enter a name.';
-      return;
-    }
-    if (hint) hint.textContent = '';
-    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
-    try {
-      await setUserName(v);
-    } finally {
-      hideAuthLoadingScreen();
-    }
-  });
-
-  // Only way to unlink a device from the currently linked name/account.
-  logoutBtn?.addEventListener('click', () => {
-    logoutLocal('Logging out');
-  });
-
-  // Double-click editing for home page (works on desktop + mobile)
-  wireInlineEdit({
-    displayEl: document.getElementById('name-saved-display'),
-    inputEl: document.getElementById('name-saved-input'),
-    getValue: () => getUserName(),
-    onCommit: (v) => setUserName(v),
-  });
+  // Username == name. We don't allow in-app renaming (it would desync login identity).
 
   // Header name pill - single click opens your profile
   const headerNamePill = document.getElementById('header-name-pill');
   headerNamePill?.addEventListener('click', () => {
     playSound('click');
     const uid = getUserId();
-    // If the user isn't signed in yet, fall back to name entry.
     if (!uid || !getUserName()) {
-      openNameChangeModal();
+      try { showAuthScreen(); } catch (_) {}
       return;
     }
     showProfilePopup('player', uid, headerNamePill);
@@ -1333,7 +1334,7 @@ function initName() {
       playSound('click');
       const uid = getUserId();
       if (!uid || !getUserName()) {
-        openNameChangeModal();
+        try { showAuthScreen(); } catch (_) {}
         return;
       }
       showProfilePopup('player', uid, headerNamePill);
@@ -1354,17 +1355,8 @@ function initName() {
     }
   });
 
-  // Initialize name change modal
-  initNameChangeModal();
-
-  // Initialize teammates modal
+  // Teammates modal + profile modal still used.
   initTeammatesModal();
-
-  refreshNameUI();
-
-  // Keep the local device name in sync with the account profile (so renames propagate
-  // across devices without logging out).
-  startProfileNameSync();
 }
 
 function startProfileNameSync() {
@@ -1393,47 +1385,32 @@ function startProfileNameSync() {
 
 function refreshNameUI() {
   const name = getUserName();
-  const cardForm = document.getElementById('name-form');
-  const saved = document.getElementById('name-saved');
+
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
-  const launchInput = document.getElementById('launch-name-input');
-  const launchLoginForm = document.getElementById('launch-login-form');
-  const launchCreateForm = document.getElementById('launch-create-form');
-  const launchTabs = document.querySelector('#launch-name-card .auth-tabs');
-  const launchSaved = document.getElementById('launch-name-saved');
-  const launchSavedDisplay = document.getElementById('launch-name-saved-display');
-  const launchQuick = document.getElementById('launch-quick-play');
-  const launchTourn = document.getElementById('launch-tournament');
+  const modeName = document.getElementById('mode-account-name');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
-  if (launchInput) launchInput.value = name || '';
-  if (launchSavedDisplay) launchSavedDisplay.textContent = name ? `Signed in as ${name}` : '—';
+  if (modeName) modeName.textContent = name || '—';
 
-  if (cardForm && saved) {
-    cardForm.style.display = name ? 'none' : 'block';
-    saved.style.display = name ? 'block' : 'none';
-  }
+  // Home screen name editor is disabled (username == name).
+  const cardForm = document.getElementById('name-form');
+  const saved = document.getElementById('name-saved');
+  if (cardForm) cardForm.style.display = 'none';
+  if (saved) saved.style.display = name ? 'block' : 'none';
 
-  // Launch screen: show auth forms if not signed in; otherwise show the signed-in panel.
-  if (launchSaved) launchSaved.style.display = name ? 'block' : 'none';
-  if (launchTabs) launchTabs.style.display = name ? 'none' : 'flex';
-  if (launchLoginForm) launchLoginForm.style.display = name ? 'none' : (launchLoginForm.style.display || '');
-  if (launchCreateForm) launchCreateForm.style.display = name ? 'none' : (launchCreateForm.style.display || 'none');
-
-  // Launch mode buttons are disabled until the user has a saved name ("logged in").
-  // This prevents users entering Quick Play / Tournament without identity.
+  // Enable mode buttons only when signed in.
+  const launchQuick = document.getElementById('launch-quick-play');
+  const launchTourn = document.getElementById('launch-tournament');
   const canEnter = !!auth.currentUser && !!name;
   if (launchQuick) launchQuick.disabled = !canEnter;
   if (launchTourn) launchTourn.disabled = !canEnter;
 
-  // Also update UI that depends on name (join buttons etc)
+  // Update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
   renderMyTeam(teamsCache);
   recomputeMyTeamTabBadge();
-
-  // Keep header identity (name + team) in sync
   refreshHeaderIdentity();
 }
 

@@ -78,7 +78,58 @@
     </div>
 
     <div class="app">
-      <!-- Launch Screen (first thing shown on app open) -->
+      <!-- Auth Screen (sign in / create account) -->
+      <div class="auth-screen" id="auth-screen" aria-label="Sign in">
+        <div class="auth-card">
+          <div class="launch-hero" style="text-align:center; padding-top: 22px;">
+            <h1 class="launch-h1" style="font-size:34px;">CODENAMES</h1>
+            <p class="launch-sub">Sign in to play</p>
+          </div>
+
+          <!-- Account (username + password) -->
+          <div class="name-dock launch-name-dock" id="launch-name-card" style="margin-top: 18px !important; max-width: 420px;">
+            <div class="auth-tabs">
+              <button type="button" class="btn primary" id="launch-show-login" style="flex:1;">Log in</button>
+              <button type="button" class="btn" id="launch-show-create" style="flex:1;">Create account</button>
+            </div>
+
+            <form id="launch-login-form" class="form name-dock-form" autocomplete="on">
+              <label class="field" style="margin:0;">
+                <span class="label">Username</span>
+                <input type="text" id="launch-username-login" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Password</span>
+                <input type="password" id="launch-password-login" class="input" placeholder="Password" autocomplete="current-password" required>
+              </label>
+              <div class="form-actions" style="margin:0; gap:8px; justify-content:center;">
+                <button type="submit" class="btn primary" id="launch-login-btn">Log in</button>
+                <span class="hint" id="launch-name-hint"></span>
+              </div>
+            </form>
+
+            <form id="launch-create-form" class="form name-dock-form" autocomplete="on" style="display:none;">
+              <label class="field" style="margin:0;">
+                <span class="label">Username</span>
+                <input type="text" id="launch-username-create" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Password</span>
+                <input type="password" id="launch-password-create" class="input" placeholder="Password" autocomplete="new-password" required>
+              </label>
+              <div class="form-actions" style="margin:0; gap:8px; justify-content:center;">
+                <button type="submit" class="btn primary" id="launch-create-btn">Create account</button>
+                <span class="hint" id="launch-name-hint-create"></span>
+              </div>
+              <div class="hint" style="margin-top:6px; text-align:center;">
+                Usernames: 3–20 chars, letters/numbers/underscore.
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Launch Screen (choose mode after sign-in) -->
       <div class="launch-screen" id="launch-screen" aria-label="Choose play mode">
         <div class="launch-card">
           <div class="launch-hero">
@@ -100,56 +151,12 @@
             </button>
           </div>
 
-          <!-- Account (username + password) -->
-          <div class="name-dock launch-name-dock" id="launch-name-card">
-            <div class="auth-tabs" style="display:flex; gap:8px; margin-bottom:10px;">
-              <button type="button" class="btn primary" id="launch-show-login" style="flex:1;">Log in</button>
-              <button type="button" class="btn" id="launch-show-create" style="flex:1;">Create account</button>
+          <div class="mode-account" id="mode-account" aria-label="Account">
+            <div class="mode-account-left">
+              <div class="mode-account-label">Signed in as</div>
+              <div class="mode-account-name" id="mode-account-name">—</div>
             </div>
-
-            <form id="launch-login-form" class="form name-dock-form" autocomplete="on">
-              <label class="field" style="margin:0;">
-                <span class="label">Username</span>
-                <input type="text" id="launch-username-login" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
-              </label>
-              <label class="field" style="margin:0;">
-                <span class="label">Password</span>
-                <input type="password" id="launch-password-login" class="input" placeholder="Password" autocomplete="current-password" required>
-              </label>
-              <div class="form-actions" style="margin:0; gap:8px;">
-                <button type="submit" class="btn primary" id="launch-login-btn">Log in</button>
-                <span class="hint" id="launch-name-hint"></span>
-              </div>
-            </form>
-
-            <form id="launch-create-form" class="form name-dock-form" autocomplete="on" style="display:none;">
-              <label class="field" style="margin:0;">
-                <span class="label">Username</span>
-                <input type="text" id="launch-username-create" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
-              </label>
-              <label class="field" style="margin:0;">
-                <span class="label">Password</span>
-                <input type="password" id="launch-password-create" class="input" placeholder="Password" autocomplete="new-password" required>
-              </label>
-              <label class="field" style="margin:0;">
-                <span class="label">Display name</span>
-                <input type="text" id="launch-name-input" class="input" placeholder="Name (shown in-game)">
-              </label>
-              <div class="form-actions" style="margin:0; gap:8px;">
-                <button type="submit" class="btn primary" id="launch-create-btn">Create account</button>
-                <span class="hint" id="launch-name-hint-create"></span>
-              </div>
-              <div class="hint" style="margin-top:6px;">
-                Usernames: 3–20 chars, letters/numbers/underscore.
-              </div>
-            </form>
-
-            <div id="launch-name-saved" class="name-dock-saved" style="display:none;">
-              <div class="name-saved-stack">
-                <div class="name-dock-value" id="launch-name-saved-display">—</div>
-                <button class="btn logout" id="launch-logout-btn" type="button">Log out</button>
-              </div>
-            </div>
+            <button class="btn logout" id="mode-logout-btn" type="button">Log out</button>
           </div>
         </div>
       </div>

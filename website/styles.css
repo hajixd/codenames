@@ -3105,6 +3105,64 @@ body.quickplay .main-content {
   display: block !important;
 }
 
+/* Auth screen (sign in / create account) */
+.auth-screen{
+  position: fixed;
+  top: 64px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(18px, 4vw, 56px);
+}
+
+.auth-card{
+  width: 100%;
+  max-width: 540px;
+  border-radius: 22px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 60px rgba(0,0,0,.22);
+  padding: 18px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-tabs{
+  display:flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* Mode screen account strip */
+.mode-account{
+  margin-top: 18px;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+}
+
+.mode-account-label{
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mode-account-name{
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+
 .launch-screen{
   position: fixed;
   top: 64px;
