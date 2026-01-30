@@ -5,10 +5,11 @@
   - My Team: create team, rename (creator), kick (creator), requests (creator)
 */
 
-const MAX_TEAMS = 8;
-// Teams should have at least 3 players to be tournament-ready, but can have up to 4.
+const SOFT_MAX_TEAMS = 8;
+// Teams should have at least 3 players to be tournament-ready.
+// Historically we capped at 4; now that's just the recommended size.
 const TEAM_MIN = 3;
-const TEAM_MAX = 4;
+const SOFT_TEAM_MAX = 4;
 
 // Firebase config
 const firebaseConfig = {
@@ -1040,7 +1041,7 @@ async function migrateIdentity(oldId, newId, displayName) {
   }
 
   // 2) Migrate team memberships/ownership from legacy IDs onto the name-keyed ID.
-  // Teams are small (MAX_TEAMS), so scanning client-side is fine.
+  // Teams are small (SOFT_MAX_TEAMS), so scanning client-side is fine.
   for (const t of (teamsCache || [])) {
     const teamRef = db.collection('teams').doc(t.id);
     try {
@@ -1341,18 +1342,41 @@ function listenToPlayers() {
 }
 
 function updateHomeStats(teams) {
-  // Count "full" teams (3+ members) - these are the ones that count toward the 8 slots
+  // Count "full" teams (3+ members) - these are the ones that count toward the recommended slots
   const fullTeams = teams.filter(t => getMembers(t).length >= TEAM_MIN).length;
   const players = teams.reduce((sum, t) => sum + getMembers(t).length, 0);
 
-  // Home "spots" = remaining full team slots
-  const spotsLeft = Math.max(0, MAX_TEAMS - fullTeams);
-
-  setText('spots-left', spotsLeft);
+  const teamCountStr = `${fullTeams} / ${SOFT_MAX_TEAMS}`;
   setText('players-count', players);
-  setText('team-count', `${fullTeams}/${MAX_TEAMS}`);
-  setText('team-count-pill', `${fullTeams}/${MAX_TEAMS}`);
+  setText('team-count', teamCountStr);
+  setText('team-count-pill', teamCountStr);
+
+  // Overboard indicators (soft limits only)
+  const overTeams = fullTeams > SOFT_MAX_TEAMS;
+
+  const teamCountEl = document.getElementById('team-count');
+  teamCountEl?.classList.toggle('overboard', overTeams);
+
+  const teamCountPill = document.getElementById('team-count-pill');
+  teamCountPill?.classList.toggle('overboard', overTeams);
+
+  // Home "spots" = remaining recommended full-team slots (or how far over we are)
+  const spotsDisplay = document.querySelector('#panel-home .spots-display');
+  const spotsLabel = document.querySelector('#panel-home .spots-label');
+
+  if (!overTeams) {
+    const spotsLeft = Math.max(0, SOFT_MAX_TEAMS - fullTeams);
+    setText('spots-left', spotsLeft);
+    if (spotsLabel) spotsLabel.textContent = 'team slots left';
+    spotsDisplay?.classList.remove('overboard');
+  } else {
+    const overBy = fullTeams - SOFT_MAX_TEAMS;
+    setText('spots-left', overBy);
+    if (spotsLabel) spotsLabel.textContent = `teams over (recommended ${SOFT_MAX_TEAMS})`;
+    spotsDisplay?.classList.add('overboard');
+  }
 }
+
 
 /* =========================
    State helpers
@@ -1434,10 +1458,10 @@ function findUserInPending(team, userId) {
 function computeUserState(teams) {
   const userId = getUserId();
   let team = null;
-  let pendingTeam = null;
+  const pendingTeams = [];
   for (const t of teams) {
     if (findUserInMembers(t, userId)) team = t;
-    if (findUserInPending(t, userId)) pendingTeam = t;
+    if (findUserInPending(t, userId)) pendingTeams.push(t);
   }
   // Creator detection:
   // - Prefer explicit creatorUserId
@@ -1445,14 +1469,15 @@ function computeUserState(teams) {
   // - Otherwise fallback to first member
   const creatorId = team ? getTeamCreatorAccountId(team) : '';
   const isCreator = !!(team && creatorId && String(creatorId).trim() === String(userId || '').trim());
+  const pendingTeamIds = pendingTeams.map(t => t?.id).filter(Boolean);
   return {
     userId,
     name: getUserName(),
     team,
     teamId: team?.id || null,
     isCreator,
-    pendingTeam,
-    pendingTeamId: pendingTeam?.id || null,
+    pendingTeams,
+    pendingTeamIds,
   };
 }
 
@@ -1619,7 +1644,6 @@ function renderPlayers(players, teams) {
   const myTeam = st?.team;
   // Anyone on a team can send invites (not just the creator).
   const canManageInvites = !!(st.teamId && myTeam);
-  const canSendInvitesNow = !!(canManageInvites && getMembers(myTeam).length < TEAM_MAX);
 
   // Directory = every known player from the Players collection PLUS anyone currently on a team.
   const directory = buildPlayersDirectory(players, teams);
@@ -1669,10 +1693,8 @@ function renderPlayers(players, teams) {
           invitePillHtml = `<button class="player-tag pill-action invite" type="button" disabled title="Already on your team">Invite</button>`;
         } else {
           const mode = alreadyInvitedByMe ? 'cancel' : 'send';
-          const disabled = inviteDisabledBase || (!alreadyInvitedByMe && !canSendInvitesNow);
-          const title = inviteDisabledBase
-            ? 'Set your name on Home first.'
-            : (!alreadyInvitedByMe && !canSendInvitesNow ? 'Your team is full.' : '');
+          const disabled = inviteDisabledBase;
+          const title = inviteDisabledBase ? 'Set your name on Home first.' : '';
           invitePillHtml = `
             <button class="player-tag pill-action ${alreadyInvitedByMe ? 'cancel' : 'invite'}" type="button" data-invite="${esc(uid)}" data-invite-mode="${mode}" ${disabled ? 'disabled' : ''} ${title ? `title="${esc(title)}"` : ''}>
               ${alreadyInvitedByMe ? 'Cancel invite' : 'Invite'}
@@ -1729,7 +1751,6 @@ function renderPlayers(players, teams) {
   // Helpful hint for teammates
   if (st.teamId) {
     if (!st.name) setHint('players-hint', 'Set your name on Home first.');
-    else if (!canSendInvitesNow) setHint('players-hint', 'Your team is full — you can’t send new invites.');
     else setHint('players-hint', 'Tap Invite to send a team invite.');
   }
 }
@@ -1778,7 +1799,6 @@ async function upsertPlayerProfile(userId, name) {
 async function sendInviteToPlayer(targetUserId) {
   const st = computeUserState(teamsCache);
   if (!st.teamId || !st.team) return;
-  if (getMembers(st.team).length >= TEAM_MAX) return;
 
   setHint('players-hint', 'Sending invite…');
 
@@ -1862,7 +1882,7 @@ async function acceptInvite(teamId) {
   setHint('invites-hint', 'Joining…');
 
   try {
-    // We keep the app small (MAX_TEAMS). Safest approach is to read all teams so we can:
+    // We keep the app small (SOFT_MAX_TEAMS). Safest approach is to read all teams so we can:
     // - remove the player from any old team roster (switch)
     // - clear the player's pending requests from every team once they join
     const allTeamIds = (teamsCache || []).map(t => String(t.id || '').trim()).filter(Boolean);
@@ -1884,7 +1904,6 @@ async function acceptInvite(teamId) {
       if (!target) throw new Error('Team not found.');
 
       const targetMembers = getMembers(target);
-      if (targetMembers.length >= TEAM_MAX) throw new Error('Team is full.');
       if (targetMembers.some(m => isSameAccount(m, st.userId))) return;
 
       // Determine if we're switching from another team.
@@ -2010,6 +2029,7 @@ function renderTeams(teams) {
     const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
     const itemStyle = isFull && tc ? `style="--team-accent:${esc(tc)}"` : '';
     const pillClass = isFull ? 'pill-full' : 'pill-incomplete';
+    const overSize = members.length > SOFT_TEAM_MAX;
 
     const adminDeleteBtn = isAdminUser()
       ? `<button class="icon-btn danger small admin-delete-btn" type="button" data-admin-delete-team="${esc(t.id)}" title="Delete team">🗑</button>`
@@ -2022,7 +2042,7 @@ function renderTeams(teams) {
           <div class="team-list-members" ${nameStyle}>${memberNamesHtml}</div>
         </div>
         <div class="team-list-right">
-          <div class="team-list-count ${pillClass}">${members.length}/${TEAM_MAX}</div>
+          <div class="team-list-count ${pillClass} ${overSize ? 'pill-overboard' : ''}">${members.length}/${SOFT_TEAM_MAX}</div>
           ${adminDeleteBtn}
         </div>
       </button>
@@ -2062,7 +2082,7 @@ function initTeamModal() {
     if (!openTeamId) return;
     const st = computeUserState(teamsCache);
     // If the user already has a pending request for this team, clicking the button cancels it.
-    if (st.pendingTeamId === openTeamId) {
+    if ((st.pendingTeamIds || []).includes(openTeamId)) {
       await cancelJoinRequest(openTeamId);
       // Update UI immediately; snapshot listener will also re-render.
       renderTeamModal(openTeamId);
@@ -2120,10 +2140,9 @@ function renderTeamModal(teamId) {
 
   const st = computeUserState(teamsCache);
   const joinBtn = document.getElementById('team-modal-join');
-  const full = members.length >= TEAM_MAX;
+  const full = members.length >= SOFT_TEAM_MAX;
   const iAmMember = st.teamId === teamId;
-  const iAmPendingHere = st.pendingTeamId === teamId;
-  const hasOtherPending = !!(st.pendingTeamId && st.pendingTeamId !== teamId);
+  const iAmPendingHere = (st.pendingTeamIds || []).includes(teamId);
   const noName = !st.name;
 
   let label = 'Request to join';
@@ -2143,9 +2162,6 @@ function renderTeamModal(teamId) {
     label = 'Cancel Request';
     variant = 'danger';
     hint = 'Your request is pending.';
-  } else if (hasOtherPending) {
-    disabled = true;
-    hint = 'You already have a pending request.';
   } else if (full) {
     // Allow requests even when a team is full; the leader can accept later once space is available.
     disabled = false;
@@ -2195,11 +2211,6 @@ async function requestToJoin(teamId, opts = {}) {
     setHint(opts.hintElId || 'team-modal-hint', 'Set your name on Home first.');
     return;
   }
-  if (st.pendingTeamId && st.pendingTeamId !== teamId) {
-    setHint(opts.hintElId || 'team-modal-hint', 'You already have a pending request.');
-    return;
-  }
-
   setHint(opts.hintElId || 'team-modal-hint', 'Sending…');
 
   const ref = db.collection('teams').doc(teamId);
@@ -2353,8 +2364,7 @@ function renderMyTeam(teams) {
     // Create button is only relevant if you're not on a team.
     // Pending requests don't block team creation - only being on an actual team does.
     // Check if 8 full teams exist (not just 8 teams total)
-    const fullTeamCount = teams.filter(t => getMembers(t).length >= TEAM_MIN).length;
-    const disableCreate = !st.name || hasTeam || fullTeamCount >= MAX_TEAMS;
+    const disableCreate = !st.name || hasTeam;
     createBtn.disabled = disableCreate;
     createBtn.classList.toggle('disabled', disableCreate);
     createBtn.style.display = hasTeam ? 'none' : 'inline-flex';
@@ -2382,7 +2392,9 @@ function renderMyTeam(teams) {
   setText('myteam-name', truncateTeamName(st.team.teamName || 'Unnamed'));
   const myNameEl = document.getElementById('myteam-name');
   if (myNameEl) myNameEl.style.color = getDisplayTeamColor(st.team);
-  setText('myteam-size', `${getMembers(st.team).length}/${TEAM_MAX}`);
+  const mySize = getMembers(st.team).length;
+  setText('myteam-size', `${mySize}/${SOFT_TEAM_MAX}`);
+  document.getElementById('myteam-size')?.classList.toggle('overboard', mySize > SOFT_TEAM_MAX);
 
   // Footer buttons
   if (leaveDeleteBtn) {
@@ -3050,13 +3062,6 @@ async function handleCreateTeam() {
     setHint('create-team-hint', 'You are already on a team.');
     return;
   }
-  // Check if 8 full teams exist (not just 8 teams total)
-  const fullTeamCount = teamsCache.filter(t => getMembers(t).length >= TEAM_MIN).length;
-  if (fullTeamCount >= MAX_TEAMS) {
-    setHint('create-team-hint', 'No team slots left (8 full teams already exist).');
-    return;
-  }
-
   const nameInput = document.getElementById('create-teamName');
   const teamName = (nameInput?.value || '').trim();
   const colorInput = document.getElementById('create-teamColor');
@@ -3306,7 +3311,6 @@ async function acceptRequest(teamId, userId) {
       if (!targetTeam) throw new Error('Team not found.');
 
       const members = getMembers(targetTeam);
-      if (members.length >= TEAM_MAX) throw new Error('Team is full.');
 
       // Find the request by account (robust to legacy/migrated ids).
       const pending = getPending(targetTeam);
@@ -5410,7 +5414,7 @@ function renderTeamProfile(teamId) {
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Members</span>
-        <span class="profile-stat-value">${members.length}/${TEAM_MAX}</span>
+        <span class="profile-stat-value">${members.length}/${SOFT_TEAM_MAX}</span>
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Created</span>
@@ -5635,7 +5639,7 @@ function renderTeamDetailsModal(teamId) {
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Members</span>
-        <span class="profile-stat-value">${members.length}/${TEAM_MAX}</span>
+        <span class="profile-stat-value">${members.length}/${SOFT_TEAM_MAX}</span>
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Created</span>

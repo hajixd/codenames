@@ -1,3 +1,12 @@
+
+
+/* Over the recommended team size (soft limit) */
+.team-list-count.pill-overboard{
+  border-color: rgba(239, 68, 68, 0.70);
+  background: rgba(239, 68, 68, 0.18);
+  color: rgba(239, 68, 68, 1);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18);
+}
 * {
   margin: 0;
   padding: 0;
@@ -221,6 +230,16 @@ body.tournament #play-mode-select{ display:none !important; }
     font-size: 13px;
     margin-top: 4px;
   }
+
+
+.spots-display.overboard{
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.spots-display.overboard .spots-number{
+  color: rgba(239, 68, 68, 1);
+}
 
   .info-stats {
     display: flex;
@@ -873,6 +892,22 @@ body.tournament #play-mode-select{ display:none !important; }
 .pill.pending {
   color: var(--gold);
   border-color: rgba(250, 204, 21, 0.35);
+}
+
+
+/* Soft-limit warning (used for counters like "10/8") */
+.pill.overboard {
+  border-color: rgba(239, 68, 68, 0.60);
+  background: rgba(239, 68, 68, 0.14);
+  color: rgba(239, 68, 68, 1);
+}
+
+.val.overboard {
+  color: rgba(239, 68, 68, 1);
+}
+
+.meta.overboard {
+  color: rgba(239, 68, 68, 1);
 }
 
 .manage-note {
