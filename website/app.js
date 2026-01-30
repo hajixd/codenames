@@ -435,10 +435,12 @@ function enterAppFromLaunch(mode, opts = {}) {
     // (On slow loads or if game.js hasn't initialized yet, the default UI can
     // briefly show the Quick/Tournament chooser, which looks like the click
     // "didn't work".)
-    try {
-      const chooser = document.getElementById('play-mode-select');
-      if (chooser) chooser.style.display = 'none';
-    } catch (_) {}
+    if (!opts || !opts.skipQuickLobby) {
+      try {
+        const chooser = document.getElementById('play-mode-select');
+        if (chooser) chooser.style.display = 'none';
+      } catch (_) {}
+    }
     try { window.bumpPresence?.(); } catch (_) {}
     try {
       // Normally Quick Play shows its lobby. But when a live game is in-progress

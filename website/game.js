@@ -3191,9 +3191,9 @@ async function handleEndGame() {
 
   // Close any open UI immediately and go back to the main page.
   try { closeSettingsModal?.(); } catch (_) {}
-  try { document.getElementById('game-log')?.style.display = 'none'; } catch (_) {}
-  try { document.getElementById('game-menu')?.style.display = 'none'; } catch (_) {}
-  try { document.getElementById('popover-backdrop')?.style.display = 'none'; } catch (_) {}
+  try { (function(){ const __el = document.getElementById('game-log'); if (__el) __el.style.display = 'none'; })() } catch (_) {}
+  try { (function(){ const __el = document.getElementById('game-menu'); if (__el) __el.style.display = 'none'; })() } catch (_) {}
+  try { (function(){ const __el = document.getElementById('popover-backdrop'); if (__el) __el.style.display = 'none'; })() } catch (_) {}
 
   // Stop listening to the game on this client right away.
   try { stopGameListener?.(); } catch (_) {}
