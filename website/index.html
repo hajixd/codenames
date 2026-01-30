@@ -81,51 +81,30 @@
       <!-- Auth Screen (sign in / create account) -->
       <div class="auth-screen" id="auth-screen" aria-label="Sign in">
         <div class="auth-card">
-          <div class="launch-hero" style="text-align:center; padding-top: 22px;">
-            <h1 class="launch-h1" style="font-size:34px;">CODENAMES</h1>
-            <p class="launch-sub">Sign in to play</p>
+          <div class="auth-hero">
+            <h1 class="auth-title">CODENAMES</h1>
+            <p class="auth-subtitle">Sign in to play</p>
           </div>
 
-          <!-- Account (username + password) -->
-          <div class="name-dock launch-name-dock" id="launch-name-card" style="margin-top: 18px !important; max-width: 420px;">
-            <div class="auth-tabs">
-              <button type="button" class="btn primary" id="launch-show-login" style="flex:1;">Log in</button>
-              <button type="button" class="btn" id="launch-show-create" style="flex:1;">Create account</button>
-            </div>
-
-            <form id="launch-login-form" class="form name-dock-form" autocomplete="on">
-              <label class="field" style="margin:0;">
-                <span class="label">Username</span>
-                <input type="text" id="launch-username-login" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
-              </label>
-              <label class="field" style="margin:0;">
-                <span class="label">Password</span>
-                <input type="password" id="launch-password-login" class="input" placeholder="Password" autocomplete="current-password" required>
-              </label>
-              <div class="form-actions" style="margin:0; gap:8px; justify-content:center;">
-                <button type="submit" class="btn primary" id="launch-login-btn">Log in</button>
-                <span class="hint" id="launch-name-hint"></span>
-              </div>
-            </form>
-
-            <form id="launch-create-form" class="form name-dock-form" autocomplete="on" style="display:none;">
-              <label class="field" style="margin:0;">
-                <span class="label">Username</span>
-                <input type="text" id="launch-username-create" class="input" placeholder="username" autocapitalize="off" autocomplete="username" required>
-              </label>
-              <label class="field" style="margin:0;">
-                <span class="label">Password</span>
-                <input type="password" id="launch-password-create" class="input" placeholder="Password" autocomplete="new-password" required>
-              </label>
-              <div class="form-actions" style="margin:0; gap:8px; justify-content:center;">
-                <button type="submit" class="btn primary" id="launch-create-btn">Create account</button>
-                <span class="hint" id="launch-name-hint-create"></span>
-              </div>
-              <div class="hint" style="margin-top:6px; text-align:center;">
-                Usernames: 3–20 chars, letters/numbers/underscore.
-              </div>
-            </form>
+          <div class="auth-tabs" role="tablist" aria-label="Account">
+            <button type="button" class="btn primary" id="launch-show-login" style="flex:1;" role="tab" aria-selected="true">Log in</button>
+            <button type="button" class="btn" id="launch-show-create" style="flex:1;" role="tab" aria-selected="false">Create account</button>
           </div>
+
+          <form id="launch-login-form" class="form auth-form" autocomplete="on">
+            <input type="text" id="launch-username-login" class="input auth-input" placeholder="Username" autocapitalize="off" autocomplete="username" required>
+            <input type="password" id="launch-password-login" class="input auth-input" placeholder="Password" autocomplete="current-password" required>
+            <button type="submit" class="btn primary auth-submit" id="launch-login-btn">Log in</button>
+            <div class="hint auth-hint" id="launch-name-hint"></div>
+          </form>
+
+          <form id="launch-create-form" class="form auth-form" autocomplete="on" style="display:none;">
+            <input type="text" id="launch-username-create" class="input auth-input" placeholder="Username" autocapitalize="off" autocomplete="username" required>
+            <input type="password" id="launch-password-create" class="input auth-input" placeholder="Password" autocomplete="new-password" required>
+            <button type="submit" class="btn primary auth-submit" id="launch-create-btn">Create account</button>
+            <div class="hint auth-hint" id="launch-name-hint-create"></div>
+            <div class="hint auth-note">Usernames: 3–20 chars (a–z, 0–9, _)</div>
+          </form>
         </div>
       </div>
 
@@ -174,7 +153,7 @@
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 </svg>
               </span>
-              <span class="online-count" id="user-name-display" title="Click to change">—</span>
+              <span class="online-count" id="user-name-display">—</span>
             </button>
             <button class="online-counter-btn" id="header-team-pill" type="button">
               <span class="team-icon">
@@ -986,6 +965,37 @@
         </div>
       </div>
 
+      <!-- Change Password Modal -->
+      <div class="modal password-change-modal" id="password-change-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="password-change-modal-backdrop"></div>
+        <div class="modal-card password-change-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Change password</div>
+            <button class="icon-btn" id="password-change-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <form id="password-change-form" class="form">
+              <label class="field">
+                <span class="label">Current password</span>
+                <input type="password" id="password-current-input" class="input" placeholder="Current password" autocomplete="current-password" required>
+              </label>
+              <label class="field">
+                <span class="label">New password</span>
+                <input type="password" id="password-new-input" class="input" placeholder="New password" autocomplete="new-password" required>
+              </label>
+              <label class="field">
+                <span class="label">Confirm new password</span>
+                <input type="password" id="password-confirm-input" class="input" placeholder="Confirm new password" autocomplete="new-password" required>
+              </label>
+              <div class="hint" id="password-change-hint"></div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary">Update password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- Teammates Modal -->
       <div class="modal teammates-modal" id="teammates-modal" style="display:none;" role="dialog" aria-modal="true">
         <div class="modal-backdrop" id="teammates-modal-backdrop"></div>
@@ -1034,9 +1044,8 @@
               </div>
 
               <div class="settings-account-actions">
-                <button class="btn" id="settings-change-name-btn" type="button">Change Name</button>
+                <button class="btn" id="settings-change-password-btn" type="button">Change Password</button>
                 <button class="btn" id="settings-logout-btn" type="button">Log Out</button>
-                <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
               </div>
 
               <!-- Admin Actions (only visible for admin users) -->
@@ -1074,6 +1083,37 @@
         </div>
       </div>
       <div class="profile-popup-backdrop" id="profile-popup-backdrop" style="display:none;"></div>
+
+      <!-- Change Password Modal -->
+      <div class="modal password-change-modal" id="password-change-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="password-change-modal-backdrop"></div>
+        <div class="modal-card password-change-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Change Password</div>
+            <button class="icon-btn" id="password-change-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <form id="password-change-form" class="form">
+              <label class="field">
+                <span class="label">Current password</span>
+                <input type="password" id="password-change-current" class="input" autocomplete="current-password" required>
+              </label>
+              <label class="field">
+                <span class="label">New password</span>
+                <input type="password" id="password-change-new" class="input" autocomplete="new-password" required>
+              </label>
+              <label class="field">
+                <span class="label">Confirm new password</span>
+                <input type="password" id="password-change-confirm" class="input" autocomplete="new-password" required>
+              </label>
+              <div class="hint" id="password-change-hint" style="min-height: 18px;"></div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary">Update password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
 
 
     </div>

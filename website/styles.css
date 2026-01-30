@@ -3120,6 +3120,27 @@ body.quickplay .main-content {
   padding: clamp(18px, 4vw, 56px);
 }
 
+.auth-hero{
+  text-align: center;
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-title{
+  margin: 0;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  font-size: 44px;
+}
+
+.auth-subtitle{
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
 /* Auth page should not inherit the "push it down" launch positioning */
 .auth-screen .launch-name-dock{
   margin-top: 18px !important;
@@ -3127,21 +3148,64 @@ body.quickplay .main-content {
 
 .auth-card{
   width: 100%;
-  max-width: 540px;
+  max-width: 460px;
   border-radius: 22px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: 0 18px 60px rgba(0,0,0,.22);
-  padding: 18px 18px 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 18px 60px rgba(0,0,0,.28);
+  padding: 26px 22px 22px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .auth-tabs{
   display:flex;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-top: 6px;
+}
+
+.auth-tabs .btn{
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.auth-form{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-input{
+  height: 46px;
+  font-size: 14px;
+  border-radius: 14px;
+}
+
+.auth-submit{
+  width: 100%;
+  justify-content: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-weight: 900;
+}
+
+.auth-hint{ text-align: center; min-height: 18px; }
+.auth-note{ text-align: center; color: var(--text-dim); font-size: 12px; margin-top: -4px; }
+
+@media (max-width: 520px){
+  .auth-screen{ padding: 18px 14px; }
+  .auth-card{ padding: 22px 18px 18px; border-radius: 20px; }
+  .auth-title{ font-size: 34px; }
+  .auth-tabs{ gap: 8px; }
+  .auth-tabs .btn{ padding: 9px 12px; border-radius: 12px; }
+  .auth-input{ height: 44px; border-radius: 12px; }
+  .auth-submit{ padding: 11px 14px; border-radius: 12px; }
+}
+
+@media (min-width: 900px){
+  .auth-screen{ padding: 56px; }
 }
 
 /* Mode screen account strip */

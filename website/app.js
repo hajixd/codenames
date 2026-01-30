@@ -291,6 +291,7 @@ let lastLocalNameSetAtMs = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   initSettings();
+  initPasswordChangeModal();
   initConfirmDialog();
   initQuickPlayGate();
   initLaunchScreen();
@@ -1406,6 +1407,14 @@ function refreshNameUI() {
   const canEnter = !!auth.currentUser && !!name;
   if (launchQuick) launchQuick.disabled = !canEnter;
   if (launchTourn) launchTourn.disabled = !canEnter;
+
+  // Hide account-only header controls until signed in.
+  const headerNamePill = document.getElementById('header-name-pill');
+  const headerTeamPill = document.getElementById('header-team-pill');
+  const settingsGear = document.getElementById('settings-gear-btn');
+  if (headerNamePill) headerNamePill.style.display = canEnter ? '' : 'none';
+  if (headerTeamPill) headerTeamPill.style.display = canEnter ? '' : 'none';
+  if (settingsGear) settingsGear.style.display = canEnter ? '' : 'none';
 
   // Update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
@@ -3943,19 +3952,12 @@ themeToggle?.addEventListener('change', () => {
     logoutLocal('Logging out');
   });
 
-  // Change Name button in settings
-  const settingsChangeNameBtn = document.getElementById('settings-change-name-btn');
-  settingsChangeNameBtn?.addEventListener('click', () => {
+  // Change Password button in settings
+  const settingsChangePasswordBtn = document.getElementById('settings-change-password-btn');
+  settingsChangePasswordBtn?.addEventListener('click', () => {
     playSound('click');
     closeSettingsModal();
-    openNameChangeModal();
-  });
-
-  // Delete Account button in settings
-  const settingsDeleteBtn = document.getElementById('settings-delete-account-btn');
-  settingsDeleteBtn?.addEventListener('click', () => {
-    closeSettingsModal();
-    logoutLocal('Deleting account');
+    openPasswordChangeModal();
   });
 
   // Test sound button
@@ -5159,6 +5161,122 @@ function closeNameChangeModal() {
       modal.style.display = 'none';
     }
   }, 200);
+}
+
+/* =========================
+   Password Change Modal
+   - Username+password accounts are implemented via a private pseudo-email.
+   - Firebase requires recent sign-in to update passwords, so we re-auth using
+     the current password.
+========================= */
+function initPasswordChangeModal() {
+  const modal = document.getElementById('password-change-modal');
+  const backdrop = document.getElementById('password-change-modal-backdrop');
+  const closeBtn = document.getElementById('password-change-modal-close');
+  const form = document.getElementById('password-change-form');
+  const currentInput = document.getElementById('password-current-input');
+  const newInput = document.getElementById('password-new-input');
+  const confirmInput = document.getElementById('password-confirm-input');
+  const hintEl = document.getElementById('password-change-hint');
+
+  if (!modal) return;
+
+  const setHint = (msg) => { if (hintEl) hintEl.textContent = String(msg || ''); };
+
+  const close = () => {
+    modal.classList.remove('modal-open');
+    setTimeout(() => {
+      if (!modal.classList.contains('modal-open')) {
+        modal.style.display = 'none';
+      }
+    }, 200);
+  };
+
+  closeBtn?.addEventListener('click', () => { playSound('click'); close(); });
+  backdrop?.addEventListener('click', () => { playSound('click'); close(); });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const u = auth.currentUser;
+    if (!u) {
+      setHint('You need to be logged in.');
+      return;
+    }
+
+    const currentPass = String(currentInput?.value || '');
+    const newPass = String(newInput?.value || '');
+    const confirmPass = String(confirmInput?.value || '');
+
+    if (!currentPass || !newPass) {
+      setHint('Enter your current password and a new password.');
+      return;
+    }
+    if (newPass.length < 6) {
+      setHint('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setHint('New passwords do not match.');
+      return;
+    }
+
+    try {
+      playSound('click');
+      setHint('');
+      showAuthLoadingScreen('Updating password');
+
+      // Re-authenticate (required by Firebase for sensitive actions).
+      const username = String(getUserName() || '').trim().toLowerCase();
+      const email = `${username}@user.codenames.local`;
+      const cred = firebase.auth.EmailAuthProvider.credential(email, currentPass);
+      await u.reauthenticateWithCredential(cred);
+
+      await u.updatePassword(newPass);
+
+      setHint('Password updated.');
+      playSound('success');
+      // Clear fields
+      if (currentInput) currentInput.value = '';
+      if (newInput) newInput.value = '';
+      if (confirmInput) confirmInput.value = '';
+
+      // Close shortly after success so the user sees confirmation.
+      setTimeout(() => close(), 500);
+    } catch (err) {
+      console.warn('Password update failed', err);
+      const code = String(err?.code || '');
+      if (code.includes('auth/wrong-password')) {
+        setHint('Current password is incorrect.');
+      } else if (code.includes('auth/too-many-requests')) {
+        setHint('Too many attempts. Try again in a bit.');
+      } else {
+        setHint('Could not update password. Please try again.');
+      }
+    } finally {
+      hideAuthLoadingScreen();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'flex') {
+      close();
+    }
+  });
+}
+
+function openPasswordChangeModal() {
+  const modal = document.getElementById('password-change-modal');
+  const hintEl = document.getElementById('password-change-hint');
+  if (!modal) return;
+  if (!auth.currentUser) {
+    try { showAuthScreen(); } catch (_) {}
+    return;
+  }
+  if (hintEl) hintEl.textContent = '';
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+  setTimeout(() => document.getElementById('password-current-input')?.focus?.(), 100);
 }
 
 /* =========================
