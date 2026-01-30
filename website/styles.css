@@ -3115,16 +3115,21 @@ body.quickplay .main-content {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: clamp(18px, 4vw, 56px);
+}
+
+/* Auth page should not inherit the "push it down" launch positioning */
+.auth-screen .launch-name-dock{
+  margin-top: 18px !important;
 }
 
 .auth-card{
   width: 100%;
   max-width: 540px;
   border-radius: 22px;
-  background: var(--panel);
+  background: var(--card);
   border: 1px solid var(--border);
   box-shadow: 0 18px 60px rgba(0,0,0,.22);
   padding: 18px 18px 20px;
@@ -8038,7 +8043,7 @@ body.tournament.has-team-color .input:focus {
   height: 140px;
 }
 
-.auth-card {
+.auth-loading-card {
   width: 40px;
   height: 40px;
   background: var(--surface2);
@@ -8048,7 +8053,7 @@ body.tournament.has-team-color .input:focus {
   animation-delay: calc(var(--delay) * 0.1s);
 }
 
-.auth-card.accent {
+.auth-loading-card.accent {
   background: var(--accent);
   border-color: var(--accent);
   box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
@@ -8065,7 +8070,7 @@ body.tournament.has-team-color .input:focus {
   }
 }
 
-.auth-card.accent {
+.auth-loading-card.accent {
   animation: authCardAccentPulse 2.4s ease-in-out infinite;
   animation-delay: calc(var(--delay) * 0.1s);
 }
