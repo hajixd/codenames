@@ -131,6 +131,91 @@ let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
 
+/* =========================
+   Quick Play AI Players (Nebius Token Factory)
+   - AI lives as a player object in redPlayers/bluePlayers
+   - Only the client that created the AI (controllerOdId) drives its actions
+   - AI readiness is verified in lobby via /api/ai/ready and surfaced as colors
+========================= */
+
+const MAX_AI_PER_TEAM = 4;
+const DEFAULT_AI_MODEL = 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B';
+
+// Tracks AIs that *this* client controls so we can drive them during a game.
+const localAIControllers = new Map(); // aiId -> config
+let aiPresenceInterval = null;
+let aiTurnLocks = new Map(); // aiId -> lastActionKey
+
+function makeAiId({ gameId = QUICKPLAY_DOC_ID, team, seatRole, nonce }) {
+  const n = nonce || Math.random().toString(36).slice(2, 8);
+  return `ai_${gameId}_${team}_${seatRole}_${n}`;
+}
+
+function normalizeAiMode(mode) {
+  const m = String(mode || '').toLowerCase();
+  return (m === 'autonomous') ? 'autonomous' : 'helper';
+}
+
+function aiReadyColorFromStatus(status) {
+  const s = String(status || '').toLowerCase();
+  if (s === 'green' || s === 'ready') return 'green';
+  if (s === 'yellow' || s === 'not_ready') return 'yellow';
+  if (s === 'red' || s === 'error') return 'red';
+  return 'colorless';
+}
+
+async function nebiusChatCompletion(payload) {
+  // Server-side proxy to keep API key out of the browser.
+  const res = await fetch('/api/ai/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(txt || `AI request failed (${res.status})`);
+  }
+  return await res.json();
+}
+
+async function nebiusReadyCheck(model) {
+  const res = await fetch('/api/ai/ready', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: model || DEFAULT_AI_MODEL })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(txt || `Ready check failed (${res.status})`);
+  }
+  return await res.json();
+}
+
+function ensureAiPresenceHeartbeat() {
+  if (aiPresenceInterval) return;
+  aiPresenceInterval = setInterval(async () => {
+    if (!localAIControllers.size) return;
+    try {
+      const batch = Array.from(localAIControllers.values());
+      for (const ai of batch) {
+        // Keep them visible in lobby (renderQuickLobby filters by presence)
+        await db.collection('presence').doc(ai.aiId).set({
+          odId: ai.aiId,
+          name: ai.name,
+          whereKey: 'quick',
+          whereLabel: 'Quick Play',
+          activePanelId: 'panel-game',
+          isAI: true,
+          lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+    } catch (e) {
+      // best effort
+    }
+  }, 20000);
+}
+
 // Quick Play settings / negotiation
 function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
@@ -391,6 +476,9 @@ function initGameUI() {
   bindSeat(blueSeatOp, 'blue', 'operative');
   bindSeat(blueSeatSpy, 'blue', 'spymaster');
 
+  // Add AI buttons in lobby (Red/Blue, Spymaster/Operative)
+  initQuickPlayAiAddUI();
+
   // Arrow keys anywhere in the lobby
   document.addEventListener('keydown', (e) => {
     if (currentPlayMode !== 'quick') return;
@@ -464,6 +552,81 @@ function initGameUI() {
   } else {
     showModeSelect();
   }
+}
+
+function initQuickPlayAiAddUI() {
+  const btns = Array.from(document.querySelectorAll('.ai-add-btn'));
+  if (!btns.length) return;
+
+  const modal = document.getElementById('ai-add-modal');
+  const backdrop = document.getElementById('ai-add-backdrop');
+  const closeBtn = document.getElementById('ai-add-close');
+  const cancelBtn = document.getElementById('ai-add-cancel');
+  const confirmBtn = document.getElementById('ai-add-confirm');
+  const modeEl = document.getElementById('ai-add-mode');
+  const nameEl = document.getElementById('ai-add-name');
+  const modelEl = document.getElementById('ai-add-model');
+  const hintEl = document.getElementById('ai-add-target-hint');
+
+  if (!modal || !backdrop || !confirmBtn || !modeEl || !nameEl || !modelEl || !hintEl) return;
+
+  let pendingTarget = null; // {team, seatRole}
+
+  const open = ({ team, seatRole }) => {
+    pendingTarget = { team, seatRole };
+    const labelTeam = team === 'red' ? 'Red' : 'Blue';
+    const labelSeat = seatRole === 'spymaster' ? 'Spymaster' : 'Operative';
+    hintEl.textContent = `Adding to ${labelTeam} — ${labelSeat}`;
+
+    // Defaults
+    if (!modelEl.value) modelEl.value = DEFAULT_AI_MODEL;
+    if (!nameEl.value) {
+      const short = (seatRole === 'spymaster') ? 'Spy' : 'Op';
+      nameEl.value = `${labelTeam} ${short} AI`;
+    }
+
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('modal-open');
+    modal.setAttribute('aria-hidden', 'false');
+    nameEl.focus();
+  };
+
+  const close = () => {
+    modal.classList.remove('modal-open');
+    modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (!modal.classList.contains('modal-open')) modal.style.display = 'none';
+    }, 200);
+    pendingTarget = null;
+    // Keep name/model sticky so adding multiple AIs is quick.
+  };
+
+  btns.forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const team = String(b.dataset.aiTeam || '').trim();
+      const seatRole = String(b.dataset.aiSeat || '').trim();
+      if (team !== 'red' && team !== 'blue') return;
+      open({ team, seatRole: (seatRole === 'spymaster') ? 'spymaster' : 'operative' });
+    });
+  });
+
+  backdrop.addEventListener('click', close);
+  closeBtn?.addEventListener('click', close);
+  cancelBtn?.addEventListener('click', close);
+
+  confirmBtn.addEventListener('click', async () => {
+    if (!pendingTarget) return;
+    const team = pendingTarget.team;
+    const seatRole = pendingTarget.seatRole;
+    const mode = normalizeAiMode(modeEl.value);
+    const name = String(nameEl.value || '').trim() || `${team.toUpperCase()} AI`;
+    const model = String(modelEl.value || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
+    close();
+    await addAiToQuickLobby({ team, seatRole, mode, name, model });
+  });
 }
 
 /* =========================
@@ -1455,6 +1618,475 @@ async function joinQuickLobby(role, seatRole) {
   }
 }
 
+async function addAiToQuickLobby({ team, seatRole, mode, name, model }) {
+  const controllerOdId = getUserId();
+  if (!controllerOdId) {
+    alert('Set a name on the Home tab first.');
+    return;
+  }
+  if (team !== 'red' && team !== 'blue') return;
+  const seat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
+
+  await ensureQuickPlayGameExists();
+
+  const aiId = makeAiId({ team, seatRole: seat });
+  const player = {
+    odId: aiId,
+    name: name,
+    ready: false,
+    role: seat,
+    isAI: true,
+    aiMode: normalizeAiMode(mode),
+    aiModel: model || DEFAULT_AI_MODEL,
+    aiReadyStatus: 'colorless',
+    controllerOdId: controllerOdId,
+    createdAtMs: Date.now()
+  };
+
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('Lobby not found');
+      const g = snap.data();
+      const activeJoinOn = isActiveJoinOn(g);
+      if (g.currentPhase && g.currentPhase !== 'waiting' && g.winner == null && !activeJoinOn) {
+        throw new Error('Quick Play is in progress. Please wait for the next game.');
+      }
+
+      const key = (team === 'red') ? 'redPlayers' : 'bluePlayers';
+      const list = Array.isArray(g[key]) ? [...g[key]] : [];
+      const aiCount = list.filter(p => !!p?.isAI).length;
+      if (aiCount >= MAX_AI_PER_TEAM) {
+        throw new Error(`Max ${MAX_AI_PER_TEAM} AIs per team.`);
+      }
+      if (list.some(p => p?.odId === aiId)) {
+        throw new Error('AI id collision (try again).');
+      }
+      list.push(player);
+
+      // Keep presence filter happy.
+      tx.update(ref, {
+        [key]: list,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        log: firebase.firestore.FieldValue.arrayUnion(`${team.toUpperCase()} added AI: ${player.name}`)
+      });
+    });
+
+    localAIControllers.set(aiId, { ...player, team });
+    ensureAiPresenceHeartbeat();
+
+    // Immediately write a presence doc so it shows up even before the heartbeat.
+    try {
+      await db.collection('presence').doc(aiId).set({
+        odId: aiId,
+        name: player.name,
+        whereKey: 'quick',
+        whereLabel: 'Quick Play',
+        activePanelId: 'panel-game',
+        isAI: true,
+        lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (_) {}
+
+    // Kick off lobby ready-check (colorless -> red/yellow/green)
+    void verifyAiReadiness({ team, aiId, model: player.aiModel });
+  } catch (e) {
+    console.error('Add AI failed:', e);
+    alert(e.message || 'Failed to add AI.');
+  }
+}
+
+async function updateAiInQuickLobby(team, aiId, patch) {
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error('Lobby not found');
+    const g = snap.data();
+    const key = (team === 'red') ? 'redPlayers' : 'bluePlayers';
+    const list = Array.isArray(g[key]) ? [...g[key]] : [];
+    const idx = list.findIndex(p => p?.odId === aiId);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...patch };
+    tx.update(ref, { [key]: list, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+  });
+}
+
+async function verifyAiReadiness({ team, aiId, model }) {
+  // Default = colorless. We only flip to other colors after attempting the API call.
+  try {
+    const out = await nebiusReadyCheck(model || DEFAULT_AI_MODEL);
+    const text = String(out?.text || '').trim();
+    if (text === 'Ready') {
+      await updateAiInQuickLobby(team, aiId, { aiReadyStatus: 'green', ready: true });
+    } else {
+      await updateAiInQuickLobby(team, aiId, { aiReadyStatus: 'yellow', ready: false });
+    }
+  } catch (e) {
+    await updateAiInQuickLobby(team, aiId, { aiReadyStatus: 'red', ready: false });
+  }
+}
+
+async function postAiTeamChat(game, team, ai, text) {
+  try {
+    if (!game?.id) return;
+    const msg = String(text || '').trim();
+    if (!msg) return;
+    await db.collection('games').doc(game.id)
+      .collection(`${team}Chat`)
+      .add({
+        senderId: ai.aiId,
+        senderName: ai.name,
+        text: msg,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        isAI: true
+      });
+  } catch (_) {}
+}
+
+async function fetchRecentTeamChat(game, team, limit = 15) {
+  try {
+    const snap = await db.collection('games').doc(game.id)
+      .collection(`${team}Chat`)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    const docs = snap.docs.map(d => d.data()).reverse();
+    return docs.map(m => ({
+      name: String(m.senderName || 'Unknown'),
+      text: String(m.text || '')
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+
+function isAiSpymasterForGame(game, team, ai) {
+  if (!game || !ai) return false;
+  const name = String(ai.name || '');
+  if (team === 'red') return String(game.redSpymaster || '') === name;
+  if (team === 'blue') return String(game.blueSpymaster || '') === name;
+  return false;
+}
+
+async function submitClueAsAI(game, team, ai, word, number) {
+  const w = String(word || '').trim().toUpperCase();
+  const n = parseInt(number, 10);
+  if (!w || !Number.isFinite(n) || n < 0 || n > 9) return;
+  if (w.includes(' ')) return;
+  const boardWords = (game.cards || []).map(c => String(c.word || '').toUpperCase());
+  if (boardWords.includes(w)) return;
+
+  const teamName = team === 'red' ? game.redTeamName : game.blueTeamName;
+  const clueEntry = {
+    team,
+    word: w,
+    number: n,
+    results: [],
+    timestamp: new Date().toISOString()
+  };
+
+  await db.collection('games').doc(game.id).update({
+    currentClue: { word: w, number: n },
+    guessesRemaining: n + 1,
+    currentPhase: 'operatives',
+    log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${w}" for ${n}`),
+    clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+}
+
+async function endTurnAsAI(game) {
+  if (!game?.id) return;
+  if (game.winner) return;
+  const nextTeam = (game.currentTeam === 'red') ? 'blue' : 'red';
+  await db.collection('games').doc(game.id).update({
+    currentTeam: nextTeam,
+    currentPhase: 'spymaster',
+    currentClue: null,
+    guessesRemaining: 0,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    log: firebase.firestore.FieldValue.arrayUnion(`Turn ended. ${nextTeam.toUpperCase()} team's turn.`)
+  });
+}
+
+async function guessCardAsAI(game, cardIndex) {
+  if (!game?.cards || !game?.id) return;
+  if (game.currentPhase !== 'operatives') return;
+  if (game.winner) return;
+  const idx = parseInt(cardIndex, 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= game.cards.length) return;
+  const card = game.cards[idx];
+  if (!card || card.revealed) return;
+
+  const updatedCards = [...game.cards];
+  updatedCards[idx] = { ...card, revealed: true };
+
+  const teamName = game.currentTeam === 'red' ? game.redTeamName : game.blueTeamName;
+  const updates = {
+    cards: updatedCards,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  let logEntry = `${teamName} guessed "${card.word}" - `;
+  let endTurn = false;
+  let winner = null;
+
+  if (card.type === 'assassin') {
+    winner = game.currentTeam === 'red' ? 'blue' : 'red';
+    logEntry += 'ASSASSIN! Game over.';
+    endTurn = true;
+  } else if (card.type === game.currentTeam) {
+    logEntry += 'Correct!';
+    // Decrement remaining cards
+    if (game.currentTeam === 'red') updates.redCardsLeft = (game.redCardsLeft || 0) - 1;
+    else updates.blueCardsLeft = (game.blueCardsLeft || 0) - 1;
+    // Decrement guesses remaining
+    updates.guessesRemaining = Math.max(0, (game.guessesRemaining || 0) - 1);
+
+    const redLeft = (updates.redCardsLeft != null) ? updates.redCardsLeft : (game.redCardsLeft || 0);
+    const blueLeft = (updates.blueCardsLeft != null) ? updates.blueCardsLeft : (game.blueCardsLeft || 0);
+    if (redLeft <= 0) winner = 'red';
+    if (blueLeft <= 0) winner = 'blue';
+
+    if ((updates.guessesRemaining || 0) === 0) endTurn = true;
+  } else {
+    logEntry += 'Wrong!';
+    endTurn = true;
+    // Reveal neutral/opponent card decrements if opponent
+    if (card.type === 'red') updates.redCardsLeft = (game.redCardsLeft || 0) - 1;
+    if (card.type === 'blue') updates.blueCardsLeft = (game.blueCardsLeft || 0) - 1;
+    const redLeft = (updates.redCardsLeft != null) ? updates.redCardsLeft : (game.redCardsLeft || 0);
+    const blueLeft = (updates.blueCardsLeft != null) ? updates.blueCardsLeft : (game.blueCardsLeft || 0);
+    if (redLeft <= 0) winner = 'red';
+    if (blueLeft <= 0) winner = 'blue';
+  }
+
+  updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
+
+  if (winner) {
+    updates.winner = winner;
+    updates.currentPhase = 'ended';
+    updates.guessesRemaining = 0;
+  } else if (endTurn) {
+    updates.currentTeam = (game.currentTeam === 'red') ? 'blue' : 'red';
+    updates.currentPhase = 'spymaster';
+    updates.currentClue = null;
+    updates.guessesRemaining = 0;
+  }
+
+  // Update clue history results if present
+  try {
+    const history = Array.isArray(game.clueHistory) ? [...game.clueHistory] : [];
+    if (history.length > 0) {
+      const last = { ...history[history.length - 1] };
+      if (last && last.team === game.currentTeam) {
+        const correct = card.type === game.currentTeam;
+        last.results = Array.isArray(last.results) ? [...last.results, { word: card.word, correct }] : [{ word: card.word, correct }];
+        history[history.length - 1] = last;
+        updates.clueHistory = history;
+      }
+    }
+  } catch (_) {}
+
+  await db.collection('games').doc(game.id).update(updates);
+}
+
+async function driveLocalAIs(game) {
+  if (!game || !game.id) return;
+  if (!localAIControllers.size) return;
+
+  // Only drive AIs in Quick Play (for now)
+  if (game.id !== QUICKPLAY_DOC_ID) return;
+
+  const all = [...(game.redPlayers || []), ...(game.bluePlayers || [])];
+  const byId = new Map(all.map(p => [p.odId, p]));
+
+  for (const [aiId, cfg] of localAIControllers.entries()) {
+    const p = byId.get(aiId);
+    if (!p) continue;
+    if (String(p.controllerOdId || '') !== String(getUserId() || '')) continue;
+
+    const team = cfg.team;
+    const ai = { aiId, name: cfg.name, model: cfg.aiModel, mode: normalizeAiMode(cfg.aiMode), seatRole: String(p.role || cfg.role || 'operative') };
+
+    // Build an action key to prevent duplicate actions on repeated snapshots.
+    const baseKey = `${game.currentPhase}|${game.currentTeam}|${game.currentClue?.word || ''}|${game.guessesRemaining || 0}|${(game.cards || []).filter(c => c.revealed).length}`;
+    const lastKey = aiTurnLocks.get(aiId);
+
+    // AI Helper: never takes official actions, just chats.
+    if (ai.mode === 'helper') {
+      if (lastKey === baseKey) continue;
+      aiTurnLocks.set(aiId, baseKey);
+      await maybeHelperChat(game, team, ai);
+      continue;
+    }
+
+    // Autonomous: can chat + take actions.
+    if (game.winner) continue;
+
+    if (game.currentPhase === 'spymaster' && game.currentTeam === team && isAiSpymasterForGame(game, team, ai)) {
+      if (lastKey === baseKey) continue;
+      aiTurnLocks.set(aiId, baseKey);
+      await autonomousSpymasterTurn(game, team, ai);
+      continue;
+    }
+
+    if (game.currentPhase === 'operatives' && game.currentTeam === team && !isAiSpymasterForGame(game, team, ai)) {
+      if (lastKey === baseKey) continue;
+      aiTurnLocks.set(aiId, baseKey);
+      await autonomousOperativeTurn(game, team, ai);
+      continue;
+    }
+  }
+}
+
+async function maybeHelperChat(game, team, ai) {
+  // Heuristic: chat when a clue arrives or when the board updates.
+  const clue = game.currentClue;
+  if (!clue || !clue.word) return;
+
+  const words = (game.cards || []).map((c, idx) => ({ idx, word: c.word, revealed: !!c.revealed }));
+  const revealed = words.filter(w => w.revealed).map(w => w.word);
+  const unrevealed = words.filter(w => !w.revealed).map(w => w.word);
+
+  const chat = await fetchRecentTeamChat(game, team, 12);
+
+  const system = `You are an AI Helper for a Codenames team. You never take official actions. You only write short helpful messages in team chat. Keep it concise.`;
+  const user = {
+    team,
+    phase: game.currentPhase,
+    currentTeam: game.currentTeam,
+    clue,
+    guessesRemaining: game.guessesRemaining,
+    revealed,
+    unrevealed,
+    recentChat: chat
+  };
+
+  try {
+    const out = await nebiusChatCompletion({
+      model: ai.model || DEFAULT_AI_MODEL,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: JSON.stringify(user) }
+      ]
+    });
+    const txt = String(out?.text || '').trim();
+    if (txt) await postAiTeamChat(game, team, ai, txt);
+  } catch (_) {}
+}
+
+async function autonomousSpymasterTurn(game, team, ai) {
+  const cards = (game.cards || []).map(c => ({ word: c.word, type: c.type, revealed: !!c.revealed }));
+  const chat = await fetchRecentTeamChat(game, team, 15);
+
+  const schema = {
+    name: 'codenames_clue',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        word: { type: 'string', minLength: 1, description: 'Single word clue (not on the board).' },
+        number: { type: 'integer', minimum: 0, maximum: 9 },
+        say: { type: 'string', description: 'Optional message to send to team chat.' }
+      },
+      required: ['word', 'number']
+    }
+  };
+
+  const system = `You are the ${team.toUpperCase()} spymaster in Codenames. Provide a legal clue: one word, not any word on the board. Use the JSON schema. You may include a short chat message in 'say'.`;
+  const user = {
+    team,
+    rules: 'Clue must be one word, not on board, number 0-9. Avoid homographs of board words.',
+    board: cards,
+    score: { redLeft: game.redCardsLeft, blueLeft: game.blueCardsLeft },
+    recentChat: chat
+  };
+
+  try {
+    const out = await nebiusChatCompletion({
+      model: ai.model || DEFAULT_AI_MODEL,
+      response_format: { type: 'json_schema', json_schema: schema },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: JSON.stringify(user) }
+      ]
+    });
+    const raw = String(out?.text || '').trim();
+    const obj = JSON.parse(raw);
+    if (obj?.say) await postAiTeamChat(game, team, ai, obj.say);
+    await submitClueAsAI(game, team, ai, obj.word, obj.number);
+  } catch (e) {
+    // Best-effort: nudge the team that the AI failed
+    await postAiTeamChat(game, team, ai, 'Having trouble generating a clue right now.');
+  }
+}
+
+async function autonomousOperativeTurn(game, team, ai) {
+  const clue = game.currentClue;
+  if (!clue || !clue.word) return;
+
+  const cards = (game.cards || []).map((c, idx) => ({ idx, word: c.word, revealed: !!c.revealed }));
+  const chat = await fetchRecentTeamChat(game, team, 18);
+
+  const schema = {
+    name: 'codenames_guess',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        action: { type: 'string', enum: ['guess', 'pass'] },
+        index: { type: 'integer', minimum: 0, maximum: 24 },
+        say: { type: 'string', description: 'Optional message to send to team chat.' }
+      },
+      required: ['action']
+    }
+  };
+
+  const system = `You are an autonomous Codenames operative on ${team.toUpperCase()}. You may disagree with teammates. Think briefly, then output JSON per schema. If action='guess', choose an unrevealed card index.`;
+  const user = {
+    team,
+    clue,
+    guessesRemaining: game.guessesRemaining,
+    board: cards,
+    recentChat: chat
+  };
+
+  try {
+    const out = await nebiusChatCompletion({
+      model: ai.model || DEFAULT_AI_MODEL,
+      response_format: { type: 'json_schema', json_schema: schema },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: JSON.stringify(user) }
+      ]
+    });
+    const raw = String(out?.text || '').trim();
+    const obj = JSON.parse(raw);
+    if (obj?.say) await postAiTeamChat(game, team, ai, obj.say);
+    if (obj.action === 'pass') {
+      await endTurnAsAI(game);
+      return;
+    }
+    if (obj.action === 'guess') {
+      const idx = parseInt(obj.index, 10);
+      const card = game.cards?.[idx];
+      if (!card || card.revealed) {
+        await postAiTeamChat(game, team, ai, 'I picked an invalid/revealed card. Passing.');
+        await endTurnAsAI(game);
+        return;
+      }
+      await guessCardAsAI(game, idx);
+    }
+  } catch (_) {
+    // If parsing fails, do nothing.
+  }
+}
+
 async function setQuickSeatRole(seatRole) {
   const odId = getUserId();
   const userName = getUserName();
@@ -1745,8 +2377,11 @@ function renderQuickLobby(game) {
       const isYou = p.odId === odId;
       const ready = !!p.ready;
       const playerId = p.odId || '';
+      const isAI = !!p.isAI;
+      const aiReady = aiReadyColorFromStatus(p.aiReady || p.aiStatus || p.aiReadyStatus);
       return `
-        <div class="quick-player ${ready ? 'ready' : ''}">
+        <div class="quick-player ${ready ? 'ready' : ''} ${isAI ? 'ai' : ''}" ${isAI ? `data-ai-ready="${aiReady}"` : ''}>
+          ${isAI ? `<span class="ai-status-dot" aria-hidden="true"></span>` : ''}
           <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
           <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         </div>
@@ -2552,6 +3187,9 @@ function startGameListener(gameId, options = {}) {
     }
 
     renderGame();
+
+    // Drive any locally-controlled AI players (best-effort)
+    try { void driveLocalAIs(currentGame); } catch (_) {}
   }, (err) => {
     console.error('Game listener error:', err);
   });

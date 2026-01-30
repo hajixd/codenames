@@ -2509,6 +2509,40 @@ body.mode-joiner .only-joiner{ display:block; }
   /* When combined with .quick-seat-choice this becomes the clickable section header */
   margin-bottom: 10px;
 }
+
+/* +AI buttons in Quick Play lobby */
+.quick-role-title.quick-seat-choice{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-add-btn{
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  cursor: pointer;
+}
+.ai-add-btn:hover{ background: rgba(255,255,255,0.10); }
+.ai-add-btn:active{ transform: translateY(0.5px); }
+
+/* AI readiness indicator (colorless/yellow/green/red) */
+.quick-player.ai .ai-status-dot{
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-right: 8px;
+  border: 1px solid rgba(255,255,255,0.20);
+  background: rgba(255,255,255,0.08); /* colorless */
+}
+.quick-player.ai[data-ai-ready="yellow"] .ai-status-dot{ background: rgba(255, 215, 0, 0.85); }
+.quick-player.ai[data-ai-ready="green"] .ai-status-dot{ background: rgba(80, 200, 120, 0.90); }
+.quick-player.ai[data-ai-ready="red"] .ai-status-dot{ background: rgba(255, 80, 80, 0.90); }
 .quick-role-divider{
   height: 1px;
   width: 100%;
