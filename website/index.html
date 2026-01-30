@@ -17,13 +17,12 @@
         </div>
 
         <nav class="tabs" aria-label="Primary navigation">
-          <div class="tabsInner">
-            <span class="tabHighlight" aria-hidden="true"></span>
-            <button class="tab" data-tab="teams" type="button">Teams</button>
-            <button class="tab" data-tab="bracket" type="button">Bracket</button>
-            <button class="tab" data-tab="rules" type="button">Rules</button>
+          <div class="tabsInner" id="tabs" role="tablist" aria-label="Tabs">
+            <span class="tabHighlight" id="tabIndicator" aria-hidden="true"></span>
           </div>
         </nav>
+
+        <div class="cloud" id="cloudStatus" aria-label="Sync status"></div>
       </div>
     </header>
 
@@ -33,6 +32,7 @@
       </div>
     </main>
 
+    <script src="config.js"></script>
     <script type="module" src="app.js"></script>
   </body>
 </html>
