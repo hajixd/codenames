@@ -38,6 +38,52 @@ const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
+
+// =========================
+// Auth helpers (username + password)
+// =========================
+function normalizeUsername(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+function isValidUsername(v) {
+  return /^[a-z0-9_]{3,20}$/.test(String(v || '').trim().toLowerCase());
+}
+
+// Firebase Auth enforces a minimum password length. We keep UX flexible by
+// transforming the user-entered password into a longer deterministic secret
+// before sending it to Auth. (Login uses the same transform.)
+const PW_PEPPER = '::codenames_pw_v1';
+function passwordForAuth(pw) {
+  const raw = String(pw || '');
+  if (!raw) return raw;
+  let padded = raw;
+  while (padded.length < 6) padded += '_';
+  return padded + PW_PEPPER;
+}
+
+function makeAuthHandle(username) {
+  // Players sign in with "username + password".
+  // Under the hood, Firebase Auth needs a unique identifier.
+  // This handle is intentionally NOT deterministic; it lives in Firestore at
+  // /usernames/{username}.
+  const u = normalizeUsername(username);
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${u}.${rand}@u.local`;
+}
+
+async function lookupAuthHandleForUsername(username) {
+  try {
+    const u = normalizeUsername(username);
+    const doc = await db.collection('usernames').doc(u).get();
+    if (!doc.exists) return null;
+    const data = doc.data() || {};
+    return String(data.authHandle || '').trim() || null;
+  } catch (e) {
+    console.warn('Failed reading username registry (best-effort)', e);
+    return null;
+  }
+}
 const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
 const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
 // Game resume keys (game.js owns the values; app.js only triggers restore)
@@ -654,50 +700,7 @@ function initLaunchScreen() {
   const showCreateBtn = document.getElementById('launch-show-create');
   const modeLogoutBtn = document.getElementById('mode-logout-btn');
 
-  function normalizeUsername(v) {
-    return String(v || '').trim().toLowerCase();
-  }
-  function isValidUsername(v) {
-    return /^[a-z0-9_]{3,20}$/.test(v);
-  }
-
-  // Firebase Auth enforces a minimum password length. We keep the UX flexible
-  // by transforming the user-entered password into a longer deterministic
-  // secret before sending it to Auth. (Login uses the same transform.)
-  const PW_PEPPER = '::codenames_pw_v1';
-  function passwordForAuth(pw) {
-    const raw = String(pw || '');
-    if (!raw) return raw;
-    let padded = raw;
-    // Pad deterministically to satisfy backend requirements without adding
-    // user-facing constraints.
-    while (padded.length < 6) padded += '_';
-    return padded + PW_PEPPER;
-  }
-  function makeAuthHandle(username) {
-    // Players sign in with "username + password".
-    // Under the hood, Firebase Auth needs a unique sign-in identifier.
-    //
-    // IMPORTANT: This handle is intentionally NOT deterministic. We store it in
-    // Firestore under /usernames/{username}. If we wipe that registry, usernames
-    // become available again (old accounts become unreachable).
-    const rand = Math.random().toString(36).slice(2, 10);
-    // Note: Firebase validates the identifier format. We generate one that
-    // passes validation but is never shown in the UI.
-    return `${username}.${rand}@u.local`;
-  }
-
-  async function lookupAuthHandleForUsername(username) {
-    try {
-      const doc = await db.collection('usernames').doc(username).get();
-      if (!doc.exists) return null;
-      const data = doc.data() || {};
-      return String(data.authHandle || '').trim() || null;
-    } catch (e) {
-      console.warn('Failed reading username registry (best-effort)', e);
-      return null;
-    }
-  }
+  // Username/password helpers live at the top of this file.
 
   function setAuthTab(which) {
     const loginOn = which === 'login';
@@ -1427,34 +1430,81 @@ function getUserName() {
 }
 
 async function setUserName(name, opts = {}) {
-  const nextName = String(name || '').trim();
+  // In this app, "name" == "username" and is used for login.
+  // Renaming requires migrating the username registry key.
+  const nextName = normalizeUsername(name);
   const u = auth.currentUser;
   if (!u) throw new Error('Not signed in');
   if (!nextName) return;
+  if (!isValidUsername(nextName)) {
+    throw new Error('Username must be 3–20 chars: a-z, 0-9, _');
+  }
+
+  const prevName = normalizeUsername(getUserName());
+  if (prevName && prevName === nextName) return;
+
+  showAuthLoadingScreen('Updating name');
 
   // Used to avoid profile listener bouncing the UI during a local rename.
   lastLocalNameSetAtMs = Date.now();
 
-  // Update auth profile.
-  try {
-    await u.updateProfile({ displayName: nextName });
-  } catch (e) {
-    console.warn('Failed updating auth display name (best-effort)', e);
-  }
+  const uid = u.uid;
+  const usernamesCol = db.collection('usernames');
+  const usersCol = db.collection('users');
+  const playersCol = db.collection('players');
 
-  // Mirror into players/<uid> for leaderboards + UI convenience.
-  try {
-    await db.collection('players').doc(u.uid).set({
-      name: nextName,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-  } catch (e) {
-    console.warn('Failed updating player profile (best-effort)', e);
-  }
+  const oldRef = prevName ? usernamesCol.doc(prevName) : null;
+  const newRef = usernamesCol.doc(nextName);
 
-  // Best-effort: keep team rosters up to date (for older docs that store embedded names).
-  try { updateNameInAllTeams(getUserId(), nextName).catch(() => {}); } catch (_) {}
-  try { refreshNameUI(); } catch (_) {}
+  try {
+    await db.runTransaction(async (tx) => {
+      const newSnap = await tx.get(newRef);
+      if (newSnap.exists) {
+        throw new Error('USERNAME_TAKEN');
+      }
+
+      let authHandle = String(u.email || '').trim();
+      if (oldRef) {
+        const oldSnap = await tx.get(oldRef);
+        if (oldSnap.exists) {
+          const d = oldSnap.data() || {};
+          if (d.uid && String(d.uid) !== uid) {
+            throw new Error('USERNAME_CONFLICT');
+          }
+          authHandle = String(d.authHandle || authHandle).trim();
+          tx.delete(oldRef);
+        }
+      }
+
+      tx.set(newRef, {
+        uid,
+        authHandle,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        renamedFrom: prevName || null,
+        renamedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      tx.set(usersCol.doc(uid), {
+        username: nextName,
+        name: nextName,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      tx.set(playersCol.doc(uid), {
+        name: nextName,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    // Update auth profile display name (used throughout the UI).
+    try { await u.updateProfile({ displayName: nextName }); } catch (_) {}
+
+    // Best-effort: keep team rosters up to date (for older docs that store embedded names).
+    try { updateNameInAllTeams(getUserId(), nextName).catch(() => {}); } catch (_) {}
+    try { refreshNameUI(); } catch (_) {}
+  } finally {
+    hideAuthLoadingScreen();
+  }
 }
 
 function initName() {
@@ -3979,9 +4029,9 @@ function initSettings() {
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
-  // Temporary danger action: wipe username registry so usernames are reusable.
-  const wipeUsersBtn = document.getElementById('settings-wipe-users-btn');
-  const wipeUsersHint = document.getElementById('settings-wipe-users-hint');
+  // Account danger action: delete the current user (frees username).
+  const deleteAccountBtn = document.getElementById('settings-delete-account-btn');
+  const deleteAccountHint = document.getElementById('settings-delete-account-hint');
 
   const refreshAdminUI = () => {
     const isAdmin = !!isAdminUser();
@@ -3995,8 +4045,8 @@ function initSettings() {
     if (adminHintEl) adminHintEl.textContent = msg;
   };
 
-  const setWipeHint = (msg) => {
-    if (wipeUsersHint) wipeUsersHint.innerHTML = String(msg || '');
+  const setDeleteHint = (msg) => {
+    if (deleteAccountHint) deleteAccountHint.textContent = String(msg || '');
   };
 
   refreshAdminUI();
@@ -4048,32 +4098,68 @@ function initSettings() {
     }
   });
 
-  wipeUsersBtn?.addEventListener('click', async () => {
+  deleteAccountBtn?.addEventListener('click', async () => {
     playSound('click');
+    const u = auth.currentUser;
+    if (!u) {
+      setDeleteHint('Sign in to use this.');
+      return;
+    }
+
     const ok = await showCustomConfirm({
-      title: 'Wipe all users?',
-      message: `This will delete <span class="mono">/usernames</span>, <span class="mono">/users</span>, and <span class="mono">/players</span> so all usernames become available again.<br><br><b>This is temporary and not safe for production.</b>`,
-      okText: 'Wipe',
+      title: 'Delete account?',
+      message: `This will delete your account and free your username.<br><br><b>This cannot be undone.</b>`,
+      okText: 'Delete',
       danger: true
     });
     if (!ok) return;
 
-    wipeUsersBtn.disabled = true;
+    deleteAccountBtn.disabled = true;
+    setDeleteHint('');
+    showAuthLoadingScreen('Deleting account');
     try {
-      setWipeHint('Wiping users…');
-      // Clear registries first (this is what makes usernames reusable).
-      await adminDeleteAllDocs('usernames');
-      await adminDeleteAllDocs('users');
-      await adminDeleteAllDocs('players');
-      setWipeHint('Wiped. Signing out…');
+      const uid = String(u.uid || '').trim();
+      const username = normalizeUsername(getUserName());
+
+      // Best-effort cleanup of Firestore docs.
+      const deletes = [];
+      if (uid) {
+        deletes.push(db.collection('presence').doc(uid).delete().catch(() => {}));
+        deletes.push(db.collection('players').doc(uid).delete().catch(() => {}));
+        deletes.push(db.collection('users').doc(uid).delete().catch(() => {}));
+      }
+      if (username) {
+        deletes.push(db.collection('usernames').doc(username).delete().catch(() => {}));
+      }
+      await Promise.all(deletes);
+
+      // Deleting an auth user may require a recent login.
+      try {
+        await u.delete();
+      } catch (err) {
+        const code = String(err?.code || '');
+        if (code === 'auth/requires-recent-login') {
+          const pw = window.prompt('Enter your password to confirm deletion:');
+          if (!pw) throw new Error('Password required to delete account.');
+          const identifier = String(u.email || '');
+          const cred = firebase.auth.EmailAuthProvider.credential(identifier, passwordForAuth(pw));
+          await u.reauthenticateWithCredential(cred);
+          await u.delete();
+        } else {
+          throw err;
+        }
+      }
+
+      // Signed out now; reload to the auth screen.
       try { await auth.signOut(); } catch (_) {}
       try { clearLastNavigation(); } catch (_) {}
-      try { showAuthScreen(); } catch (_) {}
+      try { window.location.reload(); } catch (_) {}
     } catch (e) {
-      console.warn('Wipe failed', e);
-      setWipeHint(e?.message || 'Wipe failed.');
+      console.warn('Delete account failed', e);
+      setDeleteHint(e?.message || 'Delete failed.');
     } finally {
-      wipeUsersBtn.disabled = false;
+      hideAuthLoadingScreen();
+      deleteAccountBtn.disabled = false;
     }
   });
 
@@ -4130,6 +4216,14 @@ themeToggle?.addEventListener('change', () => {
   settingsLogoutBtn?.addEventListener('click', () => {
     closeSettingsModal();
     logoutLocal('Logging out');
+  });
+
+  // Change Name button in settings
+  const settingsChangeNameBtn = document.getElementById('settings-change-name-btn');
+  settingsChangeNameBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeSettingsModal();
+    openNameChangeModal();
   });
 
   // Change Password button in settings
@@ -4209,18 +4303,20 @@ function openSettingsModal() {
   const signedIn = !!auth.currentUser;
   const logoutBtn = document.getElementById('settings-logout-btn');
   const changePwBtn = document.getElementById('settings-change-password-btn');
-  const wipeBtn = document.getElementById('settings-wipe-users-btn');
-  const wipeHint = document.getElementById('settings-wipe-users-hint');
+  const changeNameBtn = document.getElementById('settings-change-name-btn');
+  const deleteBtn = document.getElementById('settings-delete-account-btn');
+  const deleteHint = document.getElementById('settings-delete-account-hint');
 
   if (logoutBtn) logoutBtn.style.display = signedIn ? '' : 'none';
   if (changePwBtn) changePwBtn.style.display = signedIn ? '' : 'none';
 
-  if (wipeBtn) {
-    wipeBtn.disabled = !signedIn;
-    wipeBtn.style.opacity = signedIn ? '' : '0.5';
+  if (changeNameBtn) changeNameBtn.style.display = signedIn ? '' : 'none';
+  if (deleteBtn) {
+    deleteBtn.style.display = signedIn ? '' : 'none';
+    deleteBtn.disabled = !signedIn;
   }
-  if (wipeHint && !signedIn) {
-    wipeHint.innerHTML = 'Sign in to use this.';
+  if (deleteHint && !signedIn) {
+    deleteHint.textContent = 'Sign in to use this.';
   }
 
   modal.style.display = 'block';
@@ -5374,6 +5470,7 @@ function initNameChangeModal() {
   const cancelBtn = document.getElementById('name-change-cancel');
   const form = document.getElementById('name-change-form');
   const input = document.getElementById('name-change-input');
+  const hintEl = document.getElementById('name-change-hint');
 
   if (!modal) return;
 
@@ -5394,17 +5491,34 @@ function initNameChangeModal() {
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const newName = (input?.value || '').trim();
+    const raw = String(input?.value || '');
+    const newName = normalizeUsername(raw);
     if (!newName) return;
 
+    const setHint = (msg) => {
+      if (hintEl) hintEl.textContent = String(msg || '3–20 chars (a–z, 0–9, _)');
+    };
+
+    if (!isValidUsername(newName)) {
+      setHint('Invalid name. Use 3–20 chars: a–z, 0–9, _');
+      return;
+    }
+
     playSound('click');
-    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
+    setHint('');
     try {
       await setUserName(newName);
-    } finally {
-      hideAuthLoadingScreen();
+      closeNameChangeModal();
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (msg.includes('USERNAME_TAKEN')) {
+        setHint("That name is taken. Try a different one.");
+      } else if (msg.includes('USERNAME_CONFLICT')) {
+        setHint('Could not rename. Please try again.');
+      } else {
+        setHint(msg || 'Could not update name.');
+      }
     }
-    closeNameChangeModal();
   });
 
   document.addEventListener('keydown', (e) => {

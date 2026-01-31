@@ -1691,7 +1691,7 @@ body.mode-joiner .only-joiner{ display:block; }
 .modal{
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.62);
+  background: rgba(0,0,0,0.58);
   display:flex;
   align-items:center;
   justify-content:center;
@@ -1699,12 +1699,16 @@ body.mode-joiner .only-joiner{ display:block; }
   padding: 14px;
 }
 
+body.light-mode .modal{
+  background: rgba(0,0,0,0.38);
+}
+
 .modal-card{
   width: min(520px, 100%);
-  background: rgba(20,20,25,0.92);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: var(--card);
+  border: 1px solid var(--border-soft);
   border-radius: 18px;
-  box-shadow: 0 20px 80px rgba(0,0,0,0.55);
+  box-shadow: var(--shadow-lg);
   overflow:hidden;
 }
 
@@ -1713,7 +1717,7 @@ body.mode-joiner .only-joiner{ display:block; }
   align-items:center;
   justify-content:space-between;
   padding: 12px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 /* Make all modal close (×) buttons red */
@@ -1737,7 +1741,7 @@ body.mode-joiner .only-joiner{ display:block; }
   justify-content:space-between;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .request-row:last-child{ border-bottom: none; }
@@ -3306,7 +3310,8 @@ body.light-mode .auth-card{
   display: grid;
   grid-template-rows: auto auto 1fr;
   gap: 18px;
-  min-height: clamp(520px, 72vh, 760px);
+  /* Keep the actions closer to the middle (less empty vertical space) */
+  min-height: clamp(480px, 62vh, 720px);
   margin: 0 auto;
 }
 
@@ -3338,14 +3343,14 @@ body.light-mode .auth-card{
   font-size: 13px;
   color: var(--text-dim);
   padding: 12px 16px;
-  /* Push this slightly down from the hero, but keep it above the mode cards */
-  margin-top: clamp(10px, 3vh, 28px);
+  /* Keep this higher (closer to the hero) */
+  margin-top: clamp(8px, 1.6vh, 18px);
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   max-width: 420px;
   justify-self: center;
-  align-self: center;
+  align-self: start;
   box-shadow: var(--shadow-sm);
 }
 
@@ -3360,8 +3365,9 @@ body.light-mode .auth-card{
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
-  margin-top: 0;
-  align-self: center;
+  /* Pull the cards upward toward the middle */
+  margin-top: clamp(6px, 2vh, 18px);
+  align-self: start;
 }
 
 /* Bigger, more spacious mode buttons on the launch screen */
@@ -5254,7 +5260,7 @@ button.player-tag.pill-action:disabled{
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-glass);
   border-radius: 10px;
 }
 
@@ -5365,7 +5371,7 @@ button.player-tag.pill-action:disabled{
 }
 
 .online-tab:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   color: var(--text);
 }
 
@@ -5381,7 +5387,7 @@ button.player-tag.pill-action:disabled{
 }
 
 .header-pill.clickable:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-glass);
 }
 
 .header-pill.clickable:active {
@@ -5425,7 +5431,7 @@ button.player-tag.pill-action:disabled{
 /* Name change modal head - compact like online modal */
 .name-change-modal .modal-head {
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .name-change-modal .modal-title {

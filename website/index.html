@@ -948,9 +948,10 @@
           <div class="modal-body">
             <form id="name-change-form" class="form">
               <label class="field">
-                <span class="label">Your name</span>
-                <input type="text" id="name-change-input" class="input" placeholder="Enter your name" required>
+                <span class="label">New name</span>
+                <input type="text" id="name-change-input" class="input" placeholder="new_name" autocapitalize="off" autocomplete="off" required>
               </label>
+              <div class="hint" id="name-change-hint">3–20 chars (a–z, 0–9, _)</div>
               <div class="form-actions">
                 <button type="submit" class="btn primary">Update</button>
               </div>
@@ -1038,17 +1039,17 @@
               </div>
 
               <div class="settings-account-actions">
+                <button class="btn" id="settings-change-name-btn" type="button">Change Name</button>
                 <button class="btn" id="settings-change-password-btn" type="button">Change Password</button>
                 <button class="btn" id="settings-logout-btn" type="button">Log Out</button>
               </div>
 
-              <!-- Temporary: wipe username registry so all usernames become available again -->
               <div class="settings-danger" id="settings-danger">
                 <div class="settings-section-title">Danger</div>
                 <div class="settings-admin-actions">
-                  <button class="btn danger" id="settings-wipe-users-btn" type="button">Wipe All Users (free usernames)</button>
+                  <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
                 </div>
-                <div class="hint" id="settings-wipe-users-hint">This clears the username registry (<span class="mono">/usernames</span>) so anyone can re-register usernames. Old accounts may become unreachable.</div>
+                <div class="hint" id="settings-delete-account-hint">Deletes your account and frees your username. This cannot be undone.</div>
               </div>
 
               <!-- Admin Actions (only visible for admin users) -->
