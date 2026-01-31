@@ -192,6 +192,15 @@ async function checkAccountIntegrity(u, usernameOverride = null) {
     if (!uid) return { ok: false, reason: 'Missing user id', username: username || rawName || '', canRepair: false };
     if (!username) return { ok: false, reason: 'Missing account name', username: '', canRepair: false };
 
+    // Accounts must be password-based. If the user signed in without a password provider
+    // (e.g. anonymous / provider-only), treat it as a corrupted account and remove it.
+    // During signup provisioning, providerData can briefly lag, so we skip this check
+    // while the provisioning hint is active.
+    const prov = getProvisioning();
+    if (!prov && !isPasswordProviderUser(u)) {
+      return { ok: false, reason: 'Missing password', username, canRepair: false };
+    }
+
     const regRef = db.collection('usernames').doc(username);
     const regSnap = await regRef.get();
 
@@ -263,21 +272,33 @@ async function repairAccountDocs(u, username) {
 
     // Ensure users/<uid> exists.
     try {
-      await db.collection('users').doc(uid).set({
-        username: uname,
-        name: uname,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      const ref = db.collection('users').doc(uid);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? (snap.data() || {}) : {};
+        const patch = {
+          username: uname,
+          name: uname,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        };
+        if (!data.createdAt) patch.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        tx.set(ref, patch, { merge: true });
+      });
     } catch (_) {}
 
     // Ensure players/<uid> exists.
     try {
-      await db.collection('players').doc(uid).set({
-        name: uname,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      const ref = db.collection('players').doc(uid);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? (snap.data() || {}) : {};
+        const patch = {
+          name: uname,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        };
+        if (!data.createdAt) patch.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        tx.set(ref, patch, { merge: true });
+      });
     } catch (_) {}
 
     return { ok: true, username: uname };
@@ -293,6 +314,9 @@ async function purgeCorruptedAccountEverywhere(u, info = {}) {
   const uid = String(u?.uid || '').trim();
   const username = normalizeUsername(info.username || u?.displayName || '');
   if (!uid) return;
+
+  // Remove presence first so they immediately disappear from "Who's Online".
+  try { await db.collection(PRESENCE_COLLECTION).doc(uid).delete(); } catch (_) {}
 
   // Best-effort: remove from teams membership + pending lists.
   try {
@@ -331,10 +355,81 @@ async function purgeCorruptedAccountEverywhere(u, info = {}) {
     }
   } catch (_) {}
 
+  // Delete personal DM threads involving this user (best-effort)
+  try {
+    const threadsSnap = await db.collection(DM_THREADS_COLLECTION).where('participants', 'array-contains', uid).get();
+    for (const th of threadsSnap.docs) {
+      const threadId = th.id;
+      // Delete messages in chunks
+      while (true) {
+        const ms = await db.collection(DM_THREADS_COLLECTION).doc(threadId).collection('messages').limit(250).get();
+        if (ms.empty) break;
+        const batch = db.batch();
+        ms.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      await th.ref.delete();
+    }
+  } catch (_) {}
+
+  // Delete messages in global chat sent by this user (best-effort)
+  try {
+    while (true) {
+      const snap = await db.collection(GLOBAL_CHAT_COLLECTION).where('senderId', '==', uid).limit(250).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (_) {}
+
+  // Delete messages in team chat sent by this user (best-effort)
+  try {
+    const teamColl = db.collection('teams');
+    const teamsSnap = await teamColl.get();
+    for (const tdoc of teamsSnap.docs) {
+      const chatRef = teamColl.doc(tdoc.id).collection('chat');
+      while (true) {
+        const snap = await chatRef.where('senderId', '==', uid).limit(250).get();
+        if (snap.empty) break;
+        const batch = db.batch();
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+  } catch (_) {}
+
   // Delete core docs
-  try { if (username) await db.collection('usernames').doc(username).delete(); } catch (_) {}
   try { await db.collection('users').doc(uid).delete(); } catch (_) {}
   try { await db.collection('players').doc(uid).delete(); } catch (_) {}
+
+  // Delete username registry docs for this uid so the username(s) become available.
+  try {
+    const names = new Set();
+
+    // Prefer cache
+    try {
+      for (const r of (usernamesCache || [])) {
+        const rUid = String(r?.uid || '').trim();
+        const nm = String(r?.id || '').trim();
+        if (rUid && rUid === uid && nm) names.add(nm);
+      }
+    } catch (_) {}
+
+    // If empty, query directly
+    if (names.size === 0) {
+      const q = await db.collection('usernames').where('uid', '==', uid).get();
+      q.docs.forEach(d => names.add(String(d.id || '').trim()));
+    }
+
+    // Last resort: try the provided username
+    if (username && isValidUsername(username)) names.add(username);
+
+    for (const nm of names) {
+      if (!nm) continue;
+      try { await db.collection('usernames').doc(nm).delete(); } catch (_) {}
+    }
+  } catch (_) {}
 
   // Finally, delete the Auth user (best-effort). This may require recent login.
   try { await u.delete(); } catch (e) { console.warn('Could not delete auth user (best-effort)', e); }
@@ -1318,6 +1413,7 @@ function initLaunchScreen() {
       try {
         await db.collection('players').doc(u.uid).set({
           name: display,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
       } catch (_) {}
@@ -1557,13 +1653,30 @@ if (integrity && integrity.ok === false) {
 
 // Ensure player profile exists.
       try {
-        const uid = u.uid;
-        const ref = db.collection('players').doc(uid);
-        await ref.set({
-          name: String(u.displayName || '').trim() || 'Player',
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        const uid = String(u?.uid || '').trim();
+        if (uid) {
+          const ref = db.collection('players').doc(uid);
+          const displayName = String(u?.displayName || '').trim() || 'Player';
+
+          // IMPORTANT: createdAt should reflect the day the account was created.
+          // Never overwrite it once it exists.
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const data = snap.exists ? (snap.data() || {}) : {};
+            const patch = {
+              name: displayName,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            };
+            if (!data.createdAt) {
+              // Prefer Auth creation time for the signed-in user; fall back to server time.
+              const ct = u?.metadata?.creationTime ? new Date(u.metadata.creationTime) : null;
+              patch.createdAt = ct && !isNaN(ct.getTime())
+                ? firebase.firestore.Timestamp.fromDate(ct)
+                : firebase.firestore.FieldValue.serverTimestamp();
+            }
+            tx.set(ref, patch, { merge: true });
+          });
+        }
       } catch (e) {
         console.warn('Failed to ensure player profile (best-effort)', e);
       }
@@ -7795,6 +7908,33 @@ async function autoFixOrDeleteMissingPlayer(uid) {
   } catch (_) {}
 }
 
+// Prefer the public username registry for account creation time.
+// This avoids "Joined" drifting when players/<uid>.createdAt was previously
+// overwritten by profile upserts.
+function getAccountCreatedAtForUid(uid) {
+  const id = String(uid || '').trim();
+  if (!id) return null;
+
+  // 1) Username registry (authoritative, immutable under our rules)
+  try {
+    for (const r of (usernamesCache || [])) {
+      const rUid = String(r?.uid || '').trim();
+      if (rUid === id && r?.createdAt) return r.createdAt;
+    }
+  } catch (_) {}
+
+  // 2) Current signed-in user's Auth metadata (accurate for "me")
+  try {
+    const cu = auth?.currentUser;
+    if (cu && String(cu.uid || '').trim() === id && cu?.metadata?.creationTime) {
+      const dt = new Date(cu.metadata.creationTime);
+      if (dt && !isNaN(dt.getTime())) return firebase.firestore.Timestamp.fromDate(dt);
+    }
+  } catch (_) {}
+
+  return null;
+}
+
 function renderPlayerProfile(playerId) {
   // Find player in cache
   const player = playersCache.find(p => p.id === playerId || entryAccountId(p) === playerId);
@@ -7816,7 +7956,8 @@ function renderPlayerProfile(playerId) {
   const tc = memberTeam ? getDisplayTeamColor(memberTeam) : null;
 
   // Format dates
-  const createdAt = player.createdAt ? formatRelativeTime(tsToMs(player.createdAt)) : 'Unknown';
+  const createdAtTs = getAccountCreatedAtForUid(player.id) || player.createdAt || null;
+  const createdAt = createdAtTs ? formatRelativeTime(tsToMs(createdAtTs)) : 'Unknown';
   const updatedAt = player.updatedAt ? formatRelativeTime(tsToMs(player.updatedAt)) : 'Unknown';
 
   // Get online status from presence
@@ -8098,7 +8239,8 @@ function renderProfileDetailsModal(id, type = 'player') {
     ? statusBase
     : `${statusBase}${whereLabel ? ' — ' + whereLabel : ''}`;
 
-  const joinedAt = player.createdAt ? formatRelativeTime(tsToMs(player.createdAt)) : 'Unknown';
+  const joinedTs = getAccountCreatedAtForUid(player.id) || player.createdAt || null;
+  const joinedAt = joinedTs ? formatRelativeTime(tsToMs(joinedTs)) : 'Unknown';
   const lastSeen = getPlayerLastSeen(player.id);
 
   const games = Number(player.gamesPlayed || 0) || 0;
