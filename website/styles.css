@@ -639,6 +639,8 @@ body.tournament #play-mode-select{ display:none !important; }
   /* Players page: add a bit more bottom breathing room on iOS so
      the last rows are reachable above the browser chrome. */
   #panel-players .panel-inner{
+    /* Extra top padding so you can scroll the list fully above the fixed header strip. */
+    padding-top: 28px;
     padding-bottom: calc(132px + env(safe-area-inset-bottom));
   }
 
@@ -3759,6 +3761,14 @@ button:disabled{
   body.tournament #panel-home .panel-inner{
     transform: none;
     padding-top: 16px;
+  }
+}
+
+/* Players tab (desktop): extra top padding so you can scroll to reveal the
+   heading + first rows below the fixed header/tabs strip. */
+@media (min-width: 769px){
+  #panel-players .panel-inner{
+    padding-top: 44px;
   }
 }
 
