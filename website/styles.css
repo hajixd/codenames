@@ -625,6 +625,12 @@ body.tournament #play-mode-select{ display:none !important; }
     flex-direction: column;
   }
 
+  /* Players page: add a bit more bottom breathing room on iOS so
+     the last rows are reachable above the browser chrome. */
+  #panel-players .panel-inner{
+    padding-bottom: calc(132px + env(safe-area-inset-bottom));
+  }
+
   .mobile-header {
     display: flex;
     justify-content: space-between;
@@ -3337,15 +3343,15 @@ body.light-mode .auth-card{
 
 .pw-field .auth-input{
   width: 100%;
-  padding-right: 52px;
+  padding-right: 44px;
 }
 
 .pw-toggle{
   position: absolute;
-  right: 10px;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3354,7 +3360,7 @@ body.light-mode .auth-card{
   color: var(--text-dim);
 }
 
-.pw-toggle svg{ width: 18px; height: 18px; }
+.pw-toggle svg{ width: 15px; height: 15px; }
 
 body.light-mode .pw-toggle{
   background: rgba(0,0,0,0.04);

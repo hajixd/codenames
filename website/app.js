@@ -9,7 +9,10 @@ const SOFT_MAX_TEAMS = 8;
 // Teams should have at least 3 players to be tournament-ready.
 // Historically we capped at 4; now that's just the recommended size.
 const TEAM_MIN = 3;
-const SOFT_TEAM_MAX = 4;
+// Tournament-ready cap for team size.
+// NOTE: We do NOT hard-block requests/accepts beyond this cap.
+// Teams can go over; they simply become ineligible and show "Too many players".
+const SOFT_TEAM_MAX = 5;
 
 // Firebase config
 const firebaseConfig = {
@@ -2203,8 +2206,12 @@ function listenToPlayers() {
 }
 
 function updateHomeStats(teams) {
-  // Count "full" teams (3+ members) - these are the ones that count toward the recommended slots
-  const fullTeams = teams.filter(t => getMembers(t).length >= TEAM_MIN).length;
+  // Count "eligible" tournament teams (3+ members AND not over the recommended cap).
+  // Teams can exceed the cap, but they become ineligible and should not consume a slot.
+  const fullTeams = teams.filter(t => {
+    const n = getMembers(t).length;
+    return n >= TEAM_MIN && n <= SOFT_TEAM_MAX;
+  }).length;
   const players = teams.reduce((sum, t) => sum + getMembers(t).length, 0);
 
   const teamCountStr = `${fullTeams} / ${SOFT_MAX_TEAMS}`;
@@ -2889,13 +2896,15 @@ function renderTeams(teams) {
       : 'No members yet';
 
     const isMine = st.teamId === t.id;
+    const isReady = members.length >= TEAM_MIN && members.length <= SOFT_TEAM_MAX;
+    const isOver = members.length > SOFT_TEAM_MAX;
     const isFull = members.length >= TEAM_MIN; // 3+ members = "full" team
 
     const tc = getDisplayTeamColor(t);
     const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
     const itemStyle = isFull && tc ? `style="--team-accent:${esc(tc)}"` : '';
-    const pillClass = isFull ? 'pill-full' : 'pill-incomplete';
-    const overSize = members.length > SOFT_TEAM_MAX;
+    const pillClass = isOver ? 'pill-overboard' : (isReady ? 'pill-full' : 'pill-incomplete');
+    const overSize = isOver;
 
     const adminDeleteBtn = isAdminUser()
       ? `<button class="icon-btn danger small admin-delete-btn" type="button" data-admin-delete-team="${esc(t.id)}" title="Delete team">🗑</button>`
@@ -2908,7 +2917,7 @@ function renderTeams(teams) {
           <div class="team-list-members" ${nameStyle}>${memberNamesHtml}</div>
         </div>
         <div class="team-list-right">
-          <div class="team-list-count ${pillClass} ${overSize ? 'pill-overboard' : ''}">${members.length}/${SOFT_TEAM_MAX}</div>
+          <div class="team-list-count ${pillClass}">${members.length}/${SOFT_TEAM_MAX}</div>
           ${adminDeleteBtn}
         </div>
       </button>
@@ -3237,7 +3246,13 @@ function renderMyTeam(teams) {
   }
   if (sub) {
     if (!st.name) sub.textContent = 'Set your name first (Home tab).';
-    else if (hasTeam) sub.textContent = st.isCreator ? 'Double click the team name to rename. You can kick teammates and manage requests.' : 'You are on a team.';
+    else if (hasTeam) {
+      const sz = getMembers(st.team || {}).length;
+      if (sz > SOFT_TEAM_MAX) sub.textContent = 'Too many players — this team is not eligible.';
+      else sub.textContent = st.isCreator
+        ? 'Double click the team name to rename. You can kick teammates and manage requests.'
+        : 'You are on a team. You can manage requests.';
+    }
     else sub.textContent = 'Create a team or request to join one from the Teams tab.';
   }
 
@@ -3268,12 +3283,8 @@ function renderMyTeam(teams) {
     leaveDeleteBtn.textContent = st.isCreator ? 'Delete team' : 'Leave team';
   }
   if (requestsBtn) {
-    if (st.isCreator) {
-      requestsBtn.style.display = 'inline-flex';
-      requestsBtn.textContent = `Requests (${getPending(st.team).length})`;
-    } else {
-      requestsBtn.style.display = 'none';
-    }
+    requestsBtn.style.display = hasTeam ? 'inline-flex' : 'none';
+    if (hasTeam) requestsBtn.textContent = `Requests (${getPending(st.team).length})`;
   }
 
   // Invites button (shows your pending invites in a modal)
@@ -3344,7 +3355,7 @@ function initRequestsModal() {
 
 function openRequestsModal() {
   const st = computeUserState(teamsCache);
-  if (!st.isCreator || !st.teamId) return;
+  if (!st.teamId) return;
   const modal = document.getElementById('requests-modal');
   if (!modal) return;
   // Use the same animated modal system as other modals (team/settings/etc.).
@@ -3367,7 +3378,7 @@ function renderRequestsModal() {
   const st = computeUserState(teamsCache);
   const list = document.getElementById('requests-modal-list');
   if (!list) return;
-  if (!st.isCreator || !st.team) {
+  if (!st.team) {
     list.innerHTML = '<div class="empty-state">No team</div>';
     return;
   }
@@ -4745,7 +4756,8 @@ async function renameTeamUnique(teamId, nextName) {
 ========================= */
 async function acceptRequest(teamId, userId) {
   const st = computeUserState(teamsCache);
-  if (!st.isCreator || st.teamId !== teamId) return;
+  // Any team member can accept requests.
+  if (st.teamId !== teamId) return;
 
   const tid = String(teamId || '').trim();
   if (!tid) return;
@@ -4841,7 +4853,8 @@ async function acceptRequest(teamId, userId) {
 
 async function declineRequest(teamId, userId) {
   const st = computeUserState(teamsCache);
-  if (!st.isCreator || st.teamId !== teamId) return;
+  // Any team member can decline requests.
+  if (st.teamId !== teamId) return;
 
   const ref = db.collection('teams').doc(teamId);
   try {
@@ -7521,7 +7534,8 @@ function renderTeamProfile(teamId) {
 
   const tc = getDisplayTeamColor(team);
   const members = getMembers(team);
-  const isEligible = members.length >= TEAM_MIN;
+  const isEligible = members.length >= TEAM_MIN && members.length <= SOFT_TEAM_MAX;
+  const isOver = members.length > SOFT_TEAM_MAX;
   const creatorId = team.creatorUserId;
 
   // Format creation date
@@ -7539,7 +7553,7 @@ function renderTeamProfile(teamId) {
         <span class="profile-stat-label">Status</span>
         <span class="profile-status ${isEligible ? 'eligible' : 'not-eligible'}">
           <span class="profile-status-dot"></span>
-          ${isEligible ? 'Tournament Ready' : 'Needs ' + (TEAM_MIN - members.length) + ' more'}
+          ${isEligible ? 'Tournament Ready' : (isOver ? 'Too many players' : ('Needs ' + (TEAM_MIN - members.length) + ' more'))}
         </span>
       </div>
       <div class="profile-stat-row">
@@ -7910,7 +7924,8 @@ function renderTeamDetailsModal(teamId) {
   const denom = (aggWins + aggLosses);
   const winRate = denom > 0 ? Math.round((aggWins / denom) * 100) : 0;
 
-  const isEligible = members.length >= TEAM_MIN;
+  const isEligible = members.length >= TEAM_MIN && members.length <= SOFT_TEAM_MAX;
+  const isOver = members.length > SOFT_TEAM_MAX;
 
   titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(team.teamName || 'Unnamed Team')}</span>`;
 
@@ -7920,7 +7935,7 @@ function renderTeamDetailsModal(teamId) {
         <span class="profile-stat-label">Status</span>
         <span class="profile-status ${isEligible ? 'eligible' : 'not-eligible'}">
           <span class="profile-status-dot"></span>
-          ${isEligible ? 'Tournament Ready' : 'Needs ' + (TEAM_MIN - members.length) + ' more'}
+          ${isEligible ? 'Tournament Ready' : (isOver ? 'Too many players' : ('Needs ' + (TEAM_MIN - members.length) + ' more'))}
         </span>
       </div>
       <div class="profile-stat-row">
