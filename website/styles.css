@@ -3793,6 +3793,21 @@ button:disabled{
   }
 }
 
+/* Tournament Home:
+   The Home panel uses .panel-info which vertically centers its content.
+   That makes the hero/stats block sit too low. Keep horizontal centering,
+   but pin the stack near the top so it's fully visible without excess
+   scrolling on both desktop and mobile. */
+body.tournament #panel-home.panel-info{
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+body.tournament #panel-home.panel-info .panel-inner{
+  justify-content: flex-start;
+  /* a touch tighter than the generic panel padding */
+  padding-top: 18px;
+}
+
 /* Players tab (desktop): extra top padding so you can scroll to reveal the
    heading + first rows below the fixed header/tabs strip. */
 @media (min-width: 769px){
