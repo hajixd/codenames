@@ -3806,13 +3806,13 @@ body.tournament #panel-home.panel-info{
 body.tournament #panel-home.panel-info .panel-inner{
   justify-content: flex-start;
   /* Push the stack down a bit so it doesn't feel jammed under the header */
-  padding-top: 120px;
+  padding-top: 175px;
 }
 
 @media (min-width: 769px){
   /* Desktop: a touch lower than mobile for nicer balance on tall screens */
   body.tournament #panel-home.panel-info .panel-inner{
-    padding-top: 150px;
+    padding-top: 220px;
   }
 }
 
@@ -9252,7 +9252,7 @@ button:focus-visible,
   /* Override panel defaults */
   gap: 12px;
   /* Keep the composer comfortably above iOS bottom bars */
-  padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
 }
 .drawer .chat-card.drawer-chat-card .chat-messages{
   flex: 1 1 auto;
@@ -9265,7 +9265,7 @@ button:focus-visible,
     width: min(420px, 86vw);
   }
   .drawer .chat-card.drawer-chat-card{
-    padding-bottom: calc(12px + env(safe-area-inset-bottom) + 56px);
+    padding-bottom: calc(24px + env(safe-area-inset-bottom) + 92px);
   }
   .drawer-backdrop{
     backdrop-filter: blur(3px);
