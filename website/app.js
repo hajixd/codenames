@@ -761,6 +761,19 @@ document.addEventListener('DOMContentLoaded', () => {
   initProfileDetailsModal();
   // Live Firestore listeners are started after sign-in (initAuthGate).
 
+  // Keep compact header labels in sync when crossing mobile/desktop breakpoints.
+  try {
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(max-width: 520px)');
+      const onChange = () => {
+        try { refreshNameUI(); } catch (_) {}
+        try { refreshHeaderIdentity(); } catch (_) {}
+      };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    }
+  } catch (_) {}
+
   // NOTE: initial navigation restore is handled after Firebase Auth resolves
   // (inside initAuthGate). Doing it here can cause a visible "flash".
 
@@ -1439,20 +1452,26 @@ try {
     break;
   }
 
-  if (integrity && integrity.ok === false) {
-    // Hard failures (registry mismatch/conflict, incomplete registry) cannot be fixed client-side safely.
-    try {
-      await showSystemDialog({
-        title: 'Account problem',
-        message: `We couldn’t verify this account (${integrity.reason}).\n\nPlease log out and log back in. If it keeps happening, ask the admin to delete the broken username entry.`,
-        okText: 'Log out'
-      });
-    } catch (_) {}
-    try { await auth.signOut(); } catch (_) {}
-    try { showAuthScreen(); } catch (_) {}
-    if (isBoot) finishBootAuthLoading(750);
-    return;
+  
+if (integrity && integrity.ok === false) {
+  // If an account is truly corrupted and we cannot repair it client-side, automatically delete it
+  // so the username can be reused and the app doesn’t get stuck in a broken state.
+  try {
+    await showSystemDialog({
+      title: 'Account removed',
+      message: `This account appears corrupted (${integrity.reason}).\n\nWe removed it so the username can be reused.`,
+      okText: 'OK'
+    });
+  } catch (_) {}
+
+  try { await purgeCorruptedAccountEverywhere(u, { username: integrity.username }); } catch (e) {
+    console.warn('Auto-purge corrupted account failed (best-effort)', e);
   }
+  try { await auth.signOut(); } catch (_) {}
+  try { showAuthScreen(); } catch (_) {}
+  if (isBoot) finishBootAuthLoading(750);
+  return;
+}
 } catch (e) {
   console.warn('Integrity self-heal skipped (best-effort)', e);
 }
@@ -2042,12 +2061,23 @@ function startProfileNameSync() {
 function refreshNameUI() {
   const name = getUserName();
 
+  // Mobile header is extremely space constrained.
+  const isTightMobile = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
+  const compact4 = (s) => {
+    const str = String(s || '').trim();
+    if (!str) return '—';
+    return str.length > 4 ? (str.slice(0, 4) + '…') : str;
+  };
+
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
   const signedAs = document.getElementById('launch-signed-as');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
-  if (headerDisplay) headerDisplay.textContent = name || '—';
+  // Header name pill is compact on mobile.
+  if (headerDisplay) headerDisplay.textContent = isTightMobile ? compact4(name) : (name || '—');
+  const headerNamePill = document.getElementById('header-name-pill');
+  if (headerNamePill) headerNamePill.title = name || '';
   // Launch screen: style the username distinctly for a cleaner, centered look.
   if (signedAs) signedAs.innerHTML = `Signed in as <span class="signed-as-name">${esc(name || '—')}</span>`;
 
@@ -2065,10 +2095,11 @@ function refreshNameUI() {
   if (launchTourn) launchTourn.disabled = !canEnter;
 
   // Hide account-only header controls until signed in.
-  const headerNamePill = document.getElementById('header-name-pill');
+  // Re-query headerNamePill to avoid variable shadowing.
+  const headerNamePill2 = document.getElementById('header-name-pill');
   const headerTeamPill = document.getElementById('header-team-pill');
   const settingsGear = document.getElementById('settings-gear-btn');
-  if (headerNamePill) headerNamePill.style.display = canEnter ? '' : 'none';
+  if (headerNamePill2) headerNamePill2.style.display = canEnter ? '' : 'none';
   if (headerTeamPill) headerTeamPill.style.display = canEnter ? '' : 'none';
   if (settingsGear) settingsGear.style.display = '';
 
@@ -2086,12 +2117,11 @@ function refreshHeaderIdentity() {
   if (teamDisplayEl) {
     if (st.team) {
       const rawTeamName = String(st.team.teamName || 'My team');
-      // Mobile header space is tight: if the team name is longer than 5 chars,
-      // show a compact version like "ABCD..".
+      // Mobile header space is tight: use a 4-char compact label with ellipsis.
       const isTightMobile = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
       let shownTeamName = rawTeamName;
-      if (isTightMobile && rawTeamName.length > 5) {
-        shownTeamName = rawTeamName.slice(0, 4) + '..';
+      if (isTightMobile) {
+        shownTeamName = rawTeamName.length > 4 ? (rawTeamName.slice(0, 4) + '…') : rawTeamName;
       } else {
         shownTeamName = truncateTeamName(rawTeamName, 20);
       }
@@ -7557,11 +7587,111 @@ function renderTeamProfile(teamId) {
 
 }
 
+async function attemptRepairPlayerProfileDoc(targetUid) {
+  // Best-effort: if a player profile doc is missing, recreate it from the username registry.
+  // Only works when the current client has write permission (typically the account owner or admin).
+  const uid = String(targetUid || '').trim();
+  if (!uid) return { ok: false, reason: 'Missing uid' };
+
+  const username = String(findKnownUserName(uid) || '').trim();
+  const display = username || 'unknown';
+
+  try {
+    await db.collection('players').doc(uid).set({
+      name: display,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Also ensure a minimal users/<uid> doc (non-critical).
+    try {
+      await db.collection('users').doc(uid).set({
+        username: normalizeUsername(display),
+        name: display,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (_) {}
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: String(e?.code || e?.message || 'Repair failed') };
+  }
+}
+
+async function autoFixOrDeleteMissingPlayer(uid) {
+  // Called when a profile is opened for an account that exists in /usernames but has no players doc.
+  // Flow:
+  // 1) Try to repair the missing players/users docs.
+  // 2) If repair fails, and current user is admin, delete the account everywhere.
+  const targetUid = String(uid || '').trim();
+  if (!targetUid) return;
+
+  // Keep popup stable if the user navigated away.
+  const stillOpen = () => (currentProfileType === 'player' && currentProfileId === targetUid);
+
+  // Show a friendly state in the popup while we work.
+  try {
+    if (stillOpen()) {
+      const bodyEl = document.getElementById('profile-popup-body');
+      if (bodyEl) bodyEl.innerHTML = `<div class="hint">Fixing account…</div>`;
+    }
+  } catch (_) {}
+
+  // Attempt repair
+  const repaired = await attemptRepairPlayerProfileDoc(targetUid);
+
+  // If repaired, wait for caches to refresh then re-render.
+  if (repaired && repaired.ok) {
+    // Give Firestore listeners a moment to deliver the repaired doc.
+    await new Promise(r => setTimeout(r, 250));
+    try {
+      if (stillOpen()) renderPlayerProfile(targetUid);
+    } catch (_) {}
+    return;
+  }
+
+  // Repair failed: automatically delete if admin.
+  if (isAdminUser()) {
+    const name = String(findKnownUserName(targetUid) || '').trim();
+    try {
+      await adminDeleteUser(targetUid, name);
+    } catch (e) {
+      console.warn('Auto-delete corrupted user failed (best-effort):', e);
+    }
+
+    try {
+      if (stillOpen()) {
+        const bodyEl = document.getElementById('profile-popup-body');
+        if (bodyEl) bodyEl.innerHTML = `<div class="hint">Corrupted account removed.</div>`;
+      }
+    } catch (_) {}
+
+    // Re-render online list if open
+    try {
+      const modal = document.getElementById('online-modal');
+      if (modal && modal.style.display === 'flex') renderOnlineUsersList();
+    } catch (_) {}
+
+    return;
+  }
+
+  // Non-admin: mark as corrupted in UI only.
+  try {
+    if (stillOpen()) {
+      const bodyEl = document.getElementById('profile-popup-body');
+      if (bodyEl) bodyEl.innerHTML = `<div class="hint">Player profile missing. Admin required to remove this account.</div>`;
+    }
+  } catch (_) {}
+}
+
 function renderPlayerProfile(playerId) {
   // Find player in cache
   const player = playersCache.find(p => p.id === playerId || entryAccountId(p) === playerId);
   if (!player) {
+    // The account may exist in /usernames but be missing players/<uid>. Auto-heal, and if healing fails,
+    // auto-delete the corrupted account (admin only) so it doesn’t keep breaking the UI.
     renderProfileError('Player not found');
+    try { autoFixOrDeleteMissingPlayer(playerId); } catch (_) {}
     return;
   }
 
@@ -7654,6 +7784,20 @@ function renderPlayerProfile(playerId) {
     try {
       const m = document.getElementById('online-modal');
       if (m && m.style.display === 'flex') closeOnlineModal();
+    } catch (_) {}
+    // If the player profile was opened from within another modal (e.g., Teams),
+    // close that modal so the Messages drawer isn't trapped behind it.
+    try {
+      const teamModal = document.getElementById('team-modal');
+      if (teamModal && teamModal.style.display !== 'none') closeTeamModal();
+    } catch (_) {}
+    try {
+      const reqModal = document.getElementById('requests-modal');
+      if (reqModal && reqModal.style.display !== 'none') closeRequestsModal();
+    } catch (_) {}
+    try {
+      const invModal = document.getElementById('invites-modal');
+      if (invModal && invModal.style.display !== 'none') closeInvitesModal();
     } catch (_) {}
     openPersonalChatWith(player.id);
   });

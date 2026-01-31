@@ -5381,13 +5381,15 @@ button.player-tag.pill-action:disabled{
 
 @media (max-width: 520px){
   #header-team-pill .online-count{ max-width: 56px; }
+  #header-name-pill .online-count{ max-width: 56px; }
 
   /* Make the top band more compact on small phones */
-  .online-counter-btn{ padding: 3px 8px; gap: 5px; font-size: 10px; border-radius: 11px; }
-  .online-dot{ width: 7px; height: 7px; }
+  .online-counter-btn{ padding: 2px 6px; gap: 4px; font-size: 9px; border-radius: 10px; }
+  .online-dot{ width: 6px; height: 6px; }
   .app-header .logo{ font-size: 12px; letter-spacing: 1.6px; }
-  .header-user-stack{ gap: 6px; }
-  .online-counter-btn svg{ width: 9px; height: 9px; }
+  .header-user-stack{ gap: 5px; }
+  .online-counter-btn svg{ width: 8px; height: 8px; }
+  .name-icon svg, .team-icon svg{ width: 10px; height: 10px; }
 }
 
 .online-label {
@@ -9070,8 +9072,8 @@ button:focus-visible,
 
 @media (max-width: 520px){
   /* Make the Messages icon a bit more compact on small screens */
-  .header-icon-btn{ width: 28px; height: 28px; border-radius: 9px; }
-  .header-icon-btn svg{ width: 13px; height: 13px; }
+  .header-icon-btn{ width: 24px; height: 24px; border-radius: 8px; margin-right: 4px; }
+  .header-icon-btn svg{ width: 12px; height: 12px; }
 }
 
 .icon-badge{
