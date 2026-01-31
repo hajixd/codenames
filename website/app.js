@@ -699,7 +699,14 @@ function initLaunchScreen() {
       try { refreshNameUI(); } catch (_) {}
     } catch (err) {
       console.warn('Login failed', err);
-      if (loginHint) loginHint.textContent = 'Login failed. Check username/password.';
+      const ec = String(err?.code || '');
+      if (ec === 'auth/configuration-not-found') {
+        if (loginHint) loginHint.textContent = 'Sign-in is not enabled for this Firebase project. Enable Email/Password in Firebase Console → Authentication.';
+      } else if (ec === 'auth/network-request-failed') {
+        if (loginHint) loginHint.textContent = 'Network error. Check your connection and try again.';
+      } else {
+        if (loginHint) loginHint.textContent = 'Login failed. Check username/password.';
+      }
     } finally {
       hideAuthLoadingScreen();
     }
@@ -787,6 +794,9 @@ function initLaunchScreen() {
         if (createHint) createHint.textContent = 'Account creation is disabled right now.';
       } else if (ec === 'auth/weak-password') {
         if (createHint) createHint.textContent = 'Password must be at least 6 characters.';
+      } else if (ec === 'auth/configuration-not-found') {
+        // This happens when Email/Password is disabled for the Firebase project.
+        if (createHint) createHint.textContent = 'Account creation is not enabled for this Firebase project. In Firebase Console → Authentication, enable Email/Password and try again.';
       } else if (ec === 'permission-denied') {
         if (createHint) createHint.textContent = 'Signup is blocked by server rules.';
       } else if (ec === 'auth/network-request-failed') {
