@@ -9048,7 +9048,7 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
 .dm-inbox{
   display:flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -9057,16 +9057,32 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   align-items:center;
   justify-content: flex-start;
   gap: 10px;
-  padding: 10px 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: 14px;
-  background: var(--panel);
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  margin-bottom: 18px; /* extra space between New and first thread */
 }
 
 /* Make the Personal inbox header behave like a single "New" action */
 .dm-inbox-title-btn{
   width: 100%;
   justify-content: center;
+  border-radius: 14px;
+  height: 44px;
+  padding: 0 14px;
+  font-weight: 900;
+  letter-spacing: .2px;
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  border: 1px solid var(--border-soft);
+  box-shadow: none;
+}
+.dm-inbox-title-btn::before{
+  content: "+";
+  margin-right: 10px;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: .9;
 }
 .dm-inbox-title{
   font-weight: 900;
@@ -9080,7 +9096,7 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   flex-direction: column;
   gap: 14px;
   overflow:auto;
-  padding: 2px;
+  padding: 0 2px 2px;
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -9088,10 +9104,10 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
 .dm-thread-row{
   width: 100%;
   text-align: left;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--surface2) 92%, var(--panel));
   border: 1px solid var(--border-soft);
   border-radius: 14px;
-  padding: 10px 10px;
+  padding: 12px 14px;
   color: var(--text);
   cursor: pointer;
   display:flex;
@@ -9109,6 +9125,20 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
 }
+.dm-avatar{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 900;
+  font-size: 13px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface2));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-soft));
+  flex: 0 0 auto;
+}
 .dm-thread-main{ min-width: 0; width: 100%; }
 .dm-thread-top{
   display:flex;
@@ -9118,15 +9148,16 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
 }
 .dm-thread-name{
   font-weight: 900;
-  font-size: 13px;
+  font-size: 15px;
+  color: var(--text);
   min-width: 0;
   overflow:hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dm-thread-preview{
-  font-size: 12px;
-  opacity: .80;
+  font-size: 13px;
+  color: var(--muted);
   margin-top: 2px;
   min-width: 0;
   overflow:hidden;

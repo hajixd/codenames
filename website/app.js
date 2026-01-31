@@ -3756,7 +3756,16 @@ function renderDmInbox() {
   }
 
   // Sort newest-first client-side so we don't depend on Firestore composite indexes.
-  const sorted = (dmThreadsCache || []).slice().sort((a, b) => {
+  // Hide "empty" threads (created without any message) so tapping a name once
+  // doesn't create a permanent box in the inbox.
+  const sorted = (dmThreadsCache || [])
+    .filter(t => {
+      const lastAtMs = tsToMs(t?.lastAt);
+      const lastText = String(t?.lastText || '').trim();
+      return !!(lastAtMs || lastText);
+    })
+    .slice()
+    .sort((a, b) => {
     const am = tsToMs(a?.lastAt) || tsToMs(a?.updatedAt) || 0;
     const bm = tsToMs(b?.lastAt) || tsToMs(b?.updatedAt) || 0;
     return bm - am;
@@ -3774,8 +3783,11 @@ function renderDmInbox() {
 
     const preview = lastText ? esc(lastText) : '<span class="dm-preview-muted">Tap to open</span>';
     const unreadDot = unread ? '<span class="dm-unread-dot" aria-label="Unread"></span>' : '';
+
+    const initials = (name || 'U').trim().slice(0, 1).toUpperCase();
     return `
       <button class="dm-thread-row ${unread ? 'unread' : ''}" type="button" data-thread-id="${esc(tid)}" data-other-id="${esc(otherId)}">
+        <div class="dm-avatar" aria-hidden="true">${esc(initials)}</div>
         <div class="dm-thread-main">
           <div class="dm-thread-top">
             <div class="dm-thread-name">${esc(name)}</div>
@@ -3911,17 +3923,9 @@ function initDmInboxUi() {
     if (!uid) return;
     closeDmNew();
 
-    // Ensure thread doc exists quickly (best-effort).
-    const me = String(getUserId() || '').trim();
-    const threadId = dmThreadIdFor(me, uid);
-    if (threadId) {
-      try {
-        await db.collection(DM_THREADS_COLLECTION).doc(threadId).set({
-          participants: [me, uid],
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-      } catch (_) {}
-    }
+    // IMPORTANT: Don't create a thread doc just by tapping a name.
+    // The thread will be created on first send, so the inbox only shows
+    // real conversations.
 
     showDmThread(uid);
     setTimeout(() => { try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {} }, 50);
