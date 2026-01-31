@@ -17,15 +17,14 @@ service cloud.firestore {
         && request.resource.data.authHandle is string
         && username.matches('^[a-z0-9_]{3,20}$')
         && !exists(/databases/$(database)/documents/usernames/$(username));
-      // TEMPORARY: allow any signed-in user to wipe this registry from the UI.
-      allow update, delete: if signedIn();
+      // Only the owner of the username (or admin) can update/delete.
+      allow update, delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create, update: if signedIn() && request.auth.uid == uid;
-      // TEMPORARY: allow any signed-in user to wipe all user profile docs.
-      allow delete: if signedIn();
+      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
     }
 
     // ===== players =====
@@ -34,8 +33,7 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && (request.auth.uid == uid || isAdmin());
-      // TEMPORARY: allow any signed-in user to wipe all player docs.
-      allow delete: if signedIn();
+      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
     }
 
     // ===== teams =====

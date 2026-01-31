@@ -38,6 +38,29 @@ const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
+
+// =========================
+// Account helpers (username + password)
+// =========================
+const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+function normalizeUsername(v) {
+  return String(v || '').trim().toLowerCase();
+}
+function isValidUsername(v) {
+  return USERNAME_RE.test(String(v || ''));
+}
+
+// Firebase Auth enforces a minimum password length. We keep the UX flexible
+// by transforming the user-entered password into a longer deterministic
+// secret before sending it to Auth. (Login uses the same transform.)
+const PW_PEPPER = '::codenames_pw_v1';
+function passwordForAuth(pw) {
+  const raw = String(pw || '');
+  if (!raw) return raw;
+  let padded = raw;
+  while (padded.length < 6) padded += '_';
+  return padded + PW_PEPPER;
+}
 const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
 const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
 // Game resume keys (game.js owns the values; app.js only triggers restore)
@@ -321,7 +344,9 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (_) {}
 
   initSettings();
+  initNameChangeModal();
   initPasswordChangeModal();
+  initDeleteAccountModal();
   initConfirmDialog();
   initQuickPlayGate();
   initLaunchScreen();
@@ -654,26 +679,7 @@ function initLaunchScreen() {
   const showCreateBtn = document.getElementById('launch-show-create');
   const modeLogoutBtn = document.getElementById('mode-logout-btn');
 
-  function normalizeUsername(v) {
-    return String(v || '').trim().toLowerCase();
-  }
-  function isValidUsername(v) {
-    return /^[a-z0-9_]{3,20}$/.test(v);
-  }
 
-  // Firebase Auth enforces a minimum password length. We keep the UX flexible
-  // by transforming the user-entered password into a longer deterministic
-  // secret before sending it to Auth. (Login uses the same transform.)
-  const PW_PEPPER = '::codenames_pw_v1';
-  function passwordForAuth(pw) {
-    const raw = String(pw || '');
-    if (!raw) return raw;
-    let padded = raw;
-    // Pad deterministically to satisfy backend requirements without adding
-    // user-facing constraints.
-    while (padded.length < 6) padded += '_';
-    return padded + PW_PEPPER;
-  }
   function makeAuthHandle(username) {
     // Players sign in with "username + password".
     // Under the hood, Firebase Auth needs a unique sign-in identifier.
@@ -3979,10 +3985,6 @@ function initSettings() {
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
-  // Temporary danger action: wipe username registry so usernames are reusable.
-  const wipeUsersBtn = document.getElementById('settings-wipe-users-btn');
-  const wipeUsersHint = document.getElementById('settings-wipe-users-hint');
-
   const refreshAdminUI = () => {
     const isAdmin = !!isAdminUser();
     if (adminSection) adminSection.style.display = isAdmin ? 'block' : 'none';
@@ -3995,9 +3997,6 @@ function initSettings() {
     if (adminHintEl) adminHintEl.textContent = msg;
   };
 
-  const setWipeHint = (msg) => {
-    if (wipeUsersHint) wipeUsersHint.innerHTML = String(msg || '');
-  };
 
   refreshAdminUI();
 
@@ -4048,34 +4047,6 @@ function initSettings() {
     }
   });
 
-  wipeUsersBtn?.addEventListener('click', async () => {
-    playSound('click');
-    const ok = await showCustomConfirm({
-      title: 'Wipe all users?',
-      message: `This will delete <span class="mono">/usernames</span>, <span class="mono">/users</span>, and <span class="mono">/players</span> so all usernames become available again.<br><br><b>This is temporary and not safe for production.</b>`,
-      okText: 'Wipe',
-      danger: true
-    });
-    if (!ok) return;
-
-    wipeUsersBtn.disabled = true;
-    try {
-      setWipeHint('Wiping users…');
-      // Clear registries first (this is what makes usernames reusable).
-      await adminDeleteAllDocs('usernames');
-      await adminDeleteAllDocs('users');
-      await adminDeleteAllDocs('players');
-      setWipeHint('Wiped. Signing out…');
-      try { await auth.signOut(); } catch (_) {}
-      try { clearLastNavigation(); } catch (_) {}
-      try { showAuthScreen(); } catch (_) {}
-    } catch (e) {
-      console.warn('Wipe failed', e);
-      setWipeHint(e?.message || 'Wipe failed.');
-    } finally {
-      wipeUsersBtn.disabled = false;
-    }
-  });
 
   // Open modal
   gearBtn.addEventListener('click', () => {
@@ -4138,6 +4109,22 @@ themeToggle?.addEventListener('change', () => {
     playSound('click');
     closeSettingsModal();
     openPasswordChangeModal();
+  });
+
+  // Change Name button in settings
+  const settingsChangeNameBtn = document.getElementById('settings-change-name-btn');
+  settingsChangeNameBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeSettingsModal();
+    openNameChangeModal();
+  });
+
+  // Delete Account button in settings
+  const settingsDeleteAccountBtn = document.getElementById('settings-delete-account-btn');
+  settingsDeleteAccountBtn?.addEventListener('click', () => {
+    playSound('click');
+    closeSettingsModal();
+    openDeleteAccountModal();
   });
 
   // Test sound button
@@ -4209,19 +4196,16 @@ function openSettingsModal() {
   const signedIn = !!auth.currentUser;
   const logoutBtn = document.getElementById('settings-logout-btn');
   const changePwBtn = document.getElementById('settings-change-password-btn');
-  const wipeBtn = document.getElementById('settings-wipe-users-btn');
-  const wipeHint = document.getElementById('settings-wipe-users-hint');
+  const changeNameBtn = document.getElementById('settings-change-name-btn');
+  const deleteAccountBtn = document.getElementById('settings-delete-account-btn');
+  const deleteAccountHint = document.getElementById('settings-delete-account-hint');
 
   if (logoutBtn) logoutBtn.style.display = signedIn ? '' : 'none';
   if (changePwBtn) changePwBtn.style.display = signedIn ? '' : 'none';
 
-  if (wipeBtn) {
-    wipeBtn.disabled = !signedIn;
-    wipeBtn.style.opacity = signedIn ? '' : '0.5';
-  }
-  if (wipeHint && !signedIn) {
-    wipeHint.innerHTML = 'Sign in to use this.';
-  }
+  if (changeNameBtn) changeNameBtn.style.display = signedIn ? '' : 'none';
+  if (deleteAccountBtn) deleteAccountBtn.style.display = signedIn ? '' : 'none';
+  if (deleteAccountHint) deleteAccountHint.textContent = signedIn ? '' : 'Sign in to use this.';
 
   modal.style.display = 'block';
   // Trigger reflow for animation
@@ -5371,18 +5355,14 @@ function initNameChangeModal() {
   const modal = document.getElementById('name-change-modal');
   const backdrop = document.getElementById('name-change-modal-backdrop');
   const closeBtn = document.getElementById('name-change-modal-close');
-  const cancelBtn = document.getElementById('name-change-cancel');
   const form = document.getElementById('name-change-form');
   const input = document.getElementById('name-change-input');
+  const passInput = document.getElementById('name-change-password');
+  const hintEl = document.getElementById('name-change-hint');
 
   if (!modal) return;
 
   closeBtn?.addEventListener('click', () => {
-    playSound('click');
-    closeNameChangeModal();
-  });
-
-  cancelBtn?.addEventListener('click', () => {
     playSound('click');
     closeNameChangeModal();
   });
@@ -5394,17 +5374,107 @@ function initNameChangeModal() {
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const newName = (input?.value || '').trim();
-    if (!newName) return;
+    const u = auth.currentUser;
+    if (!u) return;
+
+    const nextUsername = normalizeUsername(input?.value);
+    const currentPass = String(passInput?.value || '');
+
+    const setHint = (msg) => { if (hintEl) hintEl.textContent = String(msg || ''); };
+    setHint('');
+
+    if (!nextUsername || !currentPass) {
+      setHint('Enter a new name and your password.');
+      return;
+    }
+    if (!isValidUsername(nextUsername)) {
+      setHint('Name must be 3–20 chars: a-z, 0-9, _');
+      return;
+    }
+
+    const currentDisplay = normalizeUsername(getUserName());
+    if (nextUsername === currentDisplay) {
+      closeNameChangeModal();
+      return;
+    }
 
     playSound('click');
-    // Loading screen is now shown AFTER confirm dialog (inside setUserName)
     try {
-      await setUserName(newName);
+      showAuthLoadingScreen('Updating name');
+
+      // Re-authenticate (required for sensitive actions)
+      const identifier = String(u.email || '');
+      if (!identifier) throw new Error('Missing identifier');
+      const cred = firebase.auth.EmailAuthProvider.credential(identifier, passwordForAuth(currentPass));
+      await u.reauthenticateWithCredential(cred);
+
+      // Find the currently claimed username for this uid.
+      const qs = await db.collection('usernames').where('uid', '==', u.uid).limit(1).get();
+      const oldDoc = qs.docs[0];
+      const oldUsername = oldDoc ? String(oldDoc.id || '') : '';
+      const oldData = oldDoc ? (oldDoc.data() || {}) : {};
+      const oldHandle = String(oldData.authHandle || u.email || '').trim();
+      if (!oldUsername) throw new Error('Could not find your current name.');
+
+      const oldRef = db.collection('usernames').doc(oldUsername);
+      const newRef = db.collection('usernames').doc(nextUsername);
+
+      await db.runTransaction(async (tx) => {
+        const [newSnap, oldSnap] = await Promise.all([tx.get(newRef), tx.get(oldRef)]);
+        if (newSnap.exists) throw new Error('USERNAME_TAKEN');
+        if (!oldSnap.exists) throw new Error('MISSING_OLD');
+        const rd = oldSnap.data() || {};
+        if (String(rd.uid || '') !== String(u.uid || '')) throw new Error('NOT_OWNER');
+        tx.set(newRef, {
+          uid: u.uid,
+          authHandle: String(rd.authHandle || oldHandle),
+          createdAt: rd.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: false });
+        tx.delete(oldRef);
+      });
+
+      // Update auth profile + mirrors
+      try { await u.updateProfile({ displayName: nextUsername }); } catch (_) {}
+      try {
+        await db.collection('users').doc(u.uid).set({
+          username: nextUsername,
+          name: nextUsername,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
+      try {
+        await db.collection('players').doc(u.uid).set({
+          name: nextUsername,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
+      try {
+        await db.collection('presence').doc(u.uid).set({
+          name: nextUsername,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
+
+      try { refreshNameUI(); } catch (_) {}
+      setHint('Updated.');
+      setTimeout(() => closeNameChangeModal(), 300);
+    } catch (err) {
+      console.warn('Change name failed', err);
+      const code = String(err?.code || '');
+      const msg = String(err?.message || '');
+      if (msg.includes('USERNAME_TAKEN')) {
+        setHint("There's already an account. Try logging in.");
+      } else if (code.includes('auth/wrong-password')) {
+        setHint('Password is incorrect.');
+      } else if (code.includes('auth/too-many-requests')) {
+        setHint('Too many attempts. Try again soon.');
+      } else {
+        setHint('Could not change name. Please try again.');
+      }
     } finally {
       hideAuthLoadingScreen();
     }
-    closeNameChangeModal();
   });
 
   document.addEventListener('keydown', (e) => {
@@ -5417,10 +5487,19 @@ function initNameChangeModal() {
 function openNameChangeModal() {
   const modal = document.getElementById('name-change-modal');
   const input = document.getElementById('name-change-input');
+  const passInput = document.getElementById('name-change-password');
+  const hintEl = document.getElementById('name-change-hint');
   if (!modal) return;
 
+  if (!auth.currentUser) {
+    try { showAuthScreen(); } catch (_) {}
+    return;
+  }
+
   // Pre-fill with current name
-  if (input) input.value = getUserName() || '';
+  if (input) input.value = normalizeUsername(getUserName()) || '';
+  if (passInput) passInput.value = '';
+  if (hintEl) hintEl.textContent = '';
 
   modal.style.display = 'flex';
   void modal.offsetWidth;
@@ -5550,6 +5629,124 @@ function openPasswordChangeModal() {
   void modal.offsetWidth;
   modal.classList.add('modal-open');
   setTimeout(() => document.getElementById('password-current-input')?.focus?.(), 100);
+}
+
+/* =========================
+   Delete Account Modal
+========================= */
+function initDeleteAccountModal() {
+  const modal = document.getElementById('delete-account-modal');
+  const backdrop = document.getElementById('delete-account-modal-backdrop');
+  const closeBtn = document.getElementById('delete-account-modal-close');
+  const form = document.getElementById('delete-account-form');
+  const passInput = document.getElementById('delete-account-password');
+  const hintEl = document.getElementById('delete-account-hint');
+
+  if (!modal) return;
+
+  const setHint = (msg) => { if (hintEl) hintEl.textContent = String(msg || ''); };
+
+  const close = () => {
+    modal.classList.remove('modal-open');
+    setTimeout(() => {
+      if (!modal.classList.contains('modal-open')) {
+        modal.style.display = 'none';
+      }
+    }, 200);
+  };
+
+  closeBtn?.addEventListener('click', () => { playSound('click'); close(); });
+  backdrop?.addEventListener('click', () => { playSound('click'); close(); });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const u = auth.currentUser;
+    if (!u) {
+      setHint('You need to be logged in.');
+      return;
+    }
+    const pw = String(passInput?.value || '');
+    if (!pw) {
+      setHint('Enter your password.');
+      return;
+    }
+
+    const ok = await showCustomConfirm({
+      title: 'Delete account?',
+      message: 'This will permanently delete your account and free up your name. <b>There is no undo.</b>',
+      okText: 'Delete',
+      danger: true
+    });
+    if (!ok) return;
+
+    try {
+      playSound('click');
+      setHint('');
+      showAuthLoadingScreen('Deleting account');
+
+      // Re-authenticate (required by Firebase for deleting the auth user).
+      const identifier = String(u.email || '').trim();
+      if (!identifier) throw new Error('Missing identifier');
+      const cred = firebase.auth.EmailAuthProvider.credential(identifier, passwordForAuth(pw));
+      await u.reauthenticateWithCredential(cred);
+
+      // Best-effort: delete username registry docs for this uid.
+      try {
+        const qs = await db.collection('usernames').where('uid', '==', u.uid).get();
+        const batch = db.batch();
+        qs.forEach((d) => batch.delete(d.ref));
+        if (!qs.empty) await batch.commit();
+      } catch (_) {}
+
+      // Best-effort: delete user/profile docs.
+      try { await db.collection('users').doc(u.uid).delete(); } catch (_) {}
+      try { await db.collection('players').doc(u.uid).delete(); } catch (_) {}
+      try { await db.collection('presence').doc(u.uid).delete(); } catch (_) {}
+
+      // Delete Firebase Auth user (signs them out).
+      await u.delete();
+
+      // Clear local navigation so refresh doesn't try to restore.
+      try { clearLastNavigation(); } catch (_) {}
+      try { refreshNameUI(); } catch (_) {}
+      setHint('Deleted.');
+      close();
+      try { showAuthScreen(); } catch (_) {}
+    } catch (err) {
+      console.warn('Delete account failed', err);
+      const code = String(err?.code || '');
+      if (code.includes('auth/wrong-password')) {
+        setHint('Password is incorrect.');
+      } else if (code.includes('auth/requires-recent-login')) {
+        setHint('Please log in again and retry.');
+      } else {
+        setHint('Could not delete account. Please try again.');
+      }
+    } finally {
+      hideAuthLoadingScreen();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'flex') close();
+  });
+}
+
+function openDeleteAccountModal() {
+  const modal = document.getElementById('delete-account-modal');
+  const passInput = document.getElementById('delete-account-password');
+  const hintEl = document.getElementById('delete-account-hint');
+  if (!modal) return;
+  if (!auth.currentUser) {
+    try { showAuthScreen(); } catch (_) {}
+    return;
+  }
+  if (passInput) passInput.value = '';
+  if (hintEl) hintEl.textContent = '';
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+  setTimeout(() => passInput?.focus?.(), 100);
 }
 
 /* =========================
