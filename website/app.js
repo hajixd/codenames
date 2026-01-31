@@ -144,15 +144,31 @@ async function ensureUserDisplayName(u) {
     const prov = getProvisioning();
     if (!username && prov?.username) username = normalizeUsername(prov.username);
 
-    // If still missing, try resolving via the registry.
-    if (!username) {
-      const fromReg = await resolveUsernameForUid(uid);
-      if (fromReg) username = normalizeUsername(fromReg);
+    // The usernames registry is the source of truth for "what is my current handle".
+    // This matters when the same account is logged in on multiple devices and the user
+    // changes their name on one device: the other device must adopt the updated handle.
+    let fromReg = null;
+    try { fromReg = await resolveUsernameForUid(uid); } catch (_) {}
+    const regName = normalizeUsername(fromReg || '');
+
+    if (regName) {
+      // If registry disagrees with Auth displayName, trust the registry and sync Auth.
+      if (!username || username !== regName) {
+        username = regName;
+      }
+    } else if (!username) {
+      // No registry entry yet (e.g., early provisioning). We'll rely on provisioning/displayName.
+      username = username || '';
     }
 
-    // If we got a username and displayName is empty, set it.
-    if (username && !current) {
+    // Keep Auth displayName synced to our resolved username so UI + checks are consistent.
+    if (username && (!current || normalizeUsername(current) !== username)) {
       try { await u.updateProfile({ displayName: username }); } catch (_) {}
+    }
+
+    // Cache for faster cold starts.
+    if (username) {
+      try { safeLSSet(LS_LAST_USERNAME, username); } catch (_) {}
     }
 
     // Clear provisioning once we have a stable identity.
@@ -166,6 +182,7 @@ async function ensureUserDisplayName(u) {
     return null;
   }
 }
+
 
 // =========================
 // Account integrity / corruption handling
