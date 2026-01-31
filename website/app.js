@@ -7593,8 +7593,29 @@ async function attemptRepairPlayerProfileDoc(targetUid) {
   const uid = String(targetUid || '').trim();
   if (!uid) return { ok: false, reason: 'Missing uid' };
 
-  const username = String(findKnownUserName(uid) || '').trim();
-  const display = username || 'unknown';
+  // IMPORTANT: When repairing a missing `players/<uid>` doc, we should preserve the user's
+  // *actual* name. `playersCache` will be missing in this scenario, so we fall back to the
+  // usernames registry (doc id = username). This prevents repaired accounts from becoming
+  // "unknown" in Who's Online and profile popups.
+  // Try multiple sources for the user's name.
+  // 1) usernames registry cache (fast, preferred)
+  // 2) presence doc (often contains `name`)
+  // 3) users/<uid> doc (may contain `name`)
+  let display = String(getNameForAccount(uid) || '').trim();
+  if (!display) {
+    try {
+      const ps = await db.collection(PRESENCE_COLLECTION).doc(uid).get();
+      display = String((ps.exists ? (ps.data() || {}).name : '') || '').trim();
+    } catch (_) {}
+  }
+  if (!display) {
+    try {
+      const us = await db.collection('users').doc(uid).get();
+      const d = us.exists ? (us.data() || {}) : {};
+      display = String(d.name || d.username || '').trim();
+    } catch (_) {}
+  }
+  if (!display) return { ok: false, reason: 'Missing account name' };
 
   try {
     await db.collection('players').doc(uid).set({
