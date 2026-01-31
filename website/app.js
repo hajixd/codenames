@@ -317,7 +317,11 @@ async function adminDeleteSnapshotDocs(subCollRef, snap) {
 
 // Chat (tab)
 const GLOBAL_CHAT_COLLECTION = 'globalChat';
-let chatMode = 'global'; // 'global' | 'team'
+const DM_THREADS_COLLECTION = 'dmThreads';
+let chatMode = 'global'; // 'global' | 'team' | 'personal'
+let chatPersonalUserId = '';
+let chatPersonalUserName = '';
+const LS_CHAT_PERSONAL = 'ct_chatPersonal_v1';
 let chatUnsub = null;
 let chatMessagesCache = [];
 // Unread badges
@@ -3089,6 +3093,7 @@ function recomputeMyTeamTabBadge() {
 }
 
 async function markChatRead(mode) {
+  if (mode === 'personal') return; // no personal unread tracking yet
   const now = Date.now();
   // Throttle writes to avoid spam.
   if (now - lastReadWriteAtMs < 1500) return;
@@ -3181,14 +3186,21 @@ function refreshUnreadTeamListener() {
 function initChatTab() {
   const btnGlobal = document.getElementById('chat-mode-global');
   const btnTeam = document.getElementById('chat-mode-team');
+  const btnPersonal = document.getElementById('chat-mode-personal');
+  const personalBar = document.getElementById('chat-personal-bar');
+  const personalSelect = document.getElementById('chat-personal-select');
   const form = document.getElementById('chat-panel-form');
 
   const setMode = (mode) => {
-    chatMode = mode === 'team' ? 'team' : 'global';
+    chatMode = (mode === 'team') ? 'team' : (mode === 'personal' ? 'personal' : 'global');
     btnGlobal?.classList.toggle('active', chatMode === 'global');
     btnTeam?.classList.toggle('active', chatMode === 'team');
+    btnPersonal?.classList.toggle('active', chatMode === 'personal');
     btnGlobal?.setAttribute('aria-selected', chatMode === 'global' ? 'true' : 'false');
     btnTeam?.setAttribute('aria-selected', chatMode === 'team' ? 'true' : 'false');
+    btnPersonal?.setAttribute('aria-selected', chatMode === 'personal' ? 'true' : 'false');
+
+    if (personalBar) personalBar.style.display = chatMode === 'personal' ? 'flex' : 'none';
 
     // If chat panel is visible, resubscribe.
     if (activePanelId === 'panel-chat') {
@@ -3201,6 +3213,17 @@ function initChatTab() {
 
   btnGlobal?.addEventListener('click', () => setMode('global'));
   btnTeam?.addEventListener('click', () => setMode('team'));
+  btnPersonal?.addEventListener('click', () => setMode('personal'));
+
+  // Personal chat recipient selector
+  personalSelect?.addEventListener('change', () => {
+    const uid = String(personalSelect.value || '').trim();
+    setPersonalChatTarget(uid);
+    if (activePanelId === 'panel-chat' && chatMode === 'personal') {
+      startChatSubscription();
+      markChatRead('personal');
+    }
+  });
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3209,6 +3232,112 @@ function initChatTab() {
 
   initUnreadListeners();
   recomputeUnreadBadges();
+
+  // Load last selected personal recipient (best-effort)
+  try {
+    const saved = String(localStorage.getItem(LS_CHAT_PERSONAL) || '').trim();
+    if (saved) chatPersonalUserId = saved;
+  } catch (_) {}
+  refreshPersonalChatSelect();
+  if (personalBar) personalBar.style.display = chatMode === 'personal' ? 'flex' : 'none';
+}
+
+function dmThreadIdFor(a, b) {
+  const x = String(a || '').trim();
+  const y = String(b || '').trim();
+  if (!x || !y) return '';
+  return [x, y].sort().join('__');
+}
+
+function getNameForAccount(uid) {
+  const id = String(uid || '').trim();
+  if (!id) return '';
+  // Prefer player profile name
+  const p = (playersCache || []).find(pp => String(pp?.id || '').trim() === id);
+  if (p?.name) return String(p.name).trim();
+  // Fall back to username registry doc id
+  const u = (usernamesCache || []).find(x => String(x?.uid || '').trim() === id);
+  if (u?.id) return String(u.id).trim();
+  return '';
+}
+
+function setPersonalChatTarget(uid, nameOverride) {
+  const me = String(getUserId() || '').trim();
+  const target = String(uid || '').trim();
+  if (!target || target === me) {
+    chatPersonalUserId = '';
+    chatPersonalUserName = '';
+  } else {
+    chatPersonalUserId = target;
+    chatPersonalUserName = String(nameOverride || getNameForAccount(target) || '').trim();
+  }
+
+  // Persist and sync UI select
+  try { localStorage.setItem(LS_CHAT_PERSONAL, chatPersonalUserId || ''); } catch (_) {}
+  const sel = document.getElementById('chat-personal-select');
+  if (sel) {
+    try { sel.value = chatPersonalUserId || ''; } catch (_) {}
+  }
+}
+
+function refreshPersonalChatSelect() {
+  const sel = document.getElementById('chat-personal-select');
+  if (!sel) return;
+
+  const me = String(getUserId() || '').trim();
+  const options = [];
+
+  // Placeholder
+  options.push({ value: '', label: 'Choose a person…' });
+
+  // Build from username registry (authoritative list of accounts)
+  const all = (usernamesCache || [])
+    .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
+    .filter(u => u.uid && u.name && u.uid !== me)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const u of all) options.push({ value: u.uid, label: u.name });
+
+  // Replace options
+  const current = String(chatPersonalUserId || '').trim();
+  sel.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+
+  // Restore selection if still valid
+  if (current && options.some(o => o.value === current)) {
+    try { sel.value = current; } catch (_) {}
+    chatPersonalUserName = getNameForAccount(current) || chatPersonalUserName;
+  } else {
+    // Clear invalid selection
+    if (current) setPersonalChatTarget('');
+    try { sel.value = ''; } catch (_) {}
+  }
+}
+
+function openPersonalChatWith(userId) {
+  const uid = String(userId || '').trim();
+  if (!uid) return;
+  const name = getNameForAccount(uid) || '';
+  // Switch chat UI state
+  chatMode = 'personal';
+  setPersonalChatTarget(uid, name);
+  // Update segmented buttons + personal bar
+  try {
+    document.getElementById('chat-mode-global')?.classList.remove('active');
+    document.getElementById('chat-mode-team')?.classList.remove('active');
+    document.getElementById('chat-mode-personal')?.classList.add('active');
+    document.getElementById('chat-mode-global')?.setAttribute('aria-selected', 'false');
+    document.getElementById('chat-mode-team')?.setAttribute('aria-selected', 'false');
+    document.getElementById('chat-mode-personal')?.setAttribute('aria-selected', 'true');
+    const bar = document.getElementById('chat-personal-bar');
+    if (bar) bar.style.display = 'flex';
+  } catch (_) {}
+
+  // Navigate to Chat panel (desktop + mobile)
+  switchToPanel('panel-chat');
+  // Focus input (nice UX)
+  setTimeout(() => {
+    try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {}
+  }, 50);
 }
 
 function stopChatSubscription() {
@@ -3222,7 +3351,7 @@ function stopChatSubscription() {
   setHint('chat-panel-hint', '');
 }
 
-function startChatSubscription() {
+async function startChatSubscription() {
   const st = computeUserState(teamsCache);
 
   if (!st.name) {
@@ -3239,6 +3368,49 @@ function startChatSubscription() {
 
   const list = document.getElementById('chat-panel-messages');
   if (list) list.innerHTML = '<div class="empty-state">Loading…</div>';
+
+  if (chatMode === 'personal') {
+    const me = String(st.userId || '').trim();
+    const otherId = String(chatPersonalUserId || '').trim();
+    if (!otherId) {
+      chatMessagesCache = [];
+      renderChatTabMessages();
+      setHint('chat-panel-hint', 'Choose a person to message.');
+      return;
+    }
+    const threadId = dmThreadIdFor(me, otherId);
+    if (!threadId) {
+      chatMessagesCache = [];
+      renderChatTabMessages();
+      setHint('chat-panel-hint', 'Choose a person to message.');
+      return;
+    }
+
+    // Best-effort ensure the thread document exists.
+    try {
+      await db.collection(DM_THREADS_COLLECTION).doc(threadId).set({
+        participants: [me, otherId],
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (_) {}
+
+    const toName = chatPersonalUserName || getNameForAccount(otherId) || '—';
+    setHint('chat-panel-hint', `To: ${toName}`);
+
+    chatUnsub = db.collection(DM_THREADS_COLLECTION)
+      .doc(threadId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limit(200)
+      .onSnapshot((snap) => {
+        chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderChatTabMessages();
+      }, (err) => {
+        console.warn('Personal chat listen failed', err);
+        setHint('chat-panel-hint', 'Could not load personal chat.');
+      });
+    return;
+  }
 
   if (chatMode === 'team') {
     if (!st.teamId) {
@@ -3339,7 +3511,34 @@ async function sendChatTabMessage() {
   if (!text) return;
 
   try {
-    if (chatMode === 'team') {
+    if (chatMode === 'personal') {
+      const otherId = String(chatPersonalUserId || '').trim();
+      if (!otherId) {
+        setHint('chat-panel-hint', 'Choose a person to message.');
+        return;
+      }
+      const threadId = dmThreadIdFor(st.userId, otherId);
+      if (!threadId) {
+        setHint('chat-panel-hint', 'Choose a person to message.');
+        return;
+      }
+      // Best-effort ensure the thread document exists.
+      await db.collection(DM_THREADS_COLLECTION).doc(threadId).set({
+        participants: [st.userId, otherId],
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      await db.collection(DM_THREADS_COLLECTION)
+        .doc(threadId)
+        .collection('messages')
+        .add({
+          senderId: st.userId,
+          senderName: st.name,
+          toId: otherId,
+          text,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } else if (chatMode === 'team') {
       if (!st.teamId) {
         setHint('chat-panel-hint', 'Join a team to use team chat.');
         return;
@@ -4946,6 +5145,8 @@ function initUsernamesRegistryListener() {
   try {
     usernamesUnsub = db.collection('usernames').onSnapshot((snap) => {
       usernamesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Update Personal chat recipient list (best-effort)
+      try { refreshPersonalChatSelect(); } catch (_) {}
       // Re-render online widgets if open.
       try { renderOnlineCounter(); } catch (_) {}
       try {
@@ -6301,6 +6502,9 @@ function renderPlayerProfile(playerId) {
   const statsWins = Number(player.wins || 0) || 0;
   const statsLosses = Number(player.losses || 0) || 0;
 
+  const myUid = String(auth.currentUser?.uid || getUserId() || '').trim();
+  const canMessage = !!myUid && myUid !== String(player.id || '').trim();
+
   titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
 
   bodyEl.innerHTML = `
@@ -6330,6 +6534,12 @@ function renderPlayerProfile(playerId) {
       </div>
     </div>
 
+    ${canMessage ? `
+      <div class="profile-actions">
+        <button class="btn" id="profile-message-btn" type="button">Message</button>
+      </div>
+    ` : ''}
+
     <div class="profile-more-details">
       <button class="link-btn subtle" type="button" id="profile-more-details-btn">See more details</button>
     </div>
@@ -6343,6 +6553,14 @@ function renderPlayerProfile(playerId) {
     // Close the small anchored profile popup before opening the centered modal.
     hideProfilePopup();
     openProfileDetailsModal(player.id, 'player');
+  });
+
+  const msgBtn = document.getElementById('profile-message-btn');
+  msgBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideProfilePopup();
+    openPersonalChatWith(player.id);
   });
 }
 
@@ -6538,6 +6756,9 @@ function renderProfileDetailsModal(id, type = 'player') {
   const denom = (wins + losses);
   const winRate = denom > 0 ? Math.round((wins / denom) * 100) : 0;
 
+  const myUid = String(auth.currentUser?.uid || getUserId() || '').trim();
+  const canMessage = !!myUid && myUid !== String(player.id || '').trim();
+
   titleEl.innerHTML = `<span style="color:${esc(tc || 'var(--text)')}">${esc(name)}</span>`;
 
   const teamLine = memberTeam
@@ -6567,6 +6788,12 @@ function renderProfileDetailsModal(id, type = 'player') {
       </div>
     </div>
 
+    ${canMessage ? `
+      <div class="profile-actions">
+        <button class="btn" id="profile-details-message-btn" type="button">Message</button>
+      </div>
+    ` : ''}
+
     <div class="profile-divider"></div>
 
     <div class="profile-stats">
@@ -6585,6 +6812,14 @@ function renderProfileDetailsModal(id, type = 'player') {
     </div>
 
   `;
+
+  const msgBtn = document.getElementById('profile-details-message-btn');
+  msgBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeProfileDetailsModal();
+    openPersonalChatWith(player.id);
+  });
 }
 
 function formatRelativeTime(timestamp) {

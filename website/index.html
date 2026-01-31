@@ -341,10 +341,17 @@
                   Team
                   <span class="badge seg-badge" id="badge-team" aria-label="Unread team messages" style="display:none;"></span>
                 </button>
+                <button class="seg-btn" id="chat-mode-personal" type="button" role="tab" aria-selected="false">
+                  Personal
+                </button>
               </div>
             </div>
 
             <div class="chat-card">
+              <div class="chat-personal-bar" id="chat-personal-bar" style="display:none;">
+                <span class="chat-personal-label">To</span>
+                <select class="input chat-personal-select" id="chat-personal-select" aria-label="Choose a person"></select>
+              </div>
               <div class="chat-messages" id="chat-panel-messages"></div>
               <form class="chat-compose" id="chat-panel-form">
                 <input class="input chat-input" id="chat-panel-input" type="text" placeholder="Message" autocomplete="off" />
@@ -1045,11 +1052,10 @@
               </div>
 
               <div class="settings-danger" id="settings-danger">
-                <div class="settings-section-title">Danger</div>
                 <div class="settings-danger-actions">
                   <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
                 </div>
-                <div class="hint" id="settings-delete-account-hint">Deletes your account and frees your username. This cannot be undone.</div>
+                <div class="hint" id="settings-delete-account-hint" style="display:none;"></div>
               </div>
 
               <!-- Admin Actions (only visible for admin users) -->
