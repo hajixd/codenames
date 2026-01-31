@@ -5254,6 +5254,51 @@ function setHint(id, value) {
   if (el) el.textContent = value || '';
 }
 
+// Lightweight toast (no CSS dependency) for short confirmations.
+function showToast(message, ms = 1400) {
+  const msg = String(message || '').trim();
+  if (!msg) return;
+
+  let toast = document.getElementById('app-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'app-toast';
+    toast.setAttribute('aria-live', 'polite');
+    toast.style.position = 'fixed';
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.bottom = 'calc(84px + env(safe-area-inset-bottom, 0px))';
+    toast.style.zIndex = '99999';
+    toast.style.maxWidth = 'min(92vw, 520px)';
+    toast.style.padding = '10px 14px';
+    toast.style.borderRadius = '14px';
+    toast.style.background = 'rgba(0,0,0,0.85)';
+    toast.style.color = '#fff';
+    toast.style.fontSize = '14px';
+    toast.style.lineHeight = '1.2';
+    toast.style.textAlign = 'center';
+    toast.style.boxShadow = '0 10px 30px rgba(0,0,0,0.25)';
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 160ms ease';
+    document.body.appendChild(toast);
+  }
+
+  // Reset any prior hide timer.
+  if (toast.__hideTimer) {
+    clearTimeout(toast.__hideTimer);
+    toast.__hideTimer = null;
+  }
+
+  toast.textContent = msg;
+  // Force reflow so opacity transition works consistently.
+  void toast.offsetWidth;
+  toast.style.opacity = '1';
+
+  toast.__hideTimer = setTimeout(() => {
+    toast.style.opacity = '0';
+  }, Math.max(400, ms));
+}
+
 function activatePanel(panelId) {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
@@ -6896,20 +6941,14 @@ try {
     return;
   }
 
-  // Keep the modal open so the user can actually see confirmation before refresh.
-  setHint(`Name updated to ${newName}. Refreshing…`);
+  // Close the popup after success, then show a brief confirmation.
+  closeNameChangeModal();
+  showToast(`Name updated to ${newName}. Refreshing…`, 1200);
 
-  // Prevent double-submits while we refresh.
-  try { if (input) input.disabled = true; } catch (_) {}
-  try {
-    const btn = form?.querySelector('button[type="submit"]');
-    if (btn) btn.disabled = true;
-  } catch (_) {}
-
-  // Small delay so the message is visible on both desktop + mobile.
+  // Small delay so the toast is visible on both desktop + mobile.
   setTimeout(() => {
     try { window.location.reload(); } catch (_) { window.location.href = window.location.href; }
-  }, 900);
+  }, 1000);
 } catch (err) {
       const msg = String(err?.message || '');
       if (msg.includes('USERNAME_TAKEN')) {
