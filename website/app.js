@@ -503,6 +503,40 @@ function isAdminUser() {
   }
 }
 
+// =========================
+// Admin Logs (client-side)
+// =========================
+// A lightweight event log used by the special "admin" account.
+// Writes are best-effort (fire-and-forget) and read access is restricted
+// via Firestore rules.
+let logsUnsub = null;
+let logsCache = [];
+
+function logEvent(type, message, meta = {}) {
+  try {
+    const u = auth.currentUser;
+    if (!u) return;
+    const actorId = String(u.uid || '').trim();
+    if (!actorId) return;
+    const actorName = normalizeUsername(getUserName() || u.displayName || '');
+    const t = String(type || '').trim();
+    const msg = String(message || '').trim();
+    if (!t || !msg) return;
+
+    // Best-effort write (do not block UX).
+    db.collection('logs').add({
+      type: t,
+      message: msg,
+      actorId,
+      actorName: actorName || null,
+      meta: meta && typeof meta === 'object' ? meta : {},
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }).catch(() => {});
+  } catch (_) {
+    // swallow
+  }
+}
+
 // App-level backups (client-driven, admin-only)
 // These backups live in Firestore under:
 //   adminBackups/{backupId}
@@ -2267,6 +2301,12 @@ async function setUserName(name, opts = {}) {
     try { updateNameInAllTeams(getUserId(), nextName).catch(() => {}); } catch (_) {}
     try { refreshNameUI(); } catch (_) {}
 
+    // Admin log (best-effort)
+    try {
+      const from = canonicalPrevName ? canonicalPrevName : '(new)';
+      logEvent('rename', `${from} → ${nextName}`, { from: canonicalPrevName || null, to: nextName });
+    } catch (_) {}
+
     return { changed: true, name: nextName };
   } finally {
     hideAuthLoadingScreen();
@@ -2400,10 +2440,9 @@ function refreshHeaderIdentity() {
   // Only show team name if actually on a team (not pending) - pending requests don't count
   const teamDisplayEl = document.getElementById('user-team-display');
   if (teamDisplayEl) {
+    const isTightMobile = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
     if (st.team) {
       const rawTeamName = String(st.team.teamName || 'My team');
-      // Mobile header space is tight: use a 4-char compact label with ellipsis.
-      const isTightMobile = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
       let shownTeamName = rawTeamName;
       if (isTightMobile) {
         shownTeamName = rawTeamName.length > 4 ? (rawTeamName.slice(0, 4) + '…') : rawTeamName;
@@ -2412,7 +2451,9 @@ function refreshHeaderIdentity() {
       }
       teamDisplayEl.innerHTML = `<span class="profile-link" data-profile-type="team" data-profile-id="${esc(st.team.id)}" title="${esc(rawTeamName)}">${esc(shownTeamName)}</span>`;
     } else {
-      teamDisplayEl.textContent = 'No team';
+      // Keep the same tight header truncation rule even for the "No team" state.
+      // (User requested the 4-char rule + "..." on mobile.)
+      teamDisplayEl.textContent = isTightMobile ? ('No t' + '...') : 'No team';
     }
   }
 
@@ -2998,6 +3039,16 @@ async function sendInviteToPlayer(targetUserId) {
       tx.update(playerRef, { invites: invites.concat([invite]), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     setHint('players-hint', 'Invite sent.');
+    try {
+      const teamName = String(st?.team?.teamName || '').trim();
+      const targetName = findKnownUserName(targetUserId) || fallbackName || '—';
+      logEvent('invite_sent', `${normalizeUsername(getUserName()) || st.name || 'user'} invited ${normalizeUsername(targetName)}${teamName ? (' to ' + teamName) : ''}`, {
+        teamId: String(teamId || '').trim(),
+        teamName,
+        targetUserId: String(targetUserId || '').trim(),
+        targetName: normalizeUsername(targetName)
+      });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
     setHint('players-hint', e?.message || 'Could not send invite.');
@@ -3024,6 +3075,16 @@ async function cancelInviteToPlayer(targetUserId) {
       });
     });
     setHint('players-hint', 'Invite canceled.');
+    try {
+      const teamName = String(st?.team?.teamName || '').trim();
+      const targetName = findKnownUserName(targetUserId) || '—';
+      logEvent('invite_cancel', `${normalizeUsername(getUserName()) || st.name || 'user'} canceled invite for ${normalizeUsername(targetName)}${teamName ? (' to ' + teamName) : ''}`, {
+        teamId: String(st.teamId || '').trim(),
+        teamName,
+        targetUserId: String(targetUserId || '').trim(),
+        targetName: normalizeUsername(targetName)
+      });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
     setHint('players-hint', e?.message || 'Could not cancel invite.');
@@ -3075,6 +3136,11 @@ async function acceptInvite(teamId) {
     });
 
     setHint('invites-hint', 'Joined!');
+    try {
+      const t = (teamsCache || []).find(x => String(x?.id || '').trim() === String(teamId || '').trim());
+      const teamName = String(t?.teamName || '').trim();
+      logEvent('invite_accept', `${normalizeUsername(getUserName()) || st.name || 'user'} joined${teamName ? (' ' + teamName) : ' a team'}`, { teamId: String(teamId || '').trim(), teamName });
+    } catch (_) {}
     activatePanel('panel-myteam');
   } catch (e) {
     console.error(e);
@@ -3093,6 +3159,11 @@ async function declineInvite(teamId) {
       const invites = Array.isArray(p.invites) ? p.invites : [];
       tx.update(playerRef, { invites: invites.filter(i => i?.teamId !== teamId), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
+    try {
+      const t = (teamsCache || []).find(x => String(x?.id || '').trim() === String(teamId || '').trim());
+      const teamName = String(t?.teamName || '').trim();
+      logEvent('invite_decline', `${normalizeUsername(getUserName()) || st.name || 'user'} declined invite${teamName ? (' from ' + teamName) : ''}`, { teamId: String(teamId || '').trim(), teamName });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
   }
@@ -3305,6 +3376,11 @@ async function cancelJoinRequest(teamId, opts = {}) {
       tx.update(ref, { pending: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     setHint(opts.hintElId || 'team-modal-hint', 'Request canceled.');
+    try {
+      const t = (teamsCache || []).find(x => String(x?.id || '').trim() === String(teamId || '').trim());
+      const teamName = String(t?.teamName || '').trim();
+      logEvent('team_request_cancel', `${normalizeUsername(getUserName()) || st.name || 'user'} canceled request${teamName ? (' for ' + teamName) : ''}`, { teamId: String(teamId || '').trim(), teamName });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
     setHint(opts.hintElId || 'team-modal-hint', e?.message || 'Could not cancel request.');
@@ -3336,6 +3412,11 @@ async function requestToJoin(teamId, opts = {}) {
       });
     });
     setHint(opts.hintElId || 'team-modal-hint', 'Request sent.');
+    try {
+      const t = (teamsCache || []).find(x => String(x?.id || '').trim() === String(teamId || '').trim());
+      const teamName = String(t?.teamName || '').trim();
+      logEvent('team_request', `${normalizeUsername(getUserName()) || st.name || 'user'} requested to join${teamName ? (' ' + teamName) : ' a team'}`, { teamId: String(teamId || '').trim(), teamName });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
     setHint(opts.hintElId || 'team-modal-hint', e?.message || 'Could not send request.');
@@ -4834,6 +4915,12 @@ async function handleCreateTeam() {
     });
 
     setHint('create-team-hint', 'Created!');
+    try {
+      logEvent('team_create', `${normalizeUsername(getUserName()) || st.name || 'user'} created team ${teamName}`, {
+        teamId: String(teamRef.id || '').trim(),
+        teamName: String(teamName || '').trim(),
+      });
+    } catch (_) {}
     closeCreateTeamModal();
     // Switch to My Team tab
     activatePanel('panel-myteam');
@@ -4853,6 +4940,11 @@ async function leaveTeam(teamId, userId) {
       const members = getMembers(t);
       tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
+    try {
+      const t = (teamsCache || []).find(x => String(x?.id || '').trim() === String(teamId || '').trim());
+      const teamName = String(t?.teamName || '').trim();
+      logEvent('team_leave', `${normalizeUsername(getUserName()) || 'user'} left${teamName ? (' ' + teamName) : ' team'}`, { teamId: String(teamId || '').trim(), teamName });
+    } catch (_) {}
     activatePanel('panel-teams');
   } catch (e) {
     console.error(e);
@@ -4865,12 +4957,14 @@ async function deleteTeam(teamId) {
   if (!tid) return;
 
   const teamRef = db.collection('teams').doc(tid);
+  let teamNameForLog = '';
 
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(teamRef);
       if (!snap.exists) return;
       const t = { id: snap.id, ...snap.data() };
+      teamNameForLog = String(t.teamName || '').trim();
       const key = teamNameToKey(String(t.teamName || '').trim());
       if (key) {
         const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
@@ -4886,6 +4980,9 @@ async function deleteTeam(teamId) {
     });
 
     closeRequestsModal();
+    try {
+      logEvent('team_delete', `${normalizeUsername(getUserName()) || 'user'} deleted team${teamNameForLog ? (' ' + teamNameForLog) : ''}`, { teamId: tid, teamName: teamNameForLog });
+    } catch (_) {}
     activatePanel('panel-teams');
   } catch (e) {
     console.error(e);
@@ -5027,6 +5124,10 @@ async function acceptRequest(teamId, userId) {
 
   const teamRef = db.collection('teams').doc(tid);
 
+  let teamNameForLog = '';
+  let targetNameForLog = '';
+  let targetIdForLog = '';
+
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(teamRef);
@@ -5043,6 +5144,11 @@ async function acceptRequest(teamId, userId) {
       const targetId = entryAccountId(req) || String(userId || '').trim();
       const targetName = (req.name || '—').trim();
 
+      // Capture for admin log (outside tx)
+      teamNameForLog = String(t.teamName || '').trim();
+      targetNameForLog = targetName;
+      targetIdForLog = String(targetId || '').trim();
+
       const nextPending = pending.filter(r => !isSameAccount(r, targetId));
       const nextMembers = dedupeRosterByAccount(members.concat([{ userId: targetId, name: targetName }]));
 
@@ -5052,6 +5158,15 @@ async function acceptRequest(teamId, userId) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
     });
+
+    try {
+      logEvent('team_request_accept', `${normalizeUsername(getUserName()) || st.name || 'user'} accepted ${normalizeUsername(targetNameForLog || targetIdForLog || 'user')}'s request${teamNameForLog ? (' to ' + teamNameForLog) : ''}`, {
+        teamId: tid,
+        teamName: teamNameForLog,
+        targetUserId: targetIdForLog,
+        targetName: normalizeUsername(targetNameForLog)
+      });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
     setHint('teams-hint', e?.message || 'Could not accept request.');
@@ -5064,17 +5179,31 @@ async function declineRequest(teamId, userId) {
   if (st.teamId !== teamId) return;
 
   const ref = db.collection('teams').doc(teamId);
+  let teamNameForLog = '';
+  let targetNameForLog = '';
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
+      teamNameForLog = String(t.teamName || '').trim();
       const pending = getPending(t);
+      const req = pending.find(r => isSameAccount(r, userId)) || pending.find(r => String(r.userId || '').trim() === String(userId || '').trim());
+      if (req) targetNameForLog = String(req.name || '').trim();
       tx.update(ref, {
         pending: pending.filter(r => !isSameAccount(r, userId)),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
     });
+    try {
+      const target = normalizeUsername(targetNameForLog || findKnownUserName(userId) || String(userId || 'user'));
+      logEvent('team_request_decline', `${normalizeUsername(getUserName()) || st.name || 'user'} declined ${target}'s request${teamNameForLog ? (' to ' + teamNameForLog) : ''}`, {
+        teamId: String(teamId || '').trim(),
+        teamName: teamNameForLog,
+        targetUserId: String(userId || '').trim(),
+        targetName: target
+      });
+    } catch (_) {}
   } catch (e) {
     console.error(e);
   }
@@ -5456,6 +5585,7 @@ function initSettings() {
   const adminSection = document.getElementById('settings-admin');
   const adminBackupBtn = document.getElementById('admin-backup-now-btn');
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
+  const adminLogsBtn = document.getElementById('admin-logs-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
   // Account danger action: delete the current user (frees username).
@@ -5480,6 +5610,17 @@ function initSettings() {
 
   refreshAdminUI();
 
+  adminLogsBtn?.addEventListener('click', async () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    try {
+      // Close settings before opening the logs (keeps UI uncluttered).
+      modal.classList.remove('modal-open');
+      setTimeout(() => { modal.style.display = 'none'; }, 180);
+    } catch (_) {}
+    try { openLogsPopup(); } catch (_) {}
+  });
+
   adminBackupBtn?.addEventListener('click', async () => {
     if (!isAdminUser()) return;
     playSound('click');
@@ -5499,6 +5640,13 @@ function initSettings() {
       adminBackupBtn.disabled = false;
       adminRestoreBtn && (adminRestoreBtn.disabled = false);
     }
+  });
+
+  adminLogsBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    try { closeSettingsModal(); } catch (_) {}
+    try { openLogsPopup(); } catch (_) {}
   });
 
   adminRestoreBtn?.addEventListener('click', async () => {
@@ -7890,6 +8038,129 @@ function hideProfilePopup() {
   currentProfileId = null;
 }
 
+/* =========================
+   Admin Logs Popup
+========================= */
+let logsPopupOpen = false;
+
+function initLogsPopup() {
+  const popup = document.getElementById('logs-popup');
+  const backdrop = document.getElementById('logs-popup-backdrop');
+  const closeBtn = document.getElementById('logs-popup-close');
+
+  if (closeBtn) closeBtn.addEventListener('click', closeLogsPopup);
+  if (backdrop) backdrop.addEventListener('click', closeLogsPopup);
+
+  // Click outside card dismisses.
+  if (popup) {
+    popup.addEventListener('click', (e) => {
+      const card = popup.querySelector('.logs-popup-card');
+      if (card && !card.contains(e.target)) closeLogsPopup();
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && logsPopupOpen) closeLogsPopup();
+  });
+}
+
+function openLogsPopup() {
+  if (!isAdminUser()) return;
+  const popup = document.getElementById('logs-popup');
+  const backdrop = document.getElementById('logs-popup-backdrop');
+  if (!popup) return;
+
+  logsPopupOpen = true;
+  popup.style.display = 'flex';
+  if (backdrop) backdrop.style.display = 'block';
+
+  requestAnimationFrame(() => {
+    popup.classList.add('visible');
+  });
+
+  startLogsListener();
+  renderLogsList();
+}
+
+function closeLogsPopup() {
+  const popup = document.getElementById('logs-popup');
+  const backdrop = document.getElementById('logs-popup-backdrop');
+  logsPopupOpen = false;
+
+  if (popup) {
+    popup.classList.remove('visible');
+    setTimeout(() => { popup.style.display = 'none'; }, 200);
+  }
+  if (backdrop) backdrop.style.display = 'none';
+
+  // Unsubscribe when closed to reduce reads.
+  try { if (logsUnsub) { logsUnsub(); logsUnsub = null; } } catch (_) {}
+}
+
+function startLogsListener() {
+  if (logsUnsub) return;
+  const hintEl = document.getElementById('logs-hint');
+  try { if (hintEl) hintEl.textContent = 'Loading…'; } catch (_) {}
+
+  try {
+    logsUnsub = db.collection('logs')
+      .orderBy('createdAt', 'desc')
+      .limit(200)
+      .onSnapshot((snap) => {
+        logsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderLogsList();
+        try { if (hintEl) hintEl.textContent = logsCache.length ? '' : 'No logs yet.'; } catch (_) {}
+      }, (err) => {
+        try { if (hintEl) hintEl.textContent = err?.message || 'Could not load logs.'; } catch (_) {}
+      });
+  } catch (e) {
+    try { if (hintEl) hintEl.textContent = e?.message || 'Could not load logs.'; } catch (_) {}
+  }
+}
+
+function inferLogBadge(type) {
+  const t = String(type || '').toLowerCase();
+  if (t.includes('rename') || t.includes('name')) return { cls: 'rename', label: 'Rename' };
+  if (t.includes('request')) return { cls: 'request', label: 'Request' };
+  if (t.includes('invite')) return { cls: 'invite', label: 'Invite' };
+  if (t.includes('join') || t.includes('accept')) return { cls: 'join', label: 'Join' };
+  if (t.includes('leave') || t.includes('kick') || t.includes('delete') || t.includes('decline')) return { cls: 'leave', label: 'Leave' };
+  return { cls: 'admin', label: 'Log' };
+}
+
+function renderLogsList() {
+  const listEl = document.getElementById('logs-list');
+  if (!listEl) return;
+
+  if (!isAdminUser()) {
+    listEl.innerHTML = '<div class="empty-state">Admin only</div>';
+    return;
+  }
+
+  const rows = (logsCache || []).slice(0, 200).map((l) => {
+    const badge = inferLogBadge(l?.type);
+    const msg = String(l?.message || '').trim() || '(no message)';
+    const actor = String(l?.actorName || l?.actorId || '').trim();
+    const ms = tsToMs(l?.createdAt);
+    const when = Number.isFinite(ms) ? formatRelativeTime(ms) : 'just now';
+    return `
+      <div class="log-row">
+        <div class="log-top">
+          <span class="log-badge ${esc(badge.cls)}">${esc(badge.label)}</span>
+          <div class="log-message">${esc(msg)}</div>
+        </div>
+        <div class="log-meta">
+          <span>${esc(actor || 'unknown')}</span>
+          <span class="log-dot"></span>
+          <span>${esc(when)}</span>
+        </div>
+      </div>
+    `;
+  });
+
+  listEl.innerHTML = rows.length ? rows.join('') : '<div class="empty-state">No logs yet</div>';
+}
+
 function renderTeamProfile(teamId) {
   const team = teamsCache.find(t => t.id === teamId);
   if (!team) {
@@ -8578,3 +8849,4 @@ window.hideProfilePopup = hideProfilePopup;
 
 // Initialize profile popup on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', initProfilePopup);
+document.addEventListener('DOMContentLoaded', initLogsPopup);

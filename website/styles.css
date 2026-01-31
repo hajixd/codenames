@@ -8182,6 +8182,118 @@ body.tournament.has-team-color .input:focus {
   animation: profilePopupIn 0.2s ease;
 }
 
+/* =========================
+   Admin Logs Popup
+========================= */
+.logs-popup {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.logs-popup-card {
+  min-width: 420px;
+  max-width: 720px;
+  width: min(720px, calc(100vw - 36px));
+  max-height: 75vh;
+}
+
+.logs-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: -2px;
+}
+
+.logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 58vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.log-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.log-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.log-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.log-badge.rename { background: rgba(59, 130, 246, 0.12); color: var(--accent); }
+.log-badge.request { background: rgba(250, 204, 21, 0.12); color: var(--gold); }
+.log-badge.invite { background: rgba(168, 85, 247, 0.12); color: rgba(216, 180, 254, 0.95); }
+.log-badge.join { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+.log-badge.leave { background: rgba(239, 68, 68, 0.12); color: var(--red); }
+.log-badge.admin { background: rgba(148, 163, 184, 0.12); color: rgba(226, 232, 240, 0.95); }
+
+.log-message {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.log-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+@media (max-width: 768px) {
+  .logs-popup {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  .logs-popup-card {
+    min-width: 100%;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 18px 18px 0 0;
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+  .logs-list {
+    max-height: 60vh;
+  }
+}
+
 @keyframes profilePopupIn {
   from {
     opacity: 0;

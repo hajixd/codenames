@@ -1093,6 +1093,7 @@
                 <div class="settings-section-title">Admin</div>
                 <div class="settings-admin-actions">
                   <button class="btn" id="admin-backup-now-btn" type="button">Backup Teams/Players Now</button>
+                  <button class="btn" id="admin-logs-btn" type="button">Logs</button>
                   <button class="btn danger" id="admin-restore-5min-btn" type="button">Restore Teams/Players (5 min ago)</button>
                 </div>
                 <div class="hint" id="admin-restore-hint">Restores only from app-created backups (collection: <span class="mono">adminBackups</span>). If no backup exists from ~5 minutes ago, restore won’t be possible from inside the app.</div>
@@ -1123,6 +1124,22 @@
         </div>
       </div>
       <div class="profile-popup-backdrop" id="profile-popup-backdrop" style="display:none;"></div>
+
+      <!-- Admin Logs Popup (admin-only) -->
+      <div class="profile-popup logs-popup" id="logs-popup" style="display:none;">
+        <div class="profile-popup-card logs-popup-card">
+          <div class="profile-popup-header">
+            <div class="profile-popup-title">Logs</div>
+            <button class="icon-btn profile-popup-close" id="logs-popup-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="profile-popup-body">
+            <div class="logs-subtitle" id="logs-subtitle">Live activity (updates in real time)</div>
+            <div class="logs-list" id="logs-list"></div>
+            <div class="hint" id="logs-hint" style="min-height: 18px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="profile-popup-backdrop" id="logs-popup-backdrop" style="display:none;"></div>
 
       <!-- Change Password Modal -->
       <div class="modal password-change-modal" id="password-change-modal" style="display:none;" role="dialog" aria-modal="true">

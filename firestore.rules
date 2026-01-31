@@ -138,6 +138,15 @@ service cloud.firestore {
       }
     }
 
+    // ===== admin activity logs =====
+    match /logs/{logId} {
+      // Only the "admin" user (or a custom-claim admin) can read logs.
+      allow read: if isAdmin();
+      // Any signed-in user can create a log event, but only for themselves.
+      allow create: if signedIn() && request.resource.data.actorId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     // ===== admin backups =====
     match /adminBackups/{backupId} {
       allow read, write: if isAdmin();
