@@ -53,6 +53,8 @@ let playersCache = [];
 // Live listeners (only when signed in)
 let teamsUnsub = null;
 let playersUnsub = null;
+let usernamesUnsub = null;
+let usernamesCache = []; // docs from /usernames (public registry)
 
 // Avoid spamming Firestore with repeated legacy-migration writes.
 const migratedCreatorIds = new Set();
@@ -307,6 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initInvitesModal();
   initChatTab();
   initOnlineCounterUI();
+  initUsernamesRegistryListener();
   initProfileDetailsModal();
   // Live Firestore listeners are started after sign-in (initAuthGate).
 
@@ -773,17 +776,27 @@ function initLaunchScreen() {
       console.warn('Signup failed', err);
       const msg = String(err?.message || '');
       const ec = String(err?.code || '');
-      if (msg.includes('USERNAME_TAKEN')) {
+
+      // Prefer friendly, specific errors.
+      if (msg.includes('USERNAME_TAKEN') || ec === 'auth/email-already-in-use') {
         if (createHint) createHint.textContent = "There's already an account. Try logging in.";
-      } else if (ec.includes('auth/operation-not-allowed')) {
+      } else if (ec === 'auth/invalid-email') {
+        // Usually means our internal handle format was rejected.
+        if (createHint) createHint.textContent = 'Could not create account. Username not allowed.';
+      } else if (ec === 'auth/operation-not-allowed') {
         if (createHint) createHint.textContent = 'Account creation is disabled right now.';
-      } else if (ec.includes('auth/weak-password')) {
+      } else if (ec === 'auth/weak-password') {
         if (createHint) createHint.textContent = 'Password must be at least 6 characters.';
-      } else if (ec.includes('permission-denied')) {
+      } else if (ec === 'permission-denied') {
         if (createHint) createHint.textContent = 'Signup is blocked by server rules.';
+      } else if (ec === 'auth/network-request-failed') {
+        if (createHint) createHint.textContent = 'Network error. Check your connection and try again.';
       } else {
-        if (createHint) createHint.textContent = 'Could not create account. Please try again.';
+        // Last resort: show a compact hint so debugging is possible without exposing internals.
+        const codeHint = ec ? ` (${ec})` : '';
+        if (createHint) createHint.textContent = `Could not create account. Please try again.${codeHint}`;
       }
+
       // Best-effort cleanup if we created an auth user but failed to claim the username.
       try {
         const u = auth.currentUser;
@@ -1453,7 +1466,7 @@ function refreshNameUI() {
   const settingsGear = document.getElementById('settings-gear-btn');
   if (headerNamePill) headerNamePill.style.display = canEnter ? '' : 'none';
   if (headerTeamPill) headerTeamPill.style.display = canEnter ? '' : 'none';
-  if (settingsGear) settingsGear.style.display = canEnter ? '' : 'none';
+  if (settingsGear) settingsGear.style.display = '';
 
   // Update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
@@ -4100,6 +4113,25 @@ themeToggle?.addEventListener('change', () => {
 function openSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
+
+  // Toggle account-only controls depending on auth state.
+  const signedIn = !!auth.currentUser;
+  const logoutBtn = document.getElementById('settings-logout-btn');
+  const changePwBtn = document.getElementById('settings-change-password-btn');
+  const wipeBtn = document.getElementById('settings-wipe-users-btn');
+  const wipeHint = document.getElementById('settings-wipe-users-hint');
+
+  if (logoutBtn) logoutBtn.style.display = signedIn ? '' : 'none';
+  if (changePwBtn) changePwBtn.style.display = signedIn ? '' : 'none';
+
+  if (wipeBtn) {
+    wipeBtn.disabled = !signedIn;
+    wipeBtn.style.opacity = signedIn ? '' : '0.5';
+  }
+  if (wipeHint && !signedIn) {
+    wipeHint.innerHTML = 'Sign in to use this.';
+  }
+
   modal.style.display = 'block';
   // Trigger reflow for animation
   void modal.offsetWidth;
@@ -4720,6 +4752,34 @@ function stopPresenceListener() {
   }
 }
 
+function initUsernamesRegistryListener() {
+  // This registry is readable even before login (so usernames can be checked and listed).
+  // We keep a live cache so "Who's Online" can show all known accounts.
+  if (usernamesUnsub) return;
+  try {
+    usernamesUnsub = db.collection('usernames').onSnapshot((snap) => {
+      usernamesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Re-render online widgets if open.
+      try { renderOnlineCounter(); } catch (_) {}
+      try {
+        const modal = document.getElementById('online-modal');
+        if (modal && modal.style.display === 'flex') renderOnlineUsersList();
+      } catch (_) {}
+    }, (err) => {
+      console.warn('Usernames registry listener error:', err);
+    });
+  } catch (e) {
+    console.warn('Failed to start usernames registry listener (best-effort):', e);
+  }
+}
+
+function stopUsernamesRegistryListener() {
+  if (usernamesUnsub) {
+    try { usernamesUnsub(); } catch (_) {}
+    usernamesUnsub = null;
+  }
+}
+
 function resolvePresenceArg(arg) {
   if (!arg) return null;
   // Allow callers to pass a userId string.
@@ -4787,11 +4847,62 @@ function getTimeSinceActivity(presenceOrUserId) {
   return `${days} days ago`;
 }
 
+
+function getAllKnownAccounts() {
+  // Build a unified list of accounts using:
+  // - /usernames registry (authoritative username list)
+  // - presence docs (for status + activity)
+  // - playersCache (fallback display names)
+  //
+  // Result items look like presence docs so existing render logic works.
+  const byUid = new Map();
+
+  // 1) Seed from username registry (shows all accounts even if offline).
+  for (const u of (usernamesCache || [])) {
+    const username = String(u?.id || '').trim(); // doc id is the username
+    const uid = String(u?.uid || '').trim();
+    if (!uid || !username) continue;
+    if (!byUid.has(uid)) {
+      byUid.set(uid, { id: uid, odId: uid, name: username });
+    } else {
+      const cur = byUid.get(uid);
+      if (!cur.name) cur.name = username;
+    }
+  }
+
+  // 2) Merge in players (some older flows may have profiles without registry).
+  for (const p of (playersCache || [])) {
+    const uid = String(p?.id || '').trim();
+    if (!uid) continue;
+    const nm = String(p?.name || '').trim();
+    if (!byUid.has(uid)) byUid.set(uid, { id: uid, odId: uid, name: nm || 'Unknown' });
+    else if (nm && !String(byUid.get(uid)?.name || '').trim()) byUid.get(uid).name = nm;
+  }
+
+  // 3) Merge in presence (status/activity + location).
+  for (const pr of (presenceCache || [])) {
+    const uid = String(pr?.id || pr?.odId || '').trim();
+    if (!uid) continue;
+    const base = byUid.get(uid) || { id: uid, odId: uid, name: String(pr?.name || '').trim() || 'Unknown' };
+    // Copy presence fields onto the object so getPresenceStatus works.
+    base.lastActivity = pr?.lastActivity || pr?.updatedAt || pr?.lastSeen || null;
+    base.updatedAt = pr?.updatedAt || null;
+    base.whereKey = pr?.whereKey || pr?.where || '';
+    base.whereLabel = pr?.whereLabel || '';
+    base.activePanelId = pr?.activePanelId || '';
+    if (String(pr?.name || '').trim()) base.name = String(pr.name).trim();
+    byUid.set(uid, base);
+  }
+
+  return Array.from(byUid.values());
+}
+
 function renderOnlineCounter() {
   const countEl = document.getElementById('online-count');
   if (!countEl) return;
 
-  const online = presenceCache.filter(p => getPresenceStatus(p) === 'online');
+  const all = getAllKnownAccounts();
+  const online = all.filter(p => getPresenceStatus(p) === 'online');
   countEl.textContent = online.length;
 }
 
@@ -5011,7 +5122,7 @@ function renderOnlineUsersList() {
   }
 
   // Filter by tab
-  let filtered = [...presenceCache];
+  let filtered = getAllKnownAccounts();
   if (onlineModalTab === 'teammates') {
     filtered = filtered.filter(p => {
       const odId = p.id || p.odId;
@@ -5028,8 +5139,8 @@ function renderOnlineUsersList() {
       return statusOrder[statusA] - statusOrder[statusB];
     }
     // Within same status, sort by lastActivity descending
-    const aMs = a.lastActivity?.toMillis?.() || 0;
-    const bMs = b.lastActivity?.toMillis?.() || 0;
+    const aMs = tsToMsSafe(a?.lastActivity || a?.updatedAt || a?.lastSeen || 0);
+    const bMs = tsToMsSafe(b?.lastActivity || b?.updatedAt || b?.lastSeen || 0);
     return bMs - aMs;
   });
 
@@ -5113,7 +5224,7 @@ function renderOnlineUsersList() {
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
-          <div class="online-user-status">last seen ${getTimeSinceActivity(p)}</div>
+          <div class="online-user-status">last seen ${getTimeSinceActivity(p) || 'never'}</div>
           ${delBtn}
         </div>
       `;
