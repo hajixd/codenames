@@ -8149,6 +8149,17 @@ body.tournament.has-team-color .input:focus {
   opacity: 0.85;
 }
 
+
+/* Online list: underline only the text, not the full flex line */
+.online-user-name.profile-link {
+  border-bottom: none;
+}
+.online-user-name.profile-link:hover {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 4px;
+}
+
 /* Profile Popup Container */
 .profile-popup {
   position: fixed;

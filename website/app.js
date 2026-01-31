@@ -6217,14 +6217,17 @@ const PRESENCE_WHERE_LABELS = {
 };
 
 function computeLocalPresenceWhereKey() {
-  // Prefer actual UI visibility over body classes (more robust across pages).
+  // Presence "where" should reflect the *active* UI, not just elements that exist in the DOM.
+  // Panels are often absolutely positioned, so relying on computed display alone can be misleading.
   const isDisplayed = (el) => {
     if (!el) return false;
     const st = window.getComputedStyle(el);
-    return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0';
+    // Treat elements as hidden if display/visibility hide them, or if opacity is effectively 0.
+    const op = Number(st.opacity || '1');
+    return st.display !== 'none' && st.visibility !== 'hidden' && op > 0.01;
   };
 
-  // Game board visible -> either lobby or game (based on phase)
+  // 1) If the game board is visible, we're either in lobby (waiting) or actively in a game.
   const gameBoard = document.getElementById('game-board-container');
   if (isDisplayed(gameBoard)) {
     const phase = (typeof window.getCurrentGamePhase === 'function') ? window.getCurrentGamePhase() : null;
@@ -6232,23 +6235,28 @@ function computeLocalPresenceWhereKey() {
     return 'lobby';
   }
 
-  // Tournament lobby visible
+  // 2) Dedicated lobbies (these are explicit containers that flip display on/off)
   const tournamentLobby = document.getElementById('tournament-lobby');
   if (isDisplayed(tournamentLobby)) return 'tournament';
 
-  // Quick play lobby visible
   const quickLobby = document.getElementById('quick-play-lobby');
   if (isDisplayed(quickLobby)) return 'lobby';
 
-  // Mode selection visible
+  // 3) Otherwise, use mode + active panel as the source of truth.
+  // Tournament mode: any non-gameboard view is "In Tournament".
+  if (document.body.classList.contains('tournament')) {
+    return 'tournament';
+  }
+
+  // Quick play mode: outside the gameboard/lobby we treat as menus.
+  if (document.body.classList.contains('quickplay')) {
+    return 'menus';
+  }
+
+  // 4) Launch / home menus (mode selection visible)
   const modeSelect = document.getElementById('play-mode-select');
   if (isDisplayed(modeSelect)) return 'menus';
 
-  // Tournament page visible
-  const tournamentPage = document.getElementById('tournament-page') || document.getElementById('tournament-section');
-  if (isDisplayed(tournamentPage)) return 'tournament';
-
-  // Otherwise treat as menus/home
   return 'menus';
 }
 
@@ -7942,9 +7950,14 @@ function renderTeamProfile(teamId) {
       ${members.length ? members.map(m => {
         const isLeader = isSameAccount(m, creatorId);
         const memberColor = tc || 'var(--text)';
+        const uid = String(entryAccountId(m) || m.id || m.userId || '').trim();
+        const display = String(m.name || '—');
+        const nameEl = uid
+          ? `<span class="profile-member-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" style="color:${esc(memberColor)}">${esc(display)}</span>`
+          : `<span class="profile-member-name" style="color:${esc(memberColor)}">${esc(display)}</span>`;
         return `
           <div class="profile-member">
-            <span class="profile-member-name" style="color:${esc(memberColor)}">${esc(m.name || '—')}</span>
+            ${nameEl}
             ${isLeader ? '<span class="profile-member-badge leader">Leader</span>' : ''}
           </div>
         `;
@@ -8126,6 +8139,7 @@ function renderPlayerProfile(playerId) {
   const roster = buildRosterIndex(teamsCache);
   const memberTeam = roster.memberTeamByUserId.get(player.id);
   const tc = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+  const teamStyle = (memberTeam && tc) ? `color:${tc}` : '';
 
   // Format dates
   const createdAtTs = getAccountCreatedAtForUid(player.id) || player.createdAt || null;
@@ -8163,7 +8177,11 @@ function renderPlayerProfile(playerId) {
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Team</span>
-        <span class="profile-stat-value ${memberTeam ? 'highlight' : ''}" style="${memberTeam && tc ? `color:${esc(tc)}` : ''}">${memberTeam ? esc(truncateTeamName(memberTeam.teamName || 'Team')) : 'No team'}</span>
+        ${memberTeam ? `
+          <span class="profile-stat-value highlight profile-link" data-profile-type="team" data-profile-id="${esc(memberTeam.id)}" style="${teamStyle ? esc(teamStyle) : ''}">${esc(truncateTeamName(memberTeam.teamName || 'Team'))}</span>
+        ` : `
+          <span class="profile-stat-value">No team</span>
+        `}
       </div>
       <div class="profile-stat-row">
         <span class="profile-stat-label">Joined</span>
@@ -8402,6 +8420,7 @@ function renderProfileDetailsModal(id, type = 'player') {
   const roster = buildRosterIndex(teamsCache);
   const memberTeam = roster.memberTeamByUserId.get(player.id);
   const tc = memberTeam ? getDisplayTeamColor(memberTeam) : null;
+  const teamStyle = (memberTeam && tc) ? `color:${tc}` : '';
   const name = (player.name || '—').trim();
 
   const presenceStatus = getPresenceStatus(player.id);
