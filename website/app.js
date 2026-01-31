@@ -7003,54 +7003,65 @@ function initNameChangeModal() {
     const newName = normalizeUsername(raw);
     if (!newName) return;
 
-    const setHint = (msg) => {
-      if (hintEl) hintEl.textContent = String(msg || '3–20 chars (a–z, 0–9, _)');
+    // From here on we always close the change-name modal and show a single
+    // OK dialog with the outcome (success / taken / already your name).
+    const closeAndNotify = async (title, message) => {
+      try { closeNameChangeModal(); } catch (_) {}
+      // Give the close animation a beat so the dialogs don't overlap visually.
+      await new Promise((r) => setTimeout(r, 240));
+      try {
+        await showSystemDialog({ title, message, okText: 'OK' });
+      } catch (_) {}
     };
 
     if (!isValidUsername(newName)) {
-      setHint('Invalid name. Use 3–20 chars: a–z, 0–9, _');
+      await closeAndNotify('Invalid name', 'Use 3–20 characters: a–z, 0–9, _.');
       return;
     }
 
     playSound('click');
-    setHint('');
-try {
-  const res = await setUserName(newName);
 
-  // If it normalized to the same name, don't pretend we changed it.
-  if (!res || res.changed === false) {
-    setHint("That's already your name.");
-    return;
-  }
-
-  // Close the popup after success, then reload.
-  // We show confirmation *after* reload (so other devices / tabs don't briefly
-  // display the old name).
-  closeNameChangeModal();
-  queueReloadToast(`Name updated to ${newName}.`);
-
-  // Give the modal a moment to animate closed, then reload.
-  setTimeout(() => {
-    // Use a hard navigation with a cache-buster to avoid certain browsers restoring
-    // prior DOM state (e.g., an open modal) across a reload.
+    // Detect the canonical current name so "already your name" works even if
+    // auth.displayName is stale on this device.
+    let currentCanonical = normalizeUsername(getUserName());
     try {
-      const u = new URL(window.location.href);
-      u.searchParams.set('_r', String(Date.now()));
-      u.hash = '';
-      window.location.replace(u.toString());
-    } catch (_) {
-      try { window.location.reload(); } catch (__) { window.location.href = window.location.href; }
+      const uid = String(getUserId() || '').trim();
+      if (uid) {
+        const resolved = await resolveUsernameForUid(uid);
+        if (resolved) currentCanonical = normalizeUsername(resolved);
+      }
+    } catch (_) {}
+
+    if (currentCanonical && currentCanonical === newName) {
+      await closeAndNotify('No changes', "That's already your name.");
+      return;
     }
-  }, 320);
-} catch (err) {
+
+    try {
+      const res = await setUserName(newName);
+
+      // If it normalized to the same name, don't pretend we changed it.
+      if (!res || res.changed === false) {
+        await closeAndNotify('No changes', "That's already your name.");
+        return;
+      }
+
+      // Make sure visible UI updates without a page reload.
+      try { refreshNameUI(); } catch (_) {}
+
+      await closeAndNotify('Name updated', `Your name is now "${newName}".`);
+    } catch (err) {
       const msg = String(err?.message || '');
       if (msg.includes('USERNAME_TAKEN')) {
-        setHint("That name is taken. Try a different one.");
+        await closeAndNotify('Name taken', 'That name is already taken. Please choose a different one.');
       } else if (msg.includes('USERNAME_CONFLICT')) {
-        setHint('Could not rename. Please try again.');
+        await closeAndNotify('Rename failed', 'Could not rename right now. Please try again.');
       } else {
-        setHint(msg || 'Could not update name.');
+        await closeAndNotify('Rename failed', msg || 'Could not update name.');
       }
+    } finally {
+      // Reset hint text for next time the modal is opened.
+      try { if (hintEl) hintEl.textContent = '3–20 chars (a–z, 0–9, _)'; } catch (_) {}
     }
   });
 
