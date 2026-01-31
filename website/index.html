@@ -1070,10 +1070,15 @@
                 <button class="btn" id="settings-change-name-btn" type="button">Change Name</button>
                 <button class="btn" id="settings-change-password-btn" type="button">Change Password</button>
                 <button class="btn" id="settings-logout-btn" type="button">Log Out</button>
-                <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
               </div>
 
-              <div class="hint" id="settings-delete-account-hint" style="min-height: 18px;"></div>
+              <div class="settings-danger" id="settings-danger">
+                <div class="settings-section-title">Danger</div>
+                <div class="settings-admin-actions">
+                  <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
+                </div>
+                <div class="hint" id="settings-delete-account-hint" style="min-height: 18px;"></div>
+              </div>
 
               <!-- Admin Actions (only visible for admin users) -->
               <div class="settings-admin" id="settings-admin" style="display:none;">

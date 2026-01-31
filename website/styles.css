@@ -1701,10 +1701,10 @@ body.mode-joiner .only-joiner{ display:block; }
 
 .modal-card{
   width: min(520px, 100%);
-  background: var(--card);
-  border: 1px solid var(--border-soft);
+  background: rgba(20,20,25,0.92);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: 18px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 20px 80px rgba(0,0,0,0.55);
   overflow:hidden;
 }
 
@@ -3307,10 +3307,9 @@ body.light-mode .auth-card{
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  /* Keep the chooser content higher on desktop (less empty space) */
-  gap: clamp(12px, 1.8vh, 18px);
-  padding-top: clamp(14px, 2.4vh, 26px);
-  min-height: clamp(420px, 58vh, 560px);
+  gap: clamp(14px, 2.2vh, 22px);
+  padding-top: clamp(18px, 3vh, 32px);
+  min-height: clamp(460px, 64vh, 640px);
   margin: 0 auto;
 }
 
@@ -3342,8 +3341,8 @@ body.light-mode .auth-card{
   font-size: 13px;
   color: var(--text-dim);
   padding: 12px 16px;
-  /* Slight separation from the hero, but keep it higher */
-  margin-top: clamp(6px, 1.0vh, 12px);
+  /* Push this slightly down from the hero, but keep it above the mode cards */
+  margin-top: clamp(10px, 1.6vh, 18px);
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -3364,7 +3363,7 @@ body.light-mode .auth-card{
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
-  margin-top: 2px;
+  margin-top: 0;
   align-self: center;
 }
 
@@ -3386,18 +3385,6 @@ body.light-mode .auth-card{
 
 .launch-screen .mode-card-desc{
   font-size: 13px;
-}
-
-/* Desktop: bring back the big, bold chooser cards */
-@media (min-width: 900px){
-  .launch-screen .mode-card{
-    min-height: 220px;
-    padding: 34px 28px;
-  }
-  .launch-screen .mode-card-icon{ font-size: 62px; }
-  .launch-screen .mode-card-title{ font-size: 22px; }
-  .launch-screen .mode-card-desc{ font-size: 14px; }
-  .launch-mode-row{ gap: 22px; }
 }
 
 /* Name dock on launch mirrors the Home name dock */
@@ -5059,8 +5046,8 @@ button.player-tag.pill-action:disabled{
     max-width: 100%;
     border-radius: 18px 18px 0 0;
     border: none;
-    background: var(--panel);
-    box-shadow: var(--shadow-lg), 0 0 0 1px var(--surface-glass) inset;
+    background: rgba(20, 20, 25, 0.98);
+    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
     animation: bottomSheetSlideUp 0.25s ease;
   }
 
@@ -7440,13 +7427,13 @@ body.tournament.has-team-color .input:focus {
   bottom: 0;
   width: min(86vw, 392px);
   max-width: calc(100vw - 56px);
-  background: var(--panel);
+  background: rgba(20, 20, 25, 0.96);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   z-index: 100;
   padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--surface-glass) inset;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
   overflow: hidden;
   flex-direction: column;
   gap: 10px;
@@ -7846,10 +7833,10 @@ body.tournament.has-team-color .input:focus {
 }
 
 .profile-popup-card {
-  background: var(--panel);
-  border: 1px solid var(--border-soft);
+  background: rgba(20, 20, 25, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--surface-glass) inset;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   min-width: 280px;
   max-width: 340px;
   overflow: hidden;
@@ -7872,7 +7859,7 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   gap: 10px;
 }
 
@@ -8037,7 +8024,7 @@ body.tournament.has-team-color .input:focus {
 /* Profile Section Divider */
 .profile-divider {
   height: 1px;
-  background: var(--border-soft);
+  background: rgba(255, 255, 255, 0.08);
   margin: 4px 0;
 }
 
@@ -8045,12 +8032,8 @@ body.tournament.has-team-color .input:focus {
 .profile-popup-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 1999;
-}
-
-body.light-mode .profile-popup-backdrop{
-  background: rgba(0, 0, 0, 0.25);
 }
 
 /* Mobile Styles */
@@ -8094,7 +8077,7 @@ body.light-mode .profile-popup-backdrop{
     padding: 16px 18px;
     position: sticky;
     top: 0;
-    background: var(--panel);
+    background: rgba(20, 20, 25, 0.98);
     z-index: 1;
   }
 
@@ -8674,9 +8657,9 @@ body.qp-gate-open .app {
   max-height: min(72vh, 560px);
   overflow: hidden;
   border-radius: 16px;
-  background: var(--panel);
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--shadow-lg);
+  background: rgba(20, 20, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
   opacity: 0;
   transition: transform 200ms ease, opacity 200ms ease;
 }
