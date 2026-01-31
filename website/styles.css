@@ -3806,7 +3806,14 @@ body.tournament #panel-home.panel-info{
 body.tournament #panel-home.panel-info .panel-inner{
   justify-content: flex-start;
   /* Push the stack down a bit so it doesn't feel jammed under the header */
-  padding-top: 44px;
+  padding-top: 64px;
+}
+
+@media (min-width: 769px){
+  /* Desktop: a touch lower than mobile for nicer balance on tall screens */
+  body.tournament #panel-home.panel-info .panel-inner{
+    padding-top: 78px;
+  }
 }
 
 /* Players tab (desktop): extra top padding so you can scroll to reveal the
