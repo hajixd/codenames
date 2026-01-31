@@ -911,6 +911,22 @@ function initChromeHeightSync() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Defensive: some browsers can briefly restore prior DOM state on reload
+  // (especially if a reload happens shortly after closing an animated modal).
+  // Force transient modals closed at boot so we always start in a clean state.
+  try {
+    const forceClose = (id) => {
+      const m = document.getElementById(id);
+      if (!m) return;
+      m.classList.remove('modal-open');
+      m.style.display = 'none';
+    };
+    forceClose('name-change-modal');
+    forceClose('settings-modal');
+    forceClose('password-change-modal');
+    forceClose('profile-details-modal');
+  } catch (_) {}
+
   // Show the loading screen immediately. We'll hide it only after Firebase Auth
   // resolves and we've rendered the correct initial screen.
   bootAuthStartedAtMs = Date.now();
