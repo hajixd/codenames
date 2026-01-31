@@ -2597,6 +2597,16 @@ body.light .chat-meta{ color: var(--text); }
   align-items: center;
 }
 
+/* Disabled chat composer (used when team chat unavailable) */
+.chat-compose.is-disabled{
+  opacity: 0.65;
+}
+.chat-compose.is-disabled .chat-input,
+.chat-compose.is-disabled .chat-send{
+  pointer-events: none;
+}
+
+
 .chat-input{ flex: 1 1 auto; margin: 0; }
 .chat-send{ flex: 0 0 auto; }
 
@@ -9187,7 +9197,7 @@ button:focus-visible,
 }
 .drawer-body{
   padding: 12px;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding-bottom: calc(22px + env(safe-area-inset-bottom));
   /* Let the chat card manage its own scrolling; prevents double-scroll glitches. */
   overflow: hidden;
   flex: 1 1 auto;
@@ -9208,7 +9218,7 @@ button:focus-visible,
   /* Override panel defaults */
   gap: 12px;
   /* Keep the composer comfortably above iOS bottom bars */
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding-bottom: calc(22px + env(safe-area-inset-bottom));
 }
 .drawer .chat-card.drawer-chat-card .chat-messages{
   flex: 1 1 auto;

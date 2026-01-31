@@ -4482,6 +4482,9 @@ async function startChatSubscription() {
     return;
   }
 
+  // Ensure composer is enabled by default (team mode may disable it below).
+  setChatComposerDisabled(false, { hideHint: false });
+
   // Clear any previous subscription.
   if (chatUnsub) {
     try { chatUnsub(); } catch (_) {}
@@ -4542,10 +4545,11 @@ async function startChatSubscription() {
     if (!st.teamId) {
       chatMessagesCache = [];
       renderChatTabMessages();
-      setHint('chat-panel-hint', 'Join a team to use team chat.');
+      setChatComposerDisabled(true, { hideHint: true });
       return;
     }
 
+    setChatComposerDisabled(false, { hideHint: false });
     setHint('chat-panel-hint', '');
     chatUnsub = db.collection('teams')
       .doc(st.teamId)
@@ -5236,6 +5240,32 @@ function setHTML(id, html) {
 function setHint(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value || '';
+}
+
+function setChatComposerDisabled(disabled, opts = {}) {
+  const form = document.getElementById('chat-panel-form');
+  if (!form) return;
+  const input = document.getElementById('chat-panel-input') || form.querySelector('input');
+  const send = document.getElementById('chat-panel-send') || form.querySelector('button[type="submit"]');
+  const hint = document.getElementById('chat-panel-hint');
+
+  const isDis = !!disabled;
+  form.classList.toggle('is-disabled', isDis);
+
+  if (input) {
+    input.disabled = isDis;
+    if (typeof opts.placeholder === 'string') input.placeholder = opts.placeholder;
+  }
+  if (send) send.disabled = isDis;
+
+  // Optionally suppress the hint (used for "no team" state).
+  if (hint && opts.hideHint) {
+    hint.textContent = '';
+    hint.style.display = 'none';
+  } else if (hint) {
+    // restore default visibility when not explicitly hidden
+    hint.style.display = 'block';
+  }
 }
 
 // Lightweight toast (no CSS dependency) for short confirmations.
