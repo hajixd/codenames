@@ -511,6 +511,92 @@ function isAdminUser() {
 // via Firestore rules.
 let logsUnsub = null;
 let logsCache = [];
+let inferredLogsCache = [];
+let inferredLogsInterval = null;
+let inferredLogsInFlight = false;
+
+// Best-effort historical log reconstruction for events that happened
+// before the dedicated /logs collection existed.
+// We infer timestamps from existing structured fields (e.g. requestedAt, invitedAt).
+async function refreshInferredLogs() {
+  if (!isAdminUser()) return;
+  if (inferredLogsInFlight) return;
+  inferredLogsInFlight = true;
+  try {
+    const [teamsSnap, playersSnap] = await Promise.all([
+      db.collection('teams').get(),
+      db.collection('players').get()
+    ]);
+
+    const teamNameById = new Map();
+    for (const d of teamsSnap.docs) {
+      const t = d.data() || {};
+      teamNameById.set(d.id, String(t.teamName || '').trim());
+    }
+
+    const inferred = [];
+
+    // Pending join requests (requestedAt exists).
+    for (const d of teamsSnap.docs) {
+      const t = d.data() || {};
+      const teamId = d.id;
+      const teamName = String(t.teamName || '').trim() || 'a team';
+      const pending = Array.isArray(t.pending) ? t.pending : [];
+      for (const r of pending) {
+        const ms = tsToMs(r?.requestedAt);
+        if (!Number.isFinite(ms) || ms <= 0) continue;
+        const actorId = String(entryAccountId(r) || r?.userId || '').trim();
+        const actorName = normalizeUsername(String(r?.name || actorId || 'user'));
+        inferred.push({
+          id: `infer_req_${teamId}_${actorId}_${ms}`,
+          inferred: true,
+          type: 'team_request',
+          message: `${actorName || 'user'} requested to join ${teamName}`,
+          actorId: actorId || null,
+          actorName: actorName || null,
+          inferredAtMs: ms,
+          meta: { teamId, teamName }
+        });
+      }
+    }
+
+    // Invites (invitedAt exists on player.invites entries).
+    for (const d of playersSnap.docs) {
+      const p = d.data() || {};
+      const targetId = d.id;
+      const targetName = normalizeUsername(String(p.name || targetId || 'user'));
+      const invites = Array.isArray(p.invites) ? p.invites : [];
+      for (const inv of invites) {
+        const ms = tsToMs(inv?.invitedAt);
+        if (!Number.isFinite(ms) || ms <= 0) continue;
+        const teamId = String(inv?.teamId || '').trim();
+        const teamName = (teamId && teamNameById.get(teamId)) ? teamNameById.get(teamId) : '';
+        const inviterId = String(inv?.inviterUserId || '').trim();
+        const inviterName = normalizeUsername(String(inv?.inviterName || inviterId || 'user'));
+        const msg = teamName
+          ? `${inviterName || 'user'} invited ${targetName || 'user'} to ${teamName}`
+          : `${inviterName || 'user'} invited ${targetName || 'user'} to a team`;
+        inferred.push({
+          id: `infer_inv_${teamId}_${inviterId}_${targetId}_${ms}`,
+          inferred: true,
+          type: 'invite_sent',
+          message: msg,
+          actorId: inviterId || null,
+          actorName: inviterName || null,
+          inferredAtMs: ms,
+          meta: { teamId, teamName, targetUserId: targetId, targetName }
+        });
+      }
+    }
+
+    inferred.sort((a, b) => (b.inferredAtMs || 0) - (a.inferredAtMs || 0));
+    inferredLogsCache = inferred.slice(0, 250);
+  } catch (e) {
+    console.warn('Historical log inference failed (best-effort)', e);
+  } finally {
+    inferredLogsInFlight = false;
+  }
+}
 
 function logEvent(type, message, meta = {}) {
   try {
@@ -1672,6 +1758,13 @@ function initAuthGate() {
         if (isBoot) finishBootAuthLoading(750);
         return;
       }
+
+      // Signed in: immediately hide the auth UI so it never flashes behind
+      // the loading screen during refresh.
+      try {
+        const authScreen = document.getElementById('auth-screen');
+        if (authScreen) authScreen.style.display = 'none';
+      } catch (_) {}
 
       // Ensure we can resolve a stable username for UI/presence.
       // During signup, this may briefly be missing; we retry a few times.
@@ -8079,6 +8172,20 @@ function openLogsPopup() {
   });
 
   startLogsListener();
+  // Load a best-effort history so admins can see events from before
+  // the dedicated /logs collection existed.
+  refreshInferredLogs().then(() => renderLogsList()).catch(() => {});
+
+  // While open, refresh inferred history occasionally (covers cases where
+  // a write to /logs failed but the underlying team/player doc changed).
+  try {
+    if (inferredLogsInterval) clearInterval(inferredLogsInterval);
+    inferredLogsInterval = setInterval(() => {
+      if (!logsPopupOpen) return;
+      refreshInferredLogs().then(() => renderLogsList()).catch(() => {});
+    }, 20000);
+  } catch (_) {}
+
   renderLogsList();
 }
 
@@ -8095,6 +8202,7 @@ function closeLogsPopup() {
 
   // Unsubscribe when closed to reduce reads.
   try { if (logsUnsub) { logsUnsub(); logsUnsub = null; } } catch (_) {}
+  try { if (inferredLogsInterval) { clearInterval(inferredLogsInterval); inferredLogsInterval = null; } } catch (_) {}
 }
 
 function startLogsListener() {
@@ -8137,16 +8245,29 @@ function renderLogsList() {
     return;
   }
 
-  const rows = (logsCache || []).slice(0, 200).map((l) => {
+  const combined = ([]
+    .concat((logsCache || []).map(x => ({ ...x, inferred: false })))
+    .concat((inferredLogsCache || []).map(x => ({ ...x, inferred: true })))
+  );
+
+  // Sort by timestamp desc.
+  combined.sort((a, b) => {
+    const ams = a?.inferred ? (a?.inferredAtMs || 0) : tsToMs(a?.createdAt);
+    const bms = b?.inferred ? (b?.inferredAtMs || 0) : tsToMs(b?.createdAt);
+    return (bms || 0) - (ams || 0);
+  });
+
+  const rows = combined.slice(0, 200).map((l) => {
     const badge = inferLogBadge(l?.type);
     const msg = String(l?.message || '').trim() || '(no message)';
     const actor = String(l?.actorName || l?.actorId || '').trim();
-    const ms = tsToMs(l?.createdAt);
+    const ms = l?.inferred ? (l?.inferredAtMs || 0) : tsToMs(l?.createdAt);
     const when = Number.isFinite(ms) ? formatRelativeTime(ms) : 'just now';
     return `
       <div class="log-row">
         <div class="log-top">
           <span class="log-badge ${esc(badge.cls)}">${esc(badge.label)}</span>
+          ${l?.inferred ? '<span class="log-tag history">History</span>' : ''}
           <div class="log-message">${esc(msg)}</div>
         </div>
         <div class="log-meta">

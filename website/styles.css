@@ -5917,8 +5917,13 @@ button.player-tag.pill-action:disabled{
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 12px;
+  /* Reduce the gap between Messages and Settings icons. */
+  margin-left: 6px;
   flex-shrink: 0;
+}
+
+@media (max-width: 520px){
+  .settings-gear-btn{ margin-left: 4px; }
 }
 
 .settings-gear-btn svg {
@@ -5956,6 +5961,10 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   z-index: 1000;
   width: 90%;
   max-width: 340px;
+  /* Keep the modal a consistent size and let the body scroll. */
+  max-height: min(82vh, 680px);
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -5967,6 +5976,10 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
+  /* Scroll when content exceeds modal size (instead of growing the modal). */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Simplified Settings UI */
@@ -8252,6 +8265,22 @@ body.tournament.has-team-color .input:focus {
 .log-badge.leave { background: rgba(239, 68, 68, 0.12); color: var(--red); }
 .log-badge.admin { background: rgba(148, 163, 184, 0.12); color: rgba(226, 232, 240, 0.95); }
 
+.log-tag{
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+.log-tag.history{
+  background: rgba(148, 163, 184, 0.10);
+  color: rgba(226, 232, 240, 0.92);
+}
+
 .log-message {
   font-size: 13px;
   font-weight: 650;
@@ -9267,7 +9296,7 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
+  margin-right: 4px;
   background: transparent;
   border: 1px solid var(--border-soft);
   color: var(--text);
@@ -9280,7 +9309,7 @@ button:focus-visible,
 
 @media (max-width: 520px){
   /* Make the Messages icon a bit more compact on small screens */
-  .header-icon-btn{ width: 24px; height: 24px; border-radius: 8px; margin-right: 4px; }
+  .header-icon-btn{ width: 24px; height: 24px; border-radius: 8px; margin-right: 3px; }
   .header-icon-btn svg{ width: 12px; height: 12px; }
 }
 
