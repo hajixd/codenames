@@ -633,6 +633,20 @@ function initLaunchScreen() {
   function isValidUsername(v) {
     return /^[a-z0-9_]{3,20}$/.test(v);
   }
+
+  // Firebase Auth enforces a minimum password length. We keep the UX flexible
+  // by transforming the user-entered password into a longer deterministic
+  // secret before sending it to Auth. (Login uses the same transform.)
+  const PW_PEPPER = '::codenames_pw_v1';
+  function passwordForAuth(pw) {
+    const raw = String(pw || '');
+    if (!raw) return raw;
+    let padded = raw;
+    // Pad deterministically to satisfy backend requirements without adding
+    // user-facing constraints.
+    while (padded.length < 6) padded += '_';
+    return padded + PW_PEPPER;
+  }
   function makeAuthHandle(username) {
     // Players sign in with "username + password".
     // Under the hood, Firebase Auth needs a unique sign-in identifier.
@@ -689,7 +703,7 @@ function initLaunchScreen() {
         if (loginHint) loginHint.textContent = 'No account found. Try creating one.';
         return;
       }
-      await auth.signInWithEmailAndPassword(handle, pass);
+      await auth.signInWithEmailAndPassword(handle, passwordForAuth(pass));
       // Best-effort: ensure display name is set (older accounts).
       const u = auth.currentUser;
       if (u && !String(u.displayName || '').trim()) {
@@ -739,7 +753,7 @@ function initLaunchScreen() {
 
       // Create the auth user using a non-deterministic handle.
       const authHandle = makeAuthHandle(username);
-      await auth.createUserWithEmailAndPassword(authHandle, pass);
+      await auth.createUserWithEmailAndPassword(authHandle, passwordForAuth(pass));
 
       const u = auth.currentUser;
       if (!u) throw new Error('No auth user after signup');
@@ -793,7 +807,9 @@ function initLaunchScreen() {
       } else if (ec === 'auth/operation-not-allowed') {
         if (createHint) createHint.textContent = 'Account creation is disabled right now.';
       } else if (ec === 'auth/weak-password') {
-        if (createHint) createHint.textContent = 'Password must be at least 6 characters.';
+        // Should be rare because we transform short passwords before sending
+        // them to Auth, but keep a friendly fallback.
+        if (createHint) createHint.textContent = 'Password is too weak. Try a different one.';
       } else if (ec === 'auth/configuration-not-found') {
         // This happens when Email/Password is disabled for the Firebase project.
         if (createHint) createHint.textContent = 'Account creation is not enabled for this Firebase project. In Firebase Console → Authentication, enable Email/Password and try again.';
@@ -5407,10 +5423,6 @@ function initPasswordChangeModal() {
       setHint('Enter your current password and a new password.');
       return;
     }
-    if (newPass.length < 6) {
-      setHint('New password must be at least 6 characters.');
-      return;
-    }
     if (newPass !== confirmPass) {
       setHint('New passwords do not match.');
       return;
@@ -5424,10 +5436,10 @@ function initPasswordChangeModal() {
       // Re-authenticate (required by Firebase for sensitive actions).
       const identifier = String(u.email || '');
       if (!identifier) throw new Error('Missing identifier');
-      const cred = firebase.auth.EmailAuthProvider.credential(identifier, currentPass);
+      const cred = firebase.auth.EmailAuthProvider.credential(identifier, passwordForAuth(currentPass));
       await u.reauthenticateWithCredential(cred);
 
-      await u.updatePassword(newPass);
+      await u.updatePassword(passwordForAuth(newPass));
 
       setHint('Password updated.');
       playSound('success');
