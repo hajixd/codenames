@@ -927,6 +927,12 @@ function initAuthGate() {
 
       // Signed out: stop listeners + show auth page.
       if (!u) {
+        // Stop presence + clear timers when signed out.
+        try { stopPresenceListener(); } catch (_) {}
+        try { if (presenceUpdateInterval) clearInterval(presenceUpdateInterval); } catch (_) {}
+        presenceUpdateInterval = null;
+        presenceInitialized = false;
+
         try { teamsUnsub?.(); } catch (_) {}
         try { playersUnsub?.(); } catch (_) {}
         teamsUnsub = null;
@@ -937,6 +943,19 @@ function initAuthGate() {
         try { showAuthScreen(); } catch (_) {}
         return;
       }
+
+      // Ensure displayName exists (required for presence + UI).
+      // Best-effort: if it's missing, resolve it from the username registry.
+      try {
+        const curName = String(u.displayName || '').trim();
+        if (!curName) {
+          const unameDoc = (usernamesCache || []).find(x => String(x?.uid || '').trim() === String(u.uid || '').trim());
+          const fallbackName = String(unameDoc?.id || '').trim();
+          if (fallbackName) {
+            try { await u.updateProfile({ displayName: fallbackName }); } catch (_) {}
+          }
+        }
+      } catch (_) {}
 
       // Ensure player profile exists.
       try {
@@ -954,6 +973,15 @@ function initAuthGate() {
       // Start listeners once.
       try { listenToTeams(); } catch (_) {}
       try { listenToPlayers(); } catch (_) {}
+
+      // Presence must start after sign-in. Without this, "Who's Online" can't
+      // mark anyone as online/idle.
+      try {
+        if (!presenceInitialized && getUserName()) {
+          presenceInitialized = true;
+          initPresence();
+        }
+      } catch (_) {}
 
       // Restore last navigation if available; otherwise show the mode chooser.
       try {
@@ -1467,11 +1495,11 @@ function refreshNameUI() {
 
   const savedDisplay = document.getElementById('name-saved-display');
   const headerDisplay = document.getElementById('user-name-display');
-  const modeName = document.getElementById('mode-account-name');
+  const signedAs = document.getElementById('launch-signed-as');
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
-  if (modeName) modeName.textContent = name || '—';
+  if (signedAs) signedAs.textContent = `Signed in as ${name || '—'}`;
 
   // Home screen name editor is disabled (username == name).
   const cardForm = document.getElementById('name-form');
