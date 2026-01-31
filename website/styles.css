@@ -3749,10 +3749,16 @@ button:disabled{
   #panel-home .name-dock{ max-width: 520px; margin-top: 22px; margin-bottom: 6px; }
 }
 
-/* Nudge the Tournament Home hero area up on desktop (better vertical balance) */
+/* Tournament Home (desktop):
+   Don't use a negative translateY on the scrollable panel content.
+   A negative transform effectively hides the top part of the panel because
+   the scroll container cannot scroll to negative offsets.
+
+   If we want a slightly tighter vertical balance, reduce top padding instead. */
 @media (min-width: 769px){
   body.tournament #panel-home .panel-inner{
-    transform: translateY(-74px);
+    transform: none;
+    padding-top: 16px;
   }
 }
 
