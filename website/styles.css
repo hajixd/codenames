@@ -98,7 +98,8 @@ body.light-mode {
 
 
 html, body {
-  height: 100%;
+  height: 100dvh;
+  height: 100vh; /* fallback */
   overflow: hidden;
 }
 
@@ -139,9 +140,11 @@ body.tournament #panel-home #name-card{ display:none !important; }
 body.tournament #play-mode-select{ display:none !important; }
 
 .app {
-  height: 100%;
+  height: 100dvh;
+  height: 100vh; /* fallback */
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* ==================== DESKTOP ==================== */
@@ -2520,6 +2523,7 @@ body.light-mode .modal{
   border: 1px solid rgba(255,255,255,0.08);
   display:flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .quick-team-col.red{ border-color: rgba(255, 90, 90, 0.20); }
 .quick-team-col.blue{ border-color: rgba(90, 140, 255, 0.20); }
@@ -2853,6 +2857,7 @@ body.light-mode .modal{
   max-height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .modal-head{
   display:flex;
@@ -2895,9 +2900,9 @@ body.light-mode .modal{
   margin-bottom: 10px;
 }
 #quick-settings-modal .qp-settings-emoji{
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
 }
 #quick-settings-modal .qp-settings-sub{
   font-size: 12px;
@@ -2981,7 +2986,8 @@ body.light-mode .modal{
   body.quickplay .panel-game .panel-inner{
     padding: 14px;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-    height: 100%;
+    height: 100dvh;
+  height: 100vh; /* fallback */
     min-height: 0;
   }
 
@@ -2993,7 +2999,8 @@ body.light-mode .modal{
   body.quickplay #quick-play-lobby{
     display: flex;
     flex-direction: column;
-    height: 100%;
+    height: 100dvh;
+  height: 100vh; /* fallback */
     min-height: 0;
   }
 
@@ -4653,7 +4660,8 @@ button.player-tag.pill-action:disabled{
 
 .game-container-compact .game-card {
   aspect-ratio: unset;
-  height: 100%;
+  height: 100dvh;
+  height: 100vh; /* fallback */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5262,6 +5270,7 @@ button.player-tag.pill-action:disabled{
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .online-modal-body {
@@ -5452,6 +5461,7 @@ button.player-tag.pill-action:disabled{
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Name Change Modal animation positioning fix */
@@ -5541,6 +5551,7 @@ button.player-tag.pill-action:disabled{
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Teammates Modal animation positioning fix */
@@ -6712,7 +6723,8 @@ body.tournament.has-team-color .input:focus {
 }
 
 .timer-fill {
-  height: 100%;
+  height: 100dvh;
+  height: 100vh; /* fallback */
   background: var(--accent);
   border-radius: 2px;
   transition: width 1s linear, background 0.3s;
@@ -8861,9 +8873,9 @@ button:focus-visible,
 ========================= */
 .header-icon-btn{
   position: relative;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -8873,7 +8885,7 @@ button:focus-visible,
   color: var(--text);
   transition: transform .12s ease, background .12s ease, border-color .12s ease, opacity .12s ease;
 }
-.header-icon-btn svg{ width: 18px; height: 18px; }
+.header-icon-btn svg{ width: 16px; height: 16px; }
 .header-icon-btn:hover{ background: var(--panel); border-color: var(--border); transform: translateY(-1px); }
 .header-icon-btn:active{ transform: translateY(0); }
 .header-icon-btn.disabled{ opacity: .45; pointer-events: none; }
@@ -8908,7 +8920,8 @@ button:focus-visible,
   position: fixed;
   top: 0;
   right: 0;
-  height: 100%;
+  height: 100dvh;
+  height: 100vh; /* fallback */
   width: min(420px, 94vw);
   background: var(--bg);
   border-left: 1px solid var(--border);
@@ -8918,6 +8931,7 @@ button:focus-visible,
   z-index: 1210;
   display: flex;
   flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .drawer.open{ transform: translateX(0); }
 
@@ -8936,9 +8950,24 @@ button:focus-visible,
 .drawer-body{
   padding: 12px;
   overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  display:flex;
+  flex-direction: column;
 }
 
 .drawer-chat-card{ margin-top: 12px; }
+
+/* Drawer chat sizing (fill the remaining device height) */
+.drawer .chat-card.drawer-chat-card{
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+.drawer .chat-card.drawer-chat-card .chat-messages{
+  min-height: 0;
+}
 
 .chat-personal-picker-wrap{ position: relative; flex: 1; }
 .chat-personal-picker{
@@ -8994,11 +9023,173 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   opacity: .7;
 }
 
+/* Personal messages (iMessage-style inbox) */
+.dm-inbox{
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dm-inbox-header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dm-inbox-title{
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: .2px;
+  color: var(--text);
+}
+
+.dm-thread-list{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow:auto;
+  padding: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dm-thread-row{
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 10px 10px;
+  cursor: pointer;
+  display:flex;
+  gap: 10px;
+  align-items: center;
+  transition: transform .10s ease, background .12s ease, border-color .12s ease;
+}
+.dm-thread-row:hover{
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--panel) 80%, var(--bg));
+  transform: translateY(-1px);
+}
+.dm-thread-row:active{ transform: translateY(0); }
+.dm-thread-row.unread{
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.dm-thread-main{ min-width: 0; width: 100%; }
+.dm-thread-top{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dm-thread-name{
+  font-weight: 900;
+  font-size: 13px;
+  min-width: 0;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dm-thread-preview{
+  font-size: 12px;
+  opacity: .80;
+  margin-top: 2px;
+  min-width: 0;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dm-preview-muted{ opacity: .55; }
+.dm-unread-dot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  flex: 0 0 auto;
+}
+
+.dm-thread-bar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  border-radius: 14px;
+}
+.dm-thread-title{
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-weight: 900;
+  font-size: 13px;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dm-back-btn{
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text);
+}
+.dm-new-btn{
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+.dm-new-popover{
+  position: absolute;
+  inset: 64px 12px 12px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  z-index: 10;
+}
+.dm-new-header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dm-new-title{ font-weight: 900; font-size: 13px; }
+.dm-new-list{
+  overflow:auto;
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dm-new-item{
+  width:100%;
+  text-align:left;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--panel);
+  cursor:pointer;
+}
+.dm-new-item:hover{ border-color: var(--border); background: var(--surface2); }
+
+
 /* Responsive: make Messages drawer match the in-game operator sidebar feel */
 @media (max-width: 520px){
   .drawer{
-    width: min(86vw, 392px);
-    max-width: calc(100vw - 56px);
+    width: min(78vw, 360px);
+    max-width: 78vw;
     border-left: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
     border-radius: 18px 0 0 18px;
     background: color-mix(in srgb, var(--bg) 92%, transparent);

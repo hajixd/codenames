@@ -126,7 +126,7 @@
             </button>
 
             <button class="mode-card" id="launch-tournament" type="button">
-              <div class="mode-card-icon">🏁</div>
+              <div class="mode-card-icon">🏆</div>
               <div class="mode-card-title">Tournament</div>
               <div class="mode-card-desc">Challenge teams and climb ranks.</div>
             </button>
@@ -346,7 +346,7 @@
                 </button>
 
                 <button class="mode-card" id="select-tournament" type="button">
-                  <div class="mode-card-icon">🏁</div>
+                  <div class="mode-card-icon">🏆</div>
                   <div class="mode-card-title">Tournament</div>
                   <div class="mode-card-desc">Competitive team-based play. Challenge other teams and climb the ranks.</div>
                 </button>
@@ -1133,18 +1133,30 @@
         </div>
 
         <div class="chat-card drawer-chat-card">
-          <div class="chat-personal-bar" id="chat-personal-bar" style="display:none;">
-            <span class="chat-personal-label">To</span>
-            <div class="chat-personal-picker-wrap">
-              <button class="input chat-personal-picker" id="chat-personal-picker-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
-                Choose a person…
-              </button>
-              <div class="chat-personal-popover" id="chat-personal-popover" style="display:none;">
-                <input class="input chat-personal-search" id="chat-personal-search" type="text" placeholder="Search" autocomplete="off" />
-                <div class="chat-personal-list" id="chat-personal-list" role="listbox" aria-label="People"></div>
-              </div>
+          
+          <div class="dm-inbox" id="dm-inbox" style="display:none;">
+            <div class="dm-inbox-header">
+              <div class="dm-inbox-title">Personal</div>
+              <button class="btn subtle dm-new-btn" id="dm-inbox-new" type="button">New</button>
             </div>
+            <div class="dm-thread-list" id="dm-thread-list"></div>
           </div>
+
+          <div class="dm-thread-bar" id="dm-thread-bar" style="display:none;">
+            <button class="icon-btn dm-back-btn" id="dm-back-btn" type="button" aria-label="Back">‹</button>
+            <div class="dm-thread-title" id="dm-thread-title">—</div>
+            <button class="btn subtle dm-new-btn" id="dm-thread-new" type="button">New</button>
+          </div>
+
+          <div class="dm-new-popover" id="dm-new-popover" style="display:none;" role="dialog" aria-modal="true" aria-label="New message">
+            <div class="dm-new-header">
+              <div class="dm-new-title">New Message</div>
+              <button class="icon-btn" id="dm-new-close" type="button" aria-label="Close">×</button>
+            </div>
+            <input class="input dm-new-search" id="dm-new-search" type="text" placeholder="Search people" autocomplete="off" />
+            <div class="dm-new-list" id="dm-new-list" role="listbox" aria-label="People"></div>
+          </div>
+</div>
 
           <div class="chat-messages" id="chat-panel-messages"></div>
           <form class="chat-compose" id="chat-panel-form">

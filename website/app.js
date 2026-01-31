@@ -324,6 +324,11 @@ let chatPersonalUserName = '';
 const LS_CHAT_PERSONAL = 'ct_chatPersonal_v1';
 let chatUnsub = null;
 let chatMessagesCache = [];
+// Personal inbox (DM) UI
+let dmInboxUnsub = null;
+let dmThreadsCache = [];
+let dmView = 'inbox'; // 'inbox' | 'thread'
+let dmNewOpen = false;
 // Unread badges
 let unreadGlobalUnsub = null;
 let unreadTeamUnsub = null;
@@ -411,7 +416,7 @@ function setChatDrawerOpen(open, opts = {}) {
     requestAnimationFrame(() => drawer.classList.add('open'));
 
     startChatSubscription();
-    markChatRead(chatMode);
+    if (chatMode === 'global' || chatMode === 'team') markChatRead(chatMode);
     recomputeUnreadBadges();
 
     if (opts.focusInput) {
@@ -3314,13 +3319,37 @@ function initChatTab() {
     btnTeam?.setAttribute('aria-selected', chatMode === 'team' ? 'true' : 'false');
     btnPersonal?.setAttribute('aria-selected', chatMode === 'personal' ? 'true' : 'false');
 
-    if (personalBar) personalBar.style.display = chatMode === 'personal' ? 'flex' : 'none';
+    // Personal behaves like iMessage-style inbox -> thread
+    if (chatMode === 'personal') {
+    if (dmView === 'inbox') {
+      stopChatSubscription();
+      showDmInbox();
+      return;
+    }
+      // Show inbox view by default when switching into Personal
+      if (chatDrawerOpen) {
+        stopChatSubscription();
+        showDmInbox();
+      }
+    } else {
+      // Hide DM UI and show the normal chat composer/messenger
+      const inbox = document.getElementById('dm-inbox');
+      const bar = document.getElementById('dm-thread-bar');
+      if (inbox) inbox.style.display = 'none';
+      if (bar) bar.style.display = 'none';
+      try { closeDmNew(); } catch (_) {}
+      const msgs = document.getElementById('chat-panel-messages');
+      const form = document.getElementById('chat-panel-form');
+      if (msgs) msgs.style.display = 'flex';
+      if (form) form.style.display = 'flex';
+      const hint = document.getElementById('chat-panel-hint');
+      if (hint) hint.style.display = 'block';
+    }
 
-    // If drawer is open, resubscribe.
-    if (chatDrawerOpen) {
+    // If drawer is open, resubscribe for non-personal modes.
+    if (chatDrawerOpen && chatMode !== 'personal') {
       startChatSubscription();
-      // Switching modes while viewing chat should clear unread.
-      markChatRead(chatMode);
+      if (chatMode === 'global' || chatMode === 'team') markChatRead(chatMode);
     }
     recomputeUnreadBadges();
   };
@@ -3384,6 +3413,9 @@ function initChatTab() {
     await sendChatTabMessage();
   });
 
+  // DM inbox / New message UI (Personal)
+  initDmInboxUi();
+
   initUnreadListeners();
   recomputeUnreadBadges();
 
@@ -3413,6 +3445,259 @@ function getNameForAccount(uid) {
   const u = (usernamesCache || []).find(x => String(x?.uid || '').trim() === id);
   if (u?.id) return String(u.id).trim();
   return '';
+}
+
+
+function tsToMs(ts) {
+  try {
+    if (!ts) return 0;
+    if (typeof ts === 'number') return ts;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (ts.seconds) return (Number(ts.seconds) * 1000) + Math.floor(Number(ts.nanoseconds || 0) / 1e6);
+  } catch (_) {}
+  return 0;
+}
+
+function getMyPersonalReadMs(threadId) {
+  const me = String(getUserId() || '').trim();
+  if (!me || !threadId) return 0;
+  const p = (playersCache || []).find(pp => String(pp?.id || '').trim() === me);
+  const rr = p?.readReceipts?.personal || {};
+  const ts = rr?.[threadId];
+  return tsToMs(ts);
+}
+
+async function markPersonalThreadRead(threadId) {
+  const uid = String(getUserId() || '').trim();
+  if (!uid || !threadId) return;
+  const ref = db.collection('players').doc(uid);
+  try {
+    await ref.set({
+      readReceipts: { personal: { [threadId]: firebase.firestore.FieldValue.serverTimestamp() } },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (_) {}
+}
+
+function stopDmInboxListener() {
+  if (dmInboxUnsub) {
+    try { dmInboxUnsub(); } catch (_) {}
+    dmInboxUnsub = null;
+  }
+  dmThreadsCache = [];
+}
+
+function startDmInboxListener() {
+  const uid = String(getUserId() || '').trim();
+  if (!uid) return;
+  if (dmInboxUnsub) return;
+
+  dmInboxUnsub = db.collection(DM_THREADS_COLLECTION)
+    .where('participants', 'array-contains', uid)
+    .orderBy('updatedAt', 'desc')
+    .limit(60)
+    .onSnapshot((snap) => {
+      dmThreadsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderDmInbox();
+    }, (err) => {
+      console.warn('DM inbox listen failed', err);
+    });
+}
+
+function renderDmInbox() {
+  const list = document.getElementById('dm-thread-list');
+  if (!list) return;
+
+  const uid = String(getUserId() || '').trim();
+  if (!uid) {
+    list.innerHTML = '<div class="empty-state">Sign in to view messages</div>';
+    return;
+  }
+
+  if (!dmThreadsCache?.length) {
+    list.innerHTML = '<div class="empty-state">No messages yet</div>';
+    return;
+  }
+
+  const items = dmThreadsCache.map(t => {
+    const tid = String(t?.id || '').trim();
+    const parts = Array.isArray(t?.participants) ? t.participants.map(x => String(x||'').trim()).filter(Boolean) : [];
+    const otherId = parts.find(p => p && p !== uid) || '';
+    const name = otherId ? (getNameForAccount(otherId) || 'Unknown') : 'Unknown';
+    const lastText = String(t?.lastText || '').trim();
+    const lastAtMs = tsToMs(t?.lastAt) || tsToMs(t?.updatedAt);
+    const readAtMs = getMyPersonalReadMs(tid);
+    const unread = !!(lastAtMs && lastAtMs > readAtMs && String(t?.lastSenderId||'').trim() !== uid);
+
+    const preview = lastText ? esc(lastText) : '<span class="dm-preview-muted">Tap to open</span>';
+    const unreadDot = unread ? '<span class="dm-unread-dot" aria-label="Unread"></span>' : '';
+    return `
+      <button class="dm-thread-row ${unread ? 'unread' : ''}" type="button" data-thread-id="${esc(tid)}" data-other-id="${esc(otherId)}">
+        <div class="dm-thread-main">
+          <div class="dm-thread-top">
+            <div class="dm-thread-name">${esc(name)}</div>
+            ${unreadDot}
+          </div>
+          <div class="dm-thread-preview">${preview}</div>
+        </div>
+      </button>
+    `;
+  }).join('');
+
+  list.innerHTML = items;
+}
+
+function showDmInbox() {
+  dmView = 'inbox';
+  const inbox = document.getElementById('dm-inbox');
+  const bar = document.getElementById('dm-thread-bar');
+  const msgs = document.getElementById('chat-panel-messages');
+  const form = document.getElementById('chat-panel-form');
+  const hint = document.getElementById('chat-panel-hint');
+  if (inbox) inbox.style.display = 'block';
+  if (bar) bar.style.display = 'none';
+  if (msgs) msgs.style.display = 'none';
+  if (form) form.style.display = 'none';
+  if (hint) hint.style.display = 'none';
+
+  startDmInboxListener();
+  renderDmInbox();
+}
+
+function showDmThread(otherId) {
+  const oid = String(otherId || '').trim();
+  if (!oid) {
+    showDmInbox();
+    return;
+  }
+  dmView = 'thread';
+  chatMode = 'personal';
+  setPersonalChatTarget(oid, getNameForAccount(oid) || '');
+
+  const inbox = document.getElementById('dm-inbox');
+  const bar = document.getElementById('dm-thread-bar');
+  const title = document.getElementById('dm-thread-title');
+  const msgs = document.getElementById('chat-panel-messages');
+  const form = document.getElementById('chat-panel-form');
+  const hint = document.getElementById('chat-panel-hint');
+
+  if (inbox) inbox.style.display = 'none';
+  if (bar) bar.style.display = 'flex';
+  if (title) title.textContent = chatPersonalUserName || getNameForAccount(oid) || '—';
+  if (msgs) msgs.style.display = 'flex';
+  if (form) form.style.display = 'flex';
+  if (hint) hint.style.display = 'block';
+
+  startChatSubscription();
+  const threadId = dmThreadIdFor(String(getUserId()||'').trim(), oid);
+  if (threadId) markPersonalThreadRead(threadId);
+}
+
+function openDmNew() {
+  dmNewOpen = true;
+  const pop = document.getElementById('dm-new-popover');
+  const input = document.getElementById('dm-new-search');
+  if (pop) pop.style.display = 'block';
+  if (input) {
+    input.value = '';
+    try { input.focus(); } catch (_) {}
+  }
+  refreshDmNewList();
+}
+
+function closeDmNew() {
+  dmNewOpen = false;
+  const pop = document.getElementById('dm-new-popover');
+  if (pop) pop.style.display = 'none';
+}
+
+function refreshDmNewList() {
+  const list = document.getElementById('dm-new-list');
+  const input = document.getElementById('dm-new-search');
+  if (!list) return;
+  const me = String(getUserId() || '').trim();
+  const q = String(input?.value || '').trim().toLowerCase();
+
+  const all = (usernamesCache || [])
+    .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
+    .filter(u => u.uid && u.name && u.uid !== me)
+    .filter(u => !q || u.name.toLowerCase().startsWith(q))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 40);
+
+  if (!all.length) {
+    list.innerHTML = '<div class="hint" style="padding:10px 6px;">No matches</div>';
+    return;
+  }
+
+  list.innerHTML = all.map(u => `
+    <button class="dm-new-item" type="button" data-uid="${esc(u.uid)}" role="option">${esc(u.name)}</button>
+  `).join('');
+}
+
+function initDmInboxUi() {
+  const inboxNew = document.getElementById('dm-inbox-new');
+  const threadNew = document.getElementById('dm-thread-new');
+  const backBtn = document.getElementById('dm-back-btn');
+  const newClose = document.getElementById('dm-new-close');
+  const newSearch = document.getElementById('dm-new-search');
+  const newList = document.getElementById('dm-new-list');
+  const threadList = document.getElementById('dm-thread-list');
+
+  inboxNew?.addEventListener('click', (e) => { e.preventDefault(); openDmNew(); });
+  threadNew?.addEventListener('click', (e) => { e.preventDefault(); openDmNew(); });
+  newClose?.addEventListener('click', (e) => { e.preventDefault(); closeDmNew(); });
+
+  backBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    stopChatSubscription();
+    showDmInbox();
+  });
+
+  newSearch?.addEventListener('input', () => refreshDmNewList());
+
+  newList?.addEventListener('click', async (e) => {
+    const item = e.target?.closest?.('[data-uid]');
+    const uid = String(item?.getAttribute?.('data-uid') || '').trim();
+    if (!uid) return;
+    closeDmNew();
+
+    // Ensure thread doc exists quickly (best-effort).
+    const me = String(getUserId() || '').trim();
+    const threadId = dmThreadIdFor(me, uid);
+    if (threadId) {
+      try {
+        await db.collection(DM_THREADS_COLLECTION).doc(threadId).set({
+          participants: [me, uid],
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
+    }
+
+    showDmThread(uid);
+    setTimeout(() => { try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {} }, 50);
+  });
+
+  threadList?.addEventListener('click', (e) => {
+    const row = e.target?.closest?.('[data-other-id]');
+    const otherId = String(row?.getAttribute?.('data-other-id') || '').trim();
+    if (!otherId) return;
+    showDmThread(otherId);
+    setTimeout(() => { try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {} }, 50);
+  });
+
+  // Close "New" popover if you tap outside of it (inside the drawer)
+  document.addEventListener('click', (e) => {
+    if (!dmNewOpen) return;
+    const pop = document.getElementById('dm-new-popover');
+    const btn1 = document.getElementById('dm-inbox-new');
+    const btn2 = document.getElementById('dm-thread-new');
+    const t = e.target;
+    if (pop && t instanceof Node && pop.contains(t)) return;
+    if (btn1 && t instanceof Node && btn1.contains(t)) return;
+    if (btn2 && t instanceof Node && btn2.contains(t)) return;
+    closeDmNew();
+  });
 }
 
 function setPersonalChatTarget(uid, nameOverride) {
@@ -3472,11 +3757,9 @@ function refreshPersonalChatSelect() {
 function openPersonalChatWith(userId) {
   const uid = String(userId || '').trim();
   if (!uid) return;
-  const name = getNameForAccount(uid) || '';
-  // Switch chat UI state
+
+  // Switch chat UI state to Personal + open the drawer
   chatMode = 'personal';
-  setPersonalChatTarget(uid, name);
-  // Update segmented buttons + personal bar
   try {
     document.getElementById('chat-mode-global')?.classList.remove('active');
     document.getElementById('chat-mode-team')?.classList.remove('active');
@@ -3484,12 +3767,14 @@ function openPersonalChatWith(userId) {
     document.getElementById('chat-mode-global')?.setAttribute('aria-selected', 'false');
     document.getElementById('chat-mode-team')?.setAttribute('aria-selected', 'false');
     document.getElementById('chat-mode-personal')?.setAttribute('aria-selected', 'true');
-    const bar = document.getElementById('chat-personal-bar');
-    if (bar) bar.style.display = 'flex';
   } catch (_) {}
 
-  // Open the Messages drawer
   setChatDrawerOpen(true, { focusInput: true });
+
+  // Jump straight into the DM thread view
+  setTimeout(() => {
+    try { showDmThread(uid); } catch (_) {}
+  }, 0);
 }
 
 function stopChatSubscription() {
@@ -3522,6 +3807,11 @@ async function startChatSubscription() {
   if (list) list.innerHTML = '<div class="empty-state">Loading…</div>';
 
   if (chatMode === 'personal') {
+    if (dmView === 'inbox') {
+      stopChatSubscription();
+      showDmInbox();
+      return;
+    }
     const me = String(st.userId || '').trim();
     const otherId = String(chatPersonalUserId || '').trim();
     if (!otherId) {
@@ -3546,8 +3836,7 @@ async function startChatSubscription() {
       }, { merge: true });
     } catch (_) {}
 
-    const toName = chatPersonalUserName || getNameForAccount(otherId) || '—';
-    setHint('chat-panel-hint', `To: ${toName}`);
+    setHint('chat-panel-hint', '');
 
     chatUnsub = db.collection(DM_THREADS_COLLECTION)
       .doc(threadId)
@@ -3664,6 +3953,11 @@ async function sendChatTabMessage() {
 
   try {
     if (chatMode === 'personal') {
+    if (dmView === 'inbox') {
+      stopChatSubscription();
+      showDmInbox();
+      return;
+    }
       const otherId = String(chatPersonalUserId || '').trim();
       if (!otherId) {
         setHint('chat-panel-hint', 'Choose a person to message.');
@@ -3690,6 +3984,16 @@ async function sendChatTabMessage() {
           text,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
+      // Update thread preview metadata (for the iMessage-style inbox list)
+      try {
+        await db.collection(DM_THREADS_COLLECTION).doc(threadId).set({
+          lastText: text,
+          lastAt: firebase.firestore.FieldValue.serverTimestamp(),
+          lastSenderId: st.userId,
+          lastSenderName: st.name,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) {}
     } else if (chatMode === 'team') {
       if (!st.teamId) {
         setHint('chat-panel-hint', 'Join a team to use team chat.');
