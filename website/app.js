@@ -1499,7 +1499,8 @@ function refreshNameUI() {
 
   if (savedDisplay) savedDisplay.textContent = name || '—';
   if (headerDisplay) headerDisplay.textContent = name || '—';
-  if (signedAs) signedAs.textContent = `Signed in as ${name || '—'}`;
+  // Launch screen: style the username distinctly for a cleaner, centered look.
+  if (signedAs) signedAs.innerHTML = `Signed in as <span class="signed-as-name">${esc(name || '—')}</span>`;
 
   // Home screen name editor is disabled (username == name).
   const cardForm = document.getElementById('name-form');
