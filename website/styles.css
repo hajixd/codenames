@@ -246,13 +246,21 @@ body.tournament #play-mode-select{ display:none !important; }
     position: relative;
     overflow: hidden;
     background: var(--bg);
-    /* Keep panels from sliding under the fixed top strip + tabs */
-    padding-top: calc(var(--header-h) + var(--tabs-h));
+    /* IMPORTANT:
+       Panels are position:absolute; padding on the parent does NOT offset
+       absolutely positioned children (they anchor to the padding edge).
+       So we offset the panels themselves (see .panel below). */
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   .panel {
     position: absolute;
-    inset: 0;
+    /* Offset all panels below the fixed header + desktop tab strip */
+    top: calc(var(--header-h) + var(--tabs-h));
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: none;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -606,16 +614,22 @@ body.tournament #play-mode-select{ display:none !important; }
     flex: 1;
     position: relative;
     overflow: hidden;
-    /* Header is fixed on mobile; offset panels so the top strip is always visible */
-    padding-top: calc(var(--header-h) + env(safe-area-inset-top));
-    /* Reserve space for the fixed mobile tab bar + iOS safe area so panels can
-       scroll all the way to the real bottom without being clipped. */
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    /* Panels are position:absolute; padding on the parent does NOT offset
+       absolutely positioned children. We offset the panels themselves. */
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   .panel {
     position: absolute;
-    inset: 0;
+    /* Offset all panels below the fixed mobile header and above the fixed
+       bottom tab bar (plus iOS safe areas). */
+    /* Use the measured header height. The header itself already includes
+       env(safe-area-inset-top) padding on iOS, so we do not add it again here. */
+    top: var(--header-h);
+    left: 0;
+    right: 0;
+    bottom: calc(72px + env(safe-area-inset-bottom));
     display: none;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
