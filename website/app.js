@@ -721,6 +721,81 @@ function initChatDrawerChrome() {
 }
 
 
+
+
+/* =========================
+   Layout: sync fixed chrome heights
+   
+   The header and (desktop) tabs are position:fixed and can vary in height
+   (safe-area insets, dynamic pills, font loading). If the CSS variables
+   --header-h / --tabs-h are too small, the top of scrollable panels can end
+   up hidden behind the fixed chrome with no way to scroll to it.
+
+   We measure the real rendered heights and write them back into the CSS
+   variables used by .main-content padding.
+========================= */
+function syncChromeHeights() {
+  try {
+    const app = document.querySelector('.app');
+    if (!app) return;
+
+    const header = document.querySelector('.app-header');
+    const desktopTabs = document.querySelector('.desktop-tabs');
+
+    const headerH = header ? header.getBoundingClientRect().height : 0;
+    // Only count desktop tabs if actually visible
+    let tabsH = 0;
+    if (desktopTabs) {
+      const cs = window.getComputedStyle(desktopTabs);
+      if (cs && cs.display !== 'none' && cs.visibility !== 'hidden') {
+        tabsH = desktopTabs.getBoundingClientRect().height;
+      }
+    }
+
+    // Round to whole pixels to avoid subpixel jitter.
+    app.style.setProperty('--header-h', `${Math.max(0, Math.round(headerH))}px`);
+    app.style.setProperty('--tabs-h', `${Math.max(0, Math.round(tabsH))}px`);
+  } catch (_) {}
+}
+
+function initChromeHeightSync() {
+  // Run immediately and again after layout settles (fonts/icons can shift height).
+  try { syncChromeHeights(); } catch (_) {}
+  try { setTimeout(syncChromeHeights, 50); } catch (_) {}
+  try { setTimeout(syncChromeHeights, 250); } catch (_) {}
+
+  try {
+    const onResize = () => {
+      // Batch with rAF to avoid spamming during resize.
+      try { requestAnimationFrame(syncChromeHeights); } catch (_) { syncChromeHeights(); }
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', () => {
+      try { setTimeout(syncChromeHeights, 50); } catch (_) { syncChromeHeights(); }
+    });
+  } catch (_) {}
+
+  // Watch for dynamic header/tab content changes (e.g., team pill appears, name changes).
+  try {
+    const header = document.querySelector('.app-header');
+    const desktopTabs = document.querySelector('.desktop-tabs');
+    const targets = [header, desktopTabs].filter(Boolean);
+    if (targets.length) {
+      const obs = new MutationObserver(() => {
+        try { requestAnimationFrame(syncChromeHeights); } catch (_) { syncChromeHeights(); }
+      });
+      for (const t of targets) {
+        try {
+          obs.observe(t, { subtree: true, childList: true, attributes: true, characterData: true });
+        } catch (_) {
+          // Some environments may reject certain options; fall back to a simpler observer.
+          try { obs.observe(t, { childList: true, subtree: true }); } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Show the loading screen immediately. We'll hide it only after Firebase Auth
   // resolves and we've rendered the correct initial screen.
@@ -745,6 +820,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPasswordVisibilityToggles();
   initHeaderLogoNav();
   initTabs();
+  initChromeHeightSync();
   initName();
   initPlayersTab();
   initTeamModal();
