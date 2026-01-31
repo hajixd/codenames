@@ -927,6 +927,17 @@ document.addEventListener('DOMContentLoaded', () => {
     forceClose('profile-details-modal');
   } catch (_) {}
 
+  // Remove the booting class once we've forcibly closed transient UI.
+  // Also strip our cache-buster param (if present) so the URL stays clean.
+  try {
+    const u = new URL(window.location.href);
+    if (u.searchParams.has('_r')) {
+      u.searchParams.delete('_r');
+      history.replaceState(null, '', u.toString());
+    }
+  } catch (_) {}
+  try { document.body?.classList.remove('booting'); } catch (_) {}
+
   // Show the loading screen immediately. We'll hide it only after Firebase Auth
   // resolves and we've rendered the correct initial screen.
   bootAuthStartedAtMs = Date.now();
@@ -7020,7 +7031,16 @@ try {
 
   // Give the modal a moment to animate closed, then reload.
   setTimeout(() => {
-    try { window.location.reload(); } catch (_) { window.location.href = window.location.href; }
+    // Use a hard navigation with a cache-buster to avoid certain browsers restoring
+    // prior DOM state (e.g., an open modal) across a reload.
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set('_r', String(Date.now()));
+      u.hash = '';
+      window.location.replace(u.toString());
+    } catch (_) {
+      try { window.location.reload(); } catch (__) { window.location.href = window.location.href; }
+    }
   }, 320);
 } catch (err) {
       const msg = String(err?.message || '');

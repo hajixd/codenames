@@ -1768,6 +1768,11 @@ body.mode-joiner .only-joiner{ display:block; }
   padding: 14px;
 }
 
+/* Prevent any modal "state restore" flashes on refresh.
+   We keep the page in a brief booting state and hide all modals with !important.
+   JS removes the class after it force-closes transient modals. */
+body.booting .modal{ display:none !important; }
+
 body.light-mode .modal{
   background: rgba(0,0,0,0.38);
 }
