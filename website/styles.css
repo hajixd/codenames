@@ -3365,8 +3365,8 @@ body.light-mode .auth-card{
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
-  /* Pull the cards upward toward the middle */
-  margin-top: clamp(6px, 2vh, 18px);
+  /* Keep the cards near the middle, but slightly lower than the signed-in pill */
+  margin-top: clamp(18px, 3.2vh, 34px);
   align-self: start;
 }
 
@@ -5746,6 +5746,19 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+/* Danger actions should look like regular full-width settings buttons */
+.settings-danger-actions{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.settings-danger-actions .btn{
+  width: 100%;
+  justify-content: center;
 }
 
 .mono {
