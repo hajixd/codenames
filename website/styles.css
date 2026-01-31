@@ -8949,7 +8949,8 @@ button:focus-visible,
 }
 .drawer-body{
   padding: 12px;
-  overflow: auto;
+  /* Let the chat card manage its own scrolling; prevents double-scroll glitches. */
+  overflow: hidden;
   flex: 1 1 auto;
   min-height: 0;
   display:flex;
@@ -8963,10 +8964,24 @@ button:focus-visible,
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  height: auto;
+  height: 100%;
+  max-height: none;
+  /* Override panel defaults */
+  gap: 12px;
 }
 .drawer .chat-card.drawer-chat-card .chat-messages{
+  flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Make the drawer feel like the in-game operator sidebar on mobile: not full width */
+@media (max-width: 768px){
+  .drawer{
+    width: min(420px, 86vw);
+  }
+  .drawer-backdrop{
+    backdrop-filter: blur(3px);
+  }
 }
 
 .chat-personal-picker-wrap{ position: relative; flex: 1; }

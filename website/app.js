@@ -84,6 +84,115 @@ async function lookupAuthHandleForUsername(username) {
     return null;
   }
 }
+
+// =========================
+// Account integrity / corruption handling
+// =========================
+function isPasswordProviderUser(u) {
+  try {
+    const pd = u?.providerData || [];
+    return Array.isArray(pd) && pd.some(p => String(p?.providerId || '').toLowerCase() === 'password');
+  } catch (_) {
+    return false;
+  }
+}
+
+// Returns { ok: true } or { ok:false, reason, username }.
+// IMPORTANT: We only treat *structural* missing fields as corruption to avoid
+// false positives from transient network errors.
+async function checkAccountIntegrity(u) {
+  try {
+    const uid = String(u?.uid || '').trim();
+    const rawName = String(u?.displayName || '').trim();
+    const username = normalizeUsername(rawName);
+
+    if (!uid) return { ok: false, reason: 'Missing user id', username: username || rawName || '' };
+    if (!rawName || !username) return { ok: false, reason: 'Missing account name', username: username || '' };
+
+    if (!isPasswordProviderUser(u)) {
+      return { ok: false, reason: 'Missing password sign-in', username };
+    }
+
+    // Username registry doc must exist and include uid + authHandle.
+    const regRef = db.collection('usernames').doc(username);
+    const regSnap = await regRef.get();
+    if (!regSnap.exists) return { ok: false, reason: 'Missing username registry', username };
+
+    const reg = regSnap.data() || {};
+    const regUid = String(reg.uid || '').trim();
+    const regHandle = String(reg.authHandle || '').trim();
+
+    if (!regUid || !regHandle) return { ok: false, reason: 'Incomplete username registry', username };
+    if (regUid !== uid) return { ok: false, reason: 'Username registry mismatch', username };
+
+    // User profile doc is best-effort; if it exists but lacks name, it's corrupted.
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await userRef.get();
+    if (userSnap.exists) {
+      const ud = userSnap.data() || {};
+      const nm = String(ud.name || ud.username || '').trim();
+      if (!nm) return { ok: false, reason: 'Incomplete user profile', username };
+    }
+
+    return { ok: true, username };
+  } catch (e) {
+    console.warn('Account integrity check failed (best-effort)', e);
+    // On network/permission errors, do NOT auto-delete.
+    return { ok: true };
+  }
+}
+
+async function purgeCorruptedAccountEverywhere(u, info = {}) {
+  const uid = String(u?.uid || '').trim();
+  const username = normalizeUsername(info.username || u?.displayName || '');
+  if (!uid) return;
+
+  // Best-effort: remove from teams membership + pending lists.
+  try {
+    const teamColl = db.collection('teams');
+
+    // Some schemas store memberIds; remove those too if present.
+    const qIds = await teamColl.where('memberIds', 'array-contains', uid).get();
+    for (const doc of qIds.docs) {
+      try {
+        await teamColl.doc(doc.id).update({
+          memberIds: firebase.firestore.FieldValue.arrayRemove(uid),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (_) {}
+    }
+
+    // Many teams store members/pending arrays of objects, so we rewrite arrays
+    // for any team where the user appears.
+    const allTeams = await teamColl.get();
+    for (const doc of allTeams.docs) {
+      const t = { id: doc.id, ...doc.data() };
+      const members = getMembers(t);
+      const pending = getPending(t);
+      const has = !!(findUserInMembers(t, uid) || pending.some(p => isSameAccount(p, uid)));
+      if (!has) continue;
+
+      const newMembers = members.filter(m => !isSameAccount(m, uid));
+      const newPending = pending.filter(p => !isSameAccount(p, uid));
+      try {
+        await teamColl.doc(doc.id).set({
+          members: newMembers,
+          pending: newPending,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  // Delete core docs
+  try { if (username) await db.collection('usernames').doc(username).delete(); } catch (_) {}
+  try { await db.collection('users').doc(uid).delete(); } catch (_) {}
+  try { await db.collection('players').doc(uid).delete(); } catch (_) {}
+
+  // Finally, delete the Auth user (best-effort). This may require recent login.
+  try { await u.delete(); } catch (e) { console.warn('Could not delete auth user (best-effort)', e); }
+}
+
 const LS_NAV_MODE = 'ct_navMode_v1';      // 'quick' | 'tournament' | null
 const LS_NAV_PANEL = 'ct_navPanel_v1';    // panel id for tournament mode
 // Game resume keys (game.js owns the values; app.js only triggers restore)
@@ -1102,6 +1211,26 @@ function initAuthGate() {
           }
         }
       } catch (_) {}
+
+
+      // If the account is structurally corrupted (missing registry info, etc),
+      // kick the user out with a clear message and fully delete the account.
+      try {
+        const integrity = await checkAccountIntegrity(u);
+        if (integrity && integrity.ok === false) {
+          try { showAuthLoadingScreen('Fixing account'); } catch (_) {}
+          try {
+            window.alert(`This account looks corrupted (${integrity.reason}).\n\nYou will be signed out and the account will be removed. Please create a new account.`);
+          } catch (_) {}
+          try { await purgeCorruptedAccountEverywhere(u, integrity); } catch (_) {}
+          try { await auth.signOut(); } catch (_) {}
+          try { showAuthScreen(); } catch (_) {}
+          if (isBoot) finishBootAuthLoading(750);
+          return;
+        }
+      } catch (e) {
+        console.warn('Integrity enforcement skipped (best-effort)', e);
+      }
 
       // Ensure player profile exists.
       try {
@@ -6016,7 +6145,7 @@ function renderOnlineUsersList() {
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot online"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
-          <div class="online-user-status">${esc(getPresenceWhereLabel(p) || 'Active')}</div>
+          <div class="online-user-status">${esc(p.corrupted ? 'Corrupted' : (getPresenceWhereLabel(p) || 'Active'))}</div>
           ${delBtn}
         </div>
       `;
@@ -6068,7 +6197,7 @@ function renderOnlineUsersList() {
         <div class="online-user-row${isYou ? ' is-you' : ''}">
           <div class="online-user-dot offline"></div>
           <div class="online-user-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(displayName)}${teamSuffix}</div>
-          <div class="online-user-status">last seen ${getTimeSinceActivity(p) || 'never'}</div>
+          <div class="online-user-status">${esc(p.corrupted ? 'Corrupted' : ('last seen ' + (getTimeSinceActivity(p) || 'never')))}</div>
           ${delBtn}
         </div>
       `;
