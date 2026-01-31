@@ -39,6 +39,36 @@ const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
 
+// Signup / provisioning guard. During account creation, Firebase Auth may
+// report an authenticated user before Firestore username/profile docs are
+// written and before displayName is set. We keep a short-lived hint so the
+// auth gate can avoid false “corrupted account” enforcement.
+const LS_PROVISIONING_USERNAME = 'ct_provisioning_username_v1';
+const LS_PROVISIONING_TS = 'ct_provisioning_ts_v1';
+
+function setProvisioning(username) {
+  try { localStorage.setItem(LS_PROVISIONING_USERNAME, normalizeUsername(username)); } catch (_) {}
+  try { localStorage.setItem(LS_PROVISIONING_TS, String(Date.now())); } catch (_) {}
+}
+
+function clearProvisioning() {
+  try { localStorage.removeItem(LS_PROVISIONING_USERNAME); } catch (_) {}
+  try { localStorage.removeItem(LS_PROVISIONING_TS); } catch (_) {}
+}
+
+function getProvisioning() {
+  try {
+    const u = normalizeUsername(localStorage.getItem(LS_PROVISIONING_USERNAME) || '');
+    const ts = Number(localStorage.getItem(LS_PROVISIONING_TS) || '0');
+    if (!u || !ts) return null;
+    // Only trust within 60s.
+    if (Date.now() - ts > 60_000) return null;
+    return { username: u, ts };
+  } catch (_) {
+    return null;
+  }
+}
+
 // =========================
 // Auth helpers (username + password)
 // =========================
@@ -85,6 +115,54 @@ async function lookupAuthHandleForUsername(username) {
   }
 }
 
+async function resolveUsernameForUid(uid) {
+  try {
+    const q = await db.collection('usernames').where('uid', '==', String(uid || '').trim()).limit(1).get();
+    if (q.empty) return null;
+    return String(q.docs[0].id || '').trim() || null;
+  } catch (e) {
+    console.warn('Failed resolving username for uid (best-effort)', e);
+    return null;
+  }
+}
+
+// Ensure a signed-in user has a usable displayName.
+// Returns the resolved username (normalized) or null.
+async function ensureUserDisplayName(u) {
+  try {
+    const uid = String(u?.uid || '').trim();
+    if (!uid) return null;
+
+    const current = String(u?.displayName || '').trim();
+    let username = normalizeUsername(current);
+
+    // During signup, we may have a provisioning hint.
+    const prov = getProvisioning();
+    if (!username && prov?.username) username = normalizeUsername(prov.username);
+
+    // If still missing, try resolving via the registry.
+    if (!username) {
+      const fromReg = await resolveUsernameForUid(uid);
+      if (fromReg) username = normalizeUsername(fromReg);
+    }
+
+    // If we got a username and displayName is empty, set it.
+    if (username && !current) {
+      try { await u.updateProfile({ displayName: username }); } catch (_) {}
+    }
+
+    // Clear provisioning once we have a stable identity.
+    if (prov?.username && username && normalizeUsername(prov.username) === username) {
+      clearProvisioning();
+    }
+
+    return username || null;
+  } catch (e) {
+    console.warn('Failed ensuring displayName (best-effort)', e);
+    return null;
+  }
+}
+
 // =========================
 // Account integrity / corruption handling
 // =========================
@@ -100,14 +178,14 @@ function isPasswordProviderUser(u) {
 // Returns { ok: true } or { ok:false, reason, username }.
 // IMPORTANT: We only treat *structural* missing fields as corruption to avoid
 // false positives from transient network errors.
-async function checkAccountIntegrity(u) {
+async function checkAccountIntegrity(u, usernameOverride = null) {
   try {
     const uid = String(u?.uid || '').trim();
     const rawName = String(u?.displayName || '').trim();
-    const username = normalizeUsername(rawName);
+    const username = normalizeUsername(usernameOverride || rawName);
 
     if (!uid) return { ok: false, reason: 'Missing user id', username: username || rawName || '' };
-    if (!rawName || !username) return { ok: false, reason: 'Missing account name', username: username || '' };
+    if (!username) return { ok: false, reason: 'Missing account name', username: '' };
 
     if (!isPasswordProviderUser(u)) {
       return { ok: false, reason: 'Missing password sign-in', username };
@@ -585,6 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSettings();
   initPasswordChangeModal();
   initConfirmDialog();
+  initSystemDialog();
   initQuickPlayGate();
   initLaunchScreen();
   initAuthGate();
@@ -990,6 +1069,9 @@ function initLaunchScreen() {
     if (createHint) createHint.textContent = '';
     try {
       showAuthLoadingScreen('Creating account');
+      // Mark provisioning to prevent false "corrupted" enforcement while
+      // Firestore username/profile docs are being written.
+      setProvisioning(username);
       // Fast pre-check to give a nice message.
       // (The transaction below is the real enforcement.)
       try {
@@ -1039,8 +1121,13 @@ function initLaunchScreen() {
         }, { merge: true });
       } catch (_) {}
 
+      // Provisioning complete.
+      clearProvisioning();
+
       await refreshAdminClaims();
       try { refreshNameUI(); } catch (_) {}
+      // Provisioning completed successfully.
+      clearProvisioning();
     } catch (err) {
       console.warn('Signup failed', err);
       const msg = String(err?.message || '');
@@ -1078,7 +1165,9 @@ function initLaunchScreen() {
       } catch (_) {
         // If delete fails (rare), leave the account; admin can clean up later.
       }
+      clearProvisioning();
       try { await auth.signOut(); } catch (_) {}
+      clearProvisioning();
     } finally {
       hideAuthLoadingScreen();
     }
@@ -1199,28 +1288,40 @@ function initAuthGate() {
         return;
       }
 
-      // Ensure displayName exists (required for presence + UI).
-      // Best-effort: if it's missing, resolve it from the username registry.
+      // Ensure we can resolve a stable username for UI/presence.
+      // During signup, this may briefly be missing; we retry a few times.
+      let resolvedUsername = null;
       try {
-        const curName = String(u.displayName || '').trim();
-        if (!curName) {
-          const unameDoc = (usernamesCache || []).find(x => String(x?.uid || '').trim() === String(u.uid || '').trim());
-          const fallbackName = String(unameDoc?.id || '').trim();
-          if (fallbackName) {
-            try { await u.updateProfile({ displayName: fallbackName }); } catch (_) {}
-          }
-        }
+        resolvedUsername = await ensureUserDisplayName(u);
       } catch (_) {}
-
 
       // If the account is structurally corrupted (missing registry info, etc),
       // kick the user out with a clear message and fully delete the account.
+      // IMPORTANT: we retry briefly to avoid false positives during signup.
       try {
-        const integrity = await checkAccountIntegrity(u);
+        let integrity = null;
+        const prov = getProvisioning();
+        const retries = prov ? 8 : 4;
+        for (let i = 0; i < retries; i++) {
+          integrity = await checkAccountIntegrity(u, resolvedUsername);
+          if (!integrity || integrity.ok !== false) break;
+          // Missing registry/profile can happen during provisioning. Wait a bit.
+          if (['Missing account name', 'Missing username registry', 'Incomplete username registry'].includes(integrity.reason)) {
+            await new Promise(r => setTimeout(r, 250));
+            try { resolvedUsername = await ensureUserDisplayName(u) || resolvedUsername; } catch (_) {}
+            continue;
+          }
+          break;
+        }
+
         if (integrity && integrity.ok === false) {
           try { showAuthLoadingScreen('Fixing account'); } catch (_) {}
           try {
-            window.alert(`This account looks corrupted (${integrity.reason}).\n\nYou will be signed out and the account will be removed. Please create a new account.`);
+            await showSystemDialog({
+              title: 'Account issue',
+              message: `This account looks corrupted (${integrity.reason}).\n\nYou will be signed out and the account will be removed. Please create a new account.`,
+              okText: 'OK'
+            });
           } catch (_) {}
           try { await purgeCorruptedAccountEverywhere(u, integrity); } catch (_) {}
           try { await auth.signOut(); } catch (_) {}
@@ -6679,6 +6780,58 @@ function initConfirmDialog() {
     if (e.key === 'Escape' && confirmDialogResolve) {
       hideConfirmDialog(false);
     }
+  });
+}
+
+/* =========================
+   System Message Dialog
+   (replaces window.alert for account issues)
+========================= */
+let systemDialogResolve = null;
+
+function showSystemDialog(options = {}) {
+  const {
+    title = 'Notice',
+    message = '',
+    okText = 'OK',
+  } = options;
+
+  return new Promise((resolve) => {
+    systemDialogResolve = resolve;
+    const backdrop = document.getElementById('system-dialog-backdrop');
+    const dialog = document.getElementById('system-dialog');
+    const titleEl = document.getElementById('system-dialog-title');
+    const messageEl = document.getElementById('system-dialog-message');
+    const okBtn = document.getElementById('system-dialog-ok');
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    if (okBtn) okBtn.textContent = okText;
+
+    backdrop?.classList.remove('hidden');
+    dialog?.classList.remove('hidden');
+    setTimeout(() => okBtn?.focus(), 100);
+  });
+}
+
+function hideSystemDialog() {
+  const backdrop = document.getElementById('system-dialog-backdrop');
+  const dialog = document.getElementById('system-dialog');
+  backdrop?.classList.add('hidden');
+  dialog?.classList.add('hidden');
+  if (systemDialogResolve) {
+    systemDialogResolve(true);
+    systemDialogResolve = null;
+  }
+}
+
+function initSystemDialog() {
+  const okBtn = document.getElementById('system-dialog-ok');
+  const backdrop = document.getElementById('system-dialog-backdrop');
+  okBtn?.addEventListener('click', hideSystemDialog);
+  backdrop?.addEventListener('click', hideSystemDialog);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && systemDialogResolve) hideSystemDialog();
   });
 }
 
