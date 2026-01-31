@@ -291,7 +291,35 @@ let skipQuickPlayLobbyOnce = false;
 let profileUnsub = null;
 let lastLocalNameSetAtMs = 0;
 
+// Boot loader coordination (prevents login-page flashes on refresh)
+let bootAuthStartedAtMs = 0;
+let bootAuthResolvedOnce = false;
+
+function finishBootAuthLoading(minVisibleMs = 700) {
+  // Keep the loading screen up long enough to avoid a UI "flash" while Auth
+  // resolves and the correct route/screen renders.
+  const started = bootAuthStartedAtMs || Date.now();
+  const elapsed = Date.now() - started;
+  const wait = Math.max(minVisibleMs - elapsed, 0);
+  setTimeout(() => {
+    // One extra rAF ensures we hide after the browser paints the target screen.
+    requestAnimationFrame(() => hideAuthLoadingScreen());
+  }, wait);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Show the loading screen immediately. We'll hide it only after Firebase Auth
+  // resolves and we've rendered the correct initial screen.
+  bootAuthStartedAtMs = Date.now();
+  try { showAuthLoadingScreen('Loading'); } catch (_) {}
+  // Prevent initial HTML/CSS from flashing the auth screen before Auth resolves.
+  try {
+    const a = document.getElementById('auth-screen');
+    const l = document.getElementById('launch-screen');
+    if (a) a.style.display = 'none';
+    if (l) l.style.display = 'none';
+  } catch (_) {}
+
   initSettings();
   initPasswordChangeModal();
   initConfirmDialog();
@@ -313,9 +341,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initProfileDetailsModal();
   // Live Firestore listeners are started after sign-in (initAuthGate).
 
-  // Restore the last mode + tab (device-local) so refresh doesn't kick the user back to the launch/sign-in flow.
-  // This is best-effort and intentionally avoids any database writes.
-  try { restoreLastNavigation(); } catch (e) { console.warn('Failed to restore navigation (best-effort)', e); }
+  // NOTE: initial navigation restore is handled after Firebase Auth resolves
+  // (inside initAuthGate). Doing it here can cause a visible "flash".
 
 });
 
@@ -576,8 +603,8 @@ function initLaunchScreen() {
   // Hide the rest of the app until a mode is chosen.
   document.body.classList.add('launch');
   setBrowserTitle('launch');
-  // Default to auth screen until Firebase Auth confirms a session.
-  try { showAuthScreen(); } catch (_) {}
+  // NOTE: We do not show Auth/Launch here to avoid a flash on reload.
+  // The initial screen is chosen after Firebase Auth resolves (initAuthGate).
 
   const quickBtn = document.getElementById('launch-quick-play');
   const tournBtn = document.getElementById('launch-tournament');
@@ -919,6 +946,12 @@ function enterAppFromLaunch(mode, opts = {}) {
 function initAuthGate() {
   try {
     auth.onAuthStateChanged(async (u) => {
+      const isBoot = !bootAuthResolvedOnce;
+      if (isBoot) {
+        bootAuthResolvedOnce = true;
+        // Ensure the loading screen stays up while we decide where to land.
+        try { showAuthLoadingScreen('Loading'); } catch (_) {}
+      }
       // Refresh admin claims best-effort.
       try { await refreshAdminClaims(); } catch (_) {}
 
@@ -941,6 +974,7 @@ function initAuthGate() {
         playersCache = [];
         try { clearLastNavigation(); } catch (_) {}
         try { showAuthScreen(); } catch (_) {}
+        if (isBoot) finishBootAuthLoading(750);
         return;
       }
 
@@ -991,6 +1025,8 @@ function initAuthGate() {
       } catch (_) {
         try { showLaunchScreen(); } catch (_) {}
       }
+
+      if (isBoot) finishBootAuthLoading(750);
     });
   } catch (e) {
     console.error('Auth init failed:', e);
@@ -5811,16 +5847,8 @@ async function verifyAccountAndInitPresence() {
   hideAuthLoadingScreen();
 }
 
-// Initialize presence on DOMContentLoaded - but verify account first
-document.addEventListener('DOMContentLoaded', () => {
-  // If there's a stored name, verify the account before starting presence
-  if (getUserName()) {
-    verifyAccountAndInitPresence();
-  } else {
-    // No stored name - hide loading screen immediately
-    hideAuthLoadingScreen();
-  }
-});
+// Presence boot is now started from the Firebase Auth gate (initAuthGate)
+// so we don't hide the loading screen early (prevents auth-page flashes).
 
 // Export presence functions for game.js
 window.getPresenceStatus = getPresenceStatus;
