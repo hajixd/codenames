@@ -41,7 +41,15 @@ service cloud.firestore {
     match /players/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Players can update their own profile. We also allow any signed-in user
+      // to update another player's *invites* field (and updatedAt) so that any
+      // team member can send/cancel invites. This app is intentionally
+      // lightweight and does not implement fine-grained invite ACLs.
+      allow update: if signedIn() && (
+        request.auth.uid == uid
+        || isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invites', 'updatedAt'])
+      );
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
 
@@ -49,12 +57,39 @@ service cloud.firestore {
     match /teams/{teamId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.creatorUserId == request.auth.uid;
-      allow update: if signedIn() && (isAdmin() || resource.data.creatorUserId == request.auth.uid);
+      function memberUids(teamData) {
+        return (teamData.members is list)
+          ? teamData.members.map(m => m.userId)
+          : [];
+      }
+      function isTeamMember(teamData) {
+        return signedIn() && memberUids(teamData).hasAny([request.auth.uid]);
+      }
+      // Allow non-members to request/cancel by only touching the pending list.
+      function isSelfPendingOnlyUpdate() {
+        return signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pending', 'updatedAt'])
+          && (
+            // must be present in either the old or new pending list
+            ((resource.data.pending is list) ? resource.data.pending.map(p => p.userId).hasAny([request.auth.uid]) : false)
+            || ((request.resource.data.pending is list) ? request.resource.data.pending.map(p => p.userId).hasAny([request.auth.uid]) : false)
+          );
+      }
+      // Allow a user to join a team by adding themselves to members (invite accept).
+      function isSelfJoinUpdate() {
+        return signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'pending', 'updatedAt'])
+          && ((request.resource.data.members is list)
+            ? request.resource.data.members.map(m => m.userId).hasAny([request.auth.uid])
+            : false);
+      }
+      // Members can manage invites/requests and roster. Admin can do anything.
+      allow update: if signedIn() && (isAdmin() || isTeamMember(resource.data) || isSelfPendingOnlyUpdate() || isSelfJoinUpdate());
       allow delete: if isAdmin();
 
       match /chat/{msgId} {
         allow read: if signedIn();
-        allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+        allow create: if signedIn() && request.resource.data.senderId == request.auth.uid;
         allow update, delete: if isAdmin();
       }
     }
@@ -62,7 +97,7 @@ service cloud.firestore {
     // ===== global chat =====
     match /globalChat/{msgId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.senderId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 

@@ -711,6 +711,7 @@ let unreadGlobalCache = [];
 let unreadTeamCache = [];
 let unreadGlobalCount = 0;
 let unreadTeamCount = 0;
+let unreadPersonalCount = 0;
 let lastReadWriteAtMs = 0;
 let activePanelId = 'panel-game';
 // Used to suppress quick-play lobby rendering on the *next* panel-game switch.
@@ -1629,6 +1630,9 @@ function initAuthGate() {
         playersUnsub = null;
         teamsCache = [];
         playersCache = [];
+        // Stop DM thread listener + clear caches so badges reset.
+        try { stopDmInboxListener(); } catch (_) {}
+        unreadPersonalCount = 0;
         try { clearLastNavigation(); } catch (_) {}
         try { showAuthScreen(); } catch (_) {}
         if (isBoot) finishBootAuthLoading(750);
@@ -1734,6 +1738,14 @@ if (integrity && integrity.ok === false) {
       // Start listeners once.
       try { listenToTeams(); } catch (_) {}
       try { listenToPlayers(); } catch (_) {}
+
+      // Start DM thread listener so personal messages contribute to the
+      // unread badge count even when the Personal tab isn't open.
+      try { startDmInboxListener(); } catch (_) {}
+
+      // Personal messages unread badge should update even when the Personal tab
+      // isn't open.
+      try { startDmInboxListener(); } catch (_) {}
 
       // Presence must start after sign-in. Without this, "Who's Online" can't
       // mark anyone as online/idle.
@@ -2595,11 +2607,24 @@ function findUserInPending(team, userId) {
 
 function computeUserState(teams) {
   const userId = getUserId();
-  let team = null;
+  // A user can temporarily appear in multiple teams (e.g., when switching).
+  // Prefer the most recently updated team so the UI consistently picks the
+  // latest roster change.
+  const memberTeams = [];
   const pendingTeams = [];
   for (const t of teams) {
-    if (findUserInMembers(t, userId)) team = t;
+    if (findUserInMembers(t, userId)) memberTeams.push(t);
     if (findUserInPending(t, userId)) pendingTeams.push(t);
+  }
+
+  let team = null;
+  if (memberTeams.length === 1) team = memberTeams[0];
+  else if (memberTeams.length > 1) {
+    team = memberTeams.slice().sort((a, b) => {
+      const am = tsToMs(a?.updatedAt) || tsToMs(a?.createdAt) || 0;
+      const bm = tsToMs(b?.updatedAt) || tsToMs(b?.createdAt) || 0;
+      return bm - am;
+    })[0];
   }
   // Creator detection:
   // - Prefer explicit creatorUserId
@@ -3017,100 +3042,36 @@ async function acceptInvite(teamId) {
   }
 
   const playerRef = db.collection('players').doc(st.userId);
+  const teamRef = db.collection('teams').doc(String(teamId || '').trim());
   setHint('invites-hint', 'Joining…');
 
   try {
-    // We keep the app small (SOFT_MAX_TEAMS). Safest approach is to read all teams so we can:
-    // - remove the player from any old team roster (switch)
-    // - clear the player's pending requests from every team once they join
-    const allTeamIds = (teamsCache || []).map(t => String(t.id || '').trim()).filter(Boolean);
-    const teamRefs = allTeamIds.map(id => db.collection('teams').doc(id));
-
     await db.runTransaction(async (tx) => {
-      const snaps = await Promise.all([tx.get(playerRef)].concat(teamRefs.map(r => tx.get(r))));
-      const playerSnap = snaps[0];
+      const [playerSnap, teamSnap] = await Promise.all([tx.get(playerRef), tx.get(teamRef)]);
       if (!playerSnap.exists) throw new Error('Player not found.');
+      if (!teamSnap.exists) throw new Error('Team not found.');
 
-      const teams = [];
-      for (let i = 1; i < snaps.length; i++) {
-        const s = snaps[i];
-        if (!s.exists) continue;
-        teams.push({ id: s.id, ...s.data() });
-      }
+      const team = { id: teamSnap.id, ...teamSnap.data() };
+      const members = getMembers(team);
+      const pending = getPending(team);
 
-      const target = teams.find(t => t.id === teamId);
-      if (!target) throw new Error('Team not found.');
+      // Add to team (idempotent)
+      const nextMembers = dedupeRosterByAccount(members.concat([{ userId: st.userId, name: st.name }]));
+      const nextPending = pending.filter(r => !isSameAccount(r, st.userId));
+      tx.update(teamRef, {
+        members: nextMembers,
+        pending: nextPending,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
 
-      const targetMembers = getMembers(target);
-      if (targetMembers.some(m => isSameAccount(m, st.userId))) return;
-
-      // Determine if we're switching from another team.
-      const oldTeam = teams.find(t => t.id !== teamId && getMembers(t).some(m => isSameAccount(m, st.userId))) || null;
-      const oldTeamId = oldTeam?.id ? String(oldTeam.id) : null;
-
-      // Update target team: add member, remove any pending request by this user.
-      const targetPending = getPending(target);
-      const nextTargetPending = targetPending.filter(r => !isSameAccount(r, st.userId));
-      const nextTargetMembers = dedupeRosterByAccount(targetMembers.concat([{ userId: st.userId, name: st.name }]));
-      tx.update(db.collection('teams').doc(teamId), { members: nextTargetMembers, pending: nextTargetPending });
-
-      // Update player doc: remove invite for this team.
+      // Remove the invite from the player's doc.
       const player = { id: playerSnap.id, ...playerSnap.data() };
       const invites = Array.isArray(player.invites) ? player.invites : [];
-      const nextInvites = invites.filter(i => i?.teamId !== teamId);
-      tx.update(playerRef, { invites: nextInvites, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-
-      // Clear this user's pending requests from ALL teams (including the target).
-      for (const t of teams) {
-        const p = getPending(t);
-        if (!p?.length) continue;
-        const next = p.filter(r => !isSameAccount(r, st.userId));
-        if (next.length !== p.length) {
-          tx.update(db.collection('teams').doc(t.id), { pending: next });
-        }
-      }
-
-      // If switching, remove from old team roster. If you were the creator:
-      // - if you're leaving the last spot, delete the team (and free its name)
-      // - otherwise, hand creator over to a random remaining member
-      if (oldTeamId) {
-        const oldMembers = getMembers(oldTeam);
-        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, st.userId));
-
-        const oldCreatorKey = nameToAccountId((oldTeam.creatorName || '').trim());
-        const myNameKey = nameToAccountId((st.name || '').trim());
-        const leavingIsCreator = !!(
-          String(oldTeam.creatorUserId || '').trim() === String(st.userId || '').trim() ||
-          (oldCreatorKey && myNameKey && oldCreatorKey === myNameKey) ||
-          (oldCreatorKey && oldCreatorKey === String(st.userId || '').trim())
-        );
-
-        if (nextOldMembers.length === 0) {
-          // Delete team + remove name registry mapping (if any).
-          const key = teamNameToKey(String(oldTeam.teamName || '').trim());
-          if (key) {
-            const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
-            const nameSnap = await tx.get(nameRef);
-            const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
-            if (mappedId === oldTeamId) tx.delete(nameRef);
-          }
-          // Hard deletes are admin-only with locked-down rules.
-          // If a team becomes empty, archive it instead.
-          tx.update(db.collection('teams').doc(oldTeamId), {
-            archived: true,
-            archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          });
-        } else if (leavingIsCreator) {
-          const nextCreator = nextOldMembers[Math.floor(Math.random() * nextOldMembers.length)];
-          tx.update(db.collection('teams').doc(oldTeamId), {
-            members: nextOldMembers,
-            creatorUserId: entryAccountId(nextCreator),
-            creatorName: (nextCreator?.name || '').trim() || oldTeam.creatorName || ''
-          });
-        } else {
-          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
-        }
-      }
+      const nextInvites = invites.filter(i => String(i?.teamId || '').trim() !== String(teamId || '').trim());
+      tx.update(playerRef, {
+        invites: nextInvites,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
     });
 
     setHint('invites-hint', 'Joined!');
@@ -3341,7 +3302,7 @@ async function cancelJoinRequest(teamId, opts = {}) {
       const next = pending.filter(r => !isSameAccount(r, st.userId));
       // If nothing to remove, no-op.
       if (next.length === pending.length) return;
-      tx.update(ref, { pending: next });
+      tx.update(ref, { pending: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     setHint(opts.hintElId || 'team-modal-hint', 'Request canceled.');
   } catch (e) {
@@ -3370,7 +3331,8 @@ async function requestToJoin(teamId, opts = {}) {
       // NOTE: serverTimestamp() is not supported inside arrays in Firestore.
       // Use a client timestamp instead.
       tx.update(ref, {
-        pending: dedupeRosterByAccount(pending.concat([{ userId: st.userId, name: st.name, requestedAt: firebase.firestore.Timestamp.now() }]))
+        pending: dedupeRosterByAccount(pending.concat([{ userId: st.userId, name: st.name, requestedAt: firebase.firestore.Timestamp.now() }])),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
     setHint(opts.hintElId || 'team-modal-hint', 'Request sent.');
@@ -3840,20 +3802,40 @@ function recomputeUnreadBadges() {
   const teamLastRead = teamId ? getReadMsTeam(teamId) : Number.MAX_SAFE_INTEGER;
   let t = teamId ? computeUnreadFromCache(unreadTeamCache, teamLastRead) : 0;
 
+  // Personal (DMs) — count unread threads (not individual messages) to avoid
+  // expensive per-thread message reads.
+  const myId = String(getUserId() || '').trim();
+  let p = 0;
+  if (myId) {
+    for (const thr of (dmThreadsCache || [])) {
+      const tid = String(thr?.id || '').trim();
+      if (!tid) continue;
+      const lastAtMs = tsToMs(thr?.lastAt) || tsToMs(thr?.updatedAt) || 0;
+      if (!lastAtMs) continue;
+      const readAtMs = getMyPersonalReadMs(tid);
+      const lastSenderId = String(thr?.lastSenderId || '').trim();
+      const unread = (lastAtMs > readAtMs) && (!!lastSenderId && lastSenderId !== myId);
+      if (unread) p += 1;
+    }
+  }
+
   // If user is currently viewing a chat, treat it as read.
   if (chatDrawerOpen) {
     if (chatMode === 'global') g = 0;
     if (chatMode === 'team') t = 0;
+    if (chatMode === 'personal') p = 0;
   }
 
   unreadGlobalCount = g;
   unreadTeamCount = t;
+  unreadPersonalCount = p;
 
   setBadge('badge-global', unreadGlobalCount);
   setBadge('badge-team', unreadTeamCount);
-  setBadge('badge-chat-desktop', unreadGlobalCount + unreadTeamCount);
-  setBadge('badge-chat-mobile', unreadGlobalCount + unreadTeamCount);
-  setBadge('badge-header-chat', unreadGlobalCount + unreadTeamCount);
+  const total = unreadGlobalCount + unreadTeamCount + unreadPersonalCount;
+  setBadge('badge-chat-desktop', total);
+  setBadge('badge-chat-mobile', total);
+  setBadge('badge-header-chat', total);
 }
 
 function recomputeMyTeamTabBadge() {
@@ -4169,7 +4151,13 @@ function startDmInboxListener() {
     .limit(60)
     .onSnapshot((snap) => {
       dmThreadsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderDmInbox();
+      // Keep message badges (and the personal inbox) fresh even when the
+      // Personal tab isn't open.
+      try { recomputeUnreadBadges(); } catch (_) {}
+      // Only render the inbox UI when it's relevant; otherwise avoid extra DOM work.
+      if (chatMode === 'personal' && dmView === 'inbox') {
+        renderDmInbox();
+      }
     }, (err) => {
       console.warn('DM inbox listen failed', err);
     });
@@ -4826,6 +4814,7 @@ async function handleCreateTeam() {
         teamName,
         teamColor,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         creatorUserId: st.userId,
         creatorName: st.name,
         members: [{ userId: st.userId, name: st.name }],
@@ -4858,7 +4847,7 @@ async function leaveTeam(teamId, userId) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
-      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)) });
+      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     activatePanel('panel-teams');
   } catch (e) {
@@ -5032,88 +5021,32 @@ async function acceptRequest(teamId, userId) {
   const tid = String(teamId || '').trim();
   if (!tid) return;
 
-  const allTeamIds = (teamsCache || []).map(t => String(t.id || '').trim()).filter(Boolean);
-  const teamRefs = allTeamIds.map(id => db.collection('teams').doc(id));
   const teamRef = db.collection('teams').doc(tid);
 
   try {
     await db.runTransaction(async (tx) => {
-      const snaps = await Promise.all(teamRefs.map(r => tx.get(r)));
-      const teams = [];
-      for (const s of snaps) {
-        if (!s.exists) continue;
-        teams.push({ id: s.id, ...s.data() });
-      }
+      const snap = await tx.get(teamRef);
+      if (!snap.exists) throw new Error('Team not found.');
+      const t = { id: snap.id, ...snap.data() };
 
-      const targetTeam = teams.find(t => t.id === tid);
-      if (!targetTeam) throw new Error('Team not found.');
-
-      const members = getMembers(targetTeam);
+      const members = getMembers(t);
+      const pending = getPending(t);
 
       // Find the request by account (robust to legacy/migrated ids).
-      const pending = getPending(targetTeam);
       const req = pending.find(r => isSameAccount(r, userId)) || pending.find(r => String(r.userId || '').trim() === String(userId || '').trim());
       if (!req) return;
 
       const targetId = entryAccountId(req) || String(userId || '').trim();
       const targetName = (req.name || '—').trim();
 
-      // Add to target team, remove from its pending.
       const nextPending = pending.filter(r => !isSameAccount(r, targetId));
       const nextMembers = dedupeRosterByAccount(members.concat([{ userId: targetId, name: targetName }]));
-      tx.update(teamRef, { pending: nextPending, members: nextMembers });
 
-      // Clear all other pending requests for that person (across all teams).
-      for (const t of teams) {
-        const p = getPending(t);
-        if (!p?.length) continue;
-        const next = p.filter(r => !isSameAccount(r, targetId));
-        if (next.length !== p.length) {
-          tx.update(db.collection('teams').doc(t.id), { pending: next });
-        }
-      }
-
-      // If they were already on another team, remove them (switch).
-      const oldTeam = teams.find(t => t.id !== tid && getMembers(t).some(m => isSameAccount(m, targetId))) || null;
-      if (oldTeam) {
-        const oldTeamId = String(oldTeam.id || '').trim();
-        const oldMembers = getMembers(oldTeam);
-        const nextOldMembers = oldMembers.filter(m => !isSameAccount(m, targetId));
-
-        const oldCreatorKey = nameToAccountId((oldTeam.creatorName || '').trim());
-        const targetNameKey = nameToAccountId(targetName);
-        const leavingIsCreator = !!(
-          String(oldTeam.creatorUserId || '').trim() === String(targetId || '').trim() ||
-          (oldCreatorKey && targetNameKey && oldCreatorKey === targetNameKey) ||
-          (oldCreatorKey && oldCreatorKey === String(targetId || '').trim())
-        );
-
-        if (nextOldMembers.length === 0) {
-          // Delete team + free its name.
-          const key = teamNameToKey(String(oldTeam.teamName || '').trim());
-          if (key) {
-            const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
-            const nameSnap = await tx.get(nameRef);
-            const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
-            if (mappedId === oldTeamId) tx.delete(nameRef);
-          }
-          // Hard deletes are admin-only with locked-down rules.
-          // If a team becomes empty, archive it instead.
-          tx.update(db.collection('teams').doc(oldTeamId), {
-            archived: true,
-            archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          });
-        } else if (leavingIsCreator) {
-          const nextCreator = nextOldMembers[Math.floor(Math.random() * nextOldMembers.length)];
-          tx.update(db.collection('teams').doc(oldTeamId), {
-            members: nextOldMembers,
-            creatorUserId: entryAccountId(nextCreator),
-            creatorName: (nextCreator?.name || '').trim() || oldTeam.creatorName || ''
-          });
-        } else {
-          tx.update(db.collection('teams').doc(oldTeamId), { members: nextOldMembers });
-        }
-      }
+      tx.update(teamRef, {
+        pending: nextPending,
+        members: nextMembers,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
     });
   } catch (e) {
     console.error(e);
@@ -5133,7 +5066,10 @@ async function declineRequest(teamId, userId) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const pending = getPending(t);
-      tx.update(ref, { pending: pending.filter(r => !isSameAccount(r, userId)) });
+      tx.update(ref, {
+        pending: pending.filter(r => !isSameAccount(r, userId)),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
     });
   } catch (e) {
     console.error(e);
@@ -5152,7 +5088,7 @@ async function kickMember(teamId, userId) {
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
       const members = getMembers(t);
-      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)) });
+      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
   } catch (e) {
     console.error(e);
@@ -5172,10 +5108,10 @@ async function updateMemberName(teamId, userId, name) {
       if (idx === -1) return;
       const updated = members.slice();
       updated[idx] = { ...updated[idx], userId: String(userId || '').trim(), name };
-      tx.update(ref, { members: updated });
+      tx.update(ref, { members: updated, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
       // keep creatorName in sync if creator updated
       if (t.creatorUserId === userId || nameToAccountId((t.creatorName || '').trim()) === String(userId || '').trim()) {
-        tx.update(ref, { creatorName: name });
+        tx.update(ref, { creatorName: name, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
       }
     });
   } catch (e) {
