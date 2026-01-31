@@ -630,23 +630,25 @@ function initLaunchScreen() {
   function isValidUsername(v) {
     return /^[a-z0-9_]{3,20}$/.test(v);
   }
-  function makeEmailAlias(username) {
-    // Firebase Auth requires an email format. We use an alias email under the hood
-    // so players only ever see "username + password".
+  function makeAuthHandle(username) {
+    // Players sign in with "username + password".
+    // Under the hood, Firebase Auth needs a unique sign-in identifier.
     //
-    // IMPORTANT: The alias is intentionally NOT deterministic. We store it in
-    // Firestore under /usernames/{username}. That means if we wipe that registry,
-    // all usernames become available again (old accounts become orphaned).
+    // IMPORTANT: This handle is intentionally NOT deterministic. We store it in
+    // Firestore under /usernames/{username}. If we wipe that registry, usernames
+    // become available again (old accounts become unreachable).
     const rand = Math.random().toString(36).slice(2, 10);
-    return `${username}.${rand}@user.codenames.local`;
+    // Note: Firebase validates the identifier format. We generate one that
+    // passes validation but is never shown in the UI.
+    return `${username}.${rand}@u.local`;
   }
 
-  async function lookupEmailAliasForUsername(username) {
+  async function lookupAuthHandleForUsername(username) {
     try {
       const doc = await db.collection('usernames').doc(username).get();
       if (!doc.exists) return null;
       const data = doc.data() || {};
-      return String(data.emailAlias || data.email || '').trim() || null;
+      return String(data.authHandle || '').trim() || null;
     } catch (e) {
       console.warn('Failed reading username registry (best-effort)', e);
       return null;
@@ -679,12 +681,12 @@ function initLaunchScreen() {
     if (loginHint) loginHint.textContent = '';
     try {
       showAuthLoadingScreen('Logging in');
-      const alias = await lookupEmailAliasForUsername(username);
-      if (!alias) {
+      const handle = await lookupAuthHandleForUsername(username);
+      if (!handle) {
         if (loginHint) loginHint.textContent = 'No account found. Try creating one.';
         return;
       }
-      await auth.signInWithEmailAndPassword(alias, pass);
+      await auth.signInWithEmailAndPassword(handle, pass);
       // Best-effort: ensure display name is set (older accounts).
       const u = auth.currentUser;
       if (u && !String(u.displayName || '').trim()) {
@@ -725,9 +727,9 @@ function initLaunchScreen() {
         if (String(e?.message || '').includes('USERNAME_TAKEN')) throw e;
       }
 
-      // Create the auth user using a non-deterministic alias email.
-      const emailAlias = makeEmailAlias(username);
-      await auth.createUserWithEmailAndPassword(emailAlias, pass);
+      // Create the auth user using a non-deterministic handle.
+      const authHandle = makeAuthHandle(username);
+      await auth.createUserWithEmailAndPassword(authHandle, pass);
 
       const u = auth.currentUser;
       if (!u) throw new Error('No auth user after signup');
@@ -741,7 +743,7 @@ function initLaunchScreen() {
         }
         tx.set(unameRef, {
           uid: u.uid,
-          emailAlias,
+          authHandle,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
       });
@@ -769,13 +771,18 @@ function initLaunchScreen() {
       try { refreshNameUI(); } catch (_) {}
     } catch (err) {
       console.warn('Signup failed', err);
-      const code = String(err?.message || '');
-      if (code.includes('USERNAME_TAKEN')) {
+      const msg = String(err?.message || '');
+      const ec = String(err?.code || '');
+      if (msg.includes('USERNAME_TAKEN')) {
         if (createHint) createHint.textContent = "There's already an account. Try logging in.";
-      } else if (String(err?.code || '').includes('auth/email-already-in-use')) {
-        if (createHint) createHint.textContent = "There's already an account. Try logging in.";
+      } else if (ec.includes('auth/operation-not-allowed')) {
+        if (createHint) createHint.textContent = 'Account creation is disabled right now.';
+      } else if (ec.includes('auth/weak-password')) {
+        if (createHint) createHint.textContent = 'Password must be at least 6 characters.';
+      } else if (ec.includes('permission-denied')) {
+        if (createHint) createHint.textContent = 'Signup is blocked by server rules.';
       } else {
-        if (createHint) createHint.textContent = 'Could not create account. Try a different username.';
+        if (createHint) createHint.textContent = 'Could not create account. Please try again.';
       }
       // Best-effort cleanup if we created an auth user but failed to claim the username.
       try {
@@ -868,7 +875,6 @@ function enterAppFromLaunch(mode, opts = {}) {
 
 /* =========================
    Auth gate
-   - Requires Firebase Auth (username/password UI; backed by Firebase email/password)
    - All Firestore listeners and writes assume request.auth.uid is present
 ========================= */
 function initAuthGate() {
@@ -5235,7 +5241,6 @@ function closeNameChangeModal() {
 
 /* =========================
    Password Change Modal
-   - Username+password accounts are implemented via a private pseudo-email.
    - Firebase requires recent sign-in to update passwords, so we re-auth using
      the current password.
 ========================= */
@@ -5296,9 +5301,9 @@ function initPasswordChangeModal() {
       showAuthLoadingScreen('Updating password');
 
       // Re-authenticate (required by Firebase for sensitive actions).
-      const username = String(getUserName() || '').trim().toLowerCase();
-      const email = `${username}@user.codenames.local`;
-      const cred = firebase.auth.EmailAuthProvider.credential(email, currentPass);
+      const identifier = String(u.email || '');
+      if (!identifier) throw new Error('Missing identifier');
+      const cred = firebase.auth.EmailAuthProvider.credential(identifier, currentPass);
       await u.reauthenticateWithCredential(cred);
 
       await u.updatePassword(newPass);

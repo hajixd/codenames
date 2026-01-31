@@ -5,16 +5,16 @@ service cloud.firestore {
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
 
     // ===== user profiles / username registry =====
-    // Users sign in with "username + password" in the UI, but under the hood we
-    // map usernames to Firebase Auth accounts. This registry enforces uniqueness.
+    // Username registry. This enforces uniqueness and stores the internal
+    // sign-in handle for each username.
     match /usernames/{username} {
-      // Needed so the login screen can look up the alias email before a user
+      // Needed so the login screen can look up the handle before a user
       // is authenticated.
       allow read: if true;
       // Claim a username once (no overwrites). Username doc id is the normalized username.
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.emailAlias is string
+        && request.resource.data.authHandle is string
         && username.matches('^[a-z0-9_]{3,20}$')
         && !exists(/databases/$(database)/documents/usernames/$(username));
       // TEMPORARY: allow any signed-in user to wipe this registry from the UI.
