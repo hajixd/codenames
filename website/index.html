@@ -948,16 +948,11 @@
           <div class="modal-body">
             <form id="name-change-form" class="form">
               <label class="field">
-                <span class="label">New name</span>
-                <input type="text" id="name-change-input" class="input" placeholder="New name" autocapitalize="off" autocomplete="username" required>
+                <span class="label">Your name</span>
+                <input type="text" id="name-change-input" class="input" placeholder="Enter your name" required>
               </label>
-              <label class="field">
-                <span class="label">Password</span>
-                <input type="password" id="name-change-password" class="input" autocomplete="current-password" required>
-              </label>
-              <div class="hint" id="name-change-hint" style="min-height: 18px;"></div>
               <div class="form-actions">
-                <button type="submit" class="btn primary">Update name</button>
+                <button type="submit" class="btn primary">Update</button>
               </div>
             </form>
           </div>
@@ -989,30 +984,6 @@
               <div class="hint" id="password-change-hint"></div>
               <div class="form-actions">
                 <button type="submit" class="btn primary">Update password</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- Delete Account Modal -->
-      <div class="modal delete-account-modal" id="delete-account-modal" style="display:none;" role="dialog" aria-modal="true">
-        <div class="modal-backdrop" id="delete-account-modal-backdrop"></div>
-        <div class="modal-card delete-account-modal-card">
-          <div class="modal-head">
-            <div class="modal-title">Delete Account</div>
-            <button class="icon-btn" id="delete-account-modal-close" type="button" aria-label="Close">×</button>
-          </div>
-          <div class="modal-body">
-            <div class="hint" style="margin-bottom:10px;">This will permanently delete your account and free up your name. There is no undo.</div>
-            <form id="delete-account-form" class="form">
-              <label class="field">
-                <span class="label">Password</span>
-                <input type="password" id="delete-account-password" class="input" autocomplete="current-password" required>
-              </label>
-              <div class="hint" id="delete-account-hint" style="min-height: 18px;"></div>
-              <div class="form-actions">
-                <button type="submit" class="btn danger">Delete account</button>
               </div>
             </form>
           </div>
@@ -1067,17 +1038,17 @@
               </div>
 
               <div class="settings-account-actions">
-                <button class="btn" id="settings-change-name-btn" type="button">Change Name</button>
                 <button class="btn" id="settings-change-password-btn" type="button">Change Password</button>
                 <button class="btn" id="settings-logout-btn" type="button">Log Out</button>
               </div>
 
+              <!-- Temporary: wipe username registry so all usernames become available again -->
               <div class="settings-danger" id="settings-danger">
                 <div class="settings-section-title">Danger</div>
                 <div class="settings-admin-actions">
-                  <button class="btn danger" id="settings-delete-account-btn" type="button">Delete Account</button>
+                  <button class="btn danger" id="settings-wipe-users-btn" type="button">Wipe All Users (free usernames)</button>
                 </div>
-                <div class="hint" id="settings-delete-account-hint" style="min-height: 18px;"></div>
+                <div class="hint" id="settings-wipe-users-hint">This clears the username registry (<span class="mono">/usernames</span>) so anyone can re-register usernames. Old accounts may become unreachable.</div>
               </div>
 
               <!-- Admin Actions (only visible for admin users) -->
@@ -1115,6 +1086,37 @@
         </div>
       </div>
       <div class="profile-popup-backdrop" id="profile-popup-backdrop" style="display:none;"></div>
+
+      <!-- Change Password Modal -->
+      <div class="modal password-change-modal" id="password-change-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="password-change-modal-backdrop"></div>
+        <div class="modal-card password-change-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Change Password</div>
+            <button class="icon-btn" id="password-change-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body">
+            <form id="password-change-form" class="form">
+              <label class="field">
+                <span class="label">Current password</span>
+                <input type="password" id="password-change-current" class="input" autocomplete="current-password" required>
+              </label>
+              <label class="field">
+                <span class="label">New password</span>
+                <input type="password" id="password-change-new" class="input" autocomplete="new-password" required>
+              </label>
+              <label class="field">
+                <span class="label">Confirm new password</span>
+                <input type="password" id="password-change-confirm" class="input" autocomplete="new-password" required>
+              </label>
+              <div class="hint" id="password-change-hint" style="min-height: 18px;"></div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary">Update password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
 
 
     </div>
