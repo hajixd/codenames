@@ -167,6 +167,24 @@
             </button>
           </div>
           <input class="input header-user-input" id="user-name-input" type="text" placeholder="Your name" style="display:none;" />
+          
+          <button class="icon-btn header-icon-btn" id="tournament-play-btn" type="button" aria-label="Play">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 21h8"></path>
+              <path d="M12 17v4"></path>
+              <path d="M7 4h10"></path>
+              <path d="M17 4v7a5 5 0 0 1-10 0V4"></path>
+              <path d="M5 7h2v3a3 3 0 0 1-3-3V7h1z"></path>
+              <path d="M19 7h2v0a3 3 0 0 1-3 3V7z"></path>
+            </svg>
+          </button>
+          <button class="icon-btn header-icon-btn" id="header-chat-btn" type="button" aria-label="Messages">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
+            </svg>
+            <span class="badge icon-badge" id="badge-header-chat" aria-label="Unread messages" style="display:none;"></span>
+          </button>
+
           <button class="settings-gear-btn" id="settings-gear-btn" type="button" aria-label="Settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
               <line x1="4" y1="6" x2="20" y2="6"></line>
@@ -188,10 +206,6 @@
         <button class="tab" data-panel="panel-myteam" type="button">
           My Team
           <span class="badge tab-badge" id="badge-myteam-desktop" aria-label="Team notifications" style="display:none;"></span>
-        </button>
-        <button class="tab" data-panel="panel-chat" type="button">
-          Chat
-          <span class="badge tab-badge" id="badge-chat-desktop" aria-label="Unread chat messages" style="display:none;"></span>
         </button>
         <button class="tab active" data-panel="panel-game" type="button">
           Play
@@ -326,42 +340,6 @@
             </div>
           </div>
         </section>
-
-        <!-- Chat Page -->
-        <section class="panel panel-chat" id="panel-chat">
-          <div class="panel-inner">
-            <div class="chat-head-row">
-              <h2>Chat</h2>
-              <div class="segmented" role="tablist" aria-label="Chat mode">
-                <button class="seg-btn active" id="chat-mode-global" type="button" role="tab" aria-selected="true">
-                  Global
-                  <span class="badge seg-badge" id="badge-global" aria-label="Unread global messages" style="display:none;"></span>
-                </button>
-                <button class="seg-btn" id="chat-mode-team" type="button" role="tab" aria-selected="false">
-                  Team
-                  <span class="badge seg-badge" id="badge-team" aria-label="Unread team messages" style="display:none;"></span>
-                </button>
-                <button class="seg-btn" id="chat-mode-personal" type="button" role="tab" aria-selected="false">
-                  Personal
-                </button>
-              </div>
-            </div>
-
-            <div class="chat-card">
-              <div class="chat-personal-bar" id="chat-personal-bar" style="display:none;">
-                <span class="chat-personal-label">To</span>
-                <select class="input chat-personal-select" id="chat-personal-select" aria-label="Choose a person"></select>
-              </div>
-              <div class="chat-messages" id="chat-panel-messages"></div>
-              <form class="chat-compose" id="chat-panel-form">
-                <input class="input chat-input" id="chat-panel-input" type="text" placeholder="Message" autocomplete="off" />
-                <button class="btn primary chat-send" id="chat-panel-send" type="submit">Send</button>
-              </form>
-              <div class="hint" id="chat-panel-hint"></div>
-            </div>
-          </div>
-        </section>
-
         <!-- Game Page -->
         <section class="panel panel-game active" id="panel-game">
           <div class="panel-inner">
@@ -823,11 +801,6 @@
           <span>My Team</span>
           <span class="badge tab-badge" id="badge-myteam-mobile" aria-label="Team notifications" style="display:none;"></span>
         </button>
-        <button class="tab" data-panel="panel-chat" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
-          <span>Chat</span>
-          <span class="badge tab-badge" id="badge-chat-mobile" aria-label="Unread chat messages" style="display:none;"></span>
-        </button>
         <button class="tab active" data-panel="panel-game" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>
           <span>Play</span>
@@ -1145,3 +1118,52 @@
     <script src="game.js"></script>
   </body>
 </html>
+
+    <!-- Messages Drawer (Global / Team / Personal) -->
+    <div class="drawer-backdrop" id="chat-drawer-backdrop" style="display:none;"></div>
+    <aside class="drawer chat-drawer" id="chat-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <div class="drawer-title">Messages</div>
+        <button class="icon-btn" id="chat-drawer-close" type="button" aria-label="Close">×</button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="segmented" role="tablist" aria-label="Chat mode">
+          <button class="seg-btn active" id="chat-mode-global" type="button" role="tab" aria-selected="true">
+            Global
+            <span class="badge seg-badge" id="badge-global" aria-label="Unread global messages" style="display:none;"></span>
+          </button>
+          <button class="seg-btn" id="chat-mode-team" type="button" role="tab" aria-selected="false">
+            Team
+            <span class="badge seg-badge" id="badge-team" aria-label="Unread team messages" style="display:none;"></span>
+          </button>
+          <button class="seg-btn" id="chat-mode-personal" type="button" role="tab" aria-selected="false">
+            Personal
+          </button>
+        </div>
+
+        <div class="chat-card drawer-chat-card">
+          <div class="chat-personal-bar" id="chat-personal-bar" style="display:none;">
+            <span class="chat-personal-label">To</span>
+            <div class="chat-personal-picker-wrap">
+              <button class="input chat-personal-picker" id="chat-personal-picker-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                Choose a person…
+              </button>
+              <div class="chat-personal-popover" id="chat-personal-popover" style="display:none;">
+                <input class="input chat-personal-search" id="chat-personal-search" type="text" placeholder="Search" autocomplete="off" />
+                <div class="chat-personal-list" id="chat-personal-list" role="listbox" aria-label="People"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-messages" id="chat-panel-messages"></div>
+          <form class="chat-compose" id="chat-panel-form">
+            <input class="input chat-input" id="chat-panel-input" type="text" placeholder="Message" autocomplete="off" />
+            <button class="btn primary chat-send" id="chat-panel-send" type="submit">Send</button>
+          </form>
+          <div class="hint" id="chat-panel-hint"></div>
+        </div>
+      </div>
+    </aside>
+
+

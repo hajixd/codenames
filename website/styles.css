@@ -8842,3 +8842,155 @@ button:focus-visible,
   .launch-card{ min-height: clamp(460px, 70vh, 680px); }
   .launch-signed-as{ max-width: 100%; }
 }
+
+
+/* =========================
+   Header icons + Messages drawer
+========================= */
+.header-icon-btn{
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+  transition: transform .12s ease, background .12s ease, border-color .12s ease, opacity .12s ease;
+}
+.header-icon-btn svg{ width: 18px; height: 18px; }
+.header-icon-btn:hover{ background: var(--panel); border-color: var(--border); transform: translateY(-1px); }
+.header-icon-btn:active{ transform: translateY(0); }
+.header-icon-btn.disabled{ opacity: .45; pointer-events: none; }
+
+.icon-badge{
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 2px solid var(--bg);
+  background: var(--accent);
+  color: #fff;
+}
+
+#tournament-play-btn{ display:none; }
+body.tournament #tournament-play-btn{ display:inline-flex; }
+
+/* Drawer shell */
+.drawer-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.40);
+  backdrop-filter: blur(2px);
+  z-index: 1200;
+}
+
+.drawer{
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(420px, 94vw);
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -24px 0 60px rgba(0,0,0,.25);
+  transform: translateX(102%);
+  transition: transform .18s ease;
+  z-index: 1210;
+  display: flex;
+  flex-direction: column;
+}
+.drawer.open{ transform: translateX(0); }
+
+.drawer-header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 14px 14px 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.drawer-title{
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.drawer-body{
+  padding: 12px;
+  overflow: auto;
+}
+
+.drawer-chat-card{ margin-top: 12px; }
+
+.chat-personal-picker-wrap{ position: relative; flex: 1; }
+.chat-personal-picker{
+  width: 100%;
+  text-align: left;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+.chat-personal-picker:after{
+  content: "▾";
+  opacity: .75;
+}
+.chat-personal-popover{
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 10px;
+  z-index: 5;
+}
+.chat-personal-search{ width: 100%; margin-bottom: 8px; }
+.chat-personal-list{
+  max-height: 240px;
+  overflow:auto;
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-personal-item{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,.02);
+  cursor: pointer;
+}
+body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
+.chat-personal-item:hover{ border-color: var(--border); background: var(--bg); }
+.chat-personal-item.active{
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+.chat-personal-item small{
+  opacity: .7;
+}
+
+/* Responsive: on desktop, keep drawer comfortable; on mobile, full width */
+@media (max-width: 520px){
+  .drawer{ width: 100vw; border-left: none; }
+  .drawer-header{ padding: 14px 12px 10px 12px; }
+  .drawer-body{ padding: 12px; }
+}
+
+
+/* Tournament: remove Play tab (use header trophy instead) */
+body.tournament .desktop-tabs .tab[data-panel="panel-game"],
+body.tournament .mobile-tabs .tab[data-panel="panel-game"]{ display:none !important; }

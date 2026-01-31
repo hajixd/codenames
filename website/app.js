@@ -345,6 +345,10 @@ let lastLocalNameSetAtMs = 0;
 let bootAuthStartedAtMs = 0;
 let bootAuthResolvedOnce = false;
 
+// Messages drawer (global/team/personal)
+let chatDrawerOpen = false;
+let lastHeaderInGameState = null;
+
 function finishBootAuthLoading(minVisibleMs = 700) {
   // Keep the loading screen up long enough to avoid a UI "flash" while Auth
   // resolves and the correct route/screen renders.
@@ -356,6 +360,109 @@ function finishBootAuthLoading(minVisibleMs = 700) {
     requestAnimationFrame(() => hideAuthLoadingScreen());
   }, wait);
 }
+
+
+function isInGameBoardView() {
+  const el = document.getElementById('game-board-container');
+  if (!el) return false;
+  try {
+    return window.getComputedStyle(el).display !== 'none';
+  } catch (_) {
+    return String(el.style.display || '').toLowerCase() !== 'none';
+  }
+}
+
+function updateHeaderIconVisibility() {
+  const chatBtn = document.getElementById('header-chat-btn');
+  const trophyBtn = document.getElementById('tournament-play-btn');
+  const inGame = isInGameBoardView();
+  if (inGame && chatDrawerOpen) {
+    try { setChatDrawerOpen(false); } catch (_) {}
+  }
+  if (lastHeaderInGameState === inGame && chatBtn) {
+    // still update disabled state on auth changes
+  }
+  lastHeaderInGameState = inGame;
+
+  if (chatBtn) chatBtn.style.display = inGame ? 'none' : 'inline-flex';
+  if (trophyBtn) trophyBtn.style.display = (document.body.classList.contains('tournament') && !inGame) ? 'inline-flex' : 'none';
+
+  const signedIn = !!auth.currentUser;
+  if (chatBtn) chatBtn.classList.toggle('disabled', !signedIn);
+}
+
+function setChatDrawerOpen(open, opts = {}) {
+  const drawer = document.getElementById('chat-drawer');
+  const backdrop = document.getElementById('chat-drawer-backdrop');
+  if (!drawer || !backdrop) return;
+
+  const wantOpen = !!open;
+  if (wantOpen === chatDrawerOpen) return;
+
+  chatDrawerOpen = wantOpen;
+
+  if (wantOpen) {
+    if (!auth.currentUser) {
+      // Not signed in; ignore.
+      chatDrawerOpen = false;
+      updateHeaderIconVisibility();
+      return;
+    }
+    backdrop.style.display = 'block';
+    drawer.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => drawer.classList.add('open'));
+
+    startChatSubscription();
+    markChatRead(chatMode);
+    recomputeUnreadBadges();
+
+    if (opts.focusInput) {
+      setTimeout(() => {
+        try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {}
+      }, 80);
+    }
+  } else {
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    stopChatSubscription();
+    recomputeUnreadBadges();
+    setTimeout(() => { backdrop.style.display = 'none'; }, 190);
+  }
+}
+
+function initChatDrawerChrome() {
+  const btn = document.getElementById('header-chat-btn');
+  const close = document.getElementById('chat-drawer-close');
+  const backdrop = document.getElementById('chat-drawer-backdrop');
+
+  btn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!auth.currentUser) {
+      // If user isn't signed in yet, the auth screen is the right place.
+      return;
+    }
+    setChatDrawerOpen(true, { focusInput: false });
+  });
+
+  close?.addEventListener('click', (e) => {
+    e.preventDefault();
+    setChatDrawerOpen(false);
+  });
+
+  backdrop?.addEventListener('click', () => setChatDrawerOpen(false));
+
+  // Tournament play shortcut (since Play tab is hidden in tournament)
+  document.getElementById('tournament-play-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try { switchToPanel('panel-game'); } catch (_) {}
+  });
+
+  // Keep icon visibility correct
+  setInterval(() => updateHeaderIconVisibility(), 500);
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
   // Show the loading screen immediately. We'll hide it only after Firebase Auth
@@ -386,6 +493,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initRequestsModal();
   initInvitesModal();
   initChatTab();
+  initChatDrawerChrome();
+  updateHeaderIconVisibility();
   initOnlineCounterUI();
   initUsernamesRegistryListener();
   initProfileDetailsModal();
@@ -1063,22 +1172,18 @@ function switchToPanel(panelId) {
   const panels = document.querySelectorAll('.panel');
   const targetId = String(panelId || '').trim();
   if (!targetId) return;
-  const prev = activePanelId;
 
   // Mark *all* tabs that point at the target panel as active (desktop + mobile)
   tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === targetId));
   panels.forEach(p => p.classList.toggle('active', p.id === targetId));
 
-  // Panel lifecycle hooks
-  if (prev === 'panel-chat' && targetId !== 'panel-chat') {
-    stopChatSubscription();
-  }
-  if (targetId === 'panel-chat') {
-    startChatSubscription();
-    markChatRead(chatMode);
-    recomputeUnreadBadges();
-  }
   activePanelId = targetId;
+
+  // If a game board is visible, we don't show the messages drawer.
+  if (isInGameBoardView() && chatDrawerOpen) {
+    try { setChatDrawerOpen(false); } catch (_) {}
+  }
+
   recomputeUnreadBadges();
   try { window.bumpPresence?.(); } catch (_) {}
 
@@ -1086,7 +1191,6 @@ function switchToPanel(panelId) {
   // In Quick Play we still store the mode so the launch screen is skipped on refresh.
   persistLastNavigation();
 
-  // Ensure the Tournament "Play" tab never shows Quick Play options.
   // In tournament mode, the Play panel should always render the tournament lobby.
   if (targetId === 'panel-game') {
     try {
@@ -1101,7 +1205,12 @@ function switchToPanel(panelId) {
       }
     } catch (_) {}
   }
+
+  // Keep header icons in sync with current view
+  try { updateHeaderIconVisibility(); } catch (_) {}
 }
+
+
 
 /* =========================
    Device-local navigation restore
@@ -3062,7 +3171,7 @@ function recomputeUnreadBadges() {
   let t = teamId ? computeUnreadFromCache(unreadTeamCache, teamLastRead) : 0;
 
   // If user is currently viewing a chat, treat it as read.
-  if (activePanelId === 'panel-chat') {
+  if (chatDrawerOpen) {
     if (chatMode === 'global') g = 0;
     if (chatMode === 'team') t = 0;
   }
@@ -3074,6 +3183,7 @@ function recomputeUnreadBadges() {
   setBadge('badge-team', unreadTeamCount);
   setBadge('badge-chat-desktop', unreadGlobalCount + unreadTeamCount);
   setBadge('badge-chat-mobile', unreadGlobalCount + unreadTeamCount);
+  setBadge('badge-header-chat', unreadGlobalCount + unreadTeamCount);
 }
 
 function recomputeMyTeamTabBadge() {
@@ -3188,7 +3298,11 @@ function initChatTab() {
   const btnTeam = document.getElementById('chat-mode-team');
   const btnPersonal = document.getElementById('chat-mode-personal');
   const personalBar = document.getElementById('chat-personal-bar');
-  const personalSelect = document.getElementById('chat-personal-select');
+  const personalPickerBtn = document.getElementById('chat-personal-picker-btn');
+  const personalPopover = document.getElementById('chat-personal-popover');
+  const personalSearch = document.getElementById('chat-personal-search');
+  const personalList = document.getElementById('chat-personal-list');
+  const personalWrap = personalPickerBtn?.closest('.chat-personal-picker-wrap') || null;
   const form = document.getElementById('chat-panel-form');
 
   const setMode = (mode) => {
@@ -3202,10 +3316,10 @@ function initChatTab() {
 
     if (personalBar) personalBar.style.display = chatMode === 'personal' ? 'flex' : 'none';
 
-    // If chat panel is visible, resubscribe.
-    if (activePanelId === 'panel-chat') {
+    // If drawer is open, resubscribe.
+    if (chatDrawerOpen) {
       startChatSubscription();
-      // Switching modes while in Chat should clear unread.
+      // Switching modes while viewing chat should clear unread.
       markChatRead(chatMode);
     }
     recomputeUnreadBadges();
@@ -3215,14 +3329,54 @@ function initChatTab() {
   btnTeam?.addEventListener('click', () => setMode('team'));
   btnPersonal?.addEventListener('click', () => setMode('personal'));
 
-  // Personal chat recipient selector
-  personalSelect?.addEventListener('change', () => {
-    const uid = String(personalSelect.value || '').trim();
+
+  // Personal chat recipient picker (custom UI; not a native <select>)
+  const closePopover = () => {
+    if (!personalPopover || !personalPickerBtn) return;
+    personalPopover.style.display = 'none';
+    personalPickerBtn.setAttribute('aria-expanded', 'false');
+  };
+  const openPopover = () => {
+    if (!personalPopover || !personalPickerBtn) return;
+    personalPopover.style.display = 'block';
+    personalPickerBtn.setAttribute('aria-expanded', 'true');
+    try { personalSearch?.focus(); } catch (_) {}
+    refreshPersonalChatSelect();
+  };
+  const togglePopover = () => {
+    if (!personalPopover) return;
+    const open = personalPopover.style.display !== 'none';
+    if (open) closePopover();
+    else openPopover();
+  };
+
+  personalPickerBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (chatMode !== 'personal') setMode('personal');
+    togglePopover();
+  });
+
+  personalSearch?.addEventListener('input', () => refreshPersonalChatSelect());
+
+  document.addEventListener('click', (e) => {
+    if (!personalPopover || personalPopover.style.display === 'none') return;
+    const t = e.target;
+    if (personalWrap && t instanceof Node && personalWrap.contains(t)) return;
+    closePopover();
+  });
+
+  personalList?.addEventListener('click', (e) => {
+    const item = e.target?.closest?.('[data-uid]');
+    const uid = String(item?.getAttribute?.('data-uid') || '').trim();
+    if (!uid) return;
     setPersonalChatTarget(uid);
-    if (activePanelId === 'panel-chat' && chatMode === 'personal') {
+    closePopover();
+    if (chatDrawerOpen && chatMode === 'personal') {
       startChatSubscription();
       markChatRead('personal');
     }
+    setTimeout(() => { try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {} }, 50);
   });
 
   form?.addEventListener('submit', async (e) => {
@@ -3272,46 +3426,48 @@ function setPersonalChatTarget(uid, nameOverride) {
     chatPersonalUserName = String(nameOverride || getNameForAccount(target) || '').trim();
   }
 
-  // Persist and sync UI select
+  // Persist and sync UI picker
   try { localStorage.setItem(LS_CHAT_PERSONAL, chatPersonalUserId || ''); } catch (_) {}
-  const sel = document.getElementById('chat-personal-select');
-  if (sel) {
-    try { sel.value = chatPersonalUserId || ''; } catch (_) {}
+  const btn = document.getElementById('chat-personal-picker-btn');
+  if (btn) {
+    btn.textContent = chatPersonalUserName ? chatPersonalUserName : 'Choose a person…';
   }
 }
 
+
 function refreshPersonalChatSelect() {
-  const sel = document.getElementById('chat-personal-select');
-  if (!sel) return;
+  const list = document.getElementById('chat-personal-list');
+  const btn = document.getElementById('chat-personal-picker-btn');
+  const search = document.getElementById('chat-personal-search');
+  if (!list || !btn) return;
 
   const me = String(getUserId() || '').trim();
-  const options = [];
+  const q = String(search?.value || '').trim().toLowerCase();
 
-  // Placeholder
-  options.push({ value: '', label: 'Choose a person…' });
-
-  // Build from username registry (authoritative list of accounts)
   const all = (usernamesCache || [])
     .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
     .filter(u => u.uid && u.name && u.uid !== me)
+    .filter(u => !q || u.name.toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  for (const u of all) options.push({ value: u.uid, label: u.name });
+  const cur = String(chatPersonalUserId || '').trim();
 
-  // Replace options
-  const current = String(chatPersonalUserId || '').trim();
-  sel.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
-
-  // Restore selection if still valid
-  if (current && options.some(o => o.value === current)) {
-    try { sel.value = current; } catch (_) {}
-    chatPersonalUserName = getNameForAccount(current) || chatPersonalUserName;
+  if (!all.length) {
+    list.innerHTML = `<div class="hint" style="padding:10px 6px;">No matches</div>`;
   } else {
-    // Clear invalid selection
-    if (current) setPersonalChatTarget('');
-    try { sel.value = ''; } catch (_) {}
+    list.innerHTML = all.map(u => `
+      <div class="chat-personal-item ${u.uid === cur ? 'active' : ''}" data-uid="${esc(u.uid)}" role="option" aria-selected="${u.uid === cur ? 'true' : 'false'}">
+        <span>${esc(u.name)}</span>
+        ${u.uid === cur ? '<small>Selected</small>' : '<small>Tap</small>'}
+      </div>
+    `).join('');
   }
+
+  // Update picker label
+  if (chatPersonalUserId && !chatPersonalUserName) chatPersonalUserName = getNameForAccount(chatPersonalUserId) || '';
+  btn.textContent = chatPersonalUserName ? chatPersonalUserName : 'Choose a person…';
 }
+
 
 function openPersonalChatWith(userId) {
   const uid = String(userId || '').trim();
@@ -3332,12 +3488,8 @@ function openPersonalChatWith(userId) {
     if (bar) bar.style.display = 'flex';
   } catch (_) {}
 
-  // Navigate to Chat panel (desktop + mobile)
-  switchToPanel('panel-chat');
-  // Focus input (nice UX)
-  setTimeout(() => {
-    try { document.getElementById('chat-panel-input')?.focus(); } catch (_) {}
-  }, 50);
+  // Open the Messages drawer
+  setChatDrawerOpen(true, { focusInput: true });
 }
 
 function stopChatSubscription() {
@@ -3429,7 +3581,7 @@ async function startChatSubscription() {
       .onSnapshot((snap) => {
         chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderChatTabMessages();
-        if (activePanelId === 'panel-chat' && chatMode === 'team') {
+        if (chatDrawerOpen && chatMode === 'team') {
           markChatRead('team');
         }
       }, (err) => {
@@ -3447,7 +3599,7 @@ async function startChatSubscription() {
     .onSnapshot((snap) => {
       chatMessagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderChatTabMessages();
-      if (activePanelId === 'panel-chat' && chatMode === 'global') {
+      if (chatDrawerOpen && chatMode === 'global') {
         markChatRead('global');
       }
     }, (err) => {
