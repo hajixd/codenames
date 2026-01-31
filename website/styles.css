@@ -97,9 +97,14 @@ body.light-mode {
 }
 
 
+/*
+  IMPORTANT (iOS Safari): prefer dynamic viewport units (dvh) when available.
+  The previous ordering accidentally forced 100vh to win, which can prevent
+  inner panels from scrolling fully when the browser chrome expands/collapses.
+*/
 html, body {
-  height: 100dvh;
-  height: 100vh; /* fallback */
+  height: 100vh;   /* fallback */
+  height: 100dvh;  /* preferred */
   overflow: hidden;
 }
 
@@ -140,8 +145,8 @@ body.tournament #panel-home #name-card{ display:none !important; }
 body.tournament #play-mode-select{ display:none !important; }
 
 .app {
-  height: 100dvh;
-  height: 100vh; /* fallback */
+  height: 100vh;   /* fallback */
+  height: 100dvh;  /* preferred */
   display: flex;
   flex-direction: column;
   /* Layout constants (used to keep the top strip ALWAYS visible) */
@@ -603,6 +608,9 @@ body.tournament #play-mode-select{ display:none !important; }
     overflow: hidden;
     /* Header is fixed on mobile; offset panels so the top strip is always visible */
     padding-top: calc(var(--header-h) + env(safe-area-inset-top));
+    /* Reserve space for the fixed mobile tab bar + iOS safe area so panels can
+       scroll all the way to the real bottom without being clipped. */
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
 
   .panel {
@@ -611,6 +619,9 @@ body.tournament #play-mode-select{ display:none !important; }
     display: none;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    /* iOS momentum scroll can get "stuck" when nested; forcing a composited
+       layer helps on some devices. */
+    will-change: scroll-position;
   }
 
   .panel.active {
