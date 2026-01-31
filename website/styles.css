@@ -5203,6 +5203,18 @@ button.player-tag.pill-action:disabled{
   color: var(--text);
 }
 
+/* Header team pill can overflow on small screens; keep it tidy */
+#header-team-pill .online-count{
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 520px){
+  #header-team-pill .online-count{ max-width: 56px; }
+}
+
 .online-label {
   color: var(--text-dim);
 }
@@ -8881,8 +8893,7 @@ button:focus-visible,
   color: #fff;
 }
 
-#tournament-play-btn{ display:none; }
-body.tournament #tournament-play-btn{ display:inline-flex; }
+/* Tournament play shortcut button removed (tournament has no Play tab). */
 
 /* Drawer shell */
 .drawer-backdrop{
@@ -8983,14 +8994,22 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   opacity: .7;
 }
 
-/* Responsive: on desktop, keep drawer comfortable; on mobile, full width */
+/* Responsive: make Messages drawer match the in-game operator sidebar feel */
 @media (max-width: 520px){
-  .drawer{ width: 100vw; border-left: none; }
+  .drawer{
+    width: min(86vw, 392px);
+    max-width: calc(100vw - 56px);
+    border-left: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    border-radius: 18px 0 0 18px;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
   .drawer-header{ padding: 14px 12px 10px 12px; }
   .drawer-body{ padding: 12px; }
 }
 
 
-/* Tournament: remove Play tab (use header trophy instead) */
+/* Tournament: remove Play tab */
 body.tournament .desktop-tabs .tab[data-panel="panel-game"],
 body.tournament .mobile-tabs .tab[data-panel="panel-game"]{ display:none !important; }

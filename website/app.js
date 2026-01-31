@@ -374,7 +374,6 @@ function isInGameBoardView() {
 
 function updateHeaderIconVisibility() {
   const chatBtn = document.getElementById('header-chat-btn');
-  const trophyBtn = document.getElementById('tournament-play-btn');
   const inGame = isInGameBoardView();
   if (inGame && chatDrawerOpen) {
     try { setChatDrawerOpen(false); } catch (_) {}
@@ -385,7 +384,6 @@ function updateHeaderIconVisibility() {
   lastHeaderInGameState = inGame;
 
   if (chatBtn) chatBtn.style.display = inGame ? 'none' : 'inline-flex';
-  if (trophyBtn) trophyBtn.style.display = (document.body.classList.contains('tournament') && !inGame) ? 'inline-flex' : 'none';
 
   const signedIn = !!auth.currentUser;
   if (chatBtn) chatBtn.classList.toggle('disabled', !signedIn);
@@ -451,13 +449,6 @@ function initChatDrawerChrome() {
   });
 
   backdrop?.addEventListener('click', () => setChatDrawerOpen(false));
-
-  // Tournament play shortcut (since Play tab is hidden in tournament)
-  document.getElementById('tournament-play-btn')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try { switchToPanel('panel-game'); } catch (_) {}
-  });
 
   // Keep icon visibility correct
   setInterval(() => updateHeaderIconVisibility(), 500);
@@ -1735,8 +1726,17 @@ function refreshHeaderIdentity() {
   const teamDisplayEl = document.getElementById('user-team-display');
   if (teamDisplayEl) {
     if (st.team) {
-      const teamName = truncateTeamName(st.team.teamName || 'My team');
-      teamDisplayEl.innerHTML = `<span class="profile-link" data-profile-type="team" data-profile-id="${esc(st.team.id)}">${esc(teamName)}</span>`;
+      const rawTeamName = String(st.team.teamName || 'My team');
+      // Mobile header space is tight: if the team name is longer than 5 chars,
+      // show a compact version like "ABCD..".
+      const isTightMobile = window.matchMedia && window.matchMedia('(max-width: 520px)').matches;
+      let shownTeamName = rawTeamName;
+      if (isTightMobile && rawTeamName.length > 5) {
+        shownTeamName = rawTeamName.slice(0, 4) + '..';
+      } else {
+        shownTeamName = truncateTeamName(rawTeamName, 20);
+      }
+      teamDisplayEl.innerHTML = `<span class="profile-link" data-profile-type="team" data-profile-id="${esc(st.team.id)}" title="${esc(rawTeamName)}">${esc(shownTeamName)}</span>`;
     } else {
       teamDisplayEl.textContent = 'No team';
     }
