@@ -9055,12 +9055,18 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
 .dm-inbox-header{
   display:flex;
   align-items:center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   padding: 10px 10px;
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   background: var(--panel);
+}
+
+/* Make the Personal inbox header behave like a single "New" action */
+.dm-inbox-title-btn{
+  width: 100%;
+  justify-content: center;
 }
 .dm-inbox-title{
   font-weight: 900;
@@ -9072,7 +9078,7 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
 .dm-thread-list{
   display:flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
   overflow:auto;
   padding: 2px;
   flex: 1 1 auto;
