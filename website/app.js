@@ -38,6 +38,7 @@ try {
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
 const LS_LAST_USERNAME = 'ct_lastUsername_v1';
+const LS_RELOAD_TOAST = 'ct_reloadToast_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
@@ -969,6 +970,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // NOTE: initial navigation restore is handled after Firebase Auth resolves
   // (inside initAuthGate). Doing it here can cause a visible "flash".
+
+  // If we intentionally reloaded (e.g., after a rename), show a confirmation toast now.
+  setTimeout(() => { try { consumeReloadToast(); } catch (_) {} }, 350);
 
 });
 
@@ -5316,6 +5320,36 @@ function showToast(message, ms = 1400) {
   }, Math.max(400, ms));
 }
 
+
+// Queue a toast to be shown after a full page reload.
+// Useful when we intentionally reload (e.g., after renaming) but still want
+// the user to see a confirmation message.
+function queueReloadToast(message) {
+  const msg = String(message || '').trim();
+  if (!msg) return;
+  try {
+    safeLSSet(LS_RELOAD_TOAST, JSON.stringify({ m: msg, t: Date.now() }));
+  } catch (_) {
+    // Fallback: best-effort raw message
+    safeLSSet(LS_RELOAD_TOAST, msg);
+  }
+}
+
+function consumeReloadToast() {
+  const raw = safeLSGet(LS_RELOAD_TOAST);
+  if (!raw) return;
+  safeLSDel(LS_RELOAD_TOAST);
+
+  let msg = '';
+  try {
+    const obj = JSON.parse(raw);
+    msg = String(obj?.m || '').trim();
+  } catch (_) {
+    msg = String(raw || '').trim();
+  }
+  if (msg) showToast(msg, 1600);
+}
+
 function activatePanel(panelId) {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
@@ -5340,6 +5374,10 @@ function safeLSGet(key) {
 
 function safeLSSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
+}
+
+function safeLSDel(key) {
+  try { localStorage.removeItem(key); } catch (_) {}
 }
 
 function logoutLocal(loadingMessage = 'Logging out') {
@@ -6958,14 +6996,16 @@ try {
     return;
   }
 
-  // Close the popup after success, then show a brief confirmation.
+  // Close the popup after success, then reload.
+  // We show confirmation *after* reload (so other devices / tabs don't briefly
+  // display the old name).
   closeNameChangeModal();
-  showToast(`Name updated to ${newName}. Refreshing…`, 1200);
+  queueReloadToast(`Name updated to ${newName}.`);
 
-  // Small delay so the toast is visible on both desktop + mobile.
+  // Give the modal a moment to animate closed, then reload.
   setTimeout(() => {
     try { window.location.reload(); } catch (_) { window.location.href = window.location.href; }
-  }, 1000);
+  }, 320);
 } catch (err) {
       const msg = String(err?.message || '');
       if (msg.includes('USERNAME_TAKEN')) {
