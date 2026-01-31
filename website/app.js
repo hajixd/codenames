@@ -37,6 +37,7 @@ try {
 
 const LS_USER_ID = 'ct_userId_v1';
 const LS_USER_NAME = 'ct_userName_v1';
+const LS_LAST_USERNAME = 'ct_lastUsername_v1';
 const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
@@ -906,6 +907,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initSettings();
   initPasswordChangeModal();
+  initNameChangeModal();
   initConfirmDialog();
   initSystemDialog();
   initPasswordDialog();
@@ -2109,25 +2111,43 @@ async function setUserName(name, opts = {}) {
   const nextName = normalizeUsername(name);
   const u = auth.currentUser;
   if (!u) throw new Error('Not signed in');
-  if (!nextName) return;
+  if (!nextName) return { changed: false, name: '' };
   if (!isValidUsername(nextName)) {
     throw new Error('Username must be 3–20 chars: a-z, 0-9, _');
   }
-
-  const prevName = normalizeUsername(getUserName());
-  if (prevName && prevName === nextName) return;
 
   showAuthLoadingScreen('Updating name');
 
   // Used to avoid profile listener bouncing the UI during a local rename.
   lastLocalNameSetAtMs = Date.now();
 
-  const uid = u.uid;
+  const uid = String(u.uid || '').trim();
   const usernamesCol = db.collection('usernames');
   const usersCol = db.collection('users');
   const playersCol = db.collection('players');
 
-  const oldRef = prevName ? usernamesCol.doc(prevName) : null;
+  // IMPORTANT:
+  // Do NOT trust auth.displayName as the canonical previous username.
+  // Some older accounts (or repaired accounts) may have a stale/missing displayName.
+  // We resolve the current registry username for this uid and treat that as canonical.
+  let prevName = normalizeUsername(getUserName());
+  let canonicalPrevName = prevName;
+
+  try {
+    const resolved = await resolveUsernameForUid(uid);
+    if (resolved) canonicalPrevName = normalizeUsername(resolved);
+  } catch (_) {}
+
+  // If we already are on that name, still ensure local caches are updated.
+  if (canonicalPrevName && canonicalPrevName === nextName) {
+    try { await u.updateProfile({ displayName: nextName }); } catch (_) {}
+    try { safeLSSet(LS_LAST_USERNAME, nextName); } catch (_) {}
+    try { refreshNameUI(); } catch (_) {}
+    hideAuthLoadingScreen();
+    return { changed: false, name: nextName };
+  }
+
+  const oldRef = canonicalPrevName ? usernamesCol.doc(canonicalPrevName) : null;
   const newRef = usernamesCol.doc(nextName);
 
   try {
@@ -2138,6 +2158,12 @@ async function setUserName(name, opts = {}) {
       }
 
       let authHandle = String(u.email || '').trim();
+      // Preserve the original account creation date across renames.
+      // (The "Date joined" UI reads from the usernames registry.)
+      let createdAtValue = firebase.firestore.FieldValue.serverTimestamp();
+
+      // If we have a canonical previous username doc, carry forward its authHandle/createdAt,
+      // then delete it so resolveUsernameForUid doesn't "snap back" on refresh.
       if (oldRef) {
         const oldSnap = await tx.get(oldRef);
         if (oldSnap.exists) {
@@ -2146,6 +2172,7 @@ async function setUserName(name, opts = {}) {
             throw new Error('USERNAME_CONFLICT');
           }
           authHandle = String(d.authHandle || authHandle).trim();
+          if (d.createdAt) createdAtValue = d.createdAt;
           tx.delete(oldRef);
         }
       }
@@ -2153,8 +2180,8 @@ async function setUserName(name, opts = {}) {
       tx.set(newRef, {
         uid,
         authHandle,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        renamedFrom: prevName || null,
+        createdAt: createdAtValue,
+        renamedFrom: canonicalPrevName || null,
         renamedAt: firebase.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -2173,15 +2200,21 @@ async function setUserName(name, opts = {}) {
     // Update auth profile display name (used throughout the UI).
     try { await u.updateProfile({ displayName: nextName }); } catch (_) {}
 
+    // Persist the last known username locally so boot/self-heal paths can resolve identity.
+    try { safeLSSet(LS_LAST_USERNAME, nextName); } catch (_) {}
+
     // Best-effort: keep team rosters up to date (for older docs that store embedded names).
     try { updateNameInAllTeams(getUserId(), nextName).catch(() => {}); } catch (_) {}
     try { refreshNameUI(); } catch (_) {}
+
+    return { changed: true, name: nextName };
   } finally {
     hideAuthLoadingScreen();
   }
 }
 
-function initName() {
+function initName(
+) {
   // Username == name. We don't allow in-app renaming (it would desync login identity).
 
   // Header name pill - single click opens your profile
@@ -6854,10 +6887,30 @@ function initNameChangeModal() {
 
     playSound('click');
     setHint('');
-    try {
-      await setUserName(newName);
-      closeNameChangeModal();
-    } catch (err) {
+try {
+  const res = await setUserName(newName);
+
+  // If it normalized to the same name, don't pretend we changed it.
+  if (!res || res.changed === false) {
+    setHint("That's already your name.");
+    return;
+  }
+
+  // Keep the modal open so the user can actually see confirmation before refresh.
+  setHint(`Name updated to ${newName}. Refreshing…`);
+
+  // Prevent double-submits while we refresh.
+  try { if (input) input.disabled = true; } catch (_) {}
+  try {
+    const btn = form?.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+  } catch (_) {}
+
+  // Small delay so the message is visible on both desktop + mobile.
+  setTimeout(() => {
+    try { window.location.reload(); } catch (_) { window.location.href = window.location.href; }
+  }, 900);
+} catch (err) {
       const msg = String(err?.message || '');
       if (msg.includes('USERNAME_TAKEN')) {
         setHint("That name is taken. Try a different one.");
@@ -6879,7 +6932,17 @@ function initNameChangeModal() {
 function openNameChangeModal() {
   const modal = document.getElementById('name-change-modal');
   const input = document.getElementById('name-change-input');
+  const hintEl = document.getElementById('name-change-hint');
+  const form = document.getElementById('name-change-form');
   if (!modal) return;
+
+  // Reset disabled state + hint in case we just renamed.
+  try { if (input) input.disabled = false; } catch (_) {}
+  try {
+    const btn = form?.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = false;
+  } catch (_) {}
+  try { if (hintEl) hintEl.textContent = '3–20 chars (a–z, 0–9, _)'; } catch (_) {}
 
   // Pre-fill with current name
   if (input) input.value = getUserName() || '';
