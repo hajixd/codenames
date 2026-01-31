@@ -3722,9 +3722,15 @@ function startDmInboxListener() {
   if (!uid) return;
   if (dmInboxUnsub) return;
 
+  // IMPORTANT:
+  // Using `array-contains` + `orderBy(updatedAt)` can require a composite
+  // index. If that index isn't created yet, Firestore throws a
+  // failed-precondition error and the inbox looks empty.
+  //
+  // We avoid that foot-gun by listening without an explicit orderBy and
+  // sorting client-side (best-effort).
   dmInboxUnsub = db.collection(DM_THREADS_COLLECTION)
     .where('participants', 'array-contains', uid)
-    .orderBy('updatedAt', 'desc')
     .limit(60)
     .onSnapshot((snap) => {
       dmThreadsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -3749,7 +3755,14 @@ function renderDmInbox() {
     return;
   }
 
-  const items = dmThreadsCache.map(t => {
+  // Sort newest-first client-side so we don't depend on Firestore composite indexes.
+  const sorted = (dmThreadsCache || []).slice().sort((a, b) => {
+    const am = tsToMs(a?.lastAt) || tsToMs(a?.updatedAt) || 0;
+    const bm = tsToMs(b?.lastAt) || tsToMs(b?.updatedAt) || 0;
+    return bm - am;
+  });
+
+  const items = sorted.map(t => {
     const tid = String(t?.id || '').trim();
     const parts = Array.isArray(t?.participants) ? t.participants.map(x => String(x||'').trim()).filter(Boolean) : [];
     const otherId = parts.find(p => p && p !== uid) || '';
@@ -3848,10 +3861,16 @@ function refreshDmNewList() {
   const me = String(getUserId() || '').trim();
   const q = String(input?.value || '').trim().toLowerCase();
 
+  // Don't spam a giant list until the user types at least one character.
+  if (!q) {
+    list.innerHTML = '<div class="hint" style="padding:10px 6px;">Type a name…</div>';
+    return;
+  }
+
   const all = (usernamesCache || [])
     .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
     .filter(u => u.uid && u.name && u.uid !== me)
-    .filter(u => !q || u.name.toLowerCase().startsWith(q))
+    .filter(u => u.name.toLowerCase().startsWith(q))
     .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 40);
 
@@ -3959,10 +3978,19 @@ function refreshPersonalChatSelect() {
   const me = String(getUserId() || '').trim();
   const q = String(search?.value || '').trim().toLowerCase();
 
+  // Don't show everyone by default; wait until the user types at least one character.
+  if (!q) {
+    list.innerHTML = `<div class="hint" style="padding:10px 6px;">Type to search…</div>`;
+    // Update picker label
+    if (chatPersonalUserId && !chatPersonalUserName) chatPersonalUserName = getNameForAccount(chatPersonalUserId) || '';
+    btn.textContent = chatPersonalUserName ? chatPersonalUserName : 'Choose a person…';
+    return;
+  }
+
   const all = (usernamesCache || [])
     .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
     .filter(u => u.uid && u.name && u.uid !== me)
-    .filter(u => !q || u.name.toLowerCase().includes(q))
+    .filter(u => u.name.toLowerCase().startsWith(q))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const cur = String(chatPersonalUserId || '').trim();

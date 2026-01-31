@@ -8885,7 +8885,7 @@ button:focus-visible,
   color: var(--text);
   transition: transform .12s ease, background .12s ease, border-color .12s ease, opacity .12s ease;
 }
-.header-icon-btn svg{ width: 16px; height: 16px; }
+.header-icon-btn svg{ width: 14px; height: 14px; }
 .header-icon-btn:hover{ background: var(--panel); border-color: var(--border); transform: translateY(-1px); }
 .header-icon-btn:active{ transform: translateY(0); }
 .header-icon-btn.disabled{ opacity: .45; pointer-events: none; }
@@ -8918,10 +8918,10 @@ button:focus-visible,
 
 .drawer{
   position: fixed;
-  top: 0;
+  top: env(safe-area-inset-top);
   right: 0;
-  height: 100dvh;
-  height: 100vh; /* fallback */
+  height: calc(100dvh - env(safe-area-inset-top));
+  height: calc(100vh - env(safe-area-inset-top)); /* fallback */
   width: min(420px, 94vw);
   background: var(--bg);
   border-left: 1px solid var(--border);
@@ -8931,7 +8931,7 @@ button:focus-visible,
   z-index: 1210;
   display: flex;
   flex-direction: column;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: 0;
 }
 .drawer.open{ transform: translateX(0); }
 
@@ -8949,6 +8949,7 @@ button:focus-visible,
 }
 .drawer-body{
   padding: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
   /* Let the chat card manage its own scrolling; prevents double-scroll glitches. */
   overflow: hidden;
   flex: 1 1 auto;
@@ -8968,6 +8969,8 @@ button:focus-visible,
   max-height: none;
   /* Override panel defaults */
   gap: 12px;
+  /* Keep the composer comfortably above iOS bottom bars */
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
 }
 .drawer .chat-card.drawer-chat-card .chat-messages{
   flex: 1 1 auto;
@@ -8978,6 +8981,9 @@ button:focus-visible,
 @media (max-width: 768px){
   .drawer{
     width: min(420px, 86vw);
+  }
+  .drawer .chat-card.drawer-chat-card{
+    padding-bottom: calc(12px + env(safe-area-inset-bottom) + 56px);
   }
   .drawer-backdrop{
     backdrop-filter: blur(3px);
@@ -9051,6 +9057,10 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   align-items:center;
   justify-content: space-between;
   gap: 10px;
+  padding: 10px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: var(--panel);
 }
 .dm-inbox-title{
   font-weight: 900;
@@ -9076,6 +9086,7 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   padding: 10px 10px;
+  color: var(--text);
   cursor: pointer;
   display:flex;
   gap: 10px;
@@ -9195,6 +9206,7 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
   border-radius: 14px;
   border: 1px solid var(--border-soft);
   background: var(--panel);
+  color: var(--text);
   cursor:pointer;
 }
 .dm-new-item:hover{ border-color: var(--border); background: var(--surface2); }
