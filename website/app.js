@@ -669,9 +669,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initPasswordChangeModal();
   initConfirmDialog();
   initSystemDialog();
+  initPasswordDialog();
   initQuickPlayGate();
   initLaunchScreen();
   initAuthGate();
+  initPasswordVisibilityToggles();
   initHeaderLogoNav();
   initTabs();
   initName();
@@ -685,7 +687,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initChatDrawerChrome();
   updateHeaderIconVisibility();
   initOnlineCounterUI();
+  initAuthOnlineButton();
   initUsernamesRegistryListener();
+  // Read-only presence listener so "Who's Online" works even before login.
+  // (Writes only happen after sign-in.)
+  startPresenceListener();
   initProfileDetailsModal();
   // Live Firestore listeners are started after sign-in (initAuthGate).
 
@@ -693,6 +699,38 @@ document.addEventListener('DOMContentLoaded', () => {
   // (inside initAuthGate). Doing it here can cause a visible "flash".
 
 });
+
+function initAuthOnlineButton() {
+  const btn = document.getElementById('auth-whos-online-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    playSound('click');
+    openOnlineModal();
+  });
+}
+
+function initPasswordVisibilityToggles() {
+  const pairs = [
+    { inputId: 'launch-password-login', btnId: 'pw-toggle-login' },
+    { inputId: 'launch-password-create', btnId: 'pw-toggle-create' },
+    { inputId: 'password-dialog-input', btnId: 'password-dialog-toggle' },
+  ];
+  for (const p of pairs) {
+    const input = document.getElementById(p.inputId);
+    const btn = document.getElementById(p.btnId);
+    if (!input || !btn) continue;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      btn.setAttribute('title', showing ? 'Show password' : 'Hide password');
+      playSound('click');
+      // Keep caret at end on iOS
+      try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+    });
+  }
+}
 
 // (isAdminUser defined near the top)
 
@@ -1178,7 +1216,7 @@ function initLaunchScreen() {
     }
   });
 
-  modeLogoutBtn?.addEventListener('click', () => logoutLocal('Logging out'));
+  modeLogoutBtn?.addEventListener('click', () => requestLogout());
 
   // Default tab
   setAuthTab('login');
@@ -4911,6 +4949,19 @@ function logoutLocal(loadingMessage = 'Logging out') {
     });
 }
 
+async function requestLogout() {
+  playSound('click');
+  const ok = await showCustomConfirm({
+    title: 'Log out?',
+    message: 'You will be signed out of this device.',
+    okText: 'Log out',
+    cancelText: 'Cancel',
+    danger: false
+  });
+  if (!ok) return;
+  logoutLocal('Logging out');
+}
+
 /* =========================
    Settings & Sound Effects
 ========================= */
@@ -5078,8 +5129,12 @@ function initSettings() {
       } catch (err) {
         const code = String(err?.code || '');
         if (code === 'auth/requires-recent-login') {
-          const pw = window.prompt('Enter your password to confirm deletion:');
+          const pw = await showPasswordDialog({
+            title: 'Confirm password',
+            message: 'For security, please enter your password to delete your account.'
+          });
           if (!pw) throw new Error('Password required to delete account.');
+          // Password-based auth uses the stored "email" handle internally (not user-facing).
           const identifier = String(u.email || '');
           const cred = firebase.auth.EmailAuthProvider.credential(identifier, passwordForAuth(pw));
           await u.reauthenticateWithCredential(cred);
@@ -5154,7 +5209,7 @@ themeToggle?.addEventListener('change', () => {
   const settingsLogoutBtn = document.getElementById('settings-logout-btn');
   settingsLogoutBtn?.addEventListener('click', () => {
     closeSettingsModal();
-    logoutLocal('Logging out');
+    requestLogout();
   });
 
   // Change Name button in settings
@@ -6027,11 +6082,13 @@ function getAllKnownAccounts() {
 
 function renderOnlineCounter() {
   const countEl = document.getElementById('online-count');
+  const authCountEl = document.getElementById('auth-online-count');
   if (!countEl) return;
 
   const all = getAllKnownAccounts();
   const online = all.filter(p => getPresenceStatus(p) === 'online');
   countEl.textContent = online.length;
+  if (authCountEl) authCountEl.textContent = String(online.length);
 }
 
 function initOnlineCounterUI() {
@@ -6926,6 +6983,130 @@ function initSystemDialog() {
   });
 }
 
+/* =========================
+   Password Prompt Dialog
+   (replaces window.prompt)
+========================= */
+let passwordDialogResolve = null;
+
+function showPasswordDialog(options = {}) {
+  const {
+    title = 'Confirm password',
+    message = 'Enter your password to continue.',
+    okText = 'Continue',
+    cancelText = 'Cancel'
+  } = options;
+
+  return new Promise((resolve) => {
+    passwordDialogResolve = resolve;
+    const backdrop = document.getElementById('password-dialog-backdrop');
+    const dialog = document.getElementById('password-dialog');
+    const titleEl = document.getElementById('password-dialog-title');
+    const messageEl = document.getElementById('password-dialog-message');
+    const inputEl = document.getElementById('password-dialog-input');
+    const okBtn = document.getElementById('password-dialog-ok');
+    const cancelBtn = document.getElementById('password-dialog-cancel');
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    if (okBtn) okBtn.textContent = okText;
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+    if (inputEl) inputEl.value = '';
+
+    backdrop?.classList.remove('hidden');
+    dialog?.classList.remove('hidden');
+
+    setTimeout(() => inputEl?.focus(), 80);
+  });
+}
+
+function hidePasswordDialog(result) {
+  const backdrop = document.getElementById('password-dialog-backdrop');
+  const dialog = document.getElementById('password-dialog');
+  backdrop?.classList.add('hidden');
+  dialog?.classList.add('hidden');
+  if (passwordDialogResolve) {
+    passwordDialogResolve(result);
+    passwordDialogResolve = null;
+  }
+}
+
+function initPasswordDialog() {
+  const backdrop = document.getElementById('password-dialog-backdrop');
+  const dialog = document.getElementById('password-dialog');
+  if (!dialog) return;
+  const inputEl = document.getElementById('password-dialog-input');
+  const okBtn = document.getElementById('password-dialog-ok');
+  const cancelBtn = document.getElementById('password-dialog-cancel');
+  const toggleBtn = document.getElementById('password-dialog-toggle');
+
+  const confirm = () => {
+    const val = String(inputEl?.value || '');
+    hidePasswordDialog(val);
+  };
+  okBtn?.addEventListener('click', confirm);
+  cancelBtn?.addEventListener('click', () => hidePasswordDialog(null));
+  backdrop?.addEventListener('click', () => hidePasswordDialog(null));
+
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirm();
+    }
+    if (e.key === 'Escape' && passwordDialogResolve) {
+      e.preventDefault();
+      hidePasswordDialog(null);
+    }
+  });
+
+  // Eye toggle
+  toggleBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!inputEl) return;
+    const isPw = inputEl.type === 'password';
+    inputEl.type = isPw ? 'text' : 'password';
+    toggleBtn.setAttribute('aria-label', isPw ? 'Hide password' : 'Show password');
+    toggleBtn.setAttribute('title', isPw ? 'Hide password' : 'Show password');
+    try { inputEl.focus(); } catch (_) {}
+  });
+}
+
+/* =========================
+   Password Visibility Toggles (Auth forms)
+========================= */
+function initPasswordVisibilityToggles() {
+  const pairs = [
+    { inputId: 'launch-password-login', btnId: 'pw-toggle-login' },
+    { inputId: 'launch-password-create', btnId: 'pw-toggle-create' },
+  ];
+  for (const p of pairs) {
+    const input = document.getElementById(p.inputId);
+    const btn = document.getElementById(p.btnId);
+    if (!input || !btn) continue;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isPw = input.type === 'password';
+      input.type = isPw ? 'text' : 'password';
+      btn.setAttribute('aria-label', isPw ? 'Hide password' : 'Show password');
+      btn.setAttribute('title', isPw ? 'Hide password' : 'Show password');
+      try { input.focus(); } catch (_) {}
+    });
+  }
+}
+
+/* =========================
+   Who's Online button on Auth screen
+========================= */
+function initAuthOnlineButton() {
+  const btn = document.getElementById('auth-whos-online-btn');
+  if (!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    playSound('click');
+    openOnlineModal();
+  });
+}
+
 // Verify the user's account on page load before starting presence.
 // This resolves the canonical account ID for the stored name, preventing
 // presence from being written under a stale device ID.
@@ -7389,6 +7570,10 @@ function renderPlayerProfile(playerId) {
     e.preventDefault();
     e.stopPropagation();
     hideProfilePopup();
+    try {
+      const m = document.getElementById('online-modal');
+      if (m && m.style.display === 'flex') closeOnlineModal();
+    } catch (_) {}
     openPersonalChatWith(player.id);
   });
 }
@@ -7647,6 +7832,10 @@ function renderProfileDetailsModal(id, type = 'player') {
     e.preventDefault();
     e.stopPropagation();
     closeProfileDetailsModal();
+    try {
+      const m = document.getElementById('online-modal');
+      if (m && m.style.display === 'flex') closeOnlineModal();
+    } catch (_) {}
     openPersonalChatWith(player.id);
   });
 }

@@ -96,6 +96,34 @@
       </div>
     </div>
 
+    <!-- Password Prompt Dialog (no browser prompt) -->
+    <div class="confirm-dialog-backdrop hidden" id="password-dialog-backdrop"></div>
+    <div class="confirm-dialog hidden" id="password-dialog" role="dialog" aria-modal="true" aria-labelledby="password-dialog-title">
+      <div class="confirm-dialog-card">
+        <div class="confirm-dialog-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2 class="confirm-dialog-title" id="password-dialog-title">Confirm password</h2>
+        <p class="confirm-dialog-message" id="password-dialog-message">Enter your password to continue.</p>
+        <div class="pw-field modal-pw-field">
+          <input type="password" class="input auth-input" id="password-dialog-input" placeholder="Password" autocomplete="current-password">
+          <button class="pw-toggle" id="password-dialog-toggle" type="button" aria-label="Show password" title="Show password">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="confirm-dialog-actions">
+          <button type="button" class="btn" id="password-dialog-cancel">Cancel</button>
+          <button type="button" class="btn primary" id="password-dialog-ok">Continue</button>
+        </div>
+      </div>
+    </div>
+
     <div class="app">
       <!-- Auth Screen (sign in / create account) -->
       <div class="auth-screen" id="auth-screen" aria-label="Sign in">
@@ -112,18 +140,38 @@
 
           <form id="launch-login-form" class="form auth-form" autocomplete="on">
             <input type="text" id="launch-username-login" class="input auth-input" placeholder="Username" autocapitalize="off" autocomplete="username" required>
-            <input type="password" id="launch-password-login" class="input auth-input" placeholder="Password" autocomplete="current-password" required>
+            <div class="pw-field">
+              <input type="password" id="launch-password-login" class="input auth-input" placeholder="Password" autocomplete="current-password" required>
+              <button class="pw-toggle" id="pw-toggle-login" type="button" aria-label="Show password" title="Show password">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
             <button type="submit" class="btn primary auth-submit" id="launch-login-btn">Log in</button>
             <div class="hint auth-hint" id="launch-name-hint"></div>
           </form>
 
           <form id="launch-create-form" class="form auth-form" autocomplete="on" style="display:none;">
             <input type="text" id="launch-username-create" class="input auth-input" placeholder="Username" autocapitalize="off" autocomplete="username" required>
-            <input type="password" id="launch-password-create" class="input auth-input" placeholder="Password" autocomplete="new-password" required>
+            <div class="pw-field">
+              <input type="password" id="launch-password-create" class="input auth-input" placeholder="Password" autocomplete="new-password" required>
+              <button class="pw-toggle" id="pw-toggle-create" type="button" aria-label="Show password" title="Show password">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
             <button type="submit" class="btn primary auth-submit" id="launch-create-btn">Create account</button>
             <div class="hint auth-hint" id="launch-name-hint-create"></div>
             <div class="hint auth-note">Usernames: 3–20 chars (a–z, 0–9, _)</div>
           </form>
+
+          <button class="btn ghost auth-online-btn" id="auth-whos-online-btn" type="button">
+            Who's Online <span class="auth-online-count" id="auth-online-count">0</span>
+          </button>
         </div>
       </div>
 

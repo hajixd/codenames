@@ -75,7 +75,9 @@ service cloud.firestore {
 
     // ===== presence =====
     match /presence/{uid} {
-      allow read: if signedIn();
+      // Public read so "Who's Online" works on the sign-in screen.
+      // Writes are still locked to the signed-in owner/admin.
+      allow read: if true;
       allow create, update: if signedIn() && request.auth.uid == uid;
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
