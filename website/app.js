@@ -179,44 +179,110 @@ function isPasswordProviderUser(u) {
 // IMPORTANT: We only treat *structural* missing fields as corruption to avoid
 // false positives from transient network errors.
 async function checkAccountIntegrity(u, usernameOverride = null) {
+  // Returns { ok: true, username } or { ok:false, reason, username, canRepair }
+  // We keep this intentionally conservative: missing docs are usually repairable.
   try {
     const uid = String(u?.uid || '').trim();
     const rawName = String(u?.displayName || '').trim();
-    const username = normalizeUsername(usernameOverride || rawName);
+    const username = normalizeUsername(usernameOverride || rawName || safeLSGet(LS_LAST_USERNAME) || '');
 
-    if (!uid) return { ok: false, reason: 'Missing user id', username: username || rawName || '' };
-    if (!username) return { ok: false, reason: 'Missing account name', username: '' };
+    if (!uid) return { ok: false, reason: 'Missing user id', username: username || rawName || '', canRepair: false };
+    if (!username) return { ok: false, reason: 'Missing account name', username: '', canRepair: false };
 
-    if (!isPasswordProviderUser(u)) {
-      return { ok: false, reason: 'Missing password sign-in', username };
-    }
-
-    // Username registry doc must exist and include uid + authHandle.
     const regRef = db.collection('usernames').doc(username);
     const regSnap = await regRef.get();
-    if (!regSnap.exists) return { ok: false, reason: 'Missing username registry', username };
+
+    if (!regSnap.exists) {
+      return { ok: false, reason: 'Missing username registry', username, canRepair: true };
+    }
 
     const reg = regSnap.data() || {};
     const regUid = String(reg.uid || '').trim();
     const regHandle = String(reg.authHandle || '').trim();
 
-    if (!regUid || !regHandle) return { ok: false, reason: 'Incomplete username registry', username };
-    if (regUid !== uid) return { ok: false, reason: 'Username registry mismatch', username };
-
-    // User profile doc is best-effort; if it exists but lacks name, it's corrupted.
-    const userRef = db.collection('users').doc(uid);
-    const userSnap = await userRef.get();
-    if (userSnap.exists) {
-      const ud = userSnap.data() || {};
-      const nm = String(ud.name || ud.username || '').trim();
-      if (!nm) return { ok: false, reason: 'Incomplete user profile', username };
+    if (!regUid || !regHandle) {
+      // Rules make registry immutable; only admin can delete+recreate.
+      return { ok: false, reason: 'Incomplete username registry', username, canRepair: false };
     }
 
+    if (regUid !== uid) {
+      return { ok: false, reason: 'Username registry mismatch', username, canRepair: false };
+    }
+
+    // User profile doc is non-critical; we can self-heal.
     return { ok: true, username };
   } catch (e) {
     console.warn('Account integrity check failed (best-effort)', e);
-    // On network/permission errors, do NOT auto-delete.
+    // On network/permission errors, do NOT block.
     return { ok: true };
+  }
+}
+
+async function repairAccountDocs(u, username) {
+  // Best-effort self-heal for cases where account docs were deleted but the user is still signed in.
+  // This prevents "corruption" from transient missing docs.
+  try {
+    const uid = String(u?.uid || '').trim();
+    const uname = normalizeUsername(username || String(u?.displayName || '').trim() || safeLSGet(LS_LAST_USERNAME) || '');
+    if (!uid || !uname) return { ok: false, reason: 'Missing account name' };
+
+    // Persist last known username locally for boot restores.
+    try { safeLSSet(LS_LAST_USERNAME, uname); } catch (_) {}
+
+    // Ensure displayName is set.
+    try {
+      if (String(u?.displayName || '').trim() !== uname) {
+        await u.updateProfile({ displayName: uname });
+      }
+    } catch (_) {}
+
+    const authHandle = String(u?.email || '').trim();
+
+    // Ensure username registry exists (create-only; immutable after).
+    const regRef = db.collection('usernames').doc(uname);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(regRef);
+      if (snap.exists) {
+        const d = snap.data() || {};
+        const regUid = String(d.uid || '').trim();
+        if (regUid && regUid !== uid) {
+          throw new Error('USERNAME_CONFLICT');
+        }
+        // If it exists but is incomplete we cannot update under current rules.
+        return;
+      }
+      tx.set(regRef, {
+        uid,
+        authHandle,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Ensure users/<uid> exists.
+    try {
+      await db.collection('users').doc(uid).set({
+        username: uname,
+        name: uname,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (_) {}
+
+    // Ensure players/<uid> exists.
+    try {
+      await db.collection('players').doc(uid).set({
+        name: uname,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (_) {}
+
+    return { ok: true, username: uname };
+  } catch (e) {
+    const msg = String(e?.message || '');
+    if (msg.includes('USERNAME_CONFLICT')) return { ok: false, reason: 'Username conflict' };
+    console.warn('Failed to repair account docs (best-effort)', e);
+    return { ok: false, reason: 'Repair failed' };
   }
 }
 
@@ -1338,45 +1404,60 @@ function initAuthGate() {
         resolvedUsername = await ensureUserDisplayName(u);
       } catch (_) {}
 
-      // If the account is structurally corrupted (missing registry info, etc),
-      // kick the user out with a clear message and fully delete the account.
-      // IMPORTANT: we retry briefly to avoid false positives during signup.
-      try {
-        let integrity = null;
-        const prov = getProvisioning();
-        const retries = prov ? 8 : 4;
-        for (let i = 0; i < retries; i++) {
-          integrity = await checkAccountIntegrity(u, resolvedUsername);
-          if (!integrity || integrity.ok !== false) break;
-          // Missing registry/profile can happen during provisioning. Wait a bit.
-          if (['Missing account name', 'Missing username registry', 'Incomplete username registry'].includes(integrity.reason)) {
-            await new Promise(r => setTimeout(r, 250));
-            try { resolvedUsername = await ensureUserDisplayName(u) || resolvedUsername; } catch (_) {}
-            continue;
-          }
-          break;
-        }
+      
+// Account self-heal:
+// If someone deleted Firestore docs (usernames/users/players) but the user is still signed in,
+// we recreate the missing pieces instead of treating it as corruption.
+try {
+  let integrity = null;
+  const prov = getProvisioning();
+  const retries = prov ? 10 : 5;
 
-        if (integrity && integrity.ok === false) {
-          try { showAuthLoadingScreen('Fixing account'); } catch (_) {}
-          try {
-            await showSystemDialog({
-              title: 'Account issue',
-              message: `This account looks corrupted (${integrity.reason}).\n\nYou will be signed out and the account will be removed. Please create a new account.`,
-              okText: 'OK'
-            });
-          } catch (_) {}
-          try { await purgeCorruptedAccountEverywhere(u, integrity); } catch (_) {}
-          try { await auth.signOut(); } catch (_) {}
-          try { showAuthScreen(); } catch (_) {}
-          if (isBoot) finishBootAuthLoading(750);
-          return;
-        }
-      } catch (e) {
-        console.warn('Integrity enforcement skipped (best-effort)', e);
+  for (let i = 0; i < retries; i++) {
+    integrity = await checkAccountIntegrity(u, resolvedUsername);
+
+    if (!integrity || integrity.ok !== false) break;
+
+    // Repairable: missing registry (or name during early boot).
+    if (integrity.canRepair) {
+      await new Promise(r => setTimeout(r, 180));
+      const repaired = await repairAccountDocs(u, integrity.username || resolvedUsername);
+      if (repaired && repaired.ok) {
+        resolvedUsername = repaired.username || resolvedUsername;
+        // Re-check on next loop.
+        continue;
       }
+    }
 
-      // Ensure player profile exists.
+    // During provisioning (signup), allow a little extra time for writes to land.
+    if (prov && ['Missing username registry', 'Missing account name'].includes(integrity.reason)) {
+      await new Promise(r => setTimeout(r, 250));
+      try { resolvedUsername = await ensureUserDisplayName(u) || resolvedUsername; } catch (_) {}
+      continue;
+    }
+
+    break;
+  }
+
+  if (integrity && integrity.ok === false) {
+    // Hard failures (registry mismatch/conflict, incomplete registry) cannot be fixed client-side safely.
+    try {
+      await showSystemDialog({
+        title: 'Account problem',
+        message: `We couldn’t verify this account (${integrity.reason}).\n\nPlease log out and log back in. If it keeps happening, ask the admin to delete the broken username entry.`,
+        okText: 'Log out'
+      });
+    } catch (_) {}
+    try { await auth.signOut(); } catch (_) {}
+    try { showAuthScreen(); } catch (_) {}
+    if (isBoot) finishBootAuthLoading(750);
+    return;
+  }
+} catch (e) {
+  console.warn('Integrity self-heal skipped (best-effort)', e);
+}
+
+// Ensure player profile exists.
       try {
         const uid = u.uid;
         const ref = db.collection('players').doc(uid);

@@ -163,6 +163,11 @@ body.tournament #play-mode-select{ display:none !important; }
     padding: 10px 16px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 80;
   }
 
   .desktop-tabs .tab {
@@ -580,6 +585,8 @@ body.tournament #play-mode-select{ display:none !important; }
     flex: 1;
     position: relative;
     overflow: hidden;
+    /* Header is fixed on mobile; offset panels so the top strip is always visible */
+    padding-top: calc(54px + env(safe-area-inset-top));
   }
 
   .panel {
