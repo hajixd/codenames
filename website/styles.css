@@ -144,7 +144,10 @@ body.tournament #play-mode-select{ display:none !important; }
   height: 100vh; /* fallback */
   display: flex;
   flex-direction: column;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* Don't add bottom safe-area padding here.
+     Mobile tabs and drawers already account for the safe area.
+     Double-padding can push the bottom tab bar off-screen on iOS Safari. */
+  padding-bottom: 0;
 }
 
 /* ==================== DESKTOP ==================== */
@@ -875,6 +878,12 @@ body.tournament #play-mode-select{ display:none !important; }
     border-top: 1px solid var(--border);
     padding: 8px 0;
     padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    /* Keep the tab bar always visible on mobile */
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
   }
 
   .tab {
@@ -8948,13 +8957,13 @@ button:focus-visible,
 ========================= */
 .header-icon-btn{
   position: relative;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 8px;
+  margin-right: 6px;
   background: transparent;
   border: 1px solid var(--border-soft);
   color: var(--text);
@@ -8964,6 +8973,12 @@ button:focus-visible,
 .header-icon-btn:hover{ background: var(--panel); border-color: var(--border); transform: translateY(-1px); }
 .header-icon-btn:active{ transform: translateY(0); }
 .header-icon-btn.disabled{ opacity: .45; pointer-events: none; }
+
+@media (max-width: 520px){
+  /* Make the Messages icon a bit more compact on small screens */
+  .header-icon-btn{ width: 28px; height: 28px; border-radius: 9px; }
+  .header-icon-btn svg{ width: 13px; height: 13px; }
+}
 
 .icon-badge{
   position: absolute;
