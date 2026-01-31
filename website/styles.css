@@ -3789,7 +3789,8 @@ button:disabled{
 @media (min-width: 769px){
   body.tournament #panel-home .panel-inner{
     transform: none;
-    padding-top: 16px;
+    /* Keep the hero higher than center, but not glued to the very top */
+    padding-top: 56px;
   }
 }
 
@@ -3804,8 +3805,8 @@ body.tournament #panel-home.panel-info{
 }
 body.tournament #panel-home.panel-info .panel-inner{
   justify-content: flex-start;
-  /* a touch tighter than the generic panel padding */
-  padding-top: 18px;
+  /* Push the stack down a bit so it doesn't feel jammed under the header */
+  padding-top: 44px;
 }
 
 /* Players tab (desktop): extra top padding so you can scroll to reveal the
