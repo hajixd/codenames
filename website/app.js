@@ -312,7 +312,12 @@ async function refreshAdminClaims() {
   }
 }
 function isAdminUser() {
-  return !!cachedIsAdmin;
+  try {
+    const nm = normalizeUsername(getUserName() || auth.currentUser?.displayName || '');
+    return !!cachedIsAdmin || nm === 'admin';
+  } catch (_) {
+    return !!cachedIsAdmin;
+  }
 }
 
 // App-level backups (client-driven, admin-only)
@@ -6123,50 +6128,87 @@ async function adminDeleteUser(userId, displayName) {
   const uid = String(userId || '').trim();
   if (!uid) return;
 
-  // Remove from presence directory (so they disappear from Who's Online)
-  try {
-    await db.collection(PRESENCE_COLLECTION).doc(uid).delete();
-  } catch (e) {
-    // best effort
-  }
+  // 1) Remove from presence (so they disappear from Who's Online)
+  try { await db.collection(PRESENCE_COLLECTION).doc(uid).delete(); } catch (_) {}
 
-  // Remove player profile (name + invites)
-  try {
-    await db.collection('players').doc(uid).delete();
-  } catch (e) {
-    // best effort
-  }
+  // 2) Remove player + user profile
+  try { await db.collection('players').doc(uid).delete(); } catch (_) {}
+  try { await db.collection('users').doc(uid).delete(); } catch (_) {}
 
-  // Remove from all teams (and transfer ownership / delete empty teams if needed)
+  // 3) Remove from all teams (and transfer ownership / delete empty teams if needed)
   const teams = Array.isArray(teamsCache) ? teamsCache.slice() : [];
   for (const t of teams) {
     const teamId = String(t?.id || '').trim();
     if (!teamId) continue;
-    try {
-      await adminRemoveUserFromTeam(teamId, uid);
-    } catch (e) {
-      // best effort
-    }
+    try { await adminRemoveUserFromTeam(teamId, uid); } catch (_) {}
   }
 
-  // Clean up name registry entry if it points at this user
+  // 4) Delete personal DM threads involving this user (best-effort)
   try {
-    const key = nameToAccountId((displayName || findKnownUserName(uid) || '').trim());
-    if (key) {
-      const ref = db.collection(NAME_REGISTRY_COLLECTION).doc(key);
-      await db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists) return;
-        const data = snap.data() || {};
-        const canon = String(data.canonicalId || data.userId || data.id || '').trim();
-        if (canon && canon === uid) {
-          tx.delete(ref);
-        }
-      });
+    const threadsSnap = await db.collection('dmThreads').where('participants', 'array-contains', uid).get();
+    for (const th of threadsSnap.docs) {
+      const threadId = th.id;
+      // Delete messages in chunks
+      while (true) {
+        const ms = await db.collection('dmThreads').doc(threadId).collection('messages').limit(250).get();
+        if (ms.empty) break;
+        const batch = db.batch();
+        ms.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      await th.ref.delete();
     }
   } catch (e) {
-    // best effort
+    // best-effort
   }
+
+  // 5) Delete username registry docs for this uid so the username(s) become available
+  try {
+    const names = new Set();
+    // Prefer cache
+    try {
+      for (const r of (usernamesCache || [])) {
+        const rUid = String(r?.uid || '').trim();
+        const nm = String(r?.id || '').trim();
+        if (rUid && rUid === uid && nm) names.add(nm);
+      }
+    } catch (_) {}
+
+    // If empty, query directly
+    if (names.size === 0) {
+      const q = await db.collection('usernames').where('uid', '==', uid).get();
+      q.docs.forEach(d => names.add(String(d.id || '').trim()));
+    }
+
+    // Last resort: try displayName if it's a plausible username
+    const dn = normalizeUsername(displayName || '');
+    if (dn && isValidUsername(dn)) names.add(dn);
+
+    for (const nm of names) {
+      if (!nm) continue;
+      const ref = db.collection('usernames').doc(nm);
+      try {
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists) return;
+          const data = snap.data() || {};
+          const owner = String(data.uid || '').trim();
+          if (owner && owner === uid) tx.delete(ref);
+        });
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  // Re-render online modal if it's open
+  try {
+    const modal = document.getElementById('online-modal');
+    if (modal && modal.style.display === 'flex') renderOnlineUsersList();
+  } catch (_) {}
+
+  // Notify (best-effort)
+  try {
+    showSystemDialog({ title: 'User deleted', message: 'The account has been removed and the username is now available.' });
+  } catch (_) {}
 }
 
 async function adminRemoveUserFromTeam(teamId, userId) {
