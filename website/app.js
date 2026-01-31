@@ -4163,6 +4163,10 @@ function renderChatTabMessages() {
   const list = document.getElementById('chat-panel-messages');
   if (!list) return;
 
+  // For bubble alignment we need to know which messages are mine.
+  const st = computeUserState(teamsCache);
+  const myId = String(st?.userId || '').trim();
+
   if (!chatMessagesCache?.length) {
     list.innerHTML = '<div class="empty-state">No messages yet</div>';
     return;
@@ -4180,21 +4184,34 @@ function renderChatTabMessages() {
   list.innerHTML = chatMessagesCache.map(m => {
     const senderName = (m?.senderName || '—');
     const senderId = String(m?.senderId || '').trim() || nameToAccountId(senderName);
+    const isMine = !!(myId && senderId && senderId === myId);
+
     const team = getTeamForMemberId(senderId);
     const teamName = team?.teamName ? truncateTeamName(String(team.teamName)) : '';
     const color = team ? getDisplayTeamColor(team) : '';
-
     const whoStyle = color ? `style="color:${esc(color)}"` : '';
-    const senderHtml = senderId
-      ? `<span class="profile-link" data-profile-type="player" data-profile-id="${esc(senderId)}" ${whoStyle}>${esc(senderName)}</span>`
-      : `<span ${whoStyle}>${esc(senderName)}</span>`;
-    const teamHtml = team
-      ? ` <span class="profile-link" data-profile-type="team" data-profile-id="${esc(team.id)}" ${whoStyle}>(${esc(teamName)})</span>`
-      : '';
 
+    // Sender label (only show for non-mine in global/team; DM thread title already shows the person).
+    let meta = '';
+    if (!isMine && chatMode !== 'personal') {
+      const senderHtml = senderId
+        ? `<span class="profile-link" data-profile-type="player" data-profile-id="${esc(senderId)}" ${whoStyle}>${esc(senderName)}</span>`
+        : `<span ${whoStyle}>${esc(senderName)}</span>`;
+      const teamHtml = team
+        ? ` <span class="profile-link" data-profile-type="team" data-profile-id="${esc(team.id)}" ${whoStyle}>(${esc(teamName)})</span>`
+        : '';
+      meta = `<div class="chat-meta">${senderHtml}${teamHtml}</div>`;
+    }
+
+    // Bubble classes are used for iMessage-like layout.
+    const rowCls = `chat-row ${isMine ? 'mine' : 'other'}`;
+    const bubbleCls = `chat-bubble ${isMine ? 'mine' : 'other'}`;
     return `
-      <div class="chat-msg">
-        <div class="chat-line"><span class="chat-who">${senderHtml}${teamHtml}:</span> <span class="chat-text">${esc(m?.text || '')}</span></div>
+      <div class="${rowCls}">
+        <div class="${bubbleCls}">
+          ${meta}
+          <div class="chat-bubble-text">${esc(m?.text || '')}</div>
+        </div>
       </div>
     `;
   }).join('');
