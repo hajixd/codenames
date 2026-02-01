@@ -7369,6 +7369,22 @@ body.tournament.has-team-color .input:focus {
   gap: 12px;
 }
 
+/* Mobile: keep the score perfectly centered by making the top strip a 3-column grid */
+@media (max-width: 768px){
+  .game-topbar{
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px;
+  }
+  .game-topbar > .topbar-team{
+    width: 100%;
+  }
+  .game-topbar > .topbar-center{
+    justify-self: center;
+  }
+}
+
+
 .topbar-team {
   flex: 1 1 0;
   display: flex;
@@ -10044,6 +10060,26 @@ body.qp-gate-open .app {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* When a top-corner icon opened this popup, subtly highlight that team */
+.players-popup[data-focus-team="red"] .players-popup-team.red,
+.players-popup[data-focus-team="blue"] .players-popup-team.blue{
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.players-popup[data-focus-team="red"] .players-popup-team.blue,
+.players-popup[data-focus-team="blue"] .players-popup-team.red{
+  opacity: 0.9;
+}
+
+.players-popup-item.ai-link{
+  cursor: pointer;
+}
+.players-popup-item.ai-link:active{
+  transform: scale(0.99);
 }
 
 .players-popup-team-title {

@@ -3593,8 +3593,7 @@ function initAdvancedFeatures() {
   document.getElementById('toggle-right-sidebar')?.addEventListener('click', toggleRightSidebar);
 
   // Mobile: players popup
-  document.getElementById('mobile-players-popup-btn')?.addEventListener('click', openPlayersPopup);
-  document.getElementById('players-popup-close')?.addEventListener('click', closePlayersPopup);
+document.getElementById('players-popup-close')?.addEventListener('click', closePlayersPopup);
   document.getElementById('players-popup-backdrop')?.addEventListener('click', closePlayersPopup);
 
   // Operative chat form
@@ -4033,6 +4032,16 @@ function renderTopbarTeamNames() {
       icon.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+
+        const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+        if (isMobile) {
+          // Mobile: use the full-screen Players popup (much easier to tap).
+          closeAll();
+          openPlayersPopup(teamId === 'topbar-red' ? 'red' : 'blue');
+          return;
+        }
+
+        // Desktop/tablet: elegant inline popover.
         const willOpen = !teamEl.classList.contains('popover-open');
         closeAll();
         if (willOpen) teamEl.classList.add('popover-open');
@@ -4312,14 +4321,34 @@ function closeMobileSidebars() {
 /* =========================
    Mobile Players Popup
 ========================= */
-function openPlayersPopup() {
+function openPlayersPopup(focusTeam) {
   const popup = document.getElementById('players-popup');
   if (!popup) return;
+
+  // Persist the requested focus (red/blue) so render + CSS can react.
+  popup.dataset.focusTeam = (focusTeam === 'red' || focusTeam === 'blue') ? focusTeam : '';
+
   renderPlayersPopup();
   popup.style.display = 'block';
   // trigger CSS transition
   void popup.offsetWidth;
   popup.classList.add('visible');
+
+  // After the transition starts, gently scroll the focused team into view.
+  const team = popup.dataset.focusTeam;
+  if (team) {
+    setTimeout(() => {
+      try {
+        const target = popup.querySelector('.players-popup-team.' + team);
+        const body = popup.querySelector('.players-popup-body');
+        if (target && body) {
+          // Ensure body is the scroll container.
+          const top = target.offsetTop - 6;
+          body.scrollTo({ top, behavior: 'smooth' });
+        }
+      } catch (e) {}
+    }, 60);
+  }
 }
 
 function closePlayersPopup() {
@@ -4353,9 +4382,18 @@ function renderPlayersPopup() {
       const displayName = p?.isAI ? `AI ${rawName}` : rawName;
       const name = escapeHtml(displayName);
       const role = (team === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster) === p?.name ? 'Spy' : 'Op';
-      const attrs = pid
-        ? `class="players-popup-item ${team} ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
-        : `class="players-popup-item ${team} ${isMe ? 'is-me' : ''}"`;
+
+      const baseCls = `players-popup-item ${team} ${isMe ? 'is-me' : ''} ${p?.isAI ? 'is-ai' : ''}`.trim();
+      const cls = `${baseCls}${pid && p?.isAI ? ' ai-link' : ''}${pid && !p?.isAI ? ' profile-link' : ''}`.trim();
+
+      // Humans open the profile modal; AI opens the personality/traits popup.
+      let attrs = `class="${cls}"`;
+      if (pid && p?.isAI) {
+        attrs += ` onclick="event.stopPropagation(); window.openAITraitsPopup('${escapeHtml(pid)}')" style="cursor:pointer;"`;
+      } else if (pid && !p?.isAI) {
+        attrs += ` data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`;
+      }
+
       return `<div ${attrs}><span class="pp-name">${name}</span><span class="pp-role">${role}</span></div>`;
     }).join('');
   };
