@@ -486,6 +486,43 @@ function isAISpymasterForTeam(game, team) {
   return aiPlayers.some(a => a.name === spymasterName && a.team === team);
 }
 
+// ─── Strategic Analysis Helpers ─────────────────────────────────────────────
+
+function analyzeGameState(game, team) {
+  const otherTeam = team === 'red' ? 'blue' : 'red';
+  const myCards = team === 'red' ? game.redCardsLeft : game.blueCardsLeft;
+  const theirCards = team === 'red' ? game.blueCardsLeft : game.redCardsLeft;
+  const totalRevealed = (game.cards || []).filter(c => c.revealed).length;
+  const totalCards = (game.cards || []).length;
+
+  // Determine game phase urgency
+  const weAreLeading = myCards < theirCards;
+  const weAreLosingBadly = myCards > theirCards + 2;
+  const endgame = myCards <= 3 || theirCards <= 3;
+  const earlyGame = totalRevealed <= 6;
+
+  // Risk assessment
+  const assassinsLeft = (game.cards || []).filter(c => c.type === 'assassin' && !c.revealed).length;
+  const opponentCardsLeft = (game.cards || []).filter(c => c.type === otherTeam && !c.revealed).length;
+  const neutralsLeft = (game.cards || []).filter(c => c.type === 'neutral' && !c.revealed).length;
+
+  // Risk ratio: how dangerous is guessing randomly?
+  const unrevealedCount = totalCards - totalRevealed;
+  const dangerRatio = (assassinsLeft + opponentCardsLeft) / Math.max(unrevealedCount, 1);
+
+  let riskTolerance;
+  if (weAreLosingBadly) riskTolerance = 'high';      // Need to catch up, take risks
+  else if (weAreLeading && !endgame) riskTolerance = 'low';  // Playing it safe
+  else if (endgame && myCards <= 2) riskTolerance = 'medium'; // Close to winning
+  else riskTolerance = 'medium';
+
+  return {
+    myCards, theirCards, weAreLeading, weAreLosingBadly, endgame, earlyGame,
+    assassinsLeft, opponentCardsLeft, neutralsLeft, unrevealedCount,
+    dangerRatio, riskTolerance, totalRevealed
+  };
+}
+
 // ─── Build Game Context for LLM ────────────────────────────────────────────
 
 function buildBoardContext(game, isSpymaster) {
@@ -530,6 +567,7 @@ async function aiGiveClue(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, true);
   const teamContext = buildTeamContext(game, team);
+  const analysis = analyzeGameState(game, team);
 
   // Compute which words belong to our team and haven't been revealed
   const ourWords = game.cards
@@ -546,43 +584,64 @@ async function aiGiveClue(ai, game) {
     .map(c => c.word);
   const boardWords = game.cards.map(c => c.word.toUpperCase());
 
-  const systemPrompt = `You are a Codenames Spymaster for the ${team.toUpperCase()} team. Your job is to give a ONE-WORD clue and a number indicating how many cards on the board relate to that clue.
+  // Build strategic guidance based on game state analysis
+  let strategyGuidance = '';
+  if (analysis.weAreLosingBadly) {
+    strategyGuidance = `STRATEGIC SITUATION: You are BEHIND by ${analysis.myCards - analysis.theirCards} cards. You MUST be aggressive. Try to connect 3+ words with one clue, even if some connections are looser. A safe 1-word clue will not catch up. Take calculated risks.`;
+  } else if (analysis.weAreLeading && !analysis.endgame) {
+    strategyGuidance = `STRATEGIC SITUATION: You are AHEAD. Play conservatively. Give clues that strongly connect 2 words rather than risky 3+ word clues. Avoid anything that could lead to the assassin. Safe, solid clues will maintain your lead.`;
+  } else if (analysis.endgame && analysis.myCards <= 2) {
+    strategyGuidance = `STRATEGIC SITUATION: ENDGAME - only ${analysis.myCards} cards left! Give a precise clue for ${analysis.myCards === 1 ? '1 word - make it unmistakable' : '2 words if possible, but clarity over quantity'}. One wrong guess could lose the game.`;
+  } else if (analysis.earlyGame) {
+    strategyGuidance = `STRATEGIC SITUATION: Early game. Aim for a strong opening clue connecting 2-3 of the easiest-to-connect words. Save tricky words for later when there are fewer options on the board.`;
+  } else {
+    strategyGuidance = `STRATEGIC SITUATION: Mid-game, balanced position. Aim for clues connecting 2+ words. Balance risk and reward.`;
+  }
+
+  const systemPrompt = `You are an expert Codenames Spymaster for the ${team.toUpperCase()} team. You are highly strategic and think deeply about word associations.
 
 RULES:
 - Your clue must be a SINGLE word (no spaces, no hyphens, no compound words).
 - Your clue CANNOT be any word currently on the board: ${boardWords.join(', ')}
 - The number indicates how many of YOUR team's unrevealed cards relate to the clue.
-- AVOID clues that might lead teammates to guess assassin words: ${assassinWords.join(', ')}
-- AVOID clues that relate to the opponent's words: ${theirWords.join(', ')}
-- Try to connect multiple of your words with one clue for maximum efficiency.
-- Be strategic. Consider what words have already been revealed and what clues have been given.
+- CRITICAL: NEVER give a clue that relates to the assassin words. This loses the game instantly.
+- AVOID clues that relate to the opponent's words - this gives them free points.
+- Neutral words are bad but not catastrophic - they just end your turn.
 
 YOUR TEAM'S UNREVEALED WORDS: ${ourWords.join(', ')}
 OPPONENT'S UNREVEALED WORDS: ${theirWords.join(', ')}
 NEUTRAL WORDS: ${neutralWords.join(', ')}
-ASSASSIN WORDS: ${assassinWords.join(', ')}
+ASSASSIN WORDS (CRITICAL - AVOID AT ALL COSTS): ${assassinWords.join(', ')}
+
+${strategyGuidance}
 
 ${clueHistory}
 ${summary}
 Team: ${teamContext}
 
-Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief explanation of which words you're connecting"}`;
+THINK STEP BY STEP:
+1. Group your team's words by possible thematic connections
+2. For each potential clue, check: does it relate to ANY assassin word? If yes, REJECT it immediately
+3. Does it relate to opponent words? If yes, consider the risk
+4. Pick the clue that connects the most team words with the LEAST risk of assassin/opponent overlap
+5. Set the number to ONLY count words you're very confident your teammates will get
+
+Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["word1", "word2"], "reasoning": "explain your strategic thinking and which words you're connecting"}`;
 
   try {
-    // Add a human-like thinking delay (2-8 seconds)
-    await humanDelay(2000, 8000);
-
-    // First, chat about thinking (if autonomous)
-    if (ai.mode === 'autonomous') {
-      // Don't chat about strategy since spymaster shouldn't reveal info
-    }
+    // Strategic thinking delay - scales with difficulty
+    // Fewer words left = harder to find good clues = think longer
+    // More words = easier to find connections = think faster
+    const baseDelay = analysis.endgame ? 5000 : (analysis.earlyGame ? 3000 : 4000);
+    const variability = analysis.endgame ? 6000 : 4000;
+    await humanDelay(baseDelay, baseDelay + variability);
 
     const result = await aiChatCompletion([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Give your clue now as JSON.' },
+      { role: 'user', content: 'Analyze the board carefully, then give your clue as JSON.' },
     ], {
-      temperature: 0.7,
-      max_tokens: 256,
+      temperature: analysis.weAreLosingBadly ? 0.85 : (analysis.weAreLeading ? 0.5 : 0.65),
+      max_tokens: 400,
       response_format: { type: 'json_object' },
     });
 
@@ -590,7 +649,6 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief e
     try {
       parsed = JSON.parse(result);
     } catch {
-      // Try to extract JSON from the response
       const match = result.match(/\{[\s\S]*?\}/);
       if (match) parsed = JSON.parse(match[0]);
       else throw new Error('Could not parse clue JSON');
@@ -636,6 +694,95 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief e
 
 // ─── AI Operative: Guess Card (Structured Output) ──────────────────────────
 
+// AI card marking state: { gameId: { cardIndex: 'yes'|'maybe'|'no' } }
+let aiCardMarks = {};
+
+function aiMarkCard(game, cardIndex, mark) {
+  if (!game?.id) return;
+  if (!aiCardMarks[game.id]) aiCardMarks[game.id] = {};
+  if (mark === 'clear' || aiCardMarks[game.id][cardIndex] === mark) {
+    delete aiCardMarks[game.id][cardIndex];
+  } else {
+    aiCardMarks[game.id][cardIndex] = mark;
+  }
+  // Sync to local card tags so they render visually
+  if (typeof cardTags !== 'undefined' && typeof renderCardTags === 'function') {
+    Object.assign(cardTags, aiCardMarks[game.id] || {});
+    renderCardTags();
+    if (typeof saveTagsToLocal === 'function') saveTagsToLocal();
+  }
+}
+
+async function aiAnalyzeAndMarkCards(ai, game, currentClue) {
+  if (!currentClue || !game?.cards) return;
+
+  const team = ai.team;
+  const unrevealed = game.cards
+    .map((c, i) => ({ word: c.word, index: i }))
+    .filter((_, i) => !game.cards[i].revealed);
+
+  const unrevealedLines = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\n');
+  const clueHistory = buildClueHistoryContext(game);
+
+  const systemPrompt = `You are a Codenames Operative analyzing the board for clue "${currentClue.word}" for ${currentClue.number}.
+
+UNREVEALED WORDS:
+${unrevealedLines}
+
+${clueHistory}
+
+For each unrevealed word, decide if it likely matches the clue:
+- "yes" = strongly matches the clue (you'd guess this)
+- "maybe" = could match but you're unsure
+- "no" = likely a trap, opponent, or assassin word - avoid
+
+Return JSON: {"marks": [{"index": N, "mark": "yes|maybe|no"}]}
+Only include words you have an opinion on. Skip words you're neutral about.
+Be strategic - mark words you'd warn teammates about as "no".`;
+
+  try {
+    const result = await aiChatCompletion([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Analyze each word for clue "${currentClue.word}" ${currentClue.number}. JSON only.` },
+    ], {
+      temperature: 0.3,
+      max_tokens: 500,
+      response_format: { type: 'json_object' },
+    });
+
+    let parsed;
+    try {
+      parsed = JSON.parse(result);
+    } catch {
+      const match = result.match(/\{[\s\S]*?\}/);
+      if (match) parsed = JSON.parse(match[0]);
+      else return;
+    }
+
+    const marks = parsed.marks || parsed.analysis || [];
+    if (!Array.isArray(marks)) return;
+
+    // Clear old marks for this game first
+    aiCardMarks[game.id] = {};
+
+    for (const m of marks) {
+      const idx = Number(m.index);
+      const mark = String(m.mark || '').toLowerCase();
+      if (Number.isInteger(idx) && idx >= 0 && idx < game.cards.length && !game.cards[idx].revealed) {
+        if (['yes', 'maybe', 'no'].includes(mark)) {
+          aiMarkCard(game, idx, mark);
+        }
+      }
+    }
+
+    // Small delay between marking cards for human-like feel
+    await humanDelay(200, 500);
+
+  } catch (e) {
+    console.warn(`AI ${ai.name} card marking failed:`, e);
+  }
+}
+
 async function aiGuessCard(ai, game) {
   if (aiThinkingState[ai.id]) return;
   aiThinkingState[ai.id] = true;
@@ -645,6 +792,7 @@ async function aiGuessCard(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, false);
   const currentClue = game.currentClue;
+  const analysis = analyzeGameState(game, team);
 
   if (!currentClue) {
     aiThinkingState[ai.id] = false;
@@ -680,7 +828,24 @@ async function aiGuessCard(ai, game) {
     .map(c => `- ${c.index}: ${c.word}`)
     .join('\n');
 
-  const systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster just gave the clue "${currentClue.word}" for ${currentClue.number}.
+  // Count correct guesses for the current clue so far
+  const currentClueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
+    .filter(c => c.word === currentClue.word && c.team === game.currentTeam)
+    .pop()?.results || [];
+  const correctGuesses = currentClueResults.filter(r => r.result === 'correct').length;
+  const wrongGuesses = currentClueResults.filter(r => r.result !== 'correct').length;
+  const guessNumber = correctGuesses + 1; // Which guess number this is
+
+  // Build strategic context for the operative
+  let guessStrategy = '';
+  if (correctGuesses >= currentClue.number) {
+    // We've already guessed the intended words - now deciding to go for a bonus or end
+    guessStrategy = `You have already correctly guessed ${correctGuesses} out of the ${currentClue.number} intended words. You may attempt ONE bonus guess if you're very confident, or you can recommend ending the turn. Risk assessment: ${analysis.riskTolerance} risk tolerance. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
+  } else {
+    guessStrategy = `This is guess #${guessNumber} of ${currentClue.number} intended words. ${correctGuesses > 0 ? `Already got ${correctGuesses} correct.` : ''} Risk level: ${analysis.riskTolerance}.`;
+  }
+
+  const systemPrompt = `You are a skilled Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster gave the clue "${currentClue.word}" for ${currentClue.number}.
 
 BOARD (unrevealed words, choose ONLY from this list):
 ${unrevealedLines}
@@ -689,34 +854,49 @@ ${clueHistory}
 ${summary}
 ${teamChatContext}
 
-Your job: Pick the ONE unrevealed board word that BEST matches the clue "${currentClue.word}".
-Rules:
-- You MUST choose a word from the unrevealed list.
-- Return JSON only.
-- Include BOTH the board index and the word.
-- Pay attention to what your teammates are saying in chat - they may have good suggestions.
+${guessStrategy}
 
-You have unlimited guesses but choose wisely.
+STRATEGY:
+- Pick the ONE word that BEST matches the clue "${currentClue.word}"
+- Rate your confidence honestly: "high" = very sure, "medium" = likely, "low" = risky guess
+- If you're confident, pick quickly. If uncertain, think carefully.
+- Consider: could ANY of these words be the assassin? Avoid those at all costs.
+- Also indicate if you think the team should END TURN after this guess
 
-${ai.mode === 'autonomous' ? 'You are confident and decisive. Pick the word you think is most likely correct.' : ''}
+${analysis.riskTolerance === 'low' ? 'Play SAFE. Only guess words you are very confident about. If uncertain, recommend ending turn.' : ''}
+${analysis.riskTolerance === 'high' ? 'You need to catch up. Be willing to take medium-confidence guesses.' : ''}
+${analysis.endgame ? 'ENDGAME: Every guess matters. Be precise.' : ''}
 
-Respond with valid JSON matching:
-{"index": <0-24 integer>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "reasoning": "short"}`;
+Respond with valid JSON:
+{"index": <0-24>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "should_end_turn_after": true/false, "reasoning": "your strategic thinking"}`;
 
   try {
-    // Human-like thinking delay (3-10 seconds)
-    await humanDelay(3000, 10000);
+    // Mark cards first (human-like - study the board, mark thoughts)
+    if (correctGuesses === 0) {
+      await aiAnalyzeAndMarkCards(ai, game, currentClue);
+      // Thinking delay after marking - like a human studying their marks
+      await humanDelay(1500, 3000);
+    }
+
+    // Confidence-based thinking delay:
+    // High confidence = fast (human just knows), Low confidence = slow (deliberation)
+    // Early guesses are faster than later ones (first words are most obvious)
+    const baseThinkTime = guessNumber <= 1 ? 2000 : (guessNumber === 2 ? 3500 : 5000);
+    const thinkVariability = guessNumber <= 1 ? 2000 : 4000;
+    await humanDelay(baseThinkTime, baseThinkTime + thinkVariability);
 
     // Chat in operative chat before guessing
     if (ai.mode === 'autonomous') {
       const chatMsg = await generateAIChatMessage(ai, game, 'pre_guess');
       if (chatMsg) await sendAIChatMessage(ai, game, chatMsg);
-      await humanDelay(1000, 3000);
+      await humanDelay(800, 2000);
     }
 
     let parsed = null;
     let card = null;
     let lastBad = '';
+    let confidence = 'medium';
+    let shouldEndAfter = false;
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       const feedback = lastBad
@@ -728,7 +908,7 @@ Respond with valid JSON matching:
         { role: 'user', content: feedback },
       ], {
         temperature: 0.35,
-        max_tokens: 220,
+        max_tokens: 300,
         response_format: { type: 'json_object' },
       });
 
@@ -742,6 +922,8 @@ Respond with valid JSON matching:
       const idx = Number(parsed.index);
       const w = String(parsed.word || '').trim();
       const wU = w.toUpperCase();
+      confidence = String(parsed.confidence || 'medium').toLowerCase();
+      shouldEndAfter = !!parsed.should_end_turn_after;
 
       // Prefer index if it points to a valid unrevealed card.
       if (Number.isInteger(idx) && idx >= 0 && idx < game.cards.length) {
@@ -764,6 +946,15 @@ Respond with valid JSON matching:
       lastBad = `"${w || '(empty)'}" is not one of the unrevealed board words.`;
     }
 
+    // If low confidence and conservative game state, consider not guessing
+    if (card && confidence === 'low' && analysis.riskTolerance === 'low' && correctGuesses >= currentClue.number) {
+      // AI decides to end turn instead of making a risky guess
+      aiThinkingState[ai.id] = false;
+      const chatMsg = await generateAIChatMessage(ai, game, 'discuss');
+      if (chatMsg) await sendAIChatMessage(ai, game, chatMsg);
+      return 'end_turn';
+    }
+
     if (!card) {
       console.warn(`AI ${ai.name} failed to choose a valid word after retries; falling back to random.`);
       card = unrevealed[Math.floor(Math.random() * unrevealed.length)];
@@ -773,12 +964,16 @@ Respond with valid JSON matching:
       }
     }
 
+    // Update card mark to show we're about to guess this one
+    aiMarkCard(game, card.index, 'yes');
+    await humanDelay(500, 1000);
+
     // Submit the guess by simulating card click on Firestore
     await aiRevealCard(ai, game, card.index);
 
     // React after guess
     if (ai.mode === 'autonomous' || ai.mode === 'helper') {
-      await humanDelay(1000, 2000);
+      await humanDelay(1500, 3000);
       const freshGame = await getGameSnapshot(game.id);
       if (freshGame) {
         const revealedCard = freshGame.cards[card.index];
@@ -788,6 +983,9 @@ Respond with valid JSON matching:
         }
       }
     }
+
+    // Return whether AI wants to end turn after this
+    return shouldEndAfter ? 'end_turn' : 'continue';
 
   } catch (err) {
     console.error(`AI ${ai.name} guess error:`, err);
@@ -890,11 +1088,18 @@ async function aiRevealCard(ai, game, cardIndex) {
 
 // ─── AI End Turn Decision ───────────────────────────────────────────────────
 
-async function aiConsiderEndTurn(ai, game) {
+async function aiConsiderEndTurn(ai, game, forceEnd = false) {
   if (ai.mode !== 'autonomous') return false;
 
-  // End turn when AI decides it has guessed enough
   const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+
+  // Chat about ending turn (human-like deliberation)
+  if (!forceEnd) {
+    const endTurnMsg = await generateAIChatMessage(ai, game, 'end_turn_deliberation');
+    if (endTurnMsg) await sendAIChatMessage(ai, game, endTurnMsg);
+    await humanDelay(1500, 3000);
+  }
+
   try {
     await db.collection('games').doc(game.id).update({
       currentTeam: game.currentTeam === 'red' ? 'blue' : 'red',
@@ -904,6 +1109,17 @@ async function aiConsiderEndTurn(ai, game) {
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
+
+    // Clear AI marks when turn ends
+    if (game.id && aiCardMarks[game.id]) {
+      aiCardMarks[game.id] = {};
+      if (typeof cardTags !== 'undefined' && typeof renderCardTags === 'function') {
+        Object.keys(cardTags).forEach(k => delete cardTags[k]);
+        renderCardTags();
+        if (typeof saveTagsToLocal === 'function') saveTagsToLocal();
+      }
+    }
+
     return true;
   } catch (e) {
     console.error(`AI ${ai.name} end turn error:`, e);
@@ -928,9 +1144,21 @@ async function generateAIChatMessage(ai, game, context) {
 
   let contextPrompt = '';
   if (context === 'pre_guess' && currentClue) {
-    contextPrompt = `The clue is "${currentClue.word}" for ${currentClue.number}. You're about to guess. Share a brief thought with your team about what you're thinking. Be conversational and natural - like a real person chatting. Keep it to 1-2 short sentences. Don't reveal you're an AI.${chatContext ? ` If teammates have said something relevant, respond to or build on what they said.` : ''}`;
+    // Count guesses made so far for this clue
+    const clueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
+      .filter(c => c.word === currentClue.word && c.team === game.currentTeam)
+      .pop()?.results || [];
+    const correctSoFar = clueResults.filter(r => r.result === 'correct').length;
+
+    if (correctSoFar === 0) {
+      contextPrompt = `The clue is "${currentClue.word}" for ${currentClue.number}. You're about to make your FIRST guess. Share what you're thinking - which word stands out to you and why. Be conversational, brief (1-2 sentences). Don't reveal you're an AI.${chatContext ? ` If teammates suggested something, respond to it.` : ''}`;
+    } else {
+      contextPrompt = `The clue is "${currentClue.word}" for ${currentClue.number}. You've gotten ${correctSoFar} right so far. You're going for another guess. Share a quick thought about your next pick. Be casual, 1 sentence.${chatContext ? ` React to teammates if they said something.` : ''}`;
+    }
   } else if (context === 'new_clue' && currentClue) {
     contextPrompt = `A new clue was just given: "${currentClue.word}" for ${currentClue.number}. React naturally to this clue - are you excited, puzzled, have an idea? Keep it to 1-2 short sentences. Be casual and human-like.`;
+  } else if (context === 'end_turn_deliberation') {
+    contextPrompt = `You've been guessing and now you're thinking about whether to end the turn or keep going. You're leaning towards ending the turn to play it safe. Say something brief about it - like "i think we should stop here" or "let's not push our luck" or "good enough for now". 1 short sentence. Be natural.`;
   } else if (context === 'discuss') {
     contextPrompt = `The game is ongoing. ${summary}. Share a brief strategic thought or reaction with your team. Be casual, human-like, conversational. 1-2 short sentences max. Don't reveal you're an AI.${chatContext ? ` If a teammate just said something, respond to them naturally.` : ''}`;
   } else if (context === 'start') {
@@ -1137,20 +1365,40 @@ function startAIGameLoop() {
         if (aiThinkingState[ai.id]) continue;
 
         if (ai.mode === 'autonomous') {
-          // Unlimited guesses: AI decides to end turn after making clueNumber + 1 correct guesses
-          // Count how many correct guesses were made for the current clue
           const clueNum = game.currentClue?.number || 1;
           const clueWord = game.currentClue?.word;
           const currentClueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
             .filter(c => c.word === clueWord && c.team === currentTeam)
             .pop()?.results || [];
           const correctGuesses = currentClueResults.filter(r => r.result === 'correct').length;
+          const anyWrong = currentClueResults.some(r => r.result !== 'correct');
+
+          // Smart end-turn decision based on game analysis
+          const analysis = analyzeGameState(game, currentTeam);
+
+          // Should we end the turn?
+          let shouldEnd = false;
 
           if (correctGuesses >= clueNum + 1) {
-            // AI has guessed enough, end turn
+            // Got all intended words + 1 bonus - definitely end
+            shouldEnd = true;
+          } else if (correctGuesses >= clueNum && analysis.riskTolerance === 'low') {
+            // Got all intended words and we're playing safe
+            shouldEnd = true;
+          } else if (correctGuesses >= clueNum && analysis.riskTolerance === 'medium') {
+            // Got intended words - maybe try one bonus with 40% chance
+            shouldEnd = Math.random() > 0.4;
+          }
+          // If high risk tolerance, keep going even past clue number
+
+          if (shouldEnd) {
             await aiConsiderEndTurn(ai, game);
           } else {
-            await aiGuessCard(ai, game);
+            const guessResult = await aiGuessCard(ai, game);
+            if (guessResult === 'end_turn') {
+              // AI decided during analysis that it should end turn
+              await aiConsiderEndTurn(ai, game, true);
+            }
             break; // One guess at a time
           }
         } else if (ai.mode === 'helper') {
@@ -1224,3 +1472,5 @@ window.cleanupAllAI = cleanupAllAI;
 window.getAIPlayerByOdId = getAIPlayerByOdId;
 window.countAIsOnTeam = countAIsOnTeam;
 window.AI_CONFIG = AI_CONFIG;
+window.aiCardMarks = aiCardMarks;
+window.aiMarkCard = aiMarkCard;

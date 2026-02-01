@@ -2430,16 +2430,22 @@ function startGameListener(gameId, options = {}) {
 
     renderGame();
 
-    // Animate newly revealed cards
+    // Animate newly revealed cards (dramatic reveal)
     if (freshReveals.length > 0) {
       requestAnimationFrame(() => {
         freshReveals.forEach(idx => {
           const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
           if (cardEl) {
             cardEl.classList.add('guess-animate');
-            cardEl.addEventListener('animationend', () => {
+            let cleaned = false;
+            const cleanup = () => {
+              if (cleaned) return;
+              cleaned = true;
               cardEl.classList.remove('guess-animate');
-            }, { once: true });
+            };
+            cardEl.addEventListener('animationend', cleanup, { once: true });
+            // Fallback cleanup for longer animations
+            setTimeout(cleanup, 2500);
           }
         });
       });
@@ -2447,7 +2453,7 @@ function startGameListener(gameId, options = {}) {
 
     // Animate new clue (center screen overlay)
     if (clueChanged && newClueWord) {
-      showClueAnimation(newClueWord, newClueNumber);
+      showClueAnimation(newClueWord, newClueNumber, currentGame.currentTeam);
     }
 
     _prevRevealedIndexes = newRevealedIndexes;
@@ -3934,29 +3940,45 @@ function renderPlayersPopup() {
 /* =========================
    Clue Announcement Animation
 ========================= */
-function showClueAnimation(word, number) {
+function showClueAnimation(word, number, teamColor) {
   // Remove any existing overlay
   const existing = document.querySelector('.clue-announcement-overlay');
   if (existing) existing.remove();
 
+  const isRed = teamColor === 'red';
+  const teamClass = isRed ? 'team-red' : 'team-blue';
+
   const overlay = document.createElement('div');
-  overlay.className = 'clue-announcement-overlay';
+  overlay.className = `clue-announcement-overlay ${teamClass}`;
   overlay.innerHTML = `
-    <div class="clue-announcement-card">
-      <div class="clue-announcement-label">New Clue</div>
+    <div class="clue-announcement-backdrop"></div>
+    <div class="clue-announcement-card ${teamClass}">
+      <div class="clue-announcement-glow ${teamClass}"></div>
+      <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
       <div class="clue-announcement-word">${escapeHtml(String(word))}</div>
-      <div class="clue-announcement-number">${number != null ? number : ''}</div>
+      <div class="clue-announcement-divider ${teamClass}"></div>
+      <div class="clue-announcement-number-row">
+        <span class="clue-announcement-for">for</span>
+        <span class="clue-announcement-number ${teamClass}">${number != null ? number : '0'}</span>
+      </div>
     </div>
   `;
 
   document.body.appendChild(overlay);
 
-  // Remove after animation ends
-  overlay.addEventListener('animationend', () => {
-    overlay.remove();
+  // Dismiss on click
+  overlay.addEventListener('click', () => {
+    overlay.classList.add('clue-announcement-dismissing');
+    setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 500);
   });
-  // Fallback removal
-  setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 2500);
+
+  // Remove after full animation (much longer now)
+  setTimeout(() => {
+    if (overlay.parentNode) {
+      overlay.classList.add('clue-announcement-dismissing');
+      setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 800);
+    }
+  }, 5500);
 }
 
 /* =========================
