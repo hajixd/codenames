@@ -1561,7 +1561,7 @@ function renderQuickLobby(game) {
       const playerId = p.odId || '';
       return `
         <div class="quick-player ${ready ? 'ready' : ''}">
-          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(displayPlayerName(p))}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
           <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         </div>
       `;
@@ -1575,7 +1575,7 @@ function renderQuickLobby(game) {
       const playerId = p.odId || '';
       return `
         <div class="quick-player spectator">
-          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(displayPlayerName(p))}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
         </div>
       `;
     }).join('');
@@ -1692,6 +1692,27 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Display names: show AIs as "AI <Name>" everywhere for consistency.
+function displayPlayerName(p) {
+  const raw = String((p && p.name) ? p.name : '').trim();
+  if (!p || !p.isAI) return raw;
+  // Avoid double-prefixing if the AI name was already stored with the prefix.
+  if (/^ai\s+/i.test(raw)) return raw;
+  return raw ? `AI ${raw}` : 'AI';
+}
+
+// Some fields store a player name as a string (e.g., redSpymaster/blueSpymaster).
+// If that name corresponds to an AI player on the roster, display it with the AI prefix.
+function displayNameFromRoster(name, rosterPlayers) {
+  const raw = String(name || '').trim();
+  if (!raw) return raw;
+  if (/^ai\s+/i.test(raw)) return raw;
+  const list = Array.isArray(rosterPlayers) ? rosterPlayers : [];
+  const match = list.find(p => p && String(p.name || '').trim() === raw);
+  if (match && match.isAI) return `AI ${raw}`;
+  return raw;
 }
 
 function truncateTeamNameGame(name, maxLen = 20) {
@@ -2745,7 +2766,8 @@ function updateRoleButtons() {
   if (mySpymaster) {
     spymasterBtn.classList.add('taken');
     spymasterBtn.disabled = true;
-    statusEl.textContent = `Spymaster: ${mySpymaster}`;
+    const roster = (myTeamColor === 'red') ? (currentGame.redPlayers || []) : (currentGame.bluePlayers || []);
+    statusEl.textContent = `Spymaster: ${displayNameFromRoster(mySpymaster, roster)}`;
   } else {
     spymasterBtn.classList.remove('taken');
     spymasterBtn.disabled = false;
@@ -3535,7 +3557,7 @@ function renderClueHistory() {
       else if (res === 'assassin') className = 'assassin';
       const word = String(r.word || '').trim();
       const label = `${idx + 1}. ${word}`;
-      return `<span class="clue-result-chip ${className}">${escapeHtml(label)}</span>`;
+      return `<span class="guess-chip ${className}">${escapeHtml(label)}</span>`;
     }).join('');
 
     return `
@@ -3544,7 +3566,10 @@ function renderClueHistory() {
           <span class="clue-history-team ${clue.team}">${clue.team.toUpperCase()}</span>
           <span class="clue-history-number">${clue.number}</span>
         </div>
-        <div class="clue-history-word">${escapeHtml(clue.word)}</div>
+        <div class="clue-history-clue">
+          <span class="clue-chip ${clue.team}">${escapeHtml(clue.word)}</span>
+          <span class="clue-chip-count">×${escapeHtml(String(clue.number ?? ''))}</span>
+        </div>
         ${resultsHtml ? `<div class="clue-history-results">${resultsHtml}</div>` : ''}
       </div>
     `;
@@ -3636,7 +3661,7 @@ function renderTeamRoster() {
 
       return `
         <div class="roster-player ${isCurrent ? 'current-turn' : ''}">
-          <span class="roster-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}</span>
+          <span class="roster-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(displayPlayerName(p))}</span>
           <span class="roster-player-role ${role}">${isSpymaster ? 'Spy' : 'Op'}</span>
         </div>
       `;
@@ -3678,20 +3703,12 @@ function renderTopbarTeamNames() {
     const list = Array.isArray(players) ? players : [];
     const count = Math.max(1, list.length);
 
-    // Fit names nicely in the header height by scaling font size + gaps based on how many players are on the team.
-    // For larger teams, we switch to a 2-column grid so everything still fits cleanly.
-    const cols = count > 4 ? 2 : 1;
-    const rows = Math.ceil(count / cols);
-
-    el.classList.toggle('cols-2', cols === 2);
-    el.style.setProperty('--topbar-rows', String(rows));
-
-    const available = 42; // px (approx usable height inside header)
-    const gap = Math.max(2, Math.min(8, Math.floor(available / (rows * 7))));
-    const size = Math.max(9, Math.min(14, Math.floor((available - gap * (rows - 1)) / rows)));
-
+    // Horizontal layout: scale font size a bit as teams grow so names still fit.
+    const size = count <= 3 ? 13 : (count <= 5 ? 12 : 11);
+    const gap = count <= 3 ? 4 : 3;
+    el.classList.toggle('cols-2', false);
     el.style.setProperty('--topbar-name-size', `${size}px`);
-    el.style.setProperty('--topbar-name-gap', `${Math.max(2, Math.min(8, Math.floor(size * 0.35)))}px`);
+    el.style.setProperty('--topbar-name-gap', `${gap}px`);
 
     if (list.length === 0) {
       el.innerHTML = `<div class="topbar-player" style="color: var(--text-dim);">—</div>`;

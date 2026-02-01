@@ -638,21 +638,47 @@ async function aiGuessCard(ai, game) {
     .map((c, i) => ({ word: c.word, index: i, revealed: c.revealed }))
     .filter(c => !c.revealed);
 
+  // Helper: strict-ish JSON parse with best-effort extraction
+  const parseJsonLoose = (raw) => {
+    const s = String(raw || '').trim();
+    if (!s) throw new Error('Empty response');
+    try {
+      return JSON.parse(s);
+    } catch (_) {
+      const a = s.indexOf('{');
+      const b = s.lastIndexOf('}');
+      if (a >= 0 && b > a) {
+        return JSON.parse(s.slice(a, b + 1));
+      }
+      throw new Error('Could not parse JSON');
+    }
+  };
+
+  // Provide an exact index->word mapping so the model can pick deterministically from the board.
+  const unrevealedLines = unrevealed
+    .map(c => `- ${c.index}: ${c.word}`)
+    .join('\n');
+
   const systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster just gave the clue "${currentClue.word}" for ${currentClue.number}.
 
-BOARD (unrevealed words):
-${unrevealed.map(c => `- ${c.word}`).join('\n')}
+BOARD (unrevealed words, choose ONLY from this list):
+${unrevealedLines}
 
 ${clueHistory}
 ${summary}
 
-Your job: Pick the word that BEST matches the clue "${currentClue.word}". Think about semantic connections, categories, associations.
+Your job: Pick the ONE unrevealed board word that BEST matches the clue "${currentClue.word}".
+Rules:
+- You MUST choose a word from the unrevealed list.
+- Return JSON only.
+- Include BOTH the board index and the word.
 
 You have ${game.guessesRemaining} guesses remaining.
 
 ${ai.mode === 'autonomous' ? 'You are confident and decisive. Pick the word you think is most likely correct.' : ''}
 
-Respond with valid JSON: {"word": "CHOSENWORD", "confidence": "high/medium/low", "reasoning": "why this word connects to the clue"}`;
+Respond with valid JSON matching:
+{"index": <0-24 integer>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "reasoning": "short"}`;
 
   try {
     // Human-like thinking delay (3-10 seconds)
@@ -665,32 +691,63 @@ Respond with valid JSON: {"word": "CHOSENWORD", "confidence": "high/medium/low",
       await humanDelay(1000, 3000);
     }
 
-    const result = await aiChatCompletion([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Choose a word now as JSON.' },
-    ], {
-      temperature: 0.6,
-      max_tokens: 256,
-      response_format: { type: 'json_object' },
-    });
+    let parsed = null;
+    let card = null;
+    let lastBad = '';
 
-    let parsed;
-    try {
-      parsed = JSON.parse(result);
-    } catch {
-      const match = result.match(/\{[\s\S]*?\}/);
-      if (match) parsed = JSON.parse(match[0]);
-      else throw new Error('Could not parse guess JSON');
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const feedback = lastBad
+        ? `Previous attempt was invalid: ${lastBad}\nChoose again. JSON only. Remember: choose ONLY from the unrevealed list.`
+        : 'Choose a word now as JSON.';
+
+      const result = await aiChatCompletion([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: feedback },
+      ], {
+        temperature: 0.35,
+        max_tokens: 220,
+        response_format: { type: 'json_object' },
+      });
+
+      try {
+        parsed = parseJsonLoose(result);
+      } catch (e) {
+        lastBad = `Could not parse JSON (${e?.message || 'parse error'}). Your entire reply MUST be a single JSON object.`;
+        continue;
+      }
+
+      const idx = Number(parsed.index);
+      const w = String(parsed.word || '').trim();
+      const wU = w.toUpperCase();
+
+      // Prefer index if it points to a valid unrevealed card.
+      if (Number.isInteger(idx) && idx >= 0 && idx < game.cards.length) {
+        const candidate = unrevealed.find(c => c.index === idx);
+        if (candidate) {
+          card = candidate;
+          break;
+        }
+        lastBad = `Index ${idx} is not an unrevealed card right now.`;
+        continue;
+      }
+
+      // Otherwise validate by word.
+      const candidate = unrevealed.find(c => String(c.word || '').trim().toUpperCase() === wU);
+      if (candidate) {
+        card = candidate;
+        break;
+      }
+
+      lastBad = `"${w || '(empty)'}" is not one of the unrevealed board words.`;
     }
 
-    const chosenWord = String(parsed.word || '').trim().toUpperCase();
-    const card = unrevealed.find(c => c.word.toUpperCase() === chosenWord);
-
     if (!card) {
-      console.warn(`AI ${ai.name} chose invalid word: "${chosenWord}"`);
-      // Fall back: pick a random unrevealed card
-      aiThinkingState[ai.id] = false;
-      return;
+      console.warn(`AI ${ai.name} failed to choose a valid word after retries; falling back to random.`);
+      card = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+      if (!card) {
+        aiThinkingState[ai.id] = false;
+        return;
+      }
     }
 
     // Submit the guess by simulating card click on Firestore

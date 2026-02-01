@@ -4415,7 +4415,7 @@ button.player-tag.pill-action:disabled{
 .game-board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  gap: 7px;
   margin-bottom: 16px;
 }
 
@@ -4424,10 +4424,10 @@ button.player-tag.pill-action:disabled{
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 6px;
   background: var(--surface);
   border: 2px solid var(--border);
-  border-radius: 10px;
+  border-radius: 9px;
   cursor: pointer;
   transition: all 0.15s;
   position: relative;
@@ -4445,11 +4445,11 @@ button.player-tag.pill-action:disabled{
 }
 
 .game-card .card-word {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   word-break: break-word;
   line-height: 1.2;
 }
@@ -6841,8 +6841,10 @@ body.tournament.has-team-color .input:focus {
   --topbar-name-size: 12px;
   --topbar-name-gap: 4px;
   display: flex;
-  flex-direction: column;
-  gap: var(--topbar-name-gap);
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: calc(var(--topbar-name-gap) + 4px);
+  row-gap: var(--topbar-name-gap);
   font-size: var(--topbar-name-size);
   font-weight: 650;
   line-height: 1.05;
@@ -6850,6 +6852,7 @@ body.tournament.has-team-color .input:focus {
   width: auto;
   max-width: 100%;
   align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
@@ -6857,17 +6860,8 @@ body.tournament.has-team-color .input:focus {
 .topbar-team-red .topbar-player { color: var(--game-red); }
 .topbar-team-blue .topbar-player { color: var(--game-blue); }
 
-.topbar-team-names.cols-2 {
-  display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(var(--topbar-rows, 3), auto);
-  row-gap: var(--topbar-name-gap);
-  column-gap: 10px;
-  align-content: center;
-}
-
-.topbar-team-red .topbar-team-names.cols-2 { justify-items: center; }
-.topbar-team-blue .topbar-team-names.cols-2 { justify-items: center; }
+/* Legacy: keep class present but no longer switches layout */
+.topbar-team-names.cols-2 { display: flex; }
 
 .topbar-player {
   /* Render as a clean text button (the markup uses <button> for a11y/click targets) */
@@ -6906,8 +6900,8 @@ body.tournament.has-team-color .input:focus {
   border: 1px solid rgba(59, 130, 246, 0.45);
 }
 
-/* In 2-column mode we still center the grid inside the team half */
-.topbar-team-names.cols-2 { justify-items: center; }
+/* In 2-column mode we still center the names within the team half */
+.topbar-team-names.cols-2 { justify-content: center; }
 
 .topbar-center {
   flex: 0 0 auto;
@@ -7273,6 +7267,44 @@ body.tournament.has-team-color .input:focus {
   letter-spacing: 1px;
 }
 
+/* New: visually separate clue vs guesses */
+.clue-history-clue{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.clue-chip{
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+}
+
+.clue-chip.red{ border-color: rgba(239,68,68,0.45); box-shadow: 0 0 0 1px rgba(239,68,68,0.10) inset; }
+.clue-chip.blue{ border-color: rgba(59,130,246,0.45); box-shadow: 0 0 0 1px rgba(59,130,246,0.10) inset; }
+
+.clue-chip-count{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+}
+
 .clue-history-results {
   display: flex;
   flex-wrap: wrap;
@@ -7280,17 +7312,18 @@ body.tournament.has-team-color .input:focus {
   margin-top: 4px;
 }
 
-.clue-result-chip {
+.guess-chip {
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--surface);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
-.clue-result-chip.correct { color: var(--green); }
-.clue-result-chip.wrong { color: var(--red); }
-.clue-result-chip.neutral { color: var(--text-dim); }
-.clue-result-chip.assassin { color: #fff; background: rgba(239, 68, 68, 0.35); }
+.guess-chip.correct { color: var(--green); }
+.guess-chip.wrong { color: var(--red); }
+.guess-chip.neutral { color: var(--text-dim); }
+.guess-chip.assassin { color: #fff; background: rgba(239, 68, 68, 0.35); border-color: rgba(239,68,68,0.45); }
 
 .clue-history-empty {
   color: var(--text-dim);
@@ -9126,10 +9159,10 @@ body.qp-gate-open .app {
     border-radius: 10px;
   }
 
-  .clue-history-word { font-size: 18px; letter-spacing: 1.2px; }
+  .clue-chip { font-size: 15px; letter-spacing: 1.1px; }
   .clue-history-team { font-size: 11px; }
   .clue-history-number { font-size: 12px; }
-  .clue-result-chip { font-size: 11px; padding: 3px 8px; border-radius: 6px; }
+  .guess-chip { font-size: 11px; padding: 3px 8px; }
 }
 
 /* Mobile quick action row (Clue History / Chat / Players) */
