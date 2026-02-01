@@ -273,6 +273,9 @@ body.tournament #play-mode-select{ display:none !important; }
        So we offset the panels themselves (see .panel below). */
     padding-top: 0;
     padding-bottom: 0;
+    /* Isolate stacking context to prevent Chrome GPU compositing artifacts
+       from backdrop-filter and transform layers leaking across siblings. */
+    isolation: isolate;
   }
 
   .panel {
@@ -286,6 +289,8 @@ body.tournament #play-mode-select{ display:none !important; }
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     background: var(--bg);
+    /* Prevent Chrome compositing artifacts from transforms in child elements. */
+    contain: paint;
   }
 
   .panel.active {
@@ -2693,6 +2698,7 @@ body.light-mode .chat-meta{ color: var(--text); }
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.10);
   box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+  isolation: isolate;
 }
 .quick-lobby-top{
   display:flex;
@@ -3194,6 +3200,9 @@ body.light-mode .chat-meta{ color: var(--text); }
   /* Avoid page scroll; the lobby itself manages its layout and internal scroll areas. */
   body.quickplay .panel-game{
     overflow: hidden;
+    /* Tabs are hidden in Quick Play, so remove the 72px bottom offset
+       that normally reserves space for the mobile tab bar. */
+    bottom: 0;
   }
 
   body.quickplay #quick-play-lobby{
@@ -6738,8 +6747,10 @@ body.tournament.has-team-color .btn.primary:hover {
   animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   z-index: 50;
   position: relative;
-    transform-origin: var(--guess-ox, 50%) var(--guess-oy, 50%);
-transform-style: preserve-3d;
+  transform-origin: var(--guess-ox, 50%) var(--guess-oy, 50%);
+  transform-style: preserve-3d;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .game-card.guess-animate.card-red {
@@ -7321,6 +7332,9 @@ body.tournament.has-team-color .input:focus {
   padding: 12px 20px;
   gap: 8px;
   background: var(--bg);
+  /* Isolate painting to prevent Chrome compositing artifacts from
+     card transforms, backdrop-filters, and 3D animations. */
+  contain: paint;
 }
 
 /* On mobile, avoid vh math that can hide the in-game top bar behind Safari UI.
