@@ -10,8 +10,8 @@
 // ─── Configuration ───────────────────────────────────────────────────────────
 const AI_CONFIG = {
   baseURL: 'https://api.tokenfactory.nebius.com/v1',
-  apiKey: 'v1.CmQKHHN0YXRpY2tleS1lMDBlbnJtZjJucHZic3FqY3ASIXNlcnZpY2VhY2NvdW50LWUwMGtkN3BmbjR5NmZ2Y2U5MjIMCPWs7MsGEOnjmtYCOgwI9K-ElwcQwKSajQNAAloDZTAw.AAAAAAAAAAG8btw7VVpjy-ijvLwCIyDss74-lzEn16V8puwNgQE3K9XBwgT656Vs_UT7fVpX4_kC_UYNAzQz3XjLy6QXJM8C',
-  model: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
+  apiKey: 'v1.CmMKHHN0YXRpY2tleS1lMDBtdno4YzAxNzRzeWtieHESIXNlcnZpY2VhY2NvdW50LWUwMGJmc2NmMmtjeDRjYno2dzIMCPHW-ssGEPLRz6ICOgsI8dmSlwcQwKbSEUACWgNlMDA.AAAAAAAAAAGvlRuUlCiFAR9lWbGIsK13dOFriMIzHQb9K_wnGyZNYotQJ7XH5mhm_69XgJmjSjpGblyuhw4f2fnX-x45cswK',
+  model: 'meta-llama/Llama-3.3-70B-Instruct',
   maxAIsPerTeam: 4,
 };
 
@@ -73,15 +73,37 @@ async function verifyAIReady(ai) {
 
   try {
     const result = await aiChatCompletion([
-      { role: 'system', content: 'You are testing connectivity. Respond with exactly the word "Ready" and nothing else.' },
-      { role: 'user', content: 'Are you ready?' }
-    ], { max_tokens: 10, temperature: 0 });
+      {
+        role: 'system',
+        content: [
+          'You are performing a connectivity + JSON compliance check.',
+          'Return ONLY valid JSON (no markdown, no extra text).',
+          'Schema: {"ready": true, "message": "optional short string"}',
+          'Set ready=true if you can comply.'
+        ].join('\n'),
+      },
+      { role: 'user', content: 'Ready check. Reply with JSON only.' }
+    ], {
+      max_tokens: 60,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
 
-    if (result && result.trim().length > 0) {
+    let parsed;
+    try {
+      parsed = JSON.parse(result);
+    } catch {
+      // Try to extract JSON object from any stray output
+      const match = result.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+      else throw new Error('Could not parse ready check JSON');
+    }
+
+    if (parsed && parsed.ready === true) {
       ai.statusColor = 'green';
     } else {
       ai.statusColor = 'yellow';
-      console.warn(`AI ${ai.name} ready check returned empty response`);
+      console.warn(`AI ${ai.name} ready check returned not-ready:`, parsed);
     }
   } catch (err) {
     ai.statusColor = 'red';
