@@ -6154,7 +6154,7 @@ function applyThemeSetting() {
   // Update browser theme color if present
   try {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isLight ? '#f7f7f8' : '#09090b');
+    if (meta) meta.setAttribute('content', isLight ? '#dfe6ee' : '#09090b');
   } catch (_) {}
 }
 

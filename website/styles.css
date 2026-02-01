@@ -45,21 +45,42 @@
 
 
 body.light-mode {
-  --bg: #f7f7f8;
-  --surface: #ffffff;
-  --surface2: #f0f0f2;
-  --card: #ffffff;
-  --border: #d4d4d8;
-  --text: #0a0a0a;
-  --text-dim: #52525b;
+  /* Soft blue-gray palette inspired by Codenames Online */
+  --bg: #dfe6ee;
+  --surface: #edf1f6;
+  --surface2: #e4e9f0;
+  --card: #f4f6f9;
+  --border: #bfc9d4;
+  --text: #1c2d3f;
+  --text-dim: #5e7389;
 
-  --panel: #ffffff;
-  --border-soft: rgba(0,0,0,0.10);
-  --surface-glass: rgba(0,0,0,0.04);
-  --shadow-lg: 0 18px 50px rgba(0,0,0,0.10);
-  --shadow-md: 0 8px 24px rgba(0,0,0,0.12);
-  --shadow-sm: 0 6px 16px rgba(0,0,0,0.10);
-  --focus-ring: 0 0 0 3px rgba(59,130,246,0.20);
+  /* Warmer accent colors for light backgrounds */
+  --accent: #2d7dd2;
+  --green: #1a9a48;
+  --gold: #b87514;
+  --red: #c93c2b;
+
+  --panel: #eaeff5;
+  --border-soft: rgba(40, 70, 100, 0.12);
+  --surface-glass: rgba(40, 70, 100, 0.05);
+  --shadow-lg: 0 18px 50px rgba(30, 55, 85, 0.14);
+  --shadow-md: 0 8px 24px rgba(30, 55, 85, 0.12);
+  --shadow-sm: 0 4px 14px rgba(30, 55, 85, 0.10);
+  --focus-ring: 0 0 0 3px rgba(45, 125, 210, 0.25);
+
+  /* Light mode game colors (richer/warmer for legibility) */
+  --game-red: #c93c2b;
+  --game-red-bg: rgba(201, 60, 43, 0.13);
+  --game-red-border: rgba(201, 60, 43, 0.38);
+  --game-blue: #1a7fb5;
+  --game-blue-bg: rgba(26, 127, 181, 0.13);
+  --game-blue-border: rgba(26, 127, 181, 0.38);
+  --game-neutral: #8a7e6e;
+  --game-neutral-bg: rgba(138, 126, 110, 0.14);
+  --game-neutral-border: rgba(138, 126, 110, 0.35);
+  --game-assassin: #2a2a2f;
+  --game-assassin-bg: rgba(42, 42, 47, 0.82);
+  --game-assassin-border: rgba(42, 42, 47, 0.45);
 }
 
 .game-card .card-checkmark{
@@ -1779,7 +1800,7 @@ body.mode-joiner .only-joiner{ display:block; }
 body.booting .modal{ display:none !important; }
 
 body.light-mode .modal{
-  background: rgba(0,0,0,0.38);
+  background: rgba(30,50,75,0.35);
 }
 
 .modal-card{
@@ -2532,19 +2553,19 @@ body.light-mode .modal{
   box-shadow: 0 8px 20px rgba(0,0,0,0.18);
 }
 
-body.light .chat-bubble{
-  border-color: rgba(0,0,0,0.08);
-  background: rgba(0,0,0,0.03);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+body.light-mode .chat-bubble{
+  border-color: rgba(40,70,100,0.12);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(30,55,85,0.08);
 }
 
 .chat-bubble.mine{
   background: color-mix(in srgb, var(--accent) 42%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.10));
 }
-body.light .chat-bubble.mine{
-  background: color-mix(in srgb, var(--accent) 30%, white);
-  border-color: color-mix(in srgb, var(--accent) 55%, rgba(0,0,0,0.10));
+body.light-mode .chat-bubble.mine{
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .chat-meta{
@@ -2554,7 +2575,7 @@ body.light .chat-bubble.mine{
   margin-bottom: 6px;
   color: var(--text);
 }
-body.light .chat-meta{ color: var(--text); }
+body.light-mode .chat-meta{ color: var(--text); }
 
 .chat-bubble-text{
   white-space: pre-wrap;
@@ -3447,7 +3468,7 @@ body.light-mode .auth-card{
 .pw-toggle svg{ width: 15px; height: 15px; }
 
 body.light-mode .pw-toggle{
-  background: rgba(0,0,0,0.04);
+  background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--text-dim);
 }
@@ -3478,7 +3499,7 @@ body.light-mode .pw-toggle{
 }
 
 body.light-mode .auth-online-count{
-  background: rgba(0,0,0,0.05);
+  background: var(--surface);
   border: 1px solid var(--border);
 }
 
@@ -10282,7 +10303,7 @@ button:focus-visible,
   background: rgba(255,255,255,.02);
   cursor: pointer;
 }
-body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
+body.light-mode .chat-personal-item{ background: rgba(40,70,100,.05); }
 .chat-personal-item:hover{ border-color: var(--border); background: var(--bg); }
 .chat-personal-item.active{
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
@@ -10726,27 +10747,27 @@ body.tournament .mobile-tabs .tab[data-panel="panel-game"]{ display:none !import
 
 /* Light mode overrides */
 body.light-mode .ai-add-btn{
-  border-color: rgba(100, 80, 220, 0.3);
-  background: rgba(100, 80, 220, 0.08);
-  color: rgba(80, 60, 200, 0.9);
+  border-color: rgba(80, 60, 180, 0.25);
+  background: rgba(80, 60, 180, 0.08);
+  color: rgba(70, 50, 170, 0.85);
 }
 body.light-mode .ai-add-btn:hover{
-  background: rgba(100, 80, 220, 0.15);
-  color: rgb(60, 40, 180);
+  background: rgba(80, 60, 180, 0.14);
+  color: rgb(55, 35, 155);
 }
 body.light-mode .ai-badge-helper{
-  background: rgba(50, 120, 220, 0.1);
-  color: rgba(30, 100, 200, 0.9);
-  border-color: rgba(50, 120, 220, 0.2);
+  background: rgba(40, 110, 200, 0.10);
+  color: rgba(25, 85, 175, 0.88);
+  border-color: rgba(40, 110, 200, 0.22);
 }
 body.light-mode .ai-badge-autonomous{
-  background: rgba(100, 80, 220, 0.1);
-  color: rgba(80, 60, 200, 0.9);
-  border-color: rgba(100, 80, 220, 0.2);
+  background: rgba(80, 60, 180, 0.10);
+  color: rgba(65, 45, 165, 0.88);
+  border-color: rgba(80, 60, 180, 0.22);
 }
 body.light-mode .ai-mode-card:hover:not(:disabled){
-  border-color: rgba(100, 80, 220, 0.35);
-  background: rgba(100, 80, 220, 0.06);
+  border-color: rgba(80, 60, 180, 0.30);
+  background: rgba(80, 60, 180, 0.06);
 }
 
 /* Mobile responsive */
@@ -10890,21 +10911,21 @@ body.light-mode .ai-mode-card:hover:not(:disabled){
 
 /* Light mode overrides for traits popup */
 body.light-mode .ai-traits-section-title{
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--text-dim);
 }
 body.light-mode .ai-trait-label{
-  color: rgba(0, 0, 0, 0.85);
+  color: var(--text);
 }
 body.light-mode .ai-trait-bar-bg{
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(40,70,100,0.10);
 }
 body.light-mode .ai-traits-avatar{
-  background: linear-gradient(135deg, rgba(100, 80, 220, 0.15), rgba(100, 80, 220, 0.05));
-  border-color: rgba(100, 80, 220, 0.3);
-  color: rgba(100, 80, 220, 0.9);
+  background: linear-gradient(135deg, rgba(80, 60, 180, 0.12), rgba(80, 60, 180, 0.04));
+  border-color: rgba(80, 60, 180, 0.25);
+  color: rgba(65, 45, 165, 0.88);
 }
 body.light-mode .ai-trait-range-labels{
-  color: rgba(0, 0, 0, 0.25);
+  color: var(--text-dim);
 }
 
 /* Ensure guess animations can expand outward without clipping */
@@ -10912,4 +10933,802 @@ body.light-mode .ai-trait-range-labels{
 .game-board,
 .game-center-area {
   overflow: visible;
+}
+
+
+/* ==================== COMPREHENSIVE LIGHT MODE ==================== */
+/* Inspired by Codenames Online: soft blue-gray palette, warm & readable */
+
+/* --- Header & Mode Switcher --- */
+body.light-mode .header-mode-switcher {
+  background: rgba(40,70,100,0.08);
+  border-color: rgba(40,70,100,0.14);
+}
+body.light-mode .header-mode-switcher .mode-btn:hover {
+  background: rgba(40,70,100,0.10);
+}
+body.light-mode .header-mode-switcher .mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* --- Team Color Row / Color Pickers --- */
+body.light-mode .team-color-row {
+  border-color: rgba(40,70,100,0.12);
+  background: var(--surface);
+}
+body.light-mode .color-input,
+body.light-mode .team-color-input {
+  border-color: var(--border);
+}
+
+/* --- Team Card "my team" glow --- */
+body.light-mode .team-card.my-team {
+  box-shadow: 0 0 0 1px rgba(40,70,100,0.12), 0 8px 24px rgba(30,55,85,0.10);
+}
+
+/* --- Editable team name --- */
+body.light-mode .team-name.editable {
+  border-bottom-color: rgba(40,70,100,0.25);
+}
+
+/* --- Error Box --- */
+body.light-mode .error-box {
+  background: rgba(201, 60, 43, 0.08);
+  border-color: var(--red);
+}
+body.light-mode .error-box ul {
+  color: var(--red);
+}
+
+/* --- Hint Error --- */
+body.light-mode .hint.error {
+  color: var(--red);
+}
+
+/* --- Quick Play Settings --- */
+body.light-mode .qp-settings-open {
+  background: linear-gradient(135deg, rgba(45,125,210,0.18), rgba(120,80,200,0.14));
+  border-color: rgba(40,70,100,0.16);
+}
+body.light-mode .qp-settings-open:hover {
+  background: linear-gradient(135deg, rgba(45,125,210,0.24), rgba(120,80,200,0.20));
+}
+body.light-mode .qp-settings-banner {
+  background: linear-gradient(135deg, rgba(45,125,210,0.12), rgba(201,60,43,0.08));
+  border-color: rgba(40,70,100,0.12);
+}
+body.light-mode .qp-settings-emoji {
+  background: rgba(40,70,100,0.06);
+  border-color: rgba(40,70,100,0.12);
+}
+body.light-mode .qp-setting {
+  border-color: rgba(40,70,100,0.12);
+  background: var(--surface);
+}
+
+/* --- Quick Settings Modal --- */
+body.light-mode #quick-settings-modal .modal-card {
+  background: var(--card);
+}
+body.light-mode #quick-settings-modal .modal-head {
+  background: linear-gradient(135deg, rgba(45,125,210,0.12), rgba(120,80,200,0.08));
+  border-bottom-color: var(--border);
+}
+body.light-mode #quick-settings-modal .icon-btn:hover {
+  background: rgba(40,70,100,0.08);
+}
+
+/* --- Modal Backdrop (secondary) --- */
+body.light-mode .modal-backdrop {
+  background: rgba(30,50,75,0.45);
+}
+body.light-mode .popover-backdrop {
+  background: rgba(30,50,75,0.20);
+}
+
+/* --- Game End Overlay --- */
+body.light-mode .game-end-overlay {
+  background: rgba(30,50,75,0.50);
+}
+
+/* --- Buttons --- */
+body.light-mode .btn {
+  background: var(--surface);
+  border-color: var(--border);
+}
+body.light-mode .btn.primary {
+  background: var(--accent);
+  border-color: rgba(45,125,210,0.45);
+  color: #fff;
+}
+body.light-mode .btn.danger {
+  background: rgba(201,60,43,0.10);
+  border-color: rgba(201,60,43,0.35);
+  color: var(--red);
+}
+body.light-mode .btn.danger:hover {
+  background: rgba(201,60,43,0.18);
+}
+body.light-mode .btn.success {
+  background: rgba(26,154,72,0.10);
+  border-color: rgba(26,154,72,0.35);
+  color: var(--green);
+}
+body.light-mode .btn.success:hover {
+  background: rgba(26,154,72,0.18);
+}
+body.light-mode .btn.invites-btn {
+  background: rgba(184,117,20,0.10);
+  border-color: rgba(184,117,20,0.35);
+  color: var(--gold);
+}
+body.light-mode .btn.invites-btn:hover {
+  background: rgba(184,117,20,0.18);
+}
+body.light-mode .btn.logout {
+  background: rgba(201,60,43,0.08);
+  border-color: rgba(201,60,43,0.28);
+}
+body.light-mode .btn.logout:hover {
+  background: rgba(201,60,43,0.15);
+}
+
+/* --- Icon Buttons --- */
+body.light-mode .icon-btn {
+  border-color: var(--border);
+  background: var(--surface);
+}
+body.light-mode .icon-btn.danger {
+  border-color: rgba(201,60,43,0.35);
+  background: rgba(201,60,43,0.08);
+}
+
+/* --- Game Toolbar btn-icon --- */
+body.light-mode .btn-icon {
+  background: rgba(40,70,100,0.08);
+}
+body.light-mode .btn-icon:hover {
+  background: rgba(40,70,100,0.14);
+  color: var(--text);
+}
+body.light-mode .btn-danger-icon:hover {
+  background: rgba(201,60,43,0.12);
+  color: var(--red);
+}
+
+/* --- Menu Button --- */
+body.light-mode .menu-btn:hover {
+  background: rgba(40,70,100,0.08);
+}
+body.light-mode .menu-btn.danger:hover {
+  background: rgba(201,60,43,0.08);
+}
+
+/* --- Game Card --- */
+body.light-mode .game-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+body.light-mode .game-card:hover:not(.revealed):not(.disabled) {
+  box-shadow: 0 4px 16px rgba(30,55,85,0.14);
+}
+body.light-mode .game-container-compact .game-card:hover:not(.revealed):not(.disabled) {
+  box-shadow: 0 2px 10px rgba(30,55,85,0.14);
+}
+body.light-mode .game-center-area .game-card:hover:not(.revealed):not(.disabled) {
+  box-shadow: 0 4px 20px rgba(30,55,85,0.16);
+}
+
+/* Revealed cards - white text stays on colored backgrounds */
+body.light-mode .game-card.revealed.card-red {
+  background: var(--game-red);
+  border-color: var(--game-red);
+}
+body.light-mode .game-card.revealed.card-blue {
+  background: var(--game-blue);
+  border-color: var(--game-blue);
+}
+body.light-mode .game-card.revealed.card-neutral {
+  background: var(--game-neutral);
+  border-color: var(--game-neutral);
+}
+body.light-mode .game-card.revealed.card-assassin {
+  background: #1a1a1f;
+  border-color: var(--red);
+}
+body.light-mode .game-card.revealed .card-word {
+  color: #fff;
+}
+
+/* Spymaster view */
+body.light-mode .game-card.spymaster-view.card-red {
+  background: var(--game-red-bg);
+  border-color: var(--game-red-border);
+}
+body.light-mode .game-card.spymaster-view.card-blue {
+  background: var(--game-blue-bg);
+  border-color: var(--game-blue-border);
+}
+body.light-mode .game-card.spymaster-view.card-neutral {
+  background: var(--game-neutral-bg);
+  border-color: var(--game-neutral-border);
+}
+body.light-mode .game-card.spymaster-view.card-assassin {
+  background: var(--game-assassin-bg);
+  border-color: var(--game-assassin-border);
+}
+body.light-mode .game-card.spymaster-view.card-assassin .card-word {
+  color: var(--red);
+}
+
+/* --- Card Tags --- */
+body.light-mode .card-tag.ai {
+  box-shadow: 0 0 0 1px rgba(40,70,100,0.20) inset;
+}
+
+/* --- Mode Card --- */
+body.light-mode .mode-card:hover {
+  box-shadow: 0 8px 24px rgba(30,55,85,0.12);
+}
+
+/* --- Lobby Name Check --- */
+body.light-mode .lobby-name-check {
+  background: rgba(184,117,20,0.08);
+  border-color: rgba(184,117,20,0.25);
+}
+
+/* --- Game Log Entries --- */
+body.light-mode .log-entry {
+  border-color: rgba(40,70,100,0.10);
+  background: rgba(40,70,100,0.04);
+  color: var(--text);
+}
+body.light-mode .log-entry:hover {
+  background: rgba(40,70,100,0.08);
+}
+body.light-mode .log-entry::before {
+  background: rgba(94,115,137,0.35);
+}
+body.light-mode .log-entry.team-red::before { background: rgba(201,60,43,0.80); }
+body.light-mode .log-entry.team-blue::before { background: rgba(26,127,181,0.80); }
+
+body.light-mode .log-entry.type-clue {
+  background: rgba(184,117,20,0.08);
+  border-color: rgba(184,117,20,0.18);
+}
+body.light-mode .log-entry.type-start {
+  background: rgba(45,125,210,0.08);
+  border-color: rgba(45,125,210,0.18);
+}
+body.light-mode .log-entry.type-end {
+  background: rgba(120,80,200,0.08);
+  border-color: rgba(120,80,200,0.18);
+}
+body.light-mode .log-entry.type-correct {
+  background: rgba(26,154,72,0.08);
+  border-color: rgba(26,154,72,0.18);
+}
+body.light-mode .log-entry.type-wrong {
+  background: rgba(201,60,43,0.08);
+  border-color: rgba(201,60,43,0.18);
+}
+body.light-mode .log-entry.type-neutral {
+  background: rgba(94,115,137,0.06);
+  border-color: rgba(94,115,137,0.14);
+}
+body.light-mode .log-entry.type-assassin {
+  background: rgba(201,60,43,0.12);
+  border-color: rgba(201,60,43,0.28);
+  box-shadow: 0 0 0 1px rgba(201,60,43,0.12) inset;
+}
+
+/* Log tokens */
+body.light-mode .log-entry .log-token.role { color: var(--text); }
+body.light-mode .log-entry .log-token.action { color: var(--accent); }
+body.light-mode .log-entry .log-token.result-correct { color: var(--green); }
+body.light-mode .log-entry .log-token.result-wrong { color: var(--red); }
+body.light-mode .log-entry .log-token.result-neutral { color: var(--text-dim); }
+body.light-mode .log-entry .log-token.result-assassin { color: var(--red); text-shadow: none; }
+body.light-mode .log-entry .log-token.system { color: rgb(120,80,200); }
+
+body.light-mode .log-entry .log-quote { text-shadow: none; }
+body.light-mode .log-entry.type-clue .log-quote { color: var(--gold); }
+body.light-mode .log-entry.type-correct .log-quote { color: var(--green); }
+body.light-mode .log-entry.type-wrong .log-quote { color: var(--red); }
+body.light-mode .log-entry.type-neutral .log-quote { color: var(--text-dim); }
+body.light-mode .log-entry.type-assassin .log-quote { color: var(--red); }
+body.light-mode .log-entry.type-start .log-quote { color: var(--accent); }
+body.light-mode .log-entry.type-end .log-quote { color: rgb(120,80,200); }
+
+/* --- Top Bar --- */
+body.light-mode .topbar-team {
+  border-color: rgba(40,70,100,0.12);
+  background: rgba(40,70,100,0.04);
+}
+body.light-mode .topbar-team-status {
+  color: var(--text);
+}
+body.light-mode .topbar-team.is-active .topbar-team-status {
+  text-shadow: none;
+}
+body.light-mode .topbar-player.is-me {
+  box-shadow: 0 0 0 1px rgba(40,70,100,0.10) inset;
+}
+
+/* Turn strip highlighting */
+body.light-mode .game-topbar.turn-red #topbar-red {
+  background: rgba(201,60,43,0.12);
+  border-color: rgba(201,60,43,0.32);
+  box-shadow: 0 0 0 1px rgba(201,60,43,0.12) inset, 0 8px 28px rgba(30,55,85,0.10);
+}
+body.light-mode .game-topbar.turn-red #topbar-blue {
+  background: rgba(40,70,100,0.03);
+  border-color: rgba(40,70,100,0.08);
+}
+body.light-mode .game-topbar.turn-blue #topbar-blue {
+  background: rgba(26,127,181,0.12);
+  border-color: rgba(26,127,181,0.32);
+  box-shadow: 0 0 0 1px rgba(26,127,181,0.12) inset, 0 8px 28px rgba(30,55,85,0.10);
+}
+body.light-mode .game-topbar.turn-blue #topbar-red {
+  background: rgba(40,70,100,0.03);
+  border-color: rgba(40,70,100,0.08);
+}
+
+/* Team icon buttons (roster popover triggers) */
+body.light-mode .topbar-team-icon {
+  border-color: rgba(40,70,100,0.18);
+  background: rgba(40,70,100,0.08);
+}
+body.light-mode .topbar-team-icon svg {
+  stroke: var(--text);
+}
+body.light-mode .topbar-team-icon:hover {
+  box-shadow: 0 6px 18px rgba(30,55,85,0.12);
+}
+body.light-mode .topbar-team-icon.red { border-color: rgba(201,60,43,0.35); }
+body.light-mode .topbar-team-icon.blue { border-color: rgba(26,127,181,0.35); }
+body.light-mode .topbar-team-icon.red:hover {
+  box-shadow: 0 6px 18px rgba(201,60,43,0.12);
+}
+body.light-mode .topbar-team-icon.blue:hover {
+  box-shadow: 0 6px 18px rgba(26,127,181,0.12);
+}
+
+/* --- Team Popover --- */
+body.light-mode .team-popover {
+  border-color: var(--border);
+  background: rgba(237,241,246,0.92);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 48px rgba(30,55,85,0.18);
+}
+
+/* --- Clue Chip & Guess Chip --- */
+body.light-mode .clue-chip-count {
+  background: rgba(40,70,100,0.08);
+  border-color: rgba(40,70,100,0.14);
+}
+body.light-mode .guess-chip {
+  background: rgba(40,70,100,0.06);
+  border-color: rgba(40,70,100,0.12);
+}
+body.light-mode .guess-chip.assassin {
+  color: #fff;
+  background: rgba(201,60,43,0.30);
+  border-color: rgba(201,60,43,0.40);
+}
+
+/* --- Game Log Popover & Menu Popover --- */
+body.light-mode .game-log-popover {
+  box-shadow: 0 8px 32px rgba(30,55,85,0.16);
+}
+body.light-mode .game-menu-popover {
+  box-shadow: 0 8px 32px rgba(30,55,85,0.16);
+}
+
+/* --- Pill badges --- */
+body.light-mode .pill {
+  background: var(--surface);
+}
+
+/* --- Prize badge --- */
+body.light-mode .prize-badge {
+  background: var(--gold);
+  color: #fff;
+}
+body.light-mode .mobile-header .prize-badge {
+  background: var(--gold);
+  color: #fff;
+}
+
+/* --- Active Game Banner --- */
+body.light-mode .game-active-banner {
+  background: rgba(26,154,72,0.08);
+  border-color: rgba(26,154,72,0.25);
+}
+
+/* --- Challenge row (incoming) --- */
+body.light-mode .challenge-row.incoming {
+  border-color: rgba(184,117,20,0.30);
+  background: rgba(184,117,20,0.06);
+}
+
+/* --- Scrollbar --- */
+body.light-mode ::-webkit-scrollbar-thumb {
+  background: rgba(40,70,100,0.22);
+}
+
+/* --- Modal close button --- */
+body.light-mode .modal-head .icon-btn {
+  border-color: rgba(201,60,43,0.30);
+  background: rgba(201,60,43,0.08);
+}
+
+/* --- Player Status badges --- */
+body.light-mode .player-status {
+  background: rgba(40,70,100,0.05);
+}
+
+/* --- Chat messages container --- */
+body.light-mode .chat-card .chat-messages {
+  background: rgba(40,70,100,0.03);
+  border-color: rgba(40,70,100,0.10);
+}
+
+/* --- Accordion --- */
+body.light-mode .accordion summary:hover {
+  background: rgba(40,70,100,0.05);
+}
+
+/* --- Desktop Tab active state --- */
+body.light-mode .desktop-tabs .tab.active {
+  background: rgba(45,125,210,0.12);
+  border-color: rgba(45,125,210,0.30);
+}
+
+/* --- Toggle slider (unchecked) --- */
+body.light-mode .toggle-slider {
+  background: rgba(40,70,100,0.22);
+}
+
+/* --- Role buttons --- */
+body.light-mode .role-btn:hover,
+body.light-mode .role-btn-compact:hover {
+  background: rgba(45,125,210,0.08);
+}
+body.light-mode .role-btn.selected,
+body.light-mode .role-btn-compact.selected {
+  background: rgba(45,125,210,0.14);
+}
+
+/* --- Game Card hover shadow (mode-card) --- */
+body.light-mode .mode-card {
+  box-shadow: 0 2px 8px rgba(30,55,85,0.06);
+}
+body.light-mode .mode-card:hover {
+  box-shadow: 0 8px 24px rgba(30,55,85,0.14);
+  background: rgba(45,125,210,0.06);
+}
+
+/* --- Pending-select card --- */
+body.light-mode .game-card.pending-select:not(.revealed):not(.disabled) {
+  box-shadow: 0 0 0 2px rgba(45,125,210,0.25);
+}
+
+/* --- Tag buttons --- */
+body.light-mode .tag-btn.active {
+  background: rgba(45,125,210,0.14);
+}
+
+/* --- Roster players --- */
+body.light-mode .roster-player.current-turn {
+  background: rgba(45,125,210,0.08);
+}
+
+/* --- Operative chat discussion area --- */
+body.light-mode .operative-chat-panel {
+  border-color: var(--border);
+}
+
+/* --- Settings row action-button hover --- */
+body.light-mode .settings-row:hover {
+  background: var(--surface);
+}
+
+/* --- Topbar timer --- */
+body.light-mode .topbar-timer {
+  color: var(--text-dim);
+}
+
+/* --- Spymaster & Operative role pills --- */
+body.light-mode .roster-player-role.spymaster {
+  background: rgba(184,117,20,0.14);
+  color: var(--gold);
+}
+body.light-mode .roster-player-role.operative {
+  background: rgba(45,125,210,0.14);
+  color: var(--accent);
+}
+
+/* --- Team glow frame --- */
+body.light-mode.tournament.has-team-color::after {
+  opacity: 0.55;
+}
+
+/* --- Clue number badges --- */
+body.light-mode .clue-number,
+body.light-mode .clue-number-compact,
+body.light-mode .clue-number-expanded {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* --- Sidebar panels --- */
+body.light-mode .sidebar-panel {
+  background: var(--surface);
+  border-color: var(--border);
+}
+body.light-mode .sidebar-panel-header {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+
+/* --- Clue history items --- */
+body.light-mode .clue-history-item {
+  background: var(--surface);
+}
+body.light-mode .clue-chip.red {
+  border-color: rgba(201,60,43,0.35);
+  box-shadow: 0 0 0 1px rgba(201,60,43,0.08) inset;
+}
+body.light-mode .clue-chip.blue {
+  border-color: rgba(26,127,181,0.35);
+  box-shadow: 0 0 0 1px rgba(26,127,181,0.08) inset;
+}
+
+/* --- Game Container Expanded BG --- */
+body.light-mode .game-container-expanded {
+  background: var(--bg);
+}
+
+/* --- Mobile sidebar overlays --- */
+body.light-mode .game-sidebar-left.mobile-visible::after,
+body.light-mode .game-sidebar-right.mobile-visible::after {
+  background: rgba(30,50,75,0.25);
+}
+
+/* --- Tab Empty State --- */
+body.light-mode .tab-empty {
+  border-color: rgba(40,70,100,0.18);
+  background: rgba(40,70,100,0.04);
+}
+
+/* --- Tab Warning --- */
+body.light-mode .tab-warning {
+  background: rgba(184,117,20,0.08);
+  border-color: rgba(184,117,20,0.22);
+}
+
+/* --- Quick Play Lobby --- */
+body.light-mode .quick-lobby-inner {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
+}
+body.light-mode .quick-team-col {
+  background: rgba(40,70,100,0.06);
+  border-color: rgba(40,70,100,0.12);
+}
+body.light-mode .quick-team-col.red { border-color: rgba(201,60,43,0.22); }
+body.light-mode .quick-team-col.blue { border-color: rgba(26,127,181,0.22); }
+body.light-mode .quick-team-col.selected {
+  box-shadow: 0 0 0 2px rgba(40,70,100,0.10) inset;
+}
+body.light-mode .quick-team-col.red.selected {
+  border-color: rgba(201,60,43,0.40);
+  box-shadow: 0 0 0 2px rgba(201,60,43,0.12) inset;
+}
+body.light-mode .quick-team-col.blue.selected {
+  border-color: rgba(26,127,181,0.40);
+  box-shadow: 0 0 0 2px rgba(26,127,181,0.12) inset;
+}
+body.light-mode .quick-team-col.selectable:focus {
+  box-shadow: 0 0 0 2px rgba(40,70,100,0.14);
+}
+body.light-mode .quick-team-count {
+  background: rgba(40,70,100,0.06);
+  border-color: rgba(40,70,100,0.12);
+}
+body.light-mode .quick-team-dot.spectator {
+  background: var(--text-dim);
+  box-shadow: none;
+}
+body.light-mode .quick-role-divider {
+  background: rgba(40,70,100,0.12);
+}
+body.light-mode .quick-seat-choice:focus {
+  box-shadow: 0 0 0 2px rgba(40,70,100,0.14);
+}
+body.light-mode .quick-team-col.red .quick-seat-choice.selected {
+  color: var(--game-red);
+}
+body.light-mode .quick-team-col.blue .quick-seat-choice.selected {
+  color: var(--game-blue);
+}
+
+/* --- Quick Player Cards --- */
+body.light-mode .quick-player {
+  background: rgba(40,70,100,0.04);
+  border-color: rgba(40,70,100,0.10);
+}
+body.light-mode .quick-player.ready {
+  border-color: rgba(26,154,72,0.32);
+  box-shadow: 0 0 0 1px rgba(26,154,72,0.08) inset;
+}
+body.light-mode .quick-player-badge {
+  border-color: rgba(40,70,100,0.14);
+  background: rgba(40,70,100,0.06);
+}
+body.light-mode .quick-player.ready .quick-player-badge {
+  color: var(--green);
+  border-color: rgba(26,154,72,0.30);
+  background: rgba(26,154,72,0.08);
+}
+body.light-mode .quick-status-chip.not-ready {
+  background: rgba(40,70,100,0.08);
+  color: var(--text-dim);
+}
+
+/* --- Quick Play Deck Cards --- */
+body.light-mode .qp-deck-card {
+  border-color: rgba(40,70,100,0.14);
+  background: var(--surface);
+}
+body.light-mode .qp-deck-card:hover {
+  background: var(--surface2);
+}
+body.light-mode .qp-deck-card[aria-checked="true"],
+body.light-mode .qp-deck-card.selected {
+  border-color: rgba(45,125,210,0.45);
+  box-shadow: 0 0 0 3px rgba(45,125,210,0.12), var(--shadow-sm);
+  background: linear-gradient(135deg, rgba(45,125,210,0.08), rgba(120,80,200,0.06));
+}
+body.light-mode .qp-deck-emoji {
+  background: rgba(40,70,100,0.06);
+  border-color: rgba(40,70,100,0.12);
+}
+
+/* --- Quick Play Setting Input --- */
+body.light-mode .qp-setting .setting-input {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+/* --- Quick Play Negotiation --- */
+body.light-mode .qp-negotiation {
+  border-color: var(--border);
+  background: radial-gradient(1200px 260px at 10% 0%, rgba(201,60,43,0.08), transparent 60%),
+              radial-gradient(1200px 260px at 90% 0%, rgba(26,127,181,0.08), transparent 60%),
+              var(--surface);
+  box-shadow: var(--shadow-md);
+}
+body.light-mode .qp-neg-chip {
+  border-color: rgba(40,70,100,0.16);
+  background: rgba(40,70,100,0.06);
+}
+body.light-mode .qp-neg-chip::before {
+  background: var(--text-dim);
+}
+body.light-mode .qp-neg-team {
+  border-color: rgba(40,70,100,0.12);
+  background: var(--surface);
+}
+body.light-mode .qp-neg-team.red {
+  background: linear-gradient(135deg, rgba(201,60,43,0.06), var(--surface));
+}
+body.light-mode .qp-neg-team.blue {
+  background: linear-gradient(135deg, rgba(26,127,181,0.06), var(--surface));
+}
+body.light-mode .qp-neg-team[data-accepted="true"] {
+  border-color: rgba(26,154,72,0.28);
+}
+body.light-mode .qp-neg-team[data-accepted="true"] .qp-neg-team-state {
+  color: var(--green);
+}
+body.light-mode .qp-neg-pill {
+  border-color: rgba(40,70,100,0.14);
+  background: rgba(40,70,100,0.06);
+}
+
+/* --- Quick Rules Bar --- */
+body.light-mode .quick-rules-bar {
+  border-color: var(--border);
+  background: radial-gradient(900px 220px at 20% 0%, rgba(120,80,200,0.06), transparent 60%),
+              radial-gradient(900px 220px at 80% 0%, rgba(20,184,166,0.06), transparent 60%),
+              var(--card);
+}
+body.light-mode .qp-rules-badge {
+  border-color: rgba(40,70,100,0.16);
+  background: rgba(40,70,100,0.06);
+}
+body.light-mode .qp-rules-badge::before {
+  background: var(--text-dim);
+}
+
+/* --- Modal Card (quick play) --- */
+body.light-mode .modal-card {
+  box-shadow: 0 20px 70px rgba(30,55,85,0.18);
+}
+
+/* --- Team Color Dots --- */
+body.light-mode .team-color-dot {
+  box-shadow: 0 0 0 1px rgba(40,70,100,0.20);
+}
+body.light-mode .team-color-dot.muted {
+  background: var(--text-dim);
+}
+
+/* --- Team List Item (mine) --- */
+body.light-mode .team-list-item.is-mine {
+  border-color: rgba(40,70,100,0.12);
+  box-shadow: 0 0 0 1px rgba(40,70,100,0.06);
+}
+body.light-mode .team-list-count {
+  background: rgba(40,70,100,0.06);
+}
+
+/* --- My Team Footer --- */
+body.light-mode .myteam-footer {
+  border-top-color: rgba(40,70,100,0.12);
+}
+
+/* --- Floating Chat Button --- */
+body.light-mode .floating-chat {
+  background: rgba(45,125,210,0.12);
+  border-color: rgba(45,125,210,0.28);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- Team Badge --- */
+body.light-mode .team-badge {
+  background: rgba(40,70,100,0.06);
+}
+body.light-mode .state-pill {
+  background: rgba(40,70,100,0.06);
+}
+
+/* --- Player Status --- */
+body.light-mode .player-status.busy {
+  border-color: rgba(40,70,100,0.14);
+}
+
+/* --- Link Button Subtle --- */
+body.light-mode .link-btn.subtle {
+  text-decoration-color: rgba(40,70,100,0.30);
+}
+body.light-mode .link-btn.subtle:hover {
+  text-decoration-color: rgba(40,70,100,0.55);
+}
+
+/* --- Invite Card --- */
+body.light-mode .invite-card {
+  border-color: rgba(40,70,100,0.12);
+}
+
+/* --- Chat messages container --- */
+body.light-mode .chat-card .chat-messages {
+  background: rgba(40,70,100,0.03);
+  border-color: rgba(40,70,100,0.10);
+}
+
+/* --- Confirm Icon Button --- */
+body.light-mode .confirm-icon-btn {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+/* --- Mode Modal Backdrop --- */
+body.light-mode .mode-modal {
+  background: rgba(30,50,75,0.38);
 }
