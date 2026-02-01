@@ -78,21 +78,7 @@ async function verifyAIReady(ai) {
     ], {
       max_tokens: 20,
       temperature: 0,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'ready_check',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              status: { type: 'string', enum: ['Ready'] }
-            },
-            required: ['status'],
-            additionalProperties: false,
-          },
-        },
-      },
+      response_format: { type: 'json_object' },
     });
 
     let parsed;
