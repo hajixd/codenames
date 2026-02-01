@@ -2099,6 +2099,36 @@ body.light-mode .modal{
 .qp-setting[data-accent="clue"]{ --qp-accent: rgba(168,85,247,0.95); }
 .qp-setting[data-accent="guess"]{ --qp-accent: rgba(20,184,166,0.95); }
 .qp-setting[data-accent="deck"]{ --qp-accent: rgba(59,130,246,0.95); }
+.qp-setting[data-accent="vibe"]{ --qp-accent: rgba(236,153,75,0.95); }
+
+.qp-setting .setting-input{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 14px;
+  width: 100%;
+  max-width: 260px;
+  font-family: inherit;
+}
+.qp-setting .setting-input::placeholder{
+  color: var(--text-dim);
+  opacity: 0.65;
+}
+.qp-setting .setting-input:focus{
+  outline: none;
+  border-color: rgba(236,153,75,0.5);
+  box-shadow: 0 0 0 3px rgba(236,153,75,0.15);
+}
+.qp-setting .setting-hint{
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.7;
+  margin-top: 4px;
+  line-height: 1.3;
+}
 
 .qp-setting-deck{ display:flex; flex-direction:column; gap: 10px; }
 .qp-setting-deck .setting-label{ padding-left: 12px; }
@@ -4629,10 +4659,10 @@ button.player-tag.pill-action:disabled{
 /* Colored game log entries (background + text) */
 .log-entry {
   position: relative;
-  padding: 9px 10px 9px 12px;
+  padding: 5px 8px 5px 10px;
   border-bottom: none;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.92);
   overflow: hidden;
@@ -4642,8 +4672,9 @@ button.player-tag.pill-action:disabled{
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
-  background: rgba(148, 163, 184, 0.45);
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+  background: rgba(148, 163, 184, 0.35);
 }
 
 .log-entry.team-red::before { background: rgba(239, 68, 68, 0.85); }
@@ -4725,15 +4756,14 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 
 
 
-/* Game log: card-style entries (keep the fun colors) */
-.game-log-entries{ gap: 8px; }
+/* Game log: compact entries for sidebar readability */
+.game-log-entries{ gap: 4px; }
 .log-entry{
-  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: none;
+  transition: background 120ms ease;
 }
 .log-entry:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 14px 36px rgba(0,0,0,0.30);
+  background: rgba(255, 255, 255, 0.06);
 }
 /* Game Actions */
 .game-actions {
@@ -5191,10 +5221,17 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 .game-log-panel .game-log-entries {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+}
+
+.game-log-panel .log-entry {
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 4px 6px 4px 9px;
+  word-break: break-word;
 }
 
 .popover-header {
@@ -10719,6 +10756,157 @@ body.light-mode .ai-mode-card:hover:not(:disabled){
   .ai-badge{ font-size: 8px; padding: 1px 5px; }
   .ai-remove-btn{ width: 16px; height: 16px; font-size: 11px; }
 }
+/* ─── AI Traits Popup ────────────────────────────────────────────────── */
+
+.ai-traits-popup{
+  padding: 4px 0;
+}
+.ai-traits-header{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.ai-traits-avatar{
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(140, 120, 255, 0.3), rgba(140, 120, 255, 0.08));
+  border: 1px solid rgba(140, 120, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 14px;
+  color: rgba(140, 120, 255, 0.9);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.ai-traits-info{
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ai-traits-name{
+  font-weight: 900;
+  font-size: 16px;
+  color: var(--text);
+}
+.ai-traits-subtitle{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-traits-role{
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.ai-traits-team{
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.ai-traits-team.red{
+  color: var(--game-red);
+  background: var(--game-red-bg);
+  border: 1px solid var(--game-red-border);
+}
+.ai-traits-team.blue{
+  color: var(--game-blue);
+  background: var(--game-blue-bg);
+  border: 1px solid var(--game-blue-border);
+}
+.ai-traits-section-title{
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 14px;
+}
+.ai-traits-bars{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ai-trait-row{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-trait-label-row{
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.ai-trait-label{
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.88);
+}
+.ai-trait-value{
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.ai-trait-bar-bg{
+  width: 100%;
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.ai-trait-bar-fill{
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.85;
+}
+.ai-trait-range-labels{
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* Clickable popover rows */
+.team-popover-player.is-ai{
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.team-popover-player.is-ai:hover{
+  background: rgba(140, 120, 255, 0.1);
+}
+
+/* Light mode overrides for traits popup */
+body.light-mode .ai-traits-section-title{
+  color: rgba(0, 0, 0, 0.45);
+}
+body.light-mode .ai-trait-label{
+  color: rgba(0, 0, 0, 0.85);
+}
+body.light-mode .ai-trait-bar-bg{
+  background: rgba(0, 0, 0, 0.08);
+}
+body.light-mode .ai-traits-avatar{
+  background: linear-gradient(135deg, rgba(100, 80, 220, 0.15), rgba(100, 80, 220, 0.05));
+  border-color: rgba(100, 80, 220, 0.3);
+  color: rgba(100, 80, 220, 0.9);
+}
+body.light-mode .ai-trait-range-labels{
+  color: rgba(0, 0, 0, 0.25);
+}
+
 /* Ensure guess animations can expand outward without clipping */
 .game-board-wrapper,
 .game-board,

@@ -132,6 +132,7 @@ function extractAIPlayersFromGame(game) {
         statusColor: ready ? 'green' : 'none',
         ready,
         isAI: true,
+        traits: sanitizeTraits(p.aiTraits),
       });
     }
   };
@@ -202,6 +203,8 @@ let aiThinkingState = {}; // keyed by ai id → true when AI is processing
 // ─── Exports ─────────────────────────────────────────────────────────────────
 window.aiPlayers = aiPlayers;
 window.AI_CONFIG = AI_CONFIG;
+window.generateAITraits = generateAITraits;
+window.sanitizeTraits = sanitizeTraits;
 
 // ─── LLM API Calls ──────────────────────────────────────────────────────────
 
@@ -234,6 +237,7 @@ async function aiChatCompletion(messages, options = {}) {
   const data = await resp.json();
   return data.choices?.[0]?.message?.content || '';
 }
+window.aiChatCompletion = aiChatCompletion;
 
 // ─── Fetch Recent Team Chat (so AI can see human messages) ──────────────────
 
@@ -331,6 +335,30 @@ async function verifyAIReady(ai) {
   return ai.statusColor === 'green';
 }
 
+// ─── AI Personality Traits ──────────────────────────────────────────────────
+
+function generateAITraits() {
+  return {
+    confidence: Math.floor(Math.random() * 101),   // 0-100
+    riskiness: Math.floor(Math.random() * 101),     // 0-100
+    reasoning: Math.floor(Math.random() * 101),     // 0-100
+    strategic: Math.floor(Math.random() * 101),     // 0-100
+    farFetched: Math.floor(Math.random() * 101),    // 0-100
+  };
+}
+
+function sanitizeTraits(raw) {
+  if (!raw || typeof raw !== 'object') return generateAITraits();
+  const clamp = (v) => Math.max(0, Math.min(100, Math.floor(Number(v) || 0)));
+  return {
+    confidence: clamp(raw.confidence),
+    riskiness: clamp(raw.riskiness),
+    reasoning: clamp(raw.reasoning),
+    strategic: clamp(raw.strategic),
+    farFetched: clamp(raw.farFetched),
+  };
+}
+
 // ─── Add / Remove AI Players ────────────────────────────────────────────────
 
 function getUsedAINames() {
@@ -366,6 +394,7 @@ async function addAIPlayer(team, seatRole, mode) {
     statusColor: 'none', // 'none' → 'red'|'yellow'|'green'
     ready: false,
     isAI: true,
+    traits: generateAITraits(),
   };
 
   aiPlayers.push(ai);
@@ -435,6 +464,7 @@ async function addAIToFirestoreLobby(ai) {
         isAI: true,
         aiMode: ai.mode,
         aiId: ai.id,
+        aiTraits: ai.traits,
       });
 
       tx.update(ref, {
@@ -553,6 +583,63 @@ function analyzeGameState(game, team) {
   };
 }
 
+// ─── AI Personality Prompt Building ─────────────────────────────────────────
+
+function buildAIPersonalityPrompt(traits) {
+  if (!traits) return '';
+  const parts = [];
+
+  // Confidence
+  if (traits.confidence > 75) parts.push('You are extremely confident and assertive. You commit fully to your decisions without hesitation.');
+  else if (traits.confidence > 50) parts.push('You are fairly confident. You trust your instincts but acknowledge uncertainty when appropriate.');
+  else if (traits.confidence > 25) parts.push('You are somewhat hesitant. You often hedge your bets and second-guess yourself.');
+  else parts.push('You lack confidence. You constantly doubt your choices, using phrases like "maybe", "I think", "not sure but...".');
+
+  // Riskiness
+  if (traits.riskiness > 75) parts.push('You are a bold risk-taker. You love high-risk high-reward plays and push for aggressive strategies.');
+  else if (traits.riskiness > 50) parts.push('You are moderately willing to take risks when the potential payoff is good.');
+  else if (traits.riskiness > 25) parts.push('You are cautious. You prefer safe, reliable plays over risky ones.');
+  else parts.push('You are extremely cautious and risk-averse. You never take chances and always pick the safest option.');
+
+  // Far-fetched
+  if (traits.farFetched > 75) parts.push('You love creative, abstract, and lateral-thinking connections. Your associations are unusual and surprising - you find links others would never think of.');
+  else if (traits.farFetched > 50) parts.push('You occasionally make creative leaps in your associations but mostly stay reasonable.');
+  else if (traits.farFetched > 25) parts.push('You stick to fairly obvious and straightforward connections.');
+  else parts.push('You are extremely literal and straightforward. Only the most direct, obvious connections.');
+
+  return parts.join(' ');
+}
+
+function buildReasoningInstruction(traits) {
+  if (!traits || traits.reasoning <= 30) return '';
+
+  const depth = traits.reasoning > 80 ? 'exhaustive and extremely detailed' :
+                traits.reasoning > 60 ? 'thorough and detailed' : 'moderate';
+
+  let instruction = `\n\nBefore making your decision, provide ${depth} internal reasoning in the "reasoning" field of your JSON response.`;
+
+  if (traits.strategic > 60) {
+    instruction += ' Include probability estimates and expected value calculations. For each option, estimate P(correct) and consider the Bayesian posterior given all revealed information and clue history. Quantify the expected value of each choice.';
+  }
+  if (traits.strategic > 80) {
+    instruction += ' Think like a game theorist: consider opponent modeling, information theory, and minimax strategies.';
+  }
+
+  return instruction;
+}
+
+function buildStrategicInstruction(traits) {
+  if (!traits || traits.strategic <= 40) return '';
+
+  if (traits.strategic > 80) {
+    return '\nYou are HIGHLY ANALYTICAL. Calculate expected values for every option. Use Bayesian reasoning: update your priors based on revealed cards, previous clues, and teammate behavior. Quantify danger ratios and optimize your plays mathematically. Think in probabilities, not vibes.';
+  }
+  if (traits.strategic > 60) {
+    return '\nYou think analytically. Consider the probability distributions across remaining cards and weigh risks numerically when making decisions.';
+  }
+  return '\nYou lean somewhat analytical. Consider the odds before making decisions.';
+}
+
 // ─── Build Game Context for LLM ────────────────────────────────────────────
 
 function buildBoardContext(game, isSpymaster) {
@@ -615,6 +702,7 @@ async function aiGiveClue(ai, game) {
   const boardWords = game.cards.map(c => c.word.toUpperCase());
 
   // Build strategic guidance based on game state analysis
+  const traits = ai.traits || {};
   let strategyGuidance = '';
   if (analysis.weAreLosingBadly) {
     strategyGuidance = `STRATEGIC SITUATION: You are BEHIND by ${analysis.myCards - analysis.theirCards} cards. You MUST be aggressive. Try to connect 3+ words with one clue, even if some connections are looser. A safe 1-word clue will not catch up. Take calculated risks.`;
@@ -628,7 +716,26 @@ async function aiGiveClue(ai, game) {
     strategyGuidance = `STRATEGIC SITUATION: Mid-game, balanced position. Aim for clues connecting 2+ words. Balance risk and reward.`;
   }
 
-  const systemPrompt = `You are an expert Codenames Spymaster for the ${team.toUpperCase()} team. You are highly strategic and think deeply about word associations.
+  // Trait-based personality modifiers
+  const personalityPrompt = buildAIPersonalityPrompt(traits);
+  const strategicInstr = buildStrategicInstruction(traits);
+  const reasoningInstr = buildReasoningInstruction(traits);
+
+  // Trait-based strategy overrides
+  if (traits.riskiness > 70) {
+    strategyGuidance += '\n\nYour natural tendency: BOLD and AGGRESSIVE. Push for 3+ word clues. You thrive on high-risk high-reward plays.';
+  } else if (traits.riskiness < 30) {
+    strategyGuidance += '\n\nYour natural tendency: VERY CAUTIOUS. Prefer safe 1-2 word clues. Never risk the assassin.';
+  }
+
+  if (traits.confidence > 70) {
+    strategyGuidance += ' Commit fully to your clue and set a higher number - you trust your teammates to get it.';
+  } else if (traits.confidence < 30) {
+    strategyGuidance += ' Hedge your bets. Set a conservative number even if you think more words could match.';
+  }
+
+  const systemPrompt = `You are a Codenames Spymaster for the ${team.toUpperCase()} team.
+${personalityPrompt}
 
 RULES:
 - Your clue must be a SINGLE word (no spaces, no hyphens, no compound words).
@@ -644,6 +751,7 @@ NEUTRAL WORDS: ${neutralWords.join(', ')}
 ASSASSIN WORDS (CRITICAL - AVOID AT ALL COSTS): ${assassinWords.join(', ')}
 
 ${strategyGuidance}
+${strategicInstr}
 
 ${clueHistory}
 ${summary}
@@ -655,6 +763,7 @@ THINK STEP BY STEP:
 3. Does it relate to opponent words? If yes, consider the risk
 4. Pick the clue that connects the most team words with the LEAST risk of assassin/opponent overlap
 5. Set the number to ONLY count words you're very confident your teammates will get
+${reasoningInstr}
 
 Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["word1", "word2"], "reasoning": "explain your strategic thinking and which words you're connecting"}`;
 
@@ -666,12 +775,17 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
     const variability = analysis.endgame ? 6000 : 4000;
     await humanDelay(baseDelay, baseDelay + variability);
 
+    // Blend game-state temperature with trait-based temperature
+    const stateTemp = analysis.weAreLosingBadly ? 0.85 : (analysis.weAreLeading ? 0.5 : 0.65);
+    const traitTemp = 0.3 + (traits.farFetched / 100) * 0.5 + (traits.riskiness / 100) * 0.15;
+    const spymasterTemp = Math.min(1.0, (stateTemp * 0.5) + (traitTemp * 0.5));
+
     const result = await aiChatCompletion([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: 'Analyze the board carefully, then give your clue as JSON.' },
     ], {
-      temperature: analysis.weAreLosingBadly ? 0.85 : (analysis.weAreLeading ? 0.5 : 0.65),
-      max_tokens: 400,
+      temperature: spymasterTemp,
+      max_tokens: traits.reasoning > 60 ? 600 : 400,
       response_format: { type: 'json_object' },
     });
 
@@ -912,15 +1026,27 @@ async function aiGuessCard(ai, game) {
   const guessNumber = correctGuesses + 1; // Which guess number this is
 
   // Build strategic context for the operative
+  const traits = ai.traits || {};
   let guessStrategy = '';
   if (correctGuesses >= currentClue.number) {
-    // We've already guessed the intended words - now deciding to go for a bonus or end
     guessStrategy = `You have already correctly guessed ${correctGuesses} out of the ${currentClue.number} intended words. You may attempt ONE bonus guess if you're very confident, or you can recommend ending the turn. Risk assessment: ${analysis.riskTolerance} risk tolerance. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
   } else {
     guessStrategy = `This is guess #${guessNumber} of ${currentClue.number} intended words. ${correctGuesses > 0 ? `Already got ${correctGuesses} correct.` : ''} Risk level: ${analysis.riskTolerance}.`;
   }
 
-  const systemPrompt = `You are a skilled Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster gave the clue "${currentClue.word}" for ${currentClue.number}.
+  // Trait-based operative modifications
+  const personalityPrompt = buildAIPersonalityPrompt(traits);
+  const strategicInstr = buildStrategicInstruction(traits);
+  const reasoningInstr = buildReasoningInstruction(traits);
+
+  if (traits.riskiness > 70) {
+    guessStrategy += ' You are naturally bold - willing to take medium and even low-confidence guesses. Go for it.';
+  } else if (traits.riskiness < 30) {
+    guessStrategy += ' You are naturally very cautious - only guess when you are quite sure. Prefer ending turn over risky guesses.';
+  }
+
+  let systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster gave the clue "${currentClue.word}" for ${currentClue.number}.
+${personalityPrompt}
 
 BOARD (unrevealed words, choose ONLY from this list):
 ${unrevealedLines}
@@ -941,6 +1067,8 @@ STRATEGY:
 ${analysis.riskTolerance === 'low' ? 'Play SAFE. Only guess words you are very confident about. If uncertain, recommend ending turn.' : ''}
 ${analysis.riskTolerance === 'high' ? 'You need to catch up. Be willing to take medium-confidence guesses.' : ''}
 ${analysis.endgame ? 'ENDGAME: Every guess matters. Be precise.' : ''}
+${strategicInstr}
+${reasoningInstr}
 
 Respond with valid JSON:
 {"index": <0-24>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "should_end_turn_after": true/false, "reasoning": "your strategic thinking"}`;
@@ -982,8 +1110,8 @@ Respond with valid JSON:
         { role: 'system', content: systemPrompt },
         { role: 'user', content: feedback },
       ], {
-        temperature: 0.35,
-        max_tokens: 300,
+        temperature: 0.25 + (traits.farFetched / 100) * 0.35,
+        max_tokens: traits.reasoning > 60 ? 500 : 300,
         response_format: { type: 'json_object' },
       });
 
@@ -1022,7 +1150,9 @@ Respond with valid JSON:
     }
 
     // If low confidence and conservative game state, consider not guessing
-    if (card && confidence === 'low' && analysis.riskTolerance === 'low' && correctGuesses >= currentClue.number) {
+    // Trait modifiers: high confidence/riskiness AI won't bail on low confidence
+    const traitBailResist = (traits.confidence > 70 || traits.riskiness > 70);
+    if (card && confidence === 'low' && !traitBailResist && analysis.riskTolerance === 'low' && correctGuesses >= currentClue.number) {
       // AI decides to end turn instead of making a risky guess
       aiThinkingState[ai.id] = false;
       const chatMsg = await generateAIChatMessage(ai, game, 'discuss');
@@ -1253,7 +1383,16 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     contextPrompt += `${boardGuard}`;
   }
 
-  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team.
+  // Build personality from traits for chat style
+  const chatTraits = ai.traits || {};
+  let chatPersonality = '';
+  if (chatTraits.confidence > 70) chatPersonality += ' You are confident and assertive in chat.';
+  else if (chatTraits.confidence < 30) chatPersonality += ' You are hesitant, often saying "idk" or "maybe".';
+  if (chatTraits.riskiness > 70) chatPersonality += ' You encourage bold plays.';
+  else if (chatTraits.riskiness < 30) chatPersonality += ' You urge caution.';
+  if (chatTraits.farFetched > 70) chatPersonality += ' You make creative unusual references.';
+
+  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team.${chatPersonality}
 Write like you're texting: short, informal, mostly lowercase, minimal punctuation. No "assistant" tone.
 Don't mention being an AI.
 If you reference a board word/guess, ONLY use words that are actually on the board list provided.
@@ -1283,7 +1422,11 @@ async function generateAIReaction(ai, revealedCard, clue) {
   else if (isNeutral) situationDesc = `"${revealedCard.word}" was neutral. Turn is over.`;
   else situationDesc = `"${revealedCard.word}" was the OTHER team's card. Bad guess, turn is over.`;
 
-  const systemPrompt = `You are ${ai.name}, a casual Codenames player. React VERY briefly to what just happened. 1 short sentence or even just a word/phrase. Be natural and human-like. Don't be overdramatic. Examples of reactions: "nice", "ugh", "wait what", "called it", "hmm okay", "noo", "let's go"`;
+  const reactionTraits = ai.traits || {};
+  const personalityHint = reactionTraits.confidence > 70 ? ' You react boldly and decisively.' :
+                           reactionTraits.confidence < 30 ? ' You react with uncertainty, hedging.' : '';
+
+  const systemPrompt = `You are ${ai.name}, a casual Codenames player.${personalityHint} React VERY briefly to what just happened. 1 short sentence or even just a word/phrase. Be natural and human-like. Don't be overdramatic. Examples of reactions: "nice", "ugh", "wait what", "called it", "hmm okay", "noo", "let's go"`;
 
   try {
     const result = await aiChatCompletion([
@@ -1519,8 +1662,9 @@ function startAIGameLoop() {
             // Got all intended words and we're playing safe
             shouldEnd = true;
           } else if (correctGuesses >= clueNum && analysis.riskTolerance === 'medium') {
-            // Got intended words - maybe try one bonus with 40% chance
-            shouldEnd = Math.random() > 0.4;
+            // Got intended words - bonus chance influenced by AI riskiness trait
+            const bonusChance = 0.2 + ((ai.traits?.riskiness || 50) / 100) * 0.5;
+            shouldEnd = Math.random() > bonusChance;
           }
           // If high risk tolerance, keep going even past clue number
 

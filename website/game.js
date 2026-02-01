@@ -139,11 +139,13 @@ function readQuickSettingsFromUI() {
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
   const deckId = String(document.getElementById('qp-deck')?.value || 'standard');
+  const vibe = String(document.getElementById('qp-vibe')?.value || '').trim();
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
     deckId: normalizeDeckId(deckId),
+    vibe: vibe || '',
   };
 }
 
@@ -155,6 +157,7 @@ function getQuickSettings(game) {
       clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
       deckId: normalizeDeckId(base.deckId || 'standard'),
+      vibe: String(base.vibe || ''),
     };
   }
   return {
@@ -162,6 +165,7 @@ function getQuickSettings(game) {
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
     deckId: 'standard',
+    vibe: '',
   };
 }
 
@@ -176,9 +180,10 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, deckId: 'standard' };
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, deckId: 'standard', vibe: '' };
   const d = getDeckMeta(s.deckId || 'standard');
-  return `Deck: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}`;
+  const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
+  return `Deck: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}${vibeStr}`;
 }
 
 
@@ -228,6 +233,62 @@ function getRandomWords(count, deckId) {
   const source = Array.isArray(bank) && bank.length >= count ? bank : wordsBank;
   const shuffled = [...source].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
+}
+
+/* =========================
+   AI Word Generation
+========================= */
+async function generateAIWords(vibe) {
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') throw new Error('AI not available');
+
+  const vibeInstruction = vibe
+    ? `Generate words themed around: "${vibe}". The words should all relate to or evoke the theme of ${vibe}, but still be varied enough for interesting word-association gameplay.`
+    : `Generate a diverse mix of words suitable for a Codenames board game. Include a variety of nouns covering different categories (animals, places, objects, professions, food, nature, science, history, etc.). Make them interesting for word-association gameplay.`;
+
+  const systemPrompt = `You are a Codenames board generator. Generate exactly 25 unique single words for a Codenames game board.
+
+RULES:
+- Each word must be a SINGLE word (no spaces, no hyphens, no compound words)
+- All 25 words must be UNIQUE (no duplicates)
+- Words should be common enough that players know them
+- Words should be interesting and varied enough to create word associations between them
+- Words must be in ENGLISH and UPPERCASE
+- Each word should be 3-12 characters long
+
+${vibeInstruction}
+
+Respond with valid JSON: {"words": ["WORD1", "WORD2", ..., "WORD25"]}`;
+
+  const result = await chatFn([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'Generate the 25 words now as JSON.' },
+  ], {
+    temperature: 0.95,
+    max_tokens: 400,
+    response_format: { type: 'json_object' },
+  });
+
+  let parsed;
+  try {
+    parsed = JSON.parse(result);
+  } catch {
+    const match = result.match(/\{[\s\S]*?\}/);
+    if (match) parsed = JSON.parse(match[0]);
+    else throw new Error('Could not parse AI words JSON');
+  }
+
+  const raw = parsed.words;
+  if (!Array.isArray(raw) || raw.length < 25) {
+    throw new Error(`AI returned ${Array.isArray(raw) ? raw.length : 0} words, need 25`);
+  }
+
+  const unique = [...new Set(raw.map(w => String(w).trim().toUpperCase()).filter(w => w.length >= 2))];
+  if (unique.length < 25) {
+    throw new Error('AI returned too many duplicates');
+  }
+
+  return unique.slice(0, 25);
 }
 
 /* =========================
@@ -763,6 +824,9 @@ function openQuickSettingsModal() {
   if (guessTimerEl) guessTimerEl.value = String(s.guessTimerSeconds ?? 0);
   setQuickDeckSelectionUI(s.deckId || 'standard');
 
+  const vibeEl = document.getElementById('qp-vibe');
+  if (vibeEl) vibeEl.value = s.vibe || '';
+
   updateQuickRulesUI(g);
 }
 
@@ -947,6 +1011,10 @@ async function checkAndEndInactiveGame(game) {
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
 
   try {
+    // Generate game data outside transaction (may involve async LLM call)
+    const uiSettings = readQuickSettingsFromUI();
+    const newGameData = await buildQuickPlayGameData(uiSettings);
+
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) return;
@@ -962,9 +1030,6 @@ async function checkAndEndInactiveGame(game) {
 
       if (Date.now() - gLastMs < GAME_INACTIVITY_MS) return;
 
-      // Reset the game (end due to inactivity)
-      const uiSettings = readQuickSettingsFromUI();
-      const newGameData = buildQuickPlayGameData(uiSettings);
       tx.set(ref, {
         ...newGameData,
         log: ['Previous game ended due to inactivity (30+ minutes).']
@@ -1078,6 +1143,10 @@ async function checkAndEndEmptyQuickPlayGame(game) {
 
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   try {
+    // Generate game data outside transaction (may involve async LLM call)
+    const uiSettings = readQuickSettingsFromUI();
+    const newGameData = await buildQuickPlayGameData(uiSettings);
+
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) return;
@@ -1087,8 +1156,6 @@ async function checkAndEndEmptyQuickPlayGame(game) {
       if (total !== 0) return;
       if (!g.currentPhase || g.currentPhase === 'waiting') return;
 
-      const uiSettings = readQuickSettingsFromUI();
-      const newGameData = buildQuickPlayGameData(uiSettings);
       tx.set(ref, {
         ...newGameData,
         log: ['Previous game ended because all players left.']
@@ -1099,9 +1166,22 @@ async function checkAndEndEmptyQuickPlayGame(game) {
   }
 }
 
-function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
+async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
-  const words = getRandomWords(BOARD_SIZE, settings.deckId);
+
+  let words;
+  const vibe = String(settings.vibe || '').trim();
+  if (vibe && typeof window.aiChatCompletion === 'function') {
+    try {
+      words = await generateAIWords(vibe);
+    } catch (err) {
+      console.warn('AI word generation failed, falling back to deck:', err);
+      words = getRandomWords(BOARD_SIZE, settings.deckId);
+    }
+  } else {
+    words = getRandomWords(BOARD_SIZE, settings.deckId);
+  }
+
   const keyCard = generateKeyCard(firstTeam, settings.blackCards);
 
   const cards = words.map((word, i) => ({
@@ -1135,6 +1215,7 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
+      vibe: settings.vibe || '',
     },
     log: [],
     winner: null,
@@ -1149,14 +1230,14 @@ async function ensureQuickPlayGameExists() {
   const snap = await ref.get();
 
   if (!snap.exists) {
-    await ref.set(buildQuickPlayGameData(uiSettings));
+    await ref.set(await buildQuickPlayGameData(uiSettings));
     return;
   }
 
   const g = snap.data();
   const shouldReset = !!g.winner || g.currentPhase === 'ended' || !Array.isArray(g.cards) || g.cards.length !== BOARD_SIZE;
   if (shouldReset) {
-    await ref.set(buildQuickPlayGameData(uiSettings));
+    await ref.set(await buildQuickPlayGameData(uiSettings));
     return;
   }
 
@@ -1168,6 +1249,7 @@ async function ensureQuickPlayGameExists() {
       clueTimerSeconds: 0,
       guessTimerSeconds: 0,
       deckId: 'standard',
+      vibe: '',
     };
   }
   // Remove legacy negotiation fields if present.
@@ -3051,6 +3133,10 @@ async function handleClueSubmit(e) {
     return;
   }
 
+  // Prevent double-submission (rapid double-click / double Enter)
+  if (_processingClue) return;
+  _processingClue = true;
+
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
 
   try {
@@ -3079,6 +3165,8 @@ async function handleClueSubmit(e) {
     if (window.playSound) window.playSound('clueGiven');
   } catch (e) {
     console.error('Failed to give clue:', e);
+  } finally {
+    _processingClue = false;
   }
 }
 
@@ -3098,6 +3186,10 @@ async function handleCardClick(cardIndex) {
 
   const card = currentGame.cards[cardIndex];
   if (!card || card.revealed) return;
+
+  // Prevent concurrent guess processing (double-click / multi-player race)
+  if (_processingGuess) return;
+  _processingGuess = true;
 
   // Capture current clue for history logging
   const clueWordAtGuess = currentGame.currentClue?.word || null;
@@ -3190,15 +3282,20 @@ async function handleCardClick(cardIndex) {
     updates.guessesRemaining = 0;
   }
 
+  // Capture team before Firestore update (snapshot listener may change currentGame.currentTeam)
+  const teamAtGuess = currentGame.currentTeam;
+
   try {
     await db.collection('games').doc(currentGame.id).update(updates);
 
     // Append to clue history (guess order + outcome)
     if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
-      await addGuessToClueHistory(currentGame.id, currentGame.currentTeam, clueWordAtGuess, clueNumberAtGuess, guessResult);
+      await addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult);
     }
   } catch (e) {
     console.error('Failed to reveal card:', e);
+  } finally {
+    _processingGuess = false;
   }
 }
 
@@ -3471,6 +3568,8 @@ setTimeout(updateGameTabBadge, 1000);
 let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
 let pendingCardSelection = null; // cardIndex pending confirmation
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
+let _processingGuess = false; // Guard against concurrent handleCardClick calls
+let _processingClue = false; // Guard against concurrent giveClue calls
 let operativeChatUnsub = null;
 let gameTimerInterval = null;
 let gameTimerEnd = null;
@@ -4010,9 +4109,19 @@ function renderTopbarTeamNames() {
       const isMe = !!(myId && pid && pid === myId);
       const name = escapeHtml(displayPlayerName(p));
       const badge = role === 'spymaster' ? 'Spymaster' : 'Operative';
-      const classes = ['team-popover-player', role, isMe ? 'is-me' : ''].filter(Boolean).join(' ');
+      const isAI = !!p?.isAI;
+      const classes = ['team-popover-player', role, isMe ? 'is-me' : '', isAI ? 'is-ai' : ''].filter(Boolean).join(' ');
+
+      // Make names clickable: AI shows traits popup, humans show profile
+      let clickAttr = '';
+      if (isAI && pid) {
+        clickAttr = `onclick="event.stopPropagation(); window.openAITraitsPopup('${pid}')" style="cursor:pointer;"`;
+      } else if (pid && !isAI) {
+        clickAttr = `onclick="event.stopPropagation(); if(typeof openProfileDetailsModal==='function') openProfileDetailsModal('${pid}','player')" style="cursor:pointer;"`;
+      }
+
       return `
-        <div class="${classes}">
+        <div class="${classes}" ${clickAttr}>
           <div class="team-popover-name">${name}</div>
           <div class="team-popover-badge">${badge}</div>
         </div>
@@ -4056,6 +4165,94 @@ function renderTopbarTeamNames() {
   if (redPop) redPop.innerHTML = buildTeamPopover('red');
   if (bluePop) bluePop.innerHTML = buildTeamPopover('blue');
 }
+
+/* =========================
+   AI Traits Popup
+========================= */
+function openAITraitsPopup(aiOdId) {
+  const allPlayers = [
+    ...(currentGame?.redPlayers || []),
+    ...(currentGame?.bluePlayers || []),
+  ];
+  const player = allPlayers.find(p => String(p?.odId || '') === String(aiOdId) && p?.isAI);
+  if (!player) return;
+
+  const traits = player.aiTraits || {};
+  const traitDefs = [
+    { key: 'confidence', label: 'Confidence', color: '#3b82f6', icon: '🎯' },
+    { key: 'riskiness', label: 'Riskiness', color: '#ef4444', icon: '🔥' },
+    { key: 'reasoning', label: 'Reasoning', color: '#a855f7', icon: '🧠' },
+    { key: 'strategic', label: 'Strategic', color: '#22c55e', icon: '📊' },
+    { key: 'farFetched', label: 'Far-Fetched', color: '#f59e0b', icon: '🌀' },
+  ];
+
+  const barsHtml = traitDefs.map(t => {
+    const val = Math.max(0, Math.min(100, Math.floor(Number(traits[t.key]) || 0)));
+    const lowLabel = t.key === 'confidence' ? 'Unsure' :
+                     t.key === 'riskiness' ? 'Cautious' :
+                     t.key === 'reasoning' ? 'Raw' :
+                     t.key === 'strategic' ? 'Vibes' :
+                     'Literal';
+    const highLabel = t.key === 'confidence' ? 'Certain' :
+                      t.key === 'riskiness' ? 'Reckless' :
+                      t.key === 'reasoning' ? 'Deep' :
+                      t.key === 'strategic' ? 'Bayesian' :
+                      'Abstract';
+    return `
+      <div class="ai-trait-row">
+        <div class="ai-trait-label-row">
+          <span class="ai-trait-label">${t.icon} ${t.label}</span>
+          <span class="ai-trait-value">${val}</span>
+        </div>
+        <div class="ai-trait-bar-bg">
+          <div class="ai-trait-bar-fill" style="width: ${val}%; background: ${t.color};"></div>
+        </div>
+        <div class="ai-trait-range-labels">
+          <span>${lowLabel}</span>
+          <span>${highLabel}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const roleName = player.role === 'spymaster' ? 'Spymaster' : 'Operative';
+  const teamColor = (currentGame?.redPlayers || []).some(p => String(p?.odId || '') === String(aiOdId)) ? 'red' : 'blue';
+  const teamLabel = teamColor === 'red' ? 'Red Team' : 'Blue Team';
+
+  // Use existing profile-details-modal
+  const titleEl = document.getElementById('profile-details-title');
+  const bodyEl = document.getElementById('profile-details-body');
+  if (!titleEl || !bodyEl) return;
+
+  titleEl.textContent = `AI ${escapeHtml(player.name)}`;
+  bodyEl.innerHTML = `
+    <div class="ai-traits-popup">
+      <div class="ai-traits-header">
+        <div class="ai-traits-avatar">AI</div>
+        <div class="ai-traits-info">
+          <div class="ai-traits-name">${escapeHtml(player.name)}</div>
+          <div class="ai-traits-subtitle">
+            <span class="ai-traits-role">${roleName}</span>
+            <span class="ai-traits-team ${teamColor}">${teamLabel}</span>
+          </div>
+        </div>
+      </div>
+      <div class="ai-traits-section-title">Personality Profile</div>
+      <div class="ai-traits-bars">
+        ${barsHtml}
+      </div>
+    </div>
+  `;
+
+  // Open the modal
+  const modal = document.getElementById('profile-details-modal');
+  if (modal) {
+    modal.style.display = 'block';
+    void modal.offsetWidth;
+    modal.classList.add('modal-open');
+  }
+}
+window.openAITraitsPopup = openAITraitsPopup;
 
 
 /* =========================
@@ -4297,6 +4494,11 @@ async function addGuessToClueHistory(gameId, team, clueWord, clueNumber, guess) 
 
       const entry = { ...history[idx] };
       const results = Array.isArray(entry.results) ? [...entry.results] : [];
+
+      // Dedup: skip if this word was already recorded as a guess for this clue
+      const guessWord = String(guess.word || '').toUpperCase();
+      if (guessWord && results.some(r => String(r.word || '').toUpperCase() === guessWord)) return;
+
       results.push(guess);
       entry.results = results;
       history[idx] = entry;
