@@ -808,7 +808,8 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
       return;
     }
 
-    // Submit the clue to Firestore
+    // Submit the clue to Firestore using a transaction to prevent stale writes.
+    // Another loop tick may have changed the phase/team while the AI was thinking.
     const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
     const clueEntry = {
       team: game.currentTeam,
@@ -818,16 +819,27 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
       timestamp: new Date().toISOString(),
     };
 
-    await db.collection('games').doc(game.id).update({
-      currentClue: { word: clueWord, number: clueNumber },
-      guessesRemaining: 999,
-      currentPhase: 'operatives',
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
-      clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    const ref = db.collection('games').doc(game.id);
+    let clueAccepted = false;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const current = snap.data();
+      // Abort if the game state moved on while the AI was thinking
+      if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
+
+      tx.update(ref, {
+        currentClue: { word: clueWord, number: clueNumber },
+        guessesRemaining: 999,
+        currentPhase: 'operatives',
+        log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
+        clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      clueAccepted = true;
     });
 
-    if (window.playSound) window.playSound('clueGiven');
+    if (clueAccepted && window.playSound) window.playSound('clueGiven');
 
   } catch (err) {
     console.error(`AI ${ai.name} clue error:`, err);
@@ -1174,7 +1186,7 @@ Respond with valid JSON:
     await humanDelay(500, 1000);
 
     // Submit the guess by simulating card click on Firestore
-    await aiRevealCard(ai, game, card.index);
+    const revealResult = await aiRevealCard(ai, game, card.index);
 
     // React after guess
     if (ai.mode === 'autonomous') {
@@ -1189,6 +1201,10 @@ Respond with valid JSON:
       }
     }
 
+    // If the turn already ended inside aiRevealCard (wrong/neutral/assassin),
+    // don't signal 'end_turn' to the caller — that would cause a double-switch.
+    if (revealResult?.turnEnded) return 'turn_already_ended';
+
     // Return whether AI wants to end turn after this
     return shouldEndAfter ? 'end_turn' : 'continue';
 
@@ -1199,86 +1215,93 @@ Respond with valid JSON:
   }
 }
 
+// Returns { turnEnded: bool } so the caller knows whether the turn already switched.
 async function aiRevealCard(ai, game, cardIndex) {
   const card = game.cards[cardIndex];
-  if (!card || card.revealed) return;
+  if (!card || card.revealed) return { turnEnded: false };
 
-  const updatedCards = [...game.cards];
-  updatedCards[cardIndex] = { ...card, revealed: true };
-
-  const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
-  const updates = {
-    cards: updatedCards,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-  };
-
-  let logEntry = `AI ${ai.name} (${teamName}) guessed "${card.word}" - `;
-  let endTurn = false;
-  let winner = null;
-
-  if (card.type === 'assassin') {
-    winner = game.currentTeam === 'red' ? 'blue' : 'red';
-    logEntry += 'ASSASSIN! Game over.';
-  } else if (card.type === game.currentTeam) {
-    logEntry += 'Correct!';
-    if (game.currentTeam === 'red') {
-      updates.redCardsLeft = game.redCardsLeft - 1;
-      if (updates.redCardsLeft === 0) winner = 'red';
-    } else {
-      updates.blueCardsLeft = game.blueCardsLeft - 1;
-      if (updates.blueCardsLeft === 0) winner = 'blue';
-    }
-    // Unlimited guesses - correct guesses never end the turn
-  } else if (card.type === 'neutral') {
-    logEntry += 'Neutral. Turn ends.';
-    endTurn = true;
-  } else {
-    logEntry += `Wrong! (${card.type === 'red' ? (game.redTeamName || 'Red') : (game.blueTeamName || 'Blue')}'s card)`;
-    if (card.type === 'red') {
-      updates.redCardsLeft = game.redCardsLeft - 1;
-      if (updates.redCardsLeft === 0) winner = 'red';
-    } else {
-      updates.blueCardsLeft = game.blueCardsLeft - 1;
-      if (updates.blueCardsLeft === 0) winner = 'blue';
-    }
-    endTurn = true;
-  }
-
-  // We need to write both the guess log and (optionally) the winner log.
-  // Firestore arrayUnion can't be stacked on the same field in one update,
-  // so we'll do the guess log first, then a second update for the win.
-  let winnerLogEntry = null;
-
-  if (winner) {
-    updates.winner = winner;
-    updates.currentPhase = 'ended';
-    const winnerName = winner === 'red' ? (game.redTeamName || 'Red') : (game.blueTeamName || 'Blue');
-    winnerLogEntry = `${winnerName} wins!`;
-  } else if (endTurn) {
-    updates.currentTeam = game.currentTeam === 'red' ? 'blue' : 'red';
-    updates.currentPhase = 'spymaster';
-    updates.currentClue = null;
-    updates.guessesRemaining = 0;
-  }
+  const ref = db.collection('games').doc(game.id);
+  let turnEnded = false;
+  let resultCard = card; // keep reference for post-tx work
 
   try {
-    // Write the guess log entry
-    updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
-    await db.collection('games').doc(game.id).update(updates);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const current = snap.data();
 
-    // Write the winner log entry separately so it doesn't overwrite the guess log
-    if (winnerLogEntry) {
-      await db.collection('games').doc(game.id).update({
-        log: firebase.firestore.FieldValue.arrayUnion(winnerLogEntry),
-      });
-    }
+      // Abort if game state moved on (stale callback)
+      if (current.currentPhase !== 'operatives' || current.currentTeam !== game.currentTeam) return;
 
-    // Update clue history
+      const liveCards = current.cards || [];
+      if (!liveCards[cardIndex] || liveCards[cardIndex].revealed) return;
+
+      const liveCard = liveCards[cardIndex];
+      const updatedCards = [...liveCards];
+      updatedCards[cardIndex] = { ...liveCard, revealed: true };
+      resultCard = liveCard;
+
+      const teamName = current.currentTeam === 'red' ? (current.redTeamName || 'Red Team') : (current.blueTeamName || 'Blue Team');
+      const updates = {
+        cards: updatedCards,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+
+      let logEntry = `AI ${ai.name} (${teamName}) guessed "${liveCard.word}" - `;
+      let endTurn = false;
+      let winner = null;
+
+      if (liveCard.type === 'assassin') {
+        winner = current.currentTeam === 'red' ? 'blue' : 'red';
+        logEntry += 'ASSASSIN! Game over.';
+      } else if (liveCard.type === current.currentTeam) {
+        logEntry += 'Correct!';
+        if (current.currentTeam === 'red') {
+          updates.redCardsLeft = current.redCardsLeft - 1;
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = current.blueCardsLeft - 1;
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+      } else if (liveCard.type === 'neutral') {
+        logEntry += 'Neutral. Turn ends.';
+        endTurn = true;
+      } else {
+        logEntry += `Wrong! (${liveCard.type === 'red' ? (current.redTeamName || 'Red') : (current.blueTeamName || 'Blue')}'s card)`;
+        if (liveCard.type === 'red') {
+          updates.redCardsLeft = current.redCardsLeft - 1;
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = current.blueCardsLeft - 1;
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+        endTurn = true;
+      }
+
+      if (winner) {
+        updates.winner = winner;
+        updates.currentPhase = 'ended';
+        const winnerName = winner === 'red' ? (current.redTeamName || 'Red') : (current.blueTeamName || 'Blue');
+        logEntry += ` ${winnerName} wins!`;
+        endTurn = true; // treat game-over as turn ended for the caller
+      } else if (endTurn) {
+        updates.currentTeam = current.currentTeam === 'red' ? 'blue' : 'red';
+        updates.currentPhase = 'spymaster';
+        updates.currentClue = null;
+        updates.guessesRemaining = 0;
+      }
+
+      updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
+      tx.update(ref, updates);
+      turnEnded = endTurn;
+    });
+
+    // Update clue history outside the transaction (non-critical)
     if (game.currentClue?.word) {
       const guessResult = {
-        word: card.word,
-        result: card.type === 'assassin' ? 'assassin' : (card.type === game.currentTeam ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
-        type: card.type,
+        word: resultCard.word,
+        result: resultCard.type === 'assassin' ? 'assassin' : (resultCard.type === game.currentTeam ? 'correct' : (resultCard.type === 'neutral' ? 'neutral' : 'wrong')),
+        type: resultCard.type,
         by: ai.name,
         timestamp: new Date().toISOString(),
       };
@@ -1289,6 +1312,8 @@ async function aiRevealCard(ai, game, cardIndex) {
   } catch (e) {
     console.error(`AI ${ai.name} reveal card error:`, e);
   }
+
+  return { turnEnded };
 }
 
 // ─── AI End Turn Decision ───────────────────────────────────────────────────
@@ -1306,22 +1331,36 @@ async function aiConsiderEndTurn(ai, game, forceEnd = false) {
   }
 
   try {
-    await db.collection('games').doc(game.id).update({
-      currentTeam: game.currentTeam === 'red' ? 'blue' : 'red',
-      currentPhase: 'spymaster',
-      currentClue: null,
-      guessesRemaining: 0,
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    // Use a transaction to verify the game is still in the expected state.
+    // A stale callback from a previous guess may call this after the turn
+    // already switched, which would double-switch and send the turn back.
+    const ref = db.collection('games').doc(game.id);
+    let didEnd = false;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const current = snap.data();
+      // Only end the turn if it's still this team's operatives phase
+      if (current.currentPhase !== 'operatives' || current.currentTeam !== game.currentTeam) return;
+
+      tx.update(ref, {
+        currentTeam: current.currentTeam === 'red' ? 'blue' : 'red',
+        currentPhase: 'spymaster',
+        currentClue: null,
+        guessesRemaining: 0,
+        log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      didEnd = true;
     });
 
     // Clear AI marks when the turn ends (do NOT touch human tags)
-    if (game.id && aiCardMarks[game.id]) {
+    if (didEnd && game.id && aiCardMarks[game.id]) {
       aiCardMarks[game.id] = {};
       if (typeof renderCardTags === 'function') renderCardTags();
     }
 
-    return true;
+    return didEnd;
   } catch (e) {
     console.error(`AI ${ai.name} end turn error:`, e);
     return false;
