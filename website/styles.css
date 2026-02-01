@@ -4719,6 +4719,40 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
   color: var(--text-dim);
 }
 
+
+
+/* Normal game log (readable): keep the layout simple and let only key words be colored */
+.game-log-entries { gap: 0; }
+
+.log-entry {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 10px 8px 10px 12px !important;
+  line-height: 1.5 !important;
+  overflow: visible !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.log-entry + .log-entry { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+
+.log-entry::before { display: none !important; }
+
+.log-entry.team-red { border-left: 3px solid rgba(239, 68, 68, 0.85); padding-left: 10px !important; }
+.log-entry.team-blue { border-left: 3px solid rgba(59, 130, 246, 0.85); padding-left: 10px !important; }
+
+/* Remove full-row type tinting; keep semantic emphasis on the tokens/quotes only */
+.log-entry.type-clue,
+.log-entry.type-start,
+.log-entry.type-end,
+.log-entry.type-correct,
+.log-entry.type-wrong,
+.log-entry.type-neutral,
+.log-entry.type-assassin {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
 /* Game Actions */
 .game-actions {
   display: flex;
@@ -7422,6 +7456,31 @@ body.tournament.has-team-color .input:focus {
 .topbar-team-red { justify-content: flex-start; }
 .topbar-team-blue { justify-content: flex-end; }
 
+/* Turn strip highlighting: tint the active team half */
+.game-topbar.turn-red #topbar-red {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.36);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 44px rgba(0, 0, 0, 0.35);
+}
+.game-topbar.turn-red #topbar-blue {
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.game-topbar.turn-blue #topbar-blue {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.36);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18) inset, 0 16px 44px rgba(0, 0, 0, 0.35);
+}
+.game-topbar.turn-blue #topbar-red {
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.topbar-team.is-active .topbar-team-status {
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
 .topbar-team-status {
   font-size: 13px;
   font-weight: 900;
@@ -8092,6 +8151,15 @@ body.tournament.has-team-color .input:focus {
 .card-tag svg {
   width: 10px;
   height: 10px;
+}
+
+
+/* AI tags are a little subtler (human tags always take precedence) */
+.card-tag.ai {
+  opacity: 0.6;
+  transform: scale(0.92);
+  filter: saturate(0.85);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
 }
 
 /* Card Vote Indicators */

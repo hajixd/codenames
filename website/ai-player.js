@@ -697,19 +697,55 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
 // AI card marking state: { gameId: { cardIndex: 'yes'|'maybe'|'no' } }
 let aiCardMarks = {};
 
+// Expose a getter for per-game AI marks so game.js can render them.
+window.getAICardMarksForGame = function(gameId) {
+  try {
+    return (aiCardMarks && gameId && aiCardMarks[String(gameId)]) ? aiCardMarks[String(gameId)] : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+
+// Listen for human card-tag updates so the AI can react progressively
+if (!window.__aiHumanTagListener) {
+  window.__aiHumanTagListener = true;
+  window.addEventListener('codenames:humanTagsChanged', (e) => {
+    const d = (e && e.detail) ? e.detail : null;
+    const gameId = d && d.gameId ? String(d.gameId) : null;
+    if (!gameId) return;
+    const idx = Number(d.cardIndex);
+    if (!Number.isInteger(idx) || idx < 0) return;
+    const tag = String(d.tag || "").toLowerCase();
+
+    if (!aiCardMarks[gameId]) aiCardMarks[gameId] = {};
+    if (!tag || tag === "clear") {
+      delete aiCardMarks[gameId][idx];
+    } else if (["yes", "maybe", "no"].includes(tag)) {
+      // React: align AI opinion with the human tag (without overwriting the human UI tag)
+      aiCardMarks[gameId][idx] = tag;
+    }
+
+    if (typeof renderCardTags === "function") renderCardTags();
+  });
+}
+
 function aiMarkCard(game, cardIndex, mark) {
   if (!game?.id) return;
   if (!aiCardMarks[game.id]) aiCardMarks[game.id] = {};
+
   if (mark === 'clear' || aiCardMarks[game.id][cardIndex] === mark) {
     delete aiCardMarks[game.id][cardIndex];
   } else {
     aiCardMarks[game.id][cardIndex] = mark;
   }
-  // Sync to local card tags so they render visually
-  if (typeof cardTags !== 'undefined' && typeof renderCardTags === 'function') {
-    Object.assign(cardTags, aiCardMarks[game.id] || {});
+
+  // Expose marks so the UI can render them without overwriting human tags.
+  window.__aiCardMarksByGame = aiCardMarks;
+
+  // Re-render tags (human tags win; AI tags show only when a human hasn't tagged that card).
+  if (typeof renderCardTags === 'function') {
     renderCardTags();
-    if (typeof saveTagsToLocal === 'function') saveTagsToLocal();
   }
 }
 
@@ -761,22 +797,31 @@ Be strategic - mark words you'd warn teammates about as "no".`;
 
     const marks = parsed.marks || parsed.analysis || [];
     if (!Array.isArray(marks)) return;
-
-    // Clear old marks for this game first
+    // Clear old marks for this game first (AI-only marks; human tags remain separate)
     aiCardMarks[game.id] = {};
+    if (typeof renderCardTags === 'function') renderCardTags();
 
-    for (const m of marks) {
-      const idx = Number(m.index);
-      const mark = String(m.mark || '').toLowerCase();
-      if (Number.isInteger(idx) && idx >= 0 && idx < game.cards.length && !game.cards[idx].revealed) {
-        if (['yes', 'maybe', 'no'].includes(mark)) {
-          aiMarkCard(game, idx, mark);
-        }
-      }
+    // Humans don't instantly annotate the whole board—do it progressively.
+    await humanDelay(700, 1400);
+
+    const normalizedMarks = (marks || [])
+      .map(m => ({ idx: Number(m.index), mark: String(m.mark || '').toLowerCase() }))
+      .filter(m => Number.isInteger(m.idx) && m.idx >= 0 && m.idx < game.cards.length && !game.cards[m.idx].revealed)
+      .filter(m => ['yes', 'maybe', 'no'].includes(m.mark));
+
+    // Order: strong matches first, then traps/avoid, then maybes
+    const order = { yes: 0, no: 1, maybe: 2 };
+    normalizedMarks.sort((a, b) => (order[a.mark] - order[b.mark]) + (Math.random() - 0.5) * 0.15);
+
+    for (const m of normalizedMarks) {
+      // Skip if clue changed mid-marking (avoid stale marks)
+      if (!game.currentClue || game.currentClue.word !== currentClue.word) break;
+      await humanDelay(420, 980);
+      aiMarkCard(game, m.idx, m.mark);
     }
 
-    // Small delay between marking cards for human-like feel
-    await humanDelay(200, 500);
+    // Brief pause after finishing marking
+    await humanDelay(350, 750);
 
   } catch (e) {
     console.warn(`AI ${ai.name} card marking failed:`, e);
@@ -1110,14 +1155,10 @@ async function aiConsiderEndTurn(ai, game, forceEnd = false) {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Clear AI marks when turn ends
+    // Clear AI marks when the turn ends (do NOT touch human tags)
     if (game.id && aiCardMarks[game.id]) {
       aiCardMarks[game.id] = {};
-      if (typeof cardTags !== 'undefined' && typeof renderCardTags === 'function') {
-        Object.keys(cardTags).forEach(k => delete cardTags[k]);
-        renderCardTags();
-        if (typeof saveTagsToLocal === 'function') saveTagsToLocal();
-      }
+      if (typeof renderCardTags === 'function') renderCardTags();
     }
 
     return true;

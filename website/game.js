@@ -2899,8 +2899,8 @@ function renderGameLog() {
       if (blueName) rawSeg = rawSeg.split(blueName).join(BLUE);
 
       // Common phrases
-      rawSeg = rawSeg.replace(/Red team/gi, RED);
-      rawSeg = rawSeg.replace(/Blue team/gi, BLUE);
+      rawSeg = rawSeg.replace(/\bRed team\b/gi, RED);
+      rawSeg = rawSeg.replace(/\bBlue team\b/gi, BLUE);
 
       // Escape after placeholders
       let s = escapeHtml(rawSeg);
@@ -2910,22 +2910,22 @@ function renderGameLog() {
       if (blueName) s = s.split(BLUE).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
 
       // Color only certain keywords (keep the rest readable)
-      s = s.replace(/Spymaster/g, '<span class="log-token role">Spymaster</span>');
-      s = s.replace(/Operatives?/g, (m) => `<span class="log-token role">${m}</span>`);
+      s = s.replace(/\bSpymaster\b/g, '<span class="log-token role">Spymaster</span>');
+      s = s.replace(/\bOperatives?\b/g, (m) => `<span class="log-token role">${m}</span>`);
 
-      s = s.replace(/guessed/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/ended their turn/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/updated rules/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/Game started!/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/Starting game/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/Game ended/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/Game over/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bguessed\b/gi, (m) => `<span class="log-token action">${m}</span>`);
+      s = s.replace(/\bended their turn\b/gi, (m) => `<span class="log-token action">${m}</span>`);
+      s = s.replace(/\bupdated rules\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bGame started!\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bStarting game\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bGame ended\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bGame over\b/gi, (m) => `<span class="log-token system">${m}</span>`);
 
-      s = s.replace(/Correct!/g, '<span class="log-token result-correct">Correct!</span>');
-      s = s.replace(/Wrong!/g, '<span class="log-token result-wrong">Wrong!</span>');
-      s = s.replace(/Neutral/g, '<span class="log-token result-neutral">Neutral</span>');
-      s = s.replace(/ASSASSIN/g, '<span class="log-token result-assassin">ASSASSIN</span>');
-      s = s.replace(/wins!/g, '<span class="log-token system">wins!</span>');
+      s = s.replace(/\bCorrect!\b/g, '<span class="log-token result-correct">Correct!</span>');
+      s = s.replace(/\bWrong!\b/g, '<span class="log-token result-wrong">Wrong!</span>');
+      s = s.replace(/\bNeutral\b/g, '<span class="log-token result-neutral">Neutral</span>');
+      s = s.replace(/\bASSASSIN\b/g, '<span class="log-token result-assassin">ASSASSIN</span>');
+      s = s.replace(/\bwins!\b/g, '<span class="log-token system">wins!</span>');
 
       return s;
     };
@@ -3539,6 +3539,21 @@ function tagCard(cardIndex, tag) {
   }
   renderCardTags();
   saveTagsToLocal();
+
+  // Notify AI (and any other listeners) that a human tag changed.
+  try {
+    const gameId = currentGame?.id || null;
+    const teamColor = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+    window.dispatchEvent(new CustomEvent('codenames:humanTagsChanged', {
+      detail: {
+        gameId,
+        teamColor,
+        cardIndex,
+        tag,
+        tags: { ...cardTags },
+      }
+    }));
+  } catch (_) {}
 }
 
 function clearAllTags() {
@@ -3552,26 +3567,37 @@ function clearAllTags() {
 
 function renderCardTags() {
   const cards = document.querySelectorAll('.game-card');
+  const gameId = currentGame?.id;
+  const aiMarks = (gameId && typeof window.getAICardMarksForGame === 'function')
+    ? (window.getAICardMarksForGame(gameId) || {})
+    : {};
+
   cards.forEach((card, index) => {
-    // Remove existing tag
-    const existingTag = card.querySelector('.card-tag');
-    if (existingTag) existingTag.remove();
+    // Remove existing tags (human or AI)
+    card.querySelectorAll('.card-tag').forEach(el => el.remove());
 
-    const tag = cardTags[index];
-    if (tag && !card.classList.contains('revealed')) {
-      const tagEl = document.createElement('div');
-      tagEl.className = `card-tag tag-${tag}`;
+    if (card.classList.contains('revealed')) return;
 
-      if (tag === 'yes') {
-        tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
-      } else if (tag === 'maybe') {
-        tagEl.innerHTML = '?';
-      } else if (tag === 'no') {
-        tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      }
+    const humanTag = cardTags[index];
+    const aiTag = aiMarks ? aiMarks[index] : null;
 
-      card.appendChild(tagEl);
+    const tag = humanTag || aiTag;
+    if (!tag) return;
+
+    const isAI = !humanTag && !!aiTag;
+
+    const tagEl = document.createElement('div');
+    tagEl.className = `card-tag ${isAI ? 'ai' : ''} tag-${tag}`;
+
+    if (tag === 'yes') {
+      tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (tag === 'maybe') {
+      tagEl.innerHTML = '?';
+    } else if (tag === 'no') {
+      tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     }
+
+    card.appendChild(tagEl);
   });
 }
 
@@ -3938,6 +3964,18 @@ function renderTopbarTeamNames() {
   const isEnded = !!currentGame.winner || currentGame.currentPhase === 'ended';
   const activeTeam = isEnded ? null : currentGame.currentTeam;
   const activeLabel = isEnded ? 'Game Over' : phaseToLabel(currentGame.currentPhase);
+
+  // Color the turn strip halves based on whose turn it is
+  const topbar = document.querySelector('.game-topbar');
+  const redTop = document.getElementById('topbar-red');
+  const blueTop = document.getElementById('topbar-blue');
+  if (topbar) {
+    topbar.classList.toggle('turn-red', activeTeam === 'red');
+    topbar.classList.toggle('turn-blue', activeTeam === 'blue');
+    topbar.classList.toggle('turn-none', !activeTeam);
+  }
+  if (redTop) redTop.classList.toggle('is-active', activeTeam === 'red');
+  if (blueTop) blueTop.classList.toggle('is-active', activeTeam === 'blue');
 
   if (redStatusEl) {
     if (activeTeam === 'red') redStatusEl.textContent = activeLabel;
