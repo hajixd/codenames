@@ -1651,8 +1651,13 @@ body.mode-joiner .only-joiner{ display:block; }
   flex-direction:row;
   align-items:center;
   justify-content:flex-end;
-  gap:8px;
+  /* Tighten spacing across the top strip (incl. Messages + Settings) */
+  gap:4px;
   min-width:0;
+}
+
+@media (max-width: 520px){
+  .header-user{ gap:3px; }
 }
 
 .header-user-stack{
@@ -5917,13 +5922,13 @@ button.player-tag.pill-action:disabled{
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Reduce the gap between Messages and Settings icons. */
-  margin-left: 6px;
+  /* Tighten the gap between Messages and Settings icons. */
+  margin-left: 1px;
   flex-shrink: 0;
 }
 
 @media (max-width: 520px){
-  .settings-gear-btn{ margin-left: 4px; }
+  .settings-gear-btn{ margin-left: 1px; }
 }
 
 .settings-gear-btn svg {
@@ -5960,9 +5965,9 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   transform: translate(-50%, -50%);
   z-index: 1000;
   width: 90%;
-  max-width: 340px;
-  /* Keep the modal a consistent size and let the body scroll. */
-  max-height: min(82vh, 680px);
+  /* Slightly smaller than before; content scrolls inside. */
+  max-width: 300px;
+  max-height: min(70vh, 560px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -5998,6 +6003,28 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   background: var(--surface2);
   border-radius: 12px;
   cursor: pointer;
+}
+
+/* Settings rows that are actually buttons (e.g., Admin actions) */
+.settings-row-action{
+  width: 100%;
+  border: 0;
+  outline: none;
+  text-align: left;
+}
+.settings-row-meta{
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+/* Disabled settings: visible but not clickable */
+.settings-row.is-disabled,
+.settings-account-actions .btn.is-disabled,
+.settings-danger-actions .btn.is-disabled{
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .settings-row-volume {
@@ -9296,7 +9323,8 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 4px;
+  /* Keep header icons tight (Messages + Settings) */
+  margin-right: 1px;
   background: transparent;
   border: 1px solid var(--border-soft);
   color: var(--text);
@@ -9309,7 +9337,7 @@ button:focus-visible,
 
 @media (max-width: 520px){
   /* Make the Messages icon a bit more compact on small screens */
-  .header-icon-btn{ width: 24px; height: 24px; border-radius: 8px; margin-right: 3px; }
+  .header-icon-btn{ width: 24px; height: 24px; border-radius: 8px; margin-right: 1px; }
   .header-icon-btn svg{ width: 12px; height: 12px; }
 }
 

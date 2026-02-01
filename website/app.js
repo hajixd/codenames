@@ -536,6 +536,68 @@ async function refreshInferredLogs() {
 
     const inferred = [];
 
+    // Team creation history (createdAt/createdAtMs)
+    for (const d of teamsSnap.docs) {
+      const t = d.data() || {};
+      const teamId = d.id;
+      const teamName = String(t.teamName || '').trim() || 'a team';
+      const ms = tsToMs(t?.createdAt) || Number(t?.createdAtMs) || 0;
+      if (!Number.isFinite(ms) || ms <= 0) continue;
+      inferred.push({
+        id: `infer_team_create_${teamId}_${ms}`,
+        inferred: true,
+        type: 'team_created',
+        message: `Team created: ${teamName}`,
+        actorId: null,
+        actorName: null,
+        inferredAtMs: ms,
+        meta: { teamId, teamName }
+      });
+    }
+
+    // Player/account creation history (players/<uid>.createdAt)
+    for (const d of playersSnap.docs) {
+      const p = d.data() || {};
+      const uid = d.id;
+      const nm = normalizeUsername(String(p.name || uid || 'user'));
+      const ms = tsToMs(p?.createdAt) || Number(p?.createdAtMs) || 0;
+      if (!Number.isFinite(ms) || ms <= 0) continue;
+      inferred.push({
+        id: `infer_player_create_${uid}_${ms}`,
+        inferred: true,
+        type: 'account_created',
+        message: `${nm || 'user'} account created`,
+        actorId: uid,
+        actorName: nm || null,
+        inferredAtMs: ms,
+        meta: { userId: uid, username: nm || null }
+      });
+    }
+
+    // Team join history (members[].joinedAt / joinedAtMs)
+    for (const d of teamsSnap.docs) {
+      const t = d.data() || {};
+      const teamId = d.id;
+      const teamName = String(t.teamName || '').trim() || 'a team';
+      const members = getMembers(t);
+      for (const m of members) {
+        const ms = tsToMs(m?.joinedAt) || Number(m?.joinedAtMs) || 0;
+        if (!Number.isFinite(ms) || ms <= 0) continue;
+        const uid = String(entryAccountId(m) || m?.userId || '').trim();
+        const nm = normalizeUsername(String(m?.name || uid || 'user'));
+        inferred.push({
+          id: `infer_join_${teamId}_${uid}_${ms}`,
+          inferred: true,
+          type: 'team_join',
+          message: `${nm || 'user'} joined ${teamName}`,
+          actorId: uid || null,
+          actorName: nm || null,
+          inferredAtMs: ms,
+          meta: { teamId, teamName }
+        });
+      }
+    }
+
     // Pending join requests (requestedAt exists).
     for (const d of teamsSnap.docs) {
       const t = d.data() || {};
@@ -589,8 +651,82 @@ async function refreshInferredLogs() {
       }
     }
 
+    // Chat history (best-effort): recent global chat + recent team chat.
+    try {
+      const globalSnap = await db.collection(GLOBAL_CHAT_COLLECTION)
+        .orderBy('createdAt', 'desc')
+        .limit(80)
+        .get();
+      for (const d of globalSnap.docs) {
+        const m = d.data() || {};
+        const ms = tsToMs(m?.createdAt);
+        if (!Number.isFinite(ms) || ms <= 0) continue;
+        const senderId = String(m?.senderId || '').trim();
+        const senderName = normalizeUsername(String(m?.senderName || senderId || 'user'));
+        const text = String(m?.text || '').trim();
+        if (!text) continue;
+        const snippet = text.length > 60 ? (text.slice(0, 57) + '…') : text;
+        inferred.push({
+          id: `infer_global_msg_${d.id}`,
+          inferred: true,
+          type: 'global_message',
+          message: `${senderName || 'user'}: ${snippet}`,
+          actorId: senderId || null,
+          actorName: senderName || null,
+          inferredAtMs: ms,
+          meta: { scope: 'global', docId: d.id }
+        });
+      }
+    } catch (_) {}
+
+    try {
+      // Limit team chat sampling so we don't hammer Firestore on large tournaments.
+      const teamDocs = teamsSnap.docs.slice();
+      teamDocs.sort((a, b) => {
+        const ad = a.data() || {};
+        const bd = b.data() || {};
+        const am = tsToMs(ad?.updatedAt) || tsToMs(ad?.createdAt) || Number(ad?.createdAtMs) || 0;
+        const bm = tsToMs(bd?.updatedAt) || tsToMs(bd?.createdAt) || Number(bd?.createdAtMs) || 0;
+        return (bm || 0) - (am || 0);
+      });
+      const sample = teamDocs.slice(0, 8);
+      for (const td of sample) {
+        const t = td.data() || {};
+        const teamId = td.id;
+        const teamName = String(t.teamName || '').trim() || 'a team';
+        let chatSnap = null;
+        try {
+          chatSnap = await db.collection('teams').doc(teamId).collection('chat')
+            .orderBy('createdAt', 'desc')
+            .limit(25)
+            .get();
+        } catch (_) { chatSnap = null; }
+        if (!chatSnap || chatSnap.empty) continue;
+        for (const d of chatSnap.docs) {
+          const m = d.data() || {};
+          const ms = tsToMs(m?.createdAt);
+          if (!Number.isFinite(ms) || ms <= 0) continue;
+          const senderId = String(m?.senderId || '').trim();
+          const senderName = normalizeUsername(String(m?.senderName || senderId || 'user'));
+          const text = String(m?.text || '').trim();
+          if (!text) continue;
+          const snippet = text.length > 60 ? (text.slice(0, 57) + '…') : text;
+          inferred.push({
+            id: `infer_team_msg_${teamId}_${d.id}`,
+            inferred: true,
+            type: 'team_message',
+            message: `[${teamName}] ${senderName || 'user'}: ${snippet}`,
+            actorId: senderId || null,
+            actorName: senderName || null,
+            inferredAtMs: ms,
+            meta: { scope: 'team', teamId, teamName, docId: d.id }
+          });
+        }
+      }
+    } catch (_) {}
+
     inferred.sort((a, b) => (b.inferredAtMs || 0) - (a.inferredAtMs || 0));
-    inferredLogsCache = inferred.slice(0, 250);
+    inferredLogsCache = inferred.slice(0, 500);
   } catch (e) {
     console.warn('Historical log inference failed (best-effort)', e);
   } finally {
@@ -5687,7 +5823,18 @@ function initSettings() {
 
   const refreshAdminUI = () => {
     const isAdmin = !!isAdminUser();
-    if (adminSection) adminSection.style.display = isAdmin ? 'block' : 'none';
+    // Admin section is visible to everyone, but actions are disabled unless admin.
+    try { if (adminSection) adminSection.style.display = 'block'; } catch (_) {}
+
+    const btns = [adminBackupBtn, adminRestoreBtn, adminLogsBtn].filter(Boolean);
+    for (const b of btns) {
+      try { b.disabled = !isAdmin; } catch (_) {}
+      try {
+        if (!isAdmin) b.classList.add('is-disabled');
+        else b.classList.remove('is-disabled');
+      } catch (_) {}
+    }
+
     if (isAdmin) {
       try { adminEnsureAutoBackupsRunning(); } catch (_) {}
     }
@@ -5703,16 +5850,7 @@ function initSettings() {
 
   refreshAdminUI();
 
-  adminLogsBtn?.addEventListener('click', async () => {
-    if (!isAdminUser()) return;
-    playSound('click');
-    try {
-      // Close settings before opening the logs (keeps UI uncluttered).
-      modal.classList.remove('modal-open');
-      setTimeout(() => { modal.style.display = 'none'; }, 180);
-    } catch (_) {}
-    try { openLogsPopup(); } catch (_) {}
-  });
+  // (Buttons are disabled for non-admins by refreshAdminUI; click guards remain as defense-in-depth.)
 
   adminBackupBtn?.addEventListener('click', async () => {
     if (!isAdminUser()) return;

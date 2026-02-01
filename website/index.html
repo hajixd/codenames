@@ -1088,15 +1088,24 @@
                 <div class="hint" id="settings-delete-account-hint" style="display:none;"></div>
               </div>
 
-              <!-- Admin Actions (only visible for admin users) -->
-              <div class="settings-admin" id="settings-admin" style="display:none;">
+              <!-- Admin Actions (visible to everyone; disabled unless admin) -->
+              <div class="settings-admin" id="settings-admin">
                 <div class="settings-section-title">Admin</div>
                 <div class="settings-admin-actions">
-                  <button class="btn" id="admin-backup-now-btn" type="button">Backup Teams/Players Now</button>
-                  <button class="btn" id="admin-logs-btn" type="button">Logs</button>
-                  <button class="btn danger" id="admin-restore-5min-btn" type="button">Restore Teams/Players (5 min ago)</button>
+                  <button class="settings-row settings-row-action" id="admin-backup-now-btn" type="button">
+                    <span class="settings-row-label">Backup Teams/Players Now</span>
+                    <span class="settings-row-meta">Admin</span>
+                  </button>
+                  <button class="settings-row settings-row-action" id="admin-logs-btn" type="button">
+                    <span class="settings-row-label">Logs</span>
+                    <span class="settings-row-meta">Admin</span>
+                  </button>
+                  <button class="settings-row settings-row-action" id="admin-restore-5min-btn" type="button">
+                    <span class="settings-row-label">Restore Teams/Players (5 min ago)</span>
+                    <span class="settings-row-meta">Admin</span>
+                  </button>
                 </div>
-                <div class="hint" id="admin-restore-hint" style="display:none;"></div>
+                <div class="hint" id="admin-restore-hint" aria-live="polite"></div>
               </div>
 
               <!-- In-Game Actions (shown whenever a user is in an active game) -->
