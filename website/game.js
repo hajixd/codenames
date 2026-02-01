@@ -2436,6 +2436,32 @@ function startGameListener(gameId, options = {}) {
         freshReveals.forEach(idx => {
           const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
           if (cardEl) {
+            // Make the expansion feel like it bursts OUTWARD from the board center.
+            try {
+              const boardEl = document.getElementById('game-board');
+              const boardRect = boardEl ? boardEl.getBoundingClientRect() : null;
+              const r = cardEl.getBoundingClientRect();
+              if (boardRect) {
+                const cx = boardRect.left + boardRect.width / 2;
+                const cy = boardRect.top + boardRect.height / 2;
+                const dx = (r.left + r.width / 2) - cx;
+                const dy = (r.top + r.height / 2) - cy;
+
+                const sx = Math.abs(dx) < 6 ? 0 : (dx > 0 ? 1 : -1);
+                const sy = Math.abs(dy) < 6 ? 0 : (dy > 0 ? 1 : -1);
+
+                // Tune these for a big outward "pop".
+                const tx = sx * 42;
+                const ty = sy * 34;
+
+                cardEl.style.setProperty('--guess-tx', `${tx}px`);
+                cardEl.style.setProperty('--guess-ty', `${ty}px`);
+              } else {
+                cardEl.style.setProperty('--guess-tx', `0px`);
+                cardEl.style.setProperty('--guess-ty', `0px`);
+              }
+            } catch (_) {}
+
             cardEl.classList.add('guess-animate');
             let cleaned = false;
             const cleanup = () => {
@@ -2445,7 +2471,7 @@ function startGameListener(gameId, options = {}) {
             };
             cardEl.addEventListener('animationend', cleanup, { once: true });
             // Fallback cleanup for longer animations
-            setTimeout(cleanup, 2500);
+            setTimeout(cleanup, 9000);
           }
         });
       });
@@ -2680,8 +2706,7 @@ function renderAdvancedFeatures() {
   if (tagLegend) {
     const isSpymaster = isCurrentUserSpymaster();
     const isSpectator = isSpectating();
-    const gameStarted = currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.currentPhase !== 'role-selection';
-    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner && gameStarted) ? 'flex' : 'none';
+    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner) ? 'flex' : 'none';
   }
 
   // Initialize operative chat
@@ -2824,22 +2849,103 @@ function renderGameLog() {
   const sidebarEl = document.getElementById('game-log-entries-sidebar');
   if ((!popoverEl && !sidebarEl) || !currentGame?.log) return;
 
+  const redName = String(currentGame.redTeamName || 'Red').trim();
+  const blueName = String(currentGame.blueTeamName || 'Blue').trim();
+
+  const detectTeam = (entry) => {
+    if (!entry) return null;
+
+    // Common patterns:
+    // - "Alice (TeamName) guessed ..."
+    // - "TeamName Spymaster: ..."
+    // - "TeamName ended their turn."
+    if (redName && entry.includes(`(${redName})`)) return 'red';
+    if (blueName && entry.includes(`(${blueName})`)) return 'blue';
+
+    if (redName && entry.startsWith(redName)) return 'red';
+    if (blueName && entry.startsWith(blueName)) return 'blue';
+
+    if (/Red team/i.test(entry)) return 'red';
+    if (/Blue team/i.test(entry)) return 'blue';
+
+    return null;
+  };
+
+  const detectType = (entry) => {
+    if (!entry) return 'neutral';
+    const s = String(entry);
+
+    if (/Spymaster:\s*/i.test(s)) return 'clue';
+    if (/ASSASSIN/i.test(s)) return 'assassin';
+    if (/\bCorrect!\b/i.test(s)) return 'correct';
+    if (/\bWrong!\b/i.test(s)) return 'wrong';
+    if (/\bNeutral\b/i.test(s)) return 'neutral';
+    if (/wins!/i.test(s) || /Game ended/i.test(s) || /ended the game/i.test(s) || /Game over/i.test(s)) return 'end';
+    if (/Game started/i.test(s) || /Starting game/i.test(s)) return 'start';
+
+    return 'neutral';
+  };
+  const renderWithQuotes = (raw) => {
+    const str = String(raw || '');
+    const parts = str.split(/"([^"]+)"/g); // even = normal, odd = inside quotes
+
+    const wrapOutside = (segment) => {
+      let rawSeg = String(segment || '');
+
+      // Team name placeholders (avoid double-escaping / partial matches)
+      const RED = '__LOG_RED_TEAM__';
+      const BLUE = '__LOG_BLUE_TEAM__';
+      if (redName) rawSeg = rawSeg.split(redName).join(RED);
+      if (blueName) rawSeg = rawSeg.split(blueName).join(BLUE);
+
+      // Common phrases
+      rawSeg = rawSeg.replace(/\bRed team\b/gi, RED);
+      rawSeg = rawSeg.replace(/\bBlue team\b/gi, BLUE);
+
+      // Escape after placeholders
+      let s = escapeHtml(rawSeg);
+
+      // Re-insert team spans
+      if (redName) s = s.split(RED).join(`<span class="log-team red">${escapeHtml(redName)}</span>`);
+      if (blueName) s = s.split(BLUE).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
+
+      // Color only certain keywords (keep the rest readable)
+      s = s.replace(/\bSpymaster\b/g, '<span class="log-token role">Spymaster</span>');
+      s = s.replace(/\bOperatives?\b/g, (m) => `<span class="log-token role">${m}</span>`);
+
+      s = s.replace(/\bguessed\b/gi, (m) => `<span class="log-token action">${m}</span>`);
+      s = s.replace(/\bended their turn\b/gi, (m) => `<span class="log-token action">${m}</span>`);
+      s = s.replace(/\bupdated rules\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bGame started!\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bStarting game\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bGame ended\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/\bGame over\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+
+      s = s.replace(/\bCorrect!\b/g, '<span class="log-token result-correct">Correct!</span>');
+      s = s.replace(/\bWrong!\b/g, '<span class="log-token result-wrong">Wrong!</span>');
+      s = s.replace(/\bNeutral\b/g, '<span class="log-token result-neutral">Neutral</span>');
+      s = s.replace(/\bASSASSIN\b/g, '<span class="log-token result-assassin">ASSASSIN</span>');
+      s = s.replace(/\bwins!\b/g, '<span class="log-token system">wins!</span>');
+
+      return s;
+    };
+
+    return parts.map((p, i) => {
+      if (i % 2 === 1) return `<span class="log-quote">${escapeHtml(p)}</span>`;
+      return wrapOutside(p);
+    }).join('');
+  };
+
   const html = currentGame.log.map(entry => {
-    return `<div class="log-entry">${entry}</div>`;
+    const team = detectTeam(entry);
+    const type = detectType(entry);
+    const cls = ['log-entry', `type-${type}`];
+    if (team) cls.push(`team-${team}`);
+    return `<div class="${cls.join(' ')}">${renderWithQuotes(entry)}</div>`;
   }).join('');
 
   if (popoverEl) popoverEl.innerHTML = html;
   if (sidebarEl) sidebarEl.innerHTML = html;
-
-  // Turn strip: highlight left (red) or right (blue) across all log cards.
-  const turn = currentGame?.currentTeam;
-  const logPopover = document.getElementById('game-log');
-  const logPanel = document.getElementById('desktop-game-log-panel');
-  [logPopover, logPanel].forEach((el) => {
-    if (!el) return;
-    el.classList.toggle('game-log-turn-red', turn === 'red');
-    el.classList.toggle('game-log-turn-blue', turn === 'blue');
-  });
 
   // Auto-scroll to bottom (popover container + sidebar scroller)
   const popover = document.getElementById('game-log');
@@ -3433,6 +3539,21 @@ function tagCard(cardIndex, tag) {
   }
   renderCardTags();
   saveTagsToLocal();
+
+  // Notify AI (and any other listeners) that a human tag changed.
+  try {
+    const gameId = currentGame?.id || null;
+    const teamColor = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+    window.dispatchEvent(new CustomEvent('codenames:humanTagsChanged', {
+      detail: {
+        gameId,
+        teamColor,
+        cardIndex,
+        tag,
+        tags: { ...cardTags },
+      }
+    }));
+  } catch (_) {}
 }
 
 function clearAllTags() {
@@ -3446,67 +3567,55 @@ function clearAllTags() {
 
 function renderCardTags() {
   const cards = document.querySelectorAll('.game-card');
+  const gameId = currentGame?.id;
+  const aiMarks = (gameId && typeof window.getAICardMarksForGame === 'function')
+    ? (window.getAICardMarksForGame(gameId) || {})
+    : {};
+
   cards.forEach((card, index) => {
-    // Remove existing tag
-    const existingTag = card.querySelector('.card-tag');
-    if (existingTag) existingTag.remove();
+    // Remove existing tags (human or AI)
+    card.querySelectorAll('.card-tag').forEach(el => el.remove());
 
-    const tag = cardTags[index];
-    if (tag && !card.classList.contains('revealed')) {
-      const tagEl = document.createElement('div');
-      tagEl.className = `card-tag tag-${tag}`;
+    if (card.classList.contains('revealed')) return;
 
-      if (tag === 'yes') {
-        tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
-      } else if (tag === 'maybe') {
-        tagEl.innerHTML = '?';
-      } else if (tag === 'no') {
-        tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      }
+    const humanTag = cardTags[index];
+    const aiTag = aiMarks ? aiMarks[index] : null;
 
-      card.appendChild(tagEl);
+    const tag = humanTag || aiTag;
+    if (!tag) return;
+
+    const isAI = !humanTag && !!aiTag;
+
+    const tagEl = document.createElement('div');
+    tagEl.className = `card-tag ${isAI ? 'ai' : ''} tag-${tag}`;
+
+    if (tag === 'yes') {
+      tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (tag === 'maybe') {
+      tagEl.innerHTML = '?';
+    } else if (tag === 'no') {
+      tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     }
+
+    card.appendChild(tagEl);
   });
 }
 
 function saveTagsToLocal() {
   if (!currentGame?.id) return;
   try {
-    const boardSig = (Array.isArray(currentGame?.cards) ? currentGame.cards.map(c => String(c.word || '')).join('|') : '');
-    localStorage.setItem(
-      `codenames_tags_${currentGame.id}`,
-      JSON.stringify({ boardSig, tags: cardTags })
-    );
+    localStorage.setItem(`codenames_tags_${currentGame.id}`, JSON.stringify(cardTags));
   } catch (e) {}
 }
 
 function loadTagsFromLocal() {
   if (!currentGame?.id) return;
   try {
-    const key = `codenames_tags_${currentGame.id}`;
-    const saved = localStorage.getItem(key);
-    const boardSigNow = (Array.isArray(currentGame?.cards) ? currentGame.cards.map(c => String(c.word || '')).join('|') : '');
-
-    if (!saved) {
-      cardTags = {};
-      return;
-    }
-
-    // Backwards compatible: older builds stored tags as a plain object.
-    const parsed = JSON.parse(saved);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.tags && typeof parsed.boardSig === 'string') {
-      if (parsed.boardSig === boardSigNow) {
-        cardTags = parsed.tags || {};
-      } else {
-        // New round/new board: start clean.
-        cardTags = {};
-        localStorage.setItem(key, JSON.stringify({ boardSig: boardSigNow, tags: {} }));
-      }
+    const saved = localStorage.getItem(`codenames_tags_${currentGame.id}`);
+    if (saved) {
+      cardTags = JSON.parse(saved);
     } else {
-      // Old format (plain object). To avoid carrying marks between games (Quick Play reuses the same game id),
-      // migrate to the new format and start clean.
       cardTags = {};
-      localStorage.setItem(key, JSON.stringify({ boardSig: boardSigNow, tags: {} }));
     }
   } catch (e) {
     cardTags = {};
@@ -3799,68 +3908,155 @@ function renderTeamRoster() {
 
 
 /* =========================
-   Top Bar Team Names (Desktop)
+   Top Bar Turn Strip + Team Popovers
 ========================= */
 function renderTopbarTeamNames() {
   if (!currentGame) return;
 
-  const redEl = document.getElementById('topbar-red-names');
-  const blueEl = document.getElementById('topbar-blue-names');
-  if (!redEl && !blueEl) return;
+  // One-time init: click-to-toggle popovers + outside click to close
+  if (!window.__topbarPopoversInit) {
+    window.__topbarPopoversInit = true;
+
+    const closeAll = () => {
+      document.querySelectorAll('.topbar-team.popover-open').forEach(el => el.classList.remove('popover-open'));
+    };
+
+    document.addEventListener('click', (e) => {
+      const inTopbarTeam = e.target && e.target.closest && e.target.closest('.topbar-team');
+      if (!inTopbarTeam) closeAll();
+    });
+
+    const bindIcon = (iconId, teamId) => {
+      const icon = document.getElementById(iconId);
+      const teamEl = document.getElementById(teamId);
+      if (!icon || !teamEl) return;
+
+      icon.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const willOpen = !teamEl.classList.contains('popover-open');
+        closeAll();
+        if (willOpen) teamEl.classList.add('popover-open');
+      });
+    };
+
+    // Best-effort now + later (icons don't exist on lobby)
+    setTimeout(() => {
+      bindIcon('topbar-red-icon', 'topbar-red');
+      bindIcon('topbar-blue-icon', 'topbar-blue');
+    }, 0);
+  }
+
+  const redStatusEl = document.getElementById('topbar-red-status');
+  const blueStatusEl = document.getElementById('topbar-blue-status');
+  const redPop = document.getElementById('team-popover-red');
+  const bluePop = document.getElementById('team-popover-blue');
+
+  const phaseToLabel = (phase) => {
+    if (phase === 'spymaster') return 'Spymaster Turn';
+    if (phase === 'operatives') return 'Operatives Turn';
+    if (phase === 'role-selection') return 'Pick roles';
+    if (phase === 'waiting') return 'Waiting';
+    if (phase === 'ended') return 'Game Over';
+    return '—';
+  };
+
+  const isEnded = !!currentGame.winner || currentGame.currentPhase === 'ended';
+  const activeTeam = isEnded ? null : currentGame.currentTeam;
+  const activeLabel = isEnded ? 'Game Over' : phaseToLabel(currentGame.currentPhase);
+
+  // Color the turn strip halves based on whose turn it is
+  const topbar = document.querySelector('.game-topbar');
+  const redTop = document.getElementById('topbar-red');
+  const blueTop = document.getElementById('topbar-blue');
+  if (topbar) {
+    topbar.classList.toggle('turn-red', activeTeam === 'red');
+    topbar.classList.toggle('turn-blue', activeTeam === 'blue');
+    topbar.classList.toggle('turn-none', !activeTeam);
+  }
+  if (redTop) redTop.classList.toggle('is-active', activeTeam === 'red');
+  if (blueTop) blueTop.classList.toggle('is-active', activeTeam === 'blue');
+
+  if (redStatusEl) {
+    if (activeTeam === 'red') redStatusEl.textContent = activeLabel;
+    else if (currentGame.currentPhase === 'waiting') redStatusEl.textContent = 'Waiting for players';
+    else if (isEnded) redStatusEl.textContent = '—';
+    else redStatusEl.textContent = 'Waiting';
+  }
+
+  if (blueStatusEl) {
+    if (activeTeam === 'blue') blueStatusEl.textContent = activeLabel;
+    else if (currentGame.currentPhase === 'waiting') blueStatusEl.textContent = 'Waiting for players';
+    else if (isEnded) blueStatusEl.textContent = '—';
+    else blueStatusEl.textContent = 'Waiting';
+  }
 
   const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
 
-  const render = (players, el, team) => {
-    if (!el) return;
+  const buildTeamPopover = (team) => {
+    const isRed = team === 'red';
+    const teamName = truncateTeamNameGame(isRed ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team'));
+    const roster = isRed ? (currentGame.redPlayers || []) : (currentGame.bluePlayers || []);
+    const spymasterName = isRed ? currentGame.redSpymaster : currentGame.blueSpymaster;
 
-    const list = Array.isArray(players) ? players : [];
-    const count = Math.max(1, list.length);
+    const spymasterEntry = spymasterName
+      ? roster.find(p => String(p?.name || '').trim() === String(spymasterName).trim())
+      : null;
 
-    // Horizontal layout: scale font size a bit as teams grow so names still fit.
-    const size = count <= 3 ? 13 : (count <= 5 ? 12 : 11);
-    // Spacing: fewer players => more breathing room. More players => tighter.
-    // We drive this via CSS vars so the layout remains flexible with wrapping.
-    const gapX = (count <= 1) ? 0
-      : (count === 2) ? 18
-      : (count === 3) ? 12
-      : (count === 4) ? 8
-      : (count === 5) ? 6
-      : (count === 6) ? 5
-      : 4;
-    const gapY = (count <= 4) ? 4 : 3;
+    const operatives = roster.filter(p => String(p?.name || '').trim() !== String(spymasterName || '').trim());
 
-    // When teams are small, spread names across the available half to increase perceived distance.
-    el.classList.toggle('spread', count === 2 || count === 3);
-    el.classList.toggle('cols-2', false);
-    el.style.setProperty('--topbar-name-size', `${size}px`);
-    el.style.setProperty('--topbar-name-gap-x', `${gapX}px`);
-    el.style.setProperty('--topbar-name-gap-y', `${gapY}px`);
-
-    if (list.length === 0) {
-      el.innerHTML = `<div class="topbar-player" style="color: var(--text-dim);">—</div>`;
-      return;
-    }
-
-    el.innerHTML = list.map(p => {
+    const renderPlayerRow = (p, role) => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const rawName = String(p?.name || '—');
-      const displayName = p?.isAI ? `AI ${rawName}` : rawName;
-      const name = escapeHtml(displayName);
+      const name = escapeHtml(displayPlayerName(p));
+      const badge = role === 'spymaster' ? 'Spymaster' : 'Operative';
+      const classes = ['team-popover-player', role, isMe ? 'is-me' : ''].filter(Boolean).join(' ');
+      return `
+        <div class="${classes}">
+          <div class="team-popover-name">${name}</div>
+          <div class="team-popover-badge">${badge}</div>
+        </div>
+      `;
+    };
 
-      // Clickable names: reuse the existing profile popup system.
-      const attrs = pid
-        ? `class="topbar-player ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
-        : `class="topbar-player ${isMe ? 'is-me' : ''}"`;
+    const spymasterHtml = spymasterEntry
+      ? renderPlayerRow(spymasterEntry, 'spymaster')
+      : `<div class="team-popover-player spymaster" style="opacity:0.78;">
+           <div class="team-popover-name">No Spymaster yet</div>
+           <div class="team-popover-badge">Spymaster</div>
+         </div>`;
 
-      // Use a button for better a11y + consistent click targets.
-      return `<button type="button" ${attrs}>${name}</button>`;
-    }).join('');
+    const opsHtml = (operatives.length > 0)
+      ? operatives.map(p => renderPlayerRow(p, 'operative')).join('')
+      : `<div class="team-popover-player operative" style="opacity:0.78;">
+           <div class="team-popover-name">No Operatives yet</div>
+           <div class="team-popover-badge">Operative</div>
+         </div>`;
+
+    return `
+      <div class="team-popover-header">
+        <div>
+          <div class="team-popover-title">${escapeHtml(teamName)}</div>
+          <div class="team-popover-sub">${roster.length || 0} player${(roster.length || 0) === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+
+      <div class="team-popover-section">
+        <div class="team-popover-role">Spymaster</div>
+        ${spymasterHtml}
+      </div>
+
+      <div class="team-popover-section">
+        <div class="team-popover-role">Operatives</div>
+        ${opsHtml}
+      </div>
+    `;
   };
 
-  render(currentGame.redPlayers, redEl, 'red');
-  render(currentGame.bluePlayers, blueEl, 'blue');
+  if (redPop) redPop.innerHTML = buildTeamPopover('red');
+  if (bluePop) bluePop.innerHTML = buildTeamPopover('blue');
 }
+
 
 /* =========================
    Sidebar Toggles
@@ -4148,9 +4344,39 @@ if (originalLeaveQuickGame) {
 let pendingAITeam = null;
 let pendingAISeatRole = null;
 
-// +AI now immediately adds an Autonomous AI (no modal).
-async function openAIModal(team, seatRole) {
-  return addAIAutonomous(team, seatRole);
+function openAIModal(team, seatRole) {
+  pendingAITeam = team;
+  pendingAISeatRole = seatRole;
+
+  const modal = document.getElementById('ai-mode-modal');
+  if (!modal) return;
+
+  const subtitle = document.getElementById('ai-mode-subtitle');
+  const statusEl = document.getElementById('ai-mode-status');
+  const teamLabel = team === 'red' ? 'Red' : 'Blue';
+  const roleLabel = seatRole === 'spymaster' ? 'Spymaster' : 'Operative';
+
+  if (subtitle) subtitle.textContent = `Adding AI ${roleLabel} to ${teamLabel} team`;
+  if (statusEl) statusEl.textContent = '';
+
+  // Helper mode not available for spymaster (helpers don't give clues)
+  const helperBtn = document.getElementById('ai-mode-helper');
+  if (helperBtn) {
+    helperBtn.disabled = (seatRole === 'spymaster');
+    helperBtn.title = (seatRole === 'spymaster') ? 'Helpers cannot be Spymasters' : '';
+  }
+
+  // Check max AI limit
+  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
+  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
+  if (currentCount >= max) {
+    if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
+  }
+
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+  modal.setAttribute('aria-hidden', 'false');
 }
 
 function closeAIModal() {
@@ -4167,43 +4393,6 @@ function closeAIModal() {
 
 window.openAIModal = openAIModal;
 window.closeAIModal = closeAIModal;
-
-async function addAIAutonomous(team, seatRole) {
-  // Visual feedback on the clicked button
-  const btn = document.getElementById(`ai-add-${team}-${seatRole}`);
-  const prevText = btn ? btn.textContent : null;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Adding…';
-  }
-
-  // Check max
-  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
-  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
-  if (currentCount >= max) {
-    if (btn) {
-      btn.textContent = 'Max';
-      setTimeout(() => {
-        btn.textContent = prevText || '+AI';
-        btn.disabled = false;
-      }, 900);
-    }
-    return null;
-  }
-
-  try {
-    const ai = await addAIPlayer(team, seatRole, 'autonomous');
-    return ai;
-  } catch (e) {
-    console.error('Add AI failed:', e);
-    return null;
-  } finally {
-    if (btn) {
-      btn.textContent = prevText || '+AI';
-      btn.disabled = false;
-    }
-  }
-}
 
 async function handleAIModeSelect(mode) {
   if (!pendingAITeam || !pendingAISeatRole) return;
@@ -4238,20 +4427,12 @@ async function handleAIModeSelect(mode) {
   }
 }
 
-// Wire up modal buttons (legacy; modal is no longer used, but keep close handlers safe)
+// Wire up modal buttons
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('ai-mode-helper')?.addEventListener('click', () => handleAIModeSelect('helper'));
+  document.getElementById('ai-mode-autonomous')?.addEventListener('click', () => handleAIModeSelect('autonomous'));
   document.getElementById('ai-mode-modal-close')?.addEventListener('click', closeAIModal);
   document.getElementById('ai-mode-modal-backdrop')?.addEventListener('click', closeAIModal);
-
-  // Hovering the +AI button should not underline the parent role header.
-  document.querySelectorAll('.ai-add-btn').forEach((b) => {
-    const seat = b.closest?.('.quick-seat-choice');
-    if (!seat) return;
-    b.addEventListener('pointerenter', () => seat.classList.add('suppress-underline'));
-    b.addEventListener('pointerleave', () => seat.classList.remove('suppress-underline'));
-    b.addEventListener('pointerdown', () => seat.classList.add('suppress-underline'));
-    b.addEventListener('pointerup', () => seat.classList.remove('suppress-underline'));
-  });
 });
 
 // ─── Enhanced Lobby Rendering with AI Players ────────────────────────────────
@@ -4304,9 +4485,9 @@ function renderQuickLobbyWithAI(game) {
       const existingBadge = el.querySelector('.ai-badge');
       if (!existingBadge) {
         const badge = document.createElement('span');
-        badge.className = 'ai-badge ai-badge-autonomous';
-        badge.textContent = 'AI';
-        badge.title = 'AI Autonomous';
+        badge.className = `ai-badge ai-badge-${ai.mode}`;
+        badge.textContent = ai.mode === 'helper' ? 'HELPER' : 'AUTO';
+        badge.title = ai.mode === 'helper' ? 'AI Helper - chats only' : 'AI Autonomous - plays independently';
         el.appendChild(badge);
       }
 

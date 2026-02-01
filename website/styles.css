@@ -2756,7 +2756,6 @@ body.light .chat-meta{ color: var(--text); }
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
 .quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
-.quick-seat-choice.suppress-underline:hover{ text-decoration: none !important; }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
@@ -4609,56 +4608,100 @@ button.player-tag.pill-action:disabled{
 .game-log-entries {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .log-entry {
-  position: relative;
   font-size: 13px;
-  line-height: 1.25;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  white-space: normal;
-  word-break: break-word;
-  overflow: visible;
+  line-height: 1.4;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Split turn strip (left = red, right = blue). The active side is set by a class on the panel/popover. */
-.log-entry::before,
-.log-entry::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 10px;
-  opacity: 0.9;
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+/* Colored game log entries (background + text) */
+.log-entry {
+  position: relative;
+  padding: 9px 10px 9px 12px;
+  border-bottom: none;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
 }
 
 .log-entry::before {
-  left: 0;
-  border-radius: 999px 0 0 999px;
-  background: rgba(255, 255, 255, 0.06);
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(148, 163, 184, 0.45);
 }
 
-.log-entry::after {
-  right: 0;
-  border-radius: 0 999px 999px 0;
-  background: rgba(255, 255, 255, 0.04);
+.log-entry.team-red::before { background: rgba(239, 68, 68, 0.85); }
+.log-entry.team-blue::before { background: rgba(59, 130, 246, 0.85); }
+
+.log-entry.type-clue {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+.log-entry.type-start {
+  background: rgba(59, 130, 246, 0.10);
+  border-color: rgba(59, 130, 246, 0.20);
+}
+.log-entry.type-end {
+  background: rgba(168, 85, 247, 0.10);
+  border-color: rgba(168, 85, 247, 0.20);
+}
+.log-entry.type-correct {
+  background: rgba(34, 197, 94, 0.10);
+  border-color: rgba(34, 197, 94, 0.20);
+}
+.log-entry.type-wrong {
+  background: rgba(239, 68, 68, 0.11);
+  border-color: rgba(239, 68, 68, 0.22);
+}
+.log-entry.type-neutral {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+.log-entry.type-assassin {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.34);
+box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0.55);
 }
 
-.game-log-turn-red .log-entry::before {
-  background: rgba(255, 90, 90, 0.35); /* fallback */
-  background: color-mix(in srgb, var(--game-red) 70%, rgba(0, 0, 0, 0));
-  box-shadow: 0 0 18px rgba(255, 90, 90, 0.22);
+.log-entry .log-quote {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 0 2px;
+  color: currentColor;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.35);
 }
 
-.game-log-turn-blue .log-entry::after {
-  background: rgba(90, 140, 255, 0.35); /* fallback */
-  background: color-mix(in srgb, var(--game-blue) 70%, rgba(0, 0, 0, 0));
-  box-shadow: 0 0 18px rgba(90, 140, 255, 0.22);
-}
+/* Log token colors (color specific words, keep base text readable) */
+.log-entry { color: rgba(255, 255, 255, 0.92); }
+.log-entry .log-token { font-weight: 850; }
+.log-entry .log-token.role { color: rgba(226, 232, 240, 0.92); font-weight: 900; }
+.log-entry .log-token.action { color: rgba(191, 219, 254, 0.98); }
+.log-entry .log-token.result-correct { color: rgba(34, 197, 94, 0.95); }
+.log-entry .log-token.result-wrong { color: rgba(239, 68, 68, 0.95); }
+.log-entry .log-token.result-neutral { color: rgba(148, 163, 184, 0.95); }
+.log-entry .log-token.result-assassin { color: rgba(239, 68, 68, 1); text-shadow: 0 0 10px rgba(239,68,68,0.35); }
+.log-entry .log-token.system { color: rgba(168, 85, 247, 0.95); }
+
+.log-entry.type-clue .log-quote { color: rgba(253, 230, 138, 0.98); }
+.log-entry.type-correct .log-quote { color: rgba(34, 197, 94, 0.95); }
+.log-entry.type-wrong .log-quote { color: rgba(239, 68, 68, 0.95); }
+.log-entry.type-neutral .log-quote { color: rgba(226, 232, 240, 0.92); }
+.log-entry.type-assassin .log-quote { color: rgba(255, 255, 255, 0.98); }
+.log-entry.type-start .log-quote { color: rgba(191, 219, 254, 0.98); }
+.log-entry.type-end .log-quote { color: rgba(233, 213, 255, 0.98); }
 
 .log-entry .log-team {
   font-weight: 700;
@@ -4676,6 +4719,40 @@ button.player-tag.pill-action:disabled{
   color: var(--text-dim);
 }
 
+
+
+/* Normal game log (readable): keep the layout simple and let only key words be colored */
+.game-log-entries { gap: 0; }
+
+.log-entry {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 10px 8px 10px 12px !important;
+  line-height: 1.5 !important;
+  overflow: visible !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.log-entry + .log-entry { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+
+.log-entry::before { display: none !important; }
+
+.log-entry.team-red { border-left: 3px solid rgba(239, 68, 68, 0.85); padding-left: 10px !important; }
+.log-entry.team-blue { border-left: 3px solid rgba(59, 130, 246, 0.85); padding-left: 10px !important; }
+
+/* Remove full-row type tinting; keep semantic emphasis on the tokens/quotes only */
+.log-entry.type-clue,
+.log-entry.type-start,
+.log-entry.type-end,
+.log-entry.type-correct,
+.log-entry.type-wrong,
+.log-entry.type-neutral,
+.log-entry.type-assassin {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
 /* Game Actions */
 .game-actions {
   display: flex;
@@ -6548,36 +6625,44 @@ body.tournament.has-team-color .btn.primary:hover {
 /* Card guess animation - dramatic expand, glow, settle */
 @keyframes cardGuessExpand {
   0% {
-    transform: scale(1);
+    transform: translate(0px, 0px) scale(1);
     filter: brightness(1);
   }
-  8% {
-    transform: scale(0.95);
+  10% {
+    transform: translate(0px, 0px) scale(0.82);
+    filter: brightness(1.06);
   }
-  20% {
-    transform: scale(1.25);
-    filter: brightness(1.3);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 255, 255, 0.1);
+  26% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2);
+    filter: brightness(1.55);
+    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 80px rgba(255, 255, 255, 0.16);
   }
-  35% {
-    transform: scale(1.25) rotateY(90deg);
-    filter: brightness(1.4);
+  /* Hold big for a beat */
+  56% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2);
+    filter: brightness(1.45);
+    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 80px rgba(255, 255, 255, 0.16);
   }
-  50% {
-    transform: scale(1.25) rotateY(90deg);
+  /* Dramatic flip while still large */
+  66% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2) rotateY(102deg);
+    filter: brightness(1.55);
+  }
+  74% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2) rotateY(102deg);
     filter: brightness(1.2);
   }
-  70% {
-    transform: scale(1.2) rotateY(0deg);
-    filter: brightness(1.15);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  86% {
+    transform: translate(calc(var(--guess-tx, 0px) * 0.35), calc(var(--guess-ty, 0px) * 0.35)) scale(1.35) rotateY(0deg);
+    filter: brightness(1.12);
+    box-shadow: 0 18px 58px rgba(0, 0, 0, 0.6);
   }
-  85% {
-    transform: scale(1.05);
-    filter: brightness(1.05);
+  94% {
+    transform: translate(0px, 0px) scale(1.08);
+    filter: brightness(1.06);
   }
   100% {
-    transform: scale(1);
+    transform: translate(0px, 0px) scale(1);
     filter: brightness(1);
     box-shadow: none;
   }
@@ -6610,30 +6695,31 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .game-card.guess-animate {
-  animation: cardGuessExpand 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  z-index: 10;
+  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  z-index: 50;
   position: relative;
-  transform-style: preserve-3d;
+    transform-origin: var(--guess-ox, 50%) var(--guess-oy, 50%);
+transform-style: preserve-3d;
 }
 
 .game-card.guess-animate.card-red {
-  animation: cardGuessExpand 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowRed 1.8s ease forwards;
+  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowRed 8.8s ease forwards;
 }
 
 .game-card.guess-animate.card-blue {
-  animation: cardGuessExpand 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowBlue 1.8s ease forwards;
+  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowBlue 8.8s ease forwards;
 }
 
 .game-card.guess-animate.card-neutral {
-  animation: cardGuessExpand 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowNeutral 1.8s ease forwards;
+  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowNeutral 8.8s ease forwards;
 }
 
 .game-card.guess-animate.card-assassin {
-  animation: cardGuessExpand 2.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowAssassin 2.2s ease forwards;
+  animation: cardGuessExpand 9.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowAssassin 9.4s ease forwards;
 }
 
 /* Card pulse animation for hints */
@@ -6662,28 +6748,28 @@ body.tournament.has-team-color .btn.primary:hover {
 @keyframes clueCardSlam {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.3) rotateX(15deg);
+    transform: translate(-50%, -50%) scale(0.25) rotateX(15deg);
   }
   8% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1.12) rotateX(-2deg);
+    transform: translate(-50%, -50%) scale(0.98) rotateX(-2deg);
   }
   16% {
-    transform: translate(-50%, -50%) scale(0.97) rotateX(1deg);
+    transform: translate(-50%, -50%) scale(0.82) rotateX(1deg);
   }
   22% {
-    transform: translate(-50%, -50%) scale(1.02) rotateX(0deg);
+    transform: translate(-50%, -50%) scale(0.88) rotateX(0deg);
   }
   28% {
-    transform: translate(-50%, -50%) scale(1) rotateX(0deg);
+    transform: translate(-50%, -50%) scale(0.85) rotateX(0deg);
   }
   85% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1) rotateX(0deg);
+    transform: translate(-50%, -50%) scale(0.85) rotateX(0deg);
   }
   100% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1) rotateX(0deg);
+    transform: translate(-50%, -50%) scale(0.85) rotateX(0deg);
   }
 }
 
@@ -6757,10 +6843,10 @@ body.tournament.has-team-color .btn.primary:hover {
   background: rgba(10, 10, 18, 0.97);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-radius: 18px;
-  padding: 28px 48px;
+  border-radius: 16px;
+  padding: 20px 34px;
   text-align: center;
-  min-width: 280px;
+  min-width: 240px;
   animation: clueCardSlam 5.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   perspective: 1000px;
 }
@@ -6787,8 +6873,8 @@ body.tournament.has-team-color .btn.primary:hover {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 200%;
-  height: 200%;
+  width: 160%;
+  height: 160%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   pointer-events: none;
@@ -6805,7 +6891,7 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .clue-announcement-label {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 3px;
   color: rgba(255, 255, 255, 0.5);
@@ -6822,7 +6908,7 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .clue-announcement-word {
-  font-size: 38px;
+  font-size: 30px;
   font-weight: 900;
   color: #fff;
   text-transform: uppercase;
@@ -6855,7 +6941,7 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .clue-announcement-for {
-  font-size: 16px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.4);
   font-weight: 500;
   text-transform: lowercase;
@@ -6864,7 +6950,7 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .clue-announcement-number {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 900;
   margin-top: 0;
   animation: clueNumberPop 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -7353,6 +7439,225 @@ body.tournament.has-team-color .input:focus {
 .topbar-timer {
   width: 120px;
   margin-top: 4px;
+}
+
+/* New top strip: turn status + team roster popovers */
+.topbar-team {
+  position: relative;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.topbar-team-red { justify-content: flex-start; }
+.topbar-team-blue { justify-content: flex-end; }
+
+/* Turn strip highlighting: tint the active team half */
+.game-topbar.turn-red #topbar-red {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.36);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 44px rgba(0, 0, 0, 0.35);
+}
+.game-topbar.turn-red #topbar-blue {
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.game-topbar.turn-blue #topbar-blue {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.36);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18) inset, 0 16px 44px rgba(0, 0, 0, 0.35);
+}
+.game-topbar.turn-blue #topbar-red {
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.topbar-team.is-active .topbar-team-status {
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.topbar-team-status {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-team-red .topbar-team-status { text-align: left; }
+.topbar-team-blue .topbar-team-status { text-align: right; }
+
+.topbar-team-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  flex: 0 0 auto;
+}
+
+.topbar-team-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: rgba(255, 255, 255, 0.9);
+  fill: none;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.topbar-team-icon:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.topbar-team-icon.red { border-color: rgba(239, 68, 68, 0.35); }
+.topbar-team-icon.blue { border-color: rgba(59, 130, 246, 0.35); }
+
+.topbar-team-icon.red:hover { box-shadow: 0 10px 26px rgba(239, 68, 68, 0.14), 0 10px 26px rgba(0,0,0,0.45); }
+.topbar-team-icon.blue:hover { box-shadow: 0 10px 26px rgba(59, 130, 246, 0.14), 0 10px 26px rgba(0,0,0,0.45); }
+
+/* Popover */
+.team-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  width: 320px;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(10, 10, 12, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  z-index: 120;
+}
+
+.team-popover-red { left: 0; transform-origin: top left; }
+.team-popover-blue { right: 0; transform-origin: top right; }
+
+.topbar-team:hover .team-popover,
+.topbar-team:focus-within .team-popover,
+.topbar-team.popover-open .team-popover {
+  opacity: 1;
+  transform: translateY(0px) scale(1);
+  pointer-events: auto;
+}
+
+.team-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.team-popover-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.team-popover-sub {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.team-popover-section {
+  padding: 10px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.team-popover-section + .team-popover-section {
+  margin-top: 10px;
+}
+
+.team-popover-role {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.team-popover-player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.team-popover-player + .team-popover-player { margin-top: 6px; }
+
+.team-popover-name {
+  font-weight: 850;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-popover-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.team-popover-player.spymaster {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.14) inset;
+}
+
+.team-popover-player.spymaster .team-popover-badge {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.10);
+  color: rgba(253, 230, 138, 0.95);
+}
+
+.team-popover-player.operative {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.team-popover-player.is-me {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 12px 30px rgba(0,0,0,0.35);
 }
 
 .topbar-timer .timer-text {
@@ -7846,6 +8151,15 @@ body.tournament.has-team-color .input:focus {
 .card-tag svg {
   width: 10px;
   height: 10px;
+}
+
+
+/* AI tags are a little subtler (human tags always take precedence) */
+.card-tag.ai {
+  opacity: 0.6;
+  transform: scale(0.92);
+  filter: saturate(0.85);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
 }
 
 /* Card Vote Indicators */
@@ -9551,6 +9865,21 @@ body.qp-gate-open .app {
 
 
 @media (min-width: 1025px) {
+  /* Slightly smaller board/cards on desktop to keep focus on the whole grid */
+  .game-center-area .game-board {
+    max-width: min(720px, 100%, calc((100dvh - 220px) * 1.05));
+    gap: 6px;
+  }
+
+  .game-center-area .game-card {
+    padding: 5px 8px;
+    border-radius: 9px;
+  }
+
+  .game-center-area .game-card .card-word {
+    font-size: clamp(9px, 1vw, 13px);
+  }
+
   /* Remove the separate Players box on desktop (names live in the top bar) */
   .team-roster-panel { display: none; }
 
@@ -10407,4 +10736,10 @@ body.light-mode .ai-mode-card:hover:not(:disabled){
   .ai-mode-cards{ flex-direction: column; }
   .ai-badge{ font-size: 8px; padding: 1px 5px; }
   .ai-remove-btn{ width: 16px; height: 16px; font-size: 11px; }
+}
+/* Ensure guess animations can expand outward without clipping */
+.game-board-wrapper,
+.game-board,
+.game-center-area {
+  overflow: visible;
 }
