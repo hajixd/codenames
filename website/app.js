@@ -466,6 +466,9 @@ const LS_ACTIVE_GAME_SPECTATOR = 'ct_activeGameSpectator_v1';
 let teamsCache = [];
 let playersCache = [];
 
+// Throttle best-effort empty-team auto-archiving (admin only)
+const emptyTeamCleanupAttempts = new Map(); // teamId -> lastAttemptMs
+
 // Live listeners (only when signed in)
 let teamsUnsub = null;
 let playersUnsub = null;
@@ -2739,6 +2742,24 @@ function listenToTeams() {
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
+      // Admin-only hygiene: auto-archive teams that have become empty (no members, no pending).
+      // This keeps the tournament / lobby views clean even if old/legacy data had orphan teams.
+      try {
+        if (isAdminUser()) {
+          const now = Date.now();
+          for (const t of (teamsCache || [])) {
+            const tid = String(t?.id || '').trim();
+            if (!tid) continue;
+            if (t?.archived) continue;
+            if (!teamIsEmpty(t)) continue;
+            const last = emptyTeamCleanupAttempts.get(tid) || 0;
+            if (now - last < 30_000) continue; // 30s throttle per team
+            emptyTeamCleanupAttempts.set(tid, now);
+            archiveTeamIfEmpty(tid);
+          }
+        }
+      } catch (_) {}
+
       // Legacy migration: ensure the team you lead has a stable creatorUserId.
       // Some older teams were created with only creatorName, which breaks request management
       // if names change. We infer the creator from the roster and write it once.
@@ -2799,11 +2820,17 @@ function listenToPlayers() {
 function updateHomeStats(teams) {
   // Count "eligible" tournament teams (3+ members AND not over the recommended cap).
   // Teams can exceed the cap, but they become ineligible and should not consume a slot.
-  const fullTeams = teams.filter(t => {
+  const fullTeams = (teams || []).filter(t => {
+    if (t?.archived) return false;
+    if (teamIsEmpty(t)) return false;
     const n = getMembers(t).length;
     return n >= TEAM_MIN && n <= SOFT_TEAM_MAX;
   }).length;
-  const players = teams.reduce((sum, t) => sum + getMembers(t).length, 0);
+  const players = (teams || []).reduce((sum, t) => {
+    if (t?.archived) return sum;
+    if (teamIsEmpty(t)) return sum;
+    return sum + getMembers(t).length;
+  }, 0);
 
   const teamCountStr = `${fullTeams} / ${SOFT_MAX_TEAMS}`;
   setText('players-count', players);
@@ -2846,6 +2873,54 @@ function getMembers(team) {
 
 function getPending(team) {
   return Array.isArray(team.pending) ? team.pending : [];
+}
+
+function teamIsEmpty(team) {
+  const members = getMembers(team);
+  const pending = getPending(team);
+  return members.length === 0 && pending.length === 0;
+}
+
+// Archive (soft-delete) teams that have no members and no pending requests.
+// Also cleans up the team-name registry mapping when it points at the archived team.
+// This is best-effort and safe to call repeatedly.
+async function archiveTeamIfEmpty(teamId) {
+  const tid = String(teamId || '').trim();
+  if (!tid) return;
+
+  const teamRef = db.collection('teams').doc(tid);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(teamRef);
+      if (!snap.exists) return;
+      const t = { id: snap.id, ...snap.data() };
+
+      // Already archived or not empty -> nothing to do.
+      if (t.archived) return;
+      if (!teamIsEmpty(t)) return;
+
+      const teamName = String(t.teamName || '').trim();
+      const key = teamNameToKey(teamName);
+
+      if (key) {
+        const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+        const nameSnap = await tx.get(nameRef);
+        const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+        if (mappedId === tid) tx.delete(nameRef);
+      }
+
+      tx.update(teamRef, {
+        archived: true,
+        archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (e) {
+    // Best-effort; rules may block this for non-admin/non-member contexts.
+    // We still hide empty teams in the UI regardless.
+    console.warn('archiveTeamIfEmpty failed', e);
+  }
 }
 
 function entryAccountId(entry) {
@@ -3455,14 +3530,15 @@ function renderTeams(teams) {
   if (!container) return;
 
   const st = computeUserState(teams);
+  const visibleTeams = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
 
-  if (teams.length === 0) {
+  if (visibleTeams.length === 0) {
     container.innerHTML = '<div class="empty-state">No teams yet</div>';
     return;
   }
 
   // Sort teams by member count (most players first)
-  const sortedTeams = [...teams].sort((a, b) => getMembers(b).length - getMembers(a).length);
+  const sortedTeams = [...visibleTeams].sort((a, b) => getMembers(b).length - getMembers(a).length);
 
   // Sharp, simple list: team name + member names. Click for details / request.
   container.innerHTML = sortedTeams.map((t) => {
@@ -4048,7 +4124,30 @@ function renderInvitesModal() {
   const me = (playersCache || []).find(p => p?.id === st.userId);
   const invites = Array.isArray(me?.invites) ? me.invites : [];
 
-  if (!invites.length) {
+  // Hide (and clean up) invites to teams that no longer exist / are archived / are empty.
+  const validInvites = invites.filter(inv => {
+    const teamId = String(inv?.teamId || '').trim();
+    if (!teamId) return false;
+    const t = (teamsCache || []).find(x => String(x?.id || '').trim() === teamId);
+    if (!t) return false;
+    if (t?.archived) return false;
+    if (teamIsEmpty(t)) return false;
+    return true;
+  });
+
+  if (validInvites.length !== invites.length) {
+    try {
+      const st = computeUserState(teamsCache);
+      if (st?.userId) {
+        db.collection('players').doc(st.userId).update({
+          invites: validInvites,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  if (!validInvites.length) {
     list.innerHTML = '<div class="empty-state">No invites</div>';
     return;
   }
@@ -4057,7 +4156,7 @@ function renderInvitesModal() {
   if (noName) setHint('invites-modal-hint', 'Set your name on Home first.');
   else setHint('invites-modal-hint', '');
 
-  list.innerHTML = invites.map(inv => {
+  list.innerHTML = validInvites.map(inv => {
     const teamName = truncateTeamName(inv?.teamName || 'Team');
     const teamId = inv?.teamId || '';
     const t = (teamsCache || []).find(x => x?.id === teamId);
@@ -4214,7 +4313,7 @@ function renderAdminAssignModal() {
   });
 
   const teamsSorted = [...(teamsCache || [])]
-    .filter(t => !t?.archived)
+    .filter(t => !t?.archived && !teamIsEmpty(t))
     .sort((a, b) => String(a?.teamName || '').localeCompare(String(b?.teamName || '')));
 
   if (!sorted.length) {
@@ -4333,6 +4432,16 @@ async function adminAssignPlayerToTeam(userId, teamIdOrNull) {
   }
 
   await batch.commit();
+
+  // Auto-archive teams that became empty as a result of reassignment.
+  // (Best-effort; if rules block this, the UI will still hide empty teams.)
+  try {
+    const empties = [];
+    for (const [tid, data] of updates.entries()) {
+      if ((data?.members?.length || 0) === 0 && (data?.pending?.length || 0) === 0) empties.push(tid);
+    }
+    if (empties.length) await Promise.all(empties.map(tid => archiveTeamIfEmpty(tid)));
+  } catch (_) {}
 
   try {
     const targetName = targetTid ? String(targetTeam?.teamName || 'Team').trim() : 'Unassigned';
@@ -5460,8 +5569,35 @@ async function leaveTeam(teamId, userId) {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
+
       const members = getMembers(t);
-      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const pending = getPending(t);
+      const nextMembers = members.filter(m => !isSameAccount(m, userId));
+      const nextPending = pending; // leaving doesn't change pending
+
+      // If this was the last member and there are no pending requests, archive the team
+      // and release its name in the registry.
+      if (nextMembers.length === 0 && nextPending.length === 0 && !t.archived) {
+        const teamName = String(t.teamName || '').trim();
+        const key = teamNameToKey(teamName);
+        if (key) {
+          const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+          const nameSnap = await tx.get(nameRef);
+          const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+          if (mappedId === String(teamId || '').trim()) tx.delete(nameRef);
+        }
+        tx.update(ref, {
+          members: [],
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          archived: true,
+          archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        tx.update(ref, {
+          members: nextMembers,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     });
     try {
       const t = (teamsCache || []).find(x => String(x?.id || '').trim() === String(teamId || '').trim());
@@ -5713,10 +5849,30 @@ async function declineRequest(teamId, userId) {
       const pending = getPending(t);
       const req = pending.find(r => isSameAccount(r, userId)) || pending.find(r => String(r.userId || '').trim() === String(userId || '').trim());
       if (req) targetNameForLog = String(req.name || '').trim();
-      tx.update(ref, {
-        pending: pending.filter(r => !isSameAccount(r, userId)),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
+      const nextPending = pending.filter(r => !isSameAccount(r, userId));
+
+      const members = getMembers(t);
+      if (members.length === 0 && nextPending.length === 0 && !t.archived) {
+        const teamName = String(t.teamName || '').trim();
+        const key = teamNameToKey(teamName);
+        if (key) {
+          const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+          const nameSnap = await tx.get(nameRef);
+          const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+          if (mappedId === String(teamId || '').trim()) tx.delete(nameRef);
+        }
+        tx.update(ref, {
+          pending: [],
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          archived: true,
+          archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        tx.update(ref, {
+          pending: nextPending,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     });
     try {
       const target = normalizeUsername(targetNameForLog || findKnownUserName(userId) || String(userId || 'user'));
@@ -5743,8 +5899,32 @@ async function kickMember(teamId, userId) {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('Team not found.');
       const t = { id: snap.id, ...snap.data() };
+
       const members = getMembers(t);
-      tx.update(ref, { members: members.filter(m => !isSameAccount(m, userId)), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const pending = getPending(t);
+      const nextMembers = members.filter(m => !isSameAccount(m, userId));
+
+      if (nextMembers.length === 0 && pending.length === 0 && !t.archived) {
+        const teamName = String(t.teamName || '').trim();
+        const key = teamNameToKey(teamName);
+        if (key) {
+          const nameRef = db.collection(TEAMNAME_REGISTRY_COLLECTION).doc(key);
+          const nameSnap = await tx.get(nameRef);
+          const mappedId = nameSnap.exists ? String(nameSnap.data()?.teamId || '').trim() : '';
+          if (mappedId === String(teamId || '').trim()) tx.delete(nameRef);
+        }
+        tx.update(ref, {
+          members: [],
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          archived: true,
+          archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        tx.update(ref, {
+          members: nextMembers,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     });
   } catch (e) {
     console.error(e);
