@@ -100,12 +100,15 @@ body.light-mode {
   opacity: 0;
   transform: scale(0.92);
   transition: opacity 0.12s ease, transform 0.12s ease;
+  /* Only clickable when the card is selected (see .pending-select below) */
   pointer-events:none;
 }
 
 .game-card.pending-select .card-checkmark{
   opacity: 1;
   transform: scale(1);
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .game-card.pending-select:not(.revealed):not(.disabled){
@@ -3100,6 +3103,7 @@ body.light-mode .chat-meta{ color: var(--text); }
 }
 #quick-settings-modal .modal-body{
   padding: 12px 14px 14px;
+  touch-action: pan-y;
 }
 #quick-settings-modal .qp-settings-banner{
   padding: 10px 10px;
@@ -3143,6 +3147,8 @@ body.light-mode .chat-meta{ color: var(--text); }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   flex: 1 1 auto;
+  /* Important for iOS/mobile: allow flex child to shrink so internal scrolling works */
+  min-height: 0;
 }
 .modal-actions{
   display:flex;

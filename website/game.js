@@ -892,7 +892,8 @@ function updateQuickRulesUI(game) {
   // Settings modal
   if (applyBtn) {
     applyBtn.disabled = !myTeam;
-    applyBtn.textContent = !myTeam ? 'Join a team to apply' : 'Apply';
+    // Keep button visible but disabled until the player is on a team.
+    applyBtn.textContent = 'Apply';
   }
   if (modalStatus) {
     modalStatus.textContent = myTeam ? 'Changes apply immediately (no agreement step).' : '';
@@ -2858,13 +2859,14 @@ function renderBoard(isSpymaster) {
       classes.push('pending-select');
     }
 
-    // Allow clicking for guessing or tagging (if not revealed)
+    // Allow clicking for selection/tagging (if not revealed)
     const canClick = !card.revealed && !isSpymaster;
-    const clickHandler = canClick ? `onclick="handleCardClick(${i})"` : '';
+    // Card tap selects (shows checkmark). Confirmation requires tapping the checkmark.
+    const clickHandler = canClick ? `onclick="handleCardSelect(${i})"` : '';
 
     return `
       <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
-        <div class="card-checkmark" aria-hidden="true">✓</div>
+        <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
         <span class="card-word">${escapeHtml(card.word)}</span>
       </div>
     `;
@@ -4684,38 +4686,58 @@ function showClueAnimation(word, number, teamColor) {
 }
 
 /* =========================
-   Enhanced Card Click Handler
+   Card Selection + Confirm (mobile-friendly)
+   - Tap card: select/deselect (shows checkmark)
+   - Tap checkmark: confirm the guess
 ========================= */
-// Store original handleCardClick
 const _originalHandleCardClick = handleCardClick;
 
-// Create enhanced version
-async function handleCardClickEnhanced(cardIndex) {
-  // If in tag mode, tag the card instead of guessing
+function canCurrentUserGuess() {
+  const myTeamColor = getMyTeamColor();
+  const isMyTurn = myTeamColor && currentGame?.currentTeam === myTeamColor;
+  return !!(
+    isMyTurn &&
+    currentGame?.currentPhase === 'operatives' &&
+    !isCurrentUserSpymaster() &&
+    !currentGame?.winner
+  );
+}
+
+function handleCardSelect(cardIndex) {
+  // Tagging mode: tapping the card tags it (no confirm step)
   if (activeTagMode) {
     tagCard(cardIndex, activeTagMode);
     return;
   }
 
-  // Two-tap confirmation for guesses (no voting system)
-  const myTeamColor = getMyTeamColor();
-  const isMyTurn = myTeamColor && currentGame?.currentTeam === myTeamColor;
-  const canGuess = isMyTurn && currentGame?.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame?.winner;
+  if (!canCurrentUserGuess()) return;
 
-  if (!canGuess) return;
-
-  // First tap selects (shows checkmark). Second tap confirms.
+  // Toggle selection
   if (pendingCardSelection === cardIndex) {
     clearPendingCardSelection();
-    await _originalHandleCardClick(cardIndex);
-    return;
+  } else {
+    setPendingCardSelection(cardIndex);
   }
-
-  setPendingCardSelection(cardIndex);
 }
 
-// Replace global handleCardClick
-window.handleCardClick = handleCardClickEnhanced;
+async function handleCardConfirm(evt, cardIndex) {
+  // Prevent the card's onclick from firing too.
+  try { evt?.stopPropagation?.(); } catch (_) {}
+  try { evt?.preventDefault?.(); } catch (_) {}
+
+  if (activeTagMode) return;
+  if (!canCurrentUserGuess()) return;
+
+  // Only confirm if this card is the selected one.
+  if (pendingCardSelection !== cardIndex) return;
+
+  clearPendingCardSelection();
+  await _originalHandleCardClick(cardIndex);
+}
+
+// Expose for inline handlers
+window.handleCardSelect = handleCardSelect;
+window.handleCardConfirm = handleCardConfirm;
 
 
 /* =========================
