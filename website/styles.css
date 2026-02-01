@@ -7376,6 +7376,33 @@ body.tournament.has-team-color .input:focus {
     flex: 1 1 auto;
     padding: 10px 12px;
   }
+
+  /* Mobile: allow the in-game view to scroll vertically when needed.
+     This prevents content getting "trapped" on smaller phones and
+     avoids iOS Safari scroll lock issues. */
+  .panel-game.game-active{
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Let the active game container participate in scrolling. */
+  .panel-game.game-active .panel-inner,
+  #game-board-container{
+    min-height: 0;
+  }
+
+  /* The game layout manages most things internally, but the center column
+     should be scrollable on small screens so the action bar and board are
+     always reachable. */
+  .game-center-area{
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  .game-center-area .game-board-wrapper{
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
 }
 
 /* Enhanced Game Header */
@@ -8715,7 +8742,11 @@ body.tournament.has-team-color .input:focus {
   padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-  overflow: hidden;
+  /* On mobile/tablet, the sidebar is an off-canvas sheet.
+     Allow the sheet itself to scroll vertically (iOS Safari needs this)
+     while still keeping internal panels scrollable. */
+  overflow-y: auto;
+  overflow-x: hidden;
   flex-direction: column;
   gap: 10px;
   -webkit-overflow-scrolling: touch;
