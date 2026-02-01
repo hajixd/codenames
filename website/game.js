@@ -84,8 +84,8 @@ async function applyGameResultToPlayerStatsIfNeeded(game) {
       const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
       const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
 
-      const redIds = new Set(redPlayers.map(p => String(p?.odId || '').trim()).filter(Boolean));
-      const blueIds = new Set(bluePlayers.map(p => String(p?.odId || '').trim()).filter(Boolean));
+      const redIds = new Set(redPlayers.filter(p => !p.isAI).map(p => String(p?.odId || '').trim()).filter(Boolean));
+      const blueIds = new Set(bluePlayers.filter(p => !p.isAI).map(p => String(p?.odId || '').trim()).filter(Boolean));
       const all = new Set([...redIds, ...blueIds]);
       if (all.size === 0) {
         tx.update(gameRef, { statsApplied: true, statsAppliedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -1004,9 +1004,10 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
   const inactivePlayers = [];
 
   for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
+    // Never remove AI players
+    if (p.isAI) continue;
     const status = presenceMap.get(p.odId);
     // Remove players who are inactive or offline (or not in presence at all)
-    // Remove players who are idle or offline (or not in presence at all)
     if (!status || status === 'idle' || status === 'offline') {
       inactivePlayers.push(p.odId);
     }
@@ -1531,6 +1532,9 @@ function renderQuickLobby(game) {
   }
   const isActive = (id) => {
     if (!presenceData.length) return true;
+    // AI players are always active
+    const aiList = window.aiPlayers || [];
+    if (aiList.some(a => a.odId === id)) return true;
     return presenceMap.get(id) === 'online';
   };
 
@@ -3923,5 +3927,327 @@ if (originalLeaveQuickGame) {
   window.leaveQuickGame = function() {
     cleanupAdvancedFeatures();
     return originalLeaveQuickGame.apply(this, arguments);
+  };
+}
+
+/* =========================
+   AI PLAYER INTEGRATION
+   - +AI modal logic
+   - Lobby rendering with AI status colors
+   - Game loop hooks
+========================= */
+
+// ─── AI Modal ────────────────────────────────────────────────────────────────
+let pendingAITeam = null;
+let pendingAISeatRole = null;
+
+function openAIModal(team, seatRole) {
+  pendingAITeam = team;
+  pendingAISeatRole = seatRole;
+
+  const modal = document.getElementById('ai-mode-modal');
+  if (!modal) return;
+
+  const subtitle = document.getElementById('ai-mode-subtitle');
+  const statusEl = document.getElementById('ai-mode-status');
+  const teamLabel = team === 'red' ? 'Red' : 'Blue';
+  const roleLabel = seatRole === 'spymaster' ? 'Spymaster' : 'Operative';
+
+  if (subtitle) subtitle.textContent = `Adding AI ${roleLabel} to ${teamLabel} team`;
+  if (statusEl) statusEl.textContent = '';
+
+  // Helper mode not available for spymaster (helpers don't give clues)
+  const helperBtn = document.getElementById('ai-mode-helper');
+  if (helperBtn) {
+    helperBtn.disabled = (seatRole === 'spymaster');
+    helperBtn.title = (seatRole === 'spymaster') ? 'Helpers cannot be Spymasters' : '';
+  }
+
+  // Check max AI limit
+  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
+  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
+  if (currentCount >= max) {
+    if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
+  }
+
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('modal-open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeAIModal() {
+  const modal = document.getElementById('ai-mode-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) modal.style.display = 'none';
+  }, 200);
+  modal.setAttribute('aria-hidden', 'true');
+  pendingAITeam = null;
+  pendingAISeatRole = null;
+}
+
+window.openAIModal = openAIModal;
+window.closeAIModal = closeAIModal;
+
+async function handleAIModeSelect(mode) {
+  if (!pendingAITeam || !pendingAISeatRole) return;
+
+  const statusEl = document.getElementById('ai-mode-status');
+
+  // Check max
+  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(pendingAITeam) : 0;
+  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
+  if (currentCount >= max) {
+    if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Adding AI player...';
+
+  try {
+    const ai = await addAIPlayer(pendingAITeam, pendingAISeatRole, mode);
+    if (ai) {
+      if (statusEl) {
+        if (ai.statusColor === 'green') statusEl.textContent = `${ai.name} is ready!`;
+        else if (ai.statusColor === 'yellow') statusEl.textContent = `${ai.name} connected but verification partial.`;
+        else if (ai.statusColor === 'red') statusEl.textContent = `${ai.name} failed to connect. Check API.`;
+        else statusEl.textContent = `${ai.name} added.`;
+      }
+      // Close modal after short delay
+      setTimeout(closeAIModal, 800);
+    }
+  } catch (e) {
+    console.error('Add AI failed:', e);
+    if (statusEl) statusEl.textContent = 'Failed to add AI player.';
+  }
+}
+
+// Wire up modal buttons
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('ai-mode-helper')?.addEventListener('click', () => handleAIModeSelect('helper'));
+  document.getElementById('ai-mode-autonomous')?.addEventListener('click', () => handleAIModeSelect('autonomous'));
+  document.getElementById('ai-mode-modal-close')?.addEventListener('click', closeAIModal);
+  document.getElementById('ai-mode-modal-backdrop')?.addEventListener('click', closeAIModal);
+});
+
+// ─── Enhanced Lobby Rendering with AI Players ────────────────────────────────
+
+// Override renderTeamList to show AI status indicators
+const _origRenderQuickLobby = renderQuickLobby;
+
+function renderQuickLobbyWithAI(game) {
+  // Call original render first
+  _origRenderQuickLobby(game);
+
+  if (!game) return;
+
+  // Re-render player lists to include AI status indicators
+  const aiPlayersList = window.aiPlayers || [];
+  if (aiPlayersList.length === 0) return;
+
+  // Enhance each AI player in the DOM with status colors and badges
+  const allLists = [
+    'quick-red-spymaster-list', 'quick-red-operative-list',
+    'quick-blue-spymaster-list', 'quick-blue-operative-list'
+  ];
+
+  for (const listId of allLists) {
+    const listEl = document.getElementById(listId);
+    if (!listEl) continue;
+
+    const playerEls = listEl.querySelectorAll('.quick-player');
+    playerEls.forEach(el => {
+      const nameEl = el.querySelector('.quick-player-name');
+      if (!nameEl) return;
+
+      // Find AI by name match
+      const nameText = (nameEl.textContent || '').replace(/\s*\(you\)\s*/, '').trim();
+      const ai = aiPlayersList.find(a => a.name === nameText);
+      if (!ai) return;
+
+      // Add AI class
+      el.classList.add('ai-player');
+
+      // Add status color indicator
+      if (ai.statusColor && ai.statusColor !== 'none') {
+        el.classList.add(`ai-status-${ai.statusColor}`);
+      }
+
+      // Add AI mode badge
+      const existingBadge = el.querySelector('.ai-badge');
+      if (!existingBadge) {
+        const badge = document.createElement('span');
+        badge.className = `ai-badge ai-badge-${ai.mode}`;
+        badge.textContent = ai.mode === 'helper' ? 'HELPER' : 'AUTO';
+        badge.title = ai.mode === 'helper' ? 'AI Helper - chats only' : 'AI Autonomous - plays independently';
+        el.appendChild(badge);
+      }
+
+      // Add remove button
+      const existingRemove = el.querySelector('.ai-remove-btn');
+      if (!existingRemove) {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'ai-remove-btn';
+        removeBtn.type = 'button';
+        removeBtn.title = 'Remove AI';
+        removeBtn.textContent = '×';
+        removeBtn.onclick = (e) => {
+          e.stopPropagation();
+          removeAIPlayer(ai.id);
+        };
+        el.appendChild(removeBtn);
+      }
+
+      // Replace the READY/NOT READY badge with AI status color
+      const badgeEl = el.querySelector('.quick-player-badge');
+      if (badgeEl) {
+        if (ai.statusColor === 'green') {
+          badgeEl.textContent = 'READY';
+          badgeEl.classList.add('ai-ready-green');
+        } else if (ai.statusColor === 'yellow') {
+          badgeEl.textContent = 'PARTIAL';
+          badgeEl.classList.add('ai-ready-yellow');
+        } else if (ai.statusColor === 'red') {
+          badgeEl.textContent = 'ERROR';
+          badgeEl.classList.add('ai-ready-red');
+        } else {
+          badgeEl.textContent = 'CHECKING';
+          badgeEl.classList.add('ai-ready-none');
+        }
+      }
+    });
+  }
+}
+
+// Replace the global renderQuickLobby
+renderQuickLobby = renderQuickLobbyWithAI;
+
+// ─── Hook into Game Start ────────────────────────────────────────────────────
+
+// Watch for game phase changes to start/stop AI loop
+let lastObservedPhase = null;
+
+const _origRenderGame = renderGame;
+renderGame = function renderGameWithAI() {
+  _origRenderGame();
+
+  if (!currentGame) return;
+  const aiPlayersList = window.aiPlayers || [];
+  if (aiPlayersList.length === 0) return;
+
+  const phase = currentGame.currentPhase;
+
+  // Game just started (transitioned from waiting/role-selection to active play)
+  if (phase !== lastObservedPhase) {
+    if ((phase === 'spymaster' || phase === 'operatives') && !lastObservedPhase?.match?.(/^(spymaster|operatives)$/)) {
+      // Game started or resumed - kick off AI loop
+      startAIGameLoop();
+      // Send game start chat from autonomous AIs
+      if (lastObservedPhase === 'role-selection' || lastObservedPhase === 'waiting') {
+        aiGameStartChat();
+      }
+    }
+
+    if (phase === 'ended' || currentGame.winner) {
+      // Game ended - stop AI loop
+      stopAIGameLoop();
+    }
+
+    lastObservedPhase = phase;
+  }
+
+  // Render AI indicators in topbar player names
+  renderAIIndicatorsInTopbar();
+
+  // Render AI indicators in chat messages
+  renderAIChatIndicators();
+};
+
+function renderAIIndicatorsInTopbar() {
+  const aiPlayersList = window.aiPlayers || [];
+  if (!aiPlayersList.length) return;
+
+  const topbarBtns = document.querySelectorAll('.topbar-player');
+  topbarBtns.forEach(btn => {
+    const name = (btn.textContent || '').trim();
+    const ai = aiPlayersList.find(a => a.name === name);
+    if (ai && !btn.classList.contains('ai-topbar-player')) {
+      btn.classList.add('ai-topbar-player');
+    }
+  });
+}
+
+function renderAIChatIndicators() {
+  const aiPlayersList = window.aiPlayers || [];
+  if (!aiPlayersList.length) return;
+
+  const chatMsgs = document.querySelectorAll('.chat-message');
+  chatMsgs.forEach(msg => {
+    const senderEl = msg.querySelector('.chat-sender');
+    if (!senderEl) return;
+    const senderName = (senderEl.textContent || '').trim();
+    const ai = aiPlayersList.find(a => a.name === senderName);
+    if (ai && !senderEl.classList.contains('ai-chat-sender')) {
+      senderEl.classList.add('ai-chat-sender');
+    }
+  });
+}
+
+// ─── Hook into Leave/Cleanup ────────────────────────────────────────────────
+
+const _origCleanupAdvanced = cleanupAdvancedFeatures;
+cleanupAdvancedFeatures = function() {
+  _origCleanupAdvanced();
+  // Cleanup AI
+  if (typeof cleanupAllAI === 'function') cleanupAllAI();
+  if (typeof removeAllAIs === 'function') removeAllAIs();
+  lastObservedPhase = null;
+};
+
+// ─── Prevent AI removal by inactivity checker ───────────────────────────────
+// AI players are always "active" since they're local.
+// Also override getPresenceStatus so AI odIds always report 'online'.
+if (typeof window.getPresenceStatus === 'function') {
+  const _origGetPresenceStatus = window.getPresenceStatus;
+  window.getPresenceStatus = function(p) {
+    const odId = p?.odId || p?.id || '';
+    const aiList = window.aiPlayers || [];
+    if (aiList.some(a => a.odId === odId)) return 'online';
+    return _origGetPresenceStatus(p);
+  };
+}
+
+const _origIsActive = typeof window._aiPatchedIsActive !== 'undefined';
+if (!_origIsActive) {
+  window._aiPatchedIsActive = true;
+  // Override the inactivity checker to always consider AI players active
+  const origCheckAndRemove = checkAndRemoveInactiveLobbyPlayers;
+  checkAndRemoveInactiveLobbyPlayers = async function(game) {
+    // Before running, mark all AI odIds as active in presence
+    // This prevents AI players from being removed as "inactive"
+    const aiList = window.aiPlayers || [];
+    if (aiList.length === 0) return origCheckAndRemove(game);
+
+    // Ensure presenceCache exists and inject AI players as "active"
+    if (!window.presenceCache) window.presenceCache = [];
+    const presenceData = window.presenceCache;
+    const aiPresenceEntries = [];
+    for (const ai of aiList) {
+      if (!presenceData.some(p => (p.odId || p.id) === ai.odId)) {
+        const entry = { odId: ai.odId, name: ai.name, lastSeen: { toMillis: () => Date.now() } };
+        presenceData.push(entry);
+        aiPresenceEntries.push(entry);
+      }
+    }
+
+    await origCheckAndRemove(game);
+
+    // Clean up injected entries
+    for (const entry of aiPresenceEntries) {
+      const idx = presenceData.indexOf(entry);
+      if (idx !== -1) presenceData.splice(idx, 1);
+    }
   };
 }
