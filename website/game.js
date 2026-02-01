@@ -902,6 +902,10 @@ async function startQuickLobbyListener() {
     }
 
     if (currentPlayMode === 'quick') {
+      // Keep a shared, doc-derived list of AI players so all clients can render them
+      // and (optionally) act as the AI controller.
+      if (window.syncAIPlayersFromGame) window.syncAIPlayersFromGame(quickLobbyGame);
+
       renderQuickLobby(quickLobbyGame);
       maybeAutoStartQuickPlay(quickLobbyGame);
     }
@@ -1530,11 +1534,14 @@ function renderQuickLobby(game) {
     const status = window.getPresenceStatus ? window.getPresenceStatus(pr) : 'online';
     presenceMap.set(pr.odId || pr.id, status);
   }
+  const aiIdsFromGame = new Set(
+    [...redAll, ...blueAll].filter(p => p && p.isAI && p.odId).map(p => p.odId)
+  );
+
   const isActive = (id) => {
     if (!presenceData.length) return true;
-    // AI players are always active
-    const aiList = window.aiPlayers || [];
-    if (aiList.some(a => a.odId === id)) return true;
+    // AI players are always active (they don't have presence pings)
+    if (aiIdsFromGame.has(id)) return true;
     return presenceMap.get(id) === 'online';
   };
 
@@ -4044,6 +4051,9 @@ function renderQuickLobbyWithAI(game) {
   if (!game) return;
 
   // Re-render player lists to include AI status indicators
+  // Refresh AI list from the live game doc so every client can see AIs (even if they didn't add them)
+  if (window.syncAIPlayersFromGame) window.syncAIPlayersFromGame(currentGame);
+
   const aiPlayersList = window.aiPlayers || [];
   if (aiPlayersList.length === 0) return;
 

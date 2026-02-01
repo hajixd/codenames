@@ -27,6 +27,167 @@ let aiPlayers = []; // { id, name, team, seatRole, mode, status, statusColor }
 let aiIntervals = {}; // keyed by ai id → interval handle for game loop
 let aiChatTimers = {}; // keyed by ai id → timeout for delayed chat
 let aiNextId = 1;
+
+// ─── Multi-client AI hosting (one "controller" runs the AI loop) ─────────────
+const LS_AI_CLIENT_ID = 'ct_ai_clientId_v1';
+const AI_CONTROLLER_TTL_MS = 15000;      // controller lease duration
+const AI_CONTROLLER_HEARTBEAT_MS = 5000; // heartbeat cadence
+let lastAIHeartbeatSentAt = 0;
+
+function getAIClientId() {
+  try {
+    let id = localStorage.getItem(LS_AI_CLIENT_ID);
+    if (!id) {
+      id = `client_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(LS_AI_CLIENT_ID, id);
+    }
+    return id;
+  } catch (_) {
+    return `client_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+function tsToMs(ts) {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  return 0;
+}
+
+async function claimAIController(gameId) {
+  const myId = getAIClientId();
+  const ref = db.collection('games').doc(gameId);
+  try {
+    let claimed = false;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data() || {};
+      const hbMs = tsToMs(g.aiControllerHeartbeat);
+      const now = Date.now();
+      const expired = !hbMs || (now - hbMs > AI_CONTROLLER_TTL_MS);
+      if (!g.aiControllerId || expired || g.aiControllerId === myId) {
+        tx.update(ref, {
+          aiControllerId: myId,
+          aiControllerHeartbeat: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        claimed = true;
+      }
+    });
+    return claimed;
+  } catch (e) {
+    console.warn('Failed to claim AI controller:', e);
+    return false;
+  }
+}
+
+async function maybeHeartbeatAIController(gameId, game) {
+  const myId = getAIClientId();
+  const now = Date.now();
+  const ctrlId = String(game?.aiControllerId || '');
+  const hbMs = tsToMs(game?.aiControllerHeartbeat);
+  const valid = ctrlId && hbMs && (now - hbMs <= AI_CONTROLLER_TTL_MS);
+
+  // If nobody holds the lease (or it expired), try to claim it.
+  if (!valid) {
+    return await claimAIController(gameId);
+  }
+
+  const amController = (ctrlId === myId);
+  if (amController && (now - lastAIHeartbeatSentAt > AI_CONTROLLER_HEARTBEAT_MS)) {
+    lastAIHeartbeatSentAt = now;
+    try {
+      await db.collection('games').doc(gameId).update({
+        aiControllerHeartbeat: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+  return amController;
+}
+
+// Build an AI list from the game doc so every client can render/host AIs.
+function extractAIPlayersFromGame(game) {
+  const out = [];
+  const pushTeam = (team) => {
+    const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+    const players = Array.isArray(game?.[key]) ? game[key] : [];
+    for (const p of players) {
+      if (!p || !p.isAI) continue;
+      const odId = String(p.odId || '').trim();
+      if (!odId) continue;
+      out.push({
+        id: String(p.aiId || p.ai_id || p.ai || odId),
+        odId,
+        name: String(p.name || 'AI'),
+        team,
+        seatRole: (String(p.role || 'operative') === 'spymaster') ? 'spymaster' : 'operative',
+        mode: String(p.aiMode || 'autonomous'),
+        statusColor: 'none',
+        ready: !!p.ready,
+        isAI: true,
+      });
+    }
+  };
+  pushTeam('red');
+  pushTeam('blue');
+  return out;
+}
+
+function syncAIPlayersFromGame(game) {
+  if (!game) return;
+
+  const fromDoc = extractAIPlayersFromGame(game);
+  if (!fromDoc.length) {
+    aiPlayers = [];
+    window.aiPlayers = aiPlayers;
+    return;
+  }
+
+  // Preserve local ephemeral state (statusColor, timers) by odId
+  const prev = new Map((aiPlayers || []).map(a => [a.odId, a]));
+  aiPlayers = fromDoc.map(a => {
+    const p = prev.get(a.odId);
+    return p ? { ...a, statusColor: p.statusColor || a.statusColor } : a;
+  });
+
+  window.aiPlayers = aiPlayers;
+
+  // Best-effort: if we're in the lobby and some AIs aren't ready, the controller will verify them.
+  if (String(game.currentPhase || '') === 'waiting') {
+    // Fire-and-forget, controller-gated inside.
+    maybeVerifyLobbyAIs(game).catch(() => {});
+  }
+}
+
+window.syncAIPlayersFromGame = syncAIPlayersFromGame;
+
+function getActiveGameIdForAI() {
+  return (quickLobbyGame && quickLobbyGame.id) || (currentGame && currentGame.id) || QUICKPLAY_DOC_ID;
+}
+
+
+// Verify and ready-up any AI players that are present but not ready yet.
+async function maybeVerifyLobbyAIs(game) {
+  const gameId = game?.id;
+  if (!gameId) return;
+  const amController = await maybeHeartbeatAIController(gameId, game);
+  if (!amController) return;
+
+  const notReady = (aiPlayers || []).filter(a => a.isAI && !a.ready);
+  if (!notReady.length) return;
+
+  for (const ai of notReady) {
+    // Avoid multiple concurrent checks for the same AI
+    if (aiThinkingState[ai.id]) continue;
+    aiThinkingState[ai.id] = true;
+    const ok = await verifyAIReady(ai);
+    aiThinkingState[ai.id] = false;
+    if (ok) {
+      ai.ready = true;
+      await setAIReadyInFirestore(ai, true);
+    }
+  }
+}
 let aiThinkingState = {}; // keyed by ai id → true when AI is processing
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
@@ -69,7 +230,7 @@ async function aiChatCompletion(messages, options = {}) {
 
 async function verifyAIReady(ai) {
   ai.statusColor = 'none'; // colorless by default
-  renderQuickLobby(quickLobbyGame);
+  try { if (typeof renderQuickLobby === 'function') renderQuickLobby(quickLobbyGame); } catch (_) {}
 
   try {
     const result = await aiChatCompletion([
@@ -84,19 +245,23 @@ async function verifyAIReady(ai) {
       },
       { role: 'user', content: 'Ready check. Reply with JSON only.' }
     ], {
-      max_tokens: 60,
+      max_tokens: 80,
       temperature: 0,
-      response_format: { type: 'json_object' },
+      response_format: { type: 'json_object' }
     });
 
-    let parsed;
+    // Parse strict JSON; if a model ever wraps it, try a best-effort extraction
+    let parsed = null;
     try {
-      parsed = JSON.parse(result);
-    } catch {
-      // Try to extract JSON object from any stray output
-      const match = result.match(/\{[\s\S]*\}/);
-      if (match) parsed = JSON.parse(match[0]);
-      else throw new Error('Could not parse ready check JSON');
+      parsed = JSON.parse(String(result || '').trim());
+    } catch (e) {
+      const s = String(result || '');
+      const a = s.indexOf('{');
+      const b = s.lastIndexOf('}');
+      if (a >= 0 && b > a) {
+        try { parsed = JSON.parse(s.slice(a, b + 1)); } catch (_) {}
+      }
+      if (!parsed) throw new Error('Could not parse ready check JSON');
     }
 
     if (parsed && parsed.ready === true) {
@@ -110,7 +275,7 @@ async function verifyAIReady(ai) {
     console.error(`AI ${ai.name} ready check failed:`, err);
   }
 
-  renderQuickLobby(quickLobbyGame);
+  try { if (typeof renderQuickLobby === 'function') renderQuickLobby(quickLobbyGame); } catch (_) {}
   return ai.statusColor === 'green';
 }
 
@@ -139,7 +304,7 @@ async function addAIPlayer(team, seatRole, mode) {
 
   const name = pickAIName();
   const ai = {
-    id: `ai_${aiNextId++}`,
+    id: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     odId: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     name,
     team,
@@ -196,7 +361,7 @@ function removeAllAIs() {
 // ─── Firestore Integration ──────────────────────────────────────────────────
 
 async function addAIToFirestoreLobby(ai) {
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const ref = db.collection('games').doc(getActiveGameIdForAI());
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -230,7 +395,7 @@ async function addAIToFirestoreLobby(ai) {
 }
 
 async function setAIReadyInFirestore(ai, ready) {
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const ref = db.collection('games').doc(getActiveGameIdForAI());
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -254,7 +419,7 @@ async function setAIReadyInFirestore(ai, ready) {
 }
 
 async function removeAIFromFirestoreLobby(ai) {
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  const ref = db.collection('games').doc(getActiveGameIdForAI());
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -821,13 +986,20 @@ function startAIGameLoop() {
   aiGameLoopRunning = true;
 
   aiGameLoopInterval = setInterval(async () => {
-    if (aiPlayers.length === 0) return;
-
     // Get fresh game state
     const gameId = currentGame?.id;
     if (!gameId) return;
 
     const game = await getGameSnapshot(gameId);
+
+    // Keep AI list synced from the game doc so every client can host them.
+    syncAIPlayersFromGame(game);
+
+    if (!aiPlayers.length) return;
+
+    // Only one client should drive AI actions to avoid duplicate moves.
+    const amController = await maybeHeartbeatAIController(gameId, game);
+    if (!amController) return;
     if (!game || game.winner) {
       // Game ended, send reactions
       if (game?.winner && game.winner !== 'ended') {
