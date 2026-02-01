@@ -1227,6 +1227,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMyTeamControls();
   initRequestsModal();
   initInvitesModal();
+  initAdminAssignModal();
   initChatTab();
   initChatDrawerChrome();
   updateHeaderIconVisibility();
@@ -3110,6 +3111,13 @@ function renderPlayers(players, teams) {
   const container = document.getElementById('players-list');
   if (!container) return;
 
+  // Admin quick access (Players tab)
+  try {
+    const adminBar = document.getElementById('admin-assign-bar');
+    if (adminBar) adminBar.style.display = isAdminUser() ? 'flex' : 'none';
+    if (!isAdminUser()) setHint('admin-assign-bar-hint', '');
+  } catch (_) {}
+
   const st = computeUserState(teams);
   const roster = buildRosterIndex(teams);
   const myTeam = st?.team;
@@ -3224,6 +3232,9 @@ function renderPlayers(players, teams) {
     if (!st.name) setHint('players-hint', 'Set your name on Home first.');
     else setHint('players-hint', 'Tap Invite to send a team invite.');
   }
+
+  // If the admin modal is open, keep it in sync with the latest snapshots.
+  try { if (adminAssignModalOpen) renderAdminAssignModal(); } catch (_) {}
 }
 function renderInvites(players, teams) {
   const card = document.getElementById('invites-card');
@@ -4087,6 +4098,251 @@ function renderInvitesModal() {
       renderMyTeam(teamsCache);
     });
   });
+}
+
+/* =========================
+   Admin: Assign players to teams
+========================= */
+
+let adminAssignModalOpen = false;
+let adminAssignFilter = '';
+
+function initAdminAssignModal() {
+  const bar = document.getElementById('admin-assign-bar');
+  const openBtn = document.getElementById('open-admin-assign');
+  const closeBtn = document.getElementById('admin-assign-close');
+  const modal = document.getElementById('admin-assign-modal');
+  const search = document.getElementById('admin-assign-search');
+  const refreshBtn = document.getElementById('admin-assign-refresh');
+
+  // Bar is only shown for admins, but we still wire handlers defensively.
+  openBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAdminUser()) {
+      setHint('admin-assign-bar-hint', 'Admin only.');
+      return;
+    }
+    openAdminAssignModal();
+  });
+
+  closeBtn?.addEventListener('click', closeAdminAssignModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeAdminAssignModal();
+  });
+
+  refreshBtn?.addEventListener('click', () => {
+    if (!adminAssignModalOpen) return;
+    renderAdminAssignModal();
+  });
+
+  search?.addEventListener('input', () => {
+    adminAssignFilter = String(search.value || '').trim();
+    if (!adminAssignModalOpen) return;
+    renderAdminAssignModal();
+  });
+
+  // Hide bar by default; renderPlayers() will toggle it on for admins.
+  if (bar) bar.style.display = 'none';
+}
+
+function openAdminAssignModal() {
+  const modal = document.getElementById('admin-assign-modal');
+  if (!modal) return;
+  if (!isAdminUser()) return;
+  adminAssignModalOpen = true;
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+
+  const search = document.getElementById('admin-assign-search');
+  if (search) {
+    // Preserve last filter so repeated opens feel fast.
+    search.value = adminAssignFilter || '';
+    setTimeout(() => { try { search.focus(); } catch (_) {} }, 0);
+  }
+  setHint('admin-assign-hint', '');
+  renderAdminAssignModal();
+}
+
+function closeAdminAssignModal() {
+  const modal = document.getElementById('admin-assign-modal');
+  adminAssignModalOpen = false;
+  if (modal) {
+    modal.classList.remove('modal-open');
+    setTimeout(() => { modal.style.display = 'none'; }, 200);
+  }
+  setHint('admin-assign-hint', '');
+}
+
+function formatTeamPill(team) {
+  if (!team) return `<span class="admin-assign-pill"><span class="admin-assign-dot"></span>Unassigned</span>`;
+  const tc = getDisplayTeamColor(team) || null;
+  const dotStyle = tc ? `style="background:${esc(tc)}"` : '';
+  const pillStyle = tc
+    ? `style="border-color:${esc(hexToRgba(tc, 0.35))}; background:${esc(hexToRgba(tc, 0.10))}"`
+    : '';
+  return `<span class="admin-assign-pill" ${pillStyle}><span class="admin-assign-dot" ${dotStyle}></span>${esc(truncateTeamName(team.teamName || 'Team'))}</span>`;
+}
+
+function renderAdminAssignModal() {
+  if (!adminAssignModalOpen) return;
+  if (!isAdminUser()) {
+    setHint('admin-assign-hint', 'Admin only.');
+    return;
+  }
+  const list = document.getElementById('admin-assign-list');
+  if (!list) return;
+
+  const roster = buildRosterIndex(teamsCache);
+  const directory = buildPlayersDirectory(playersCache, teamsCache)
+    .filter(p => (p?.name || '').trim());
+
+  const filter = (adminAssignFilter || '').toLowerCase();
+  const filtered = filter
+    ? directory.filter(p => String(p?.name || '').toLowerCase().includes(filter) || String(p?.id || '').toLowerCase().includes(filter))
+    : directory;
+
+  // Sort: unassigned first, then by current team, then name.
+  const sorted = [...filtered].sort((a, b) => {
+    const ta = roster.memberTeamByUserId.get(a.id);
+    const tb = roster.memberTeamByUserId.get(b.id);
+    const aKey = ta ? String(ta.teamName || '').toLowerCase() : '';
+    const bKey = tb ? String(tb.teamName || '').toLowerCase() : '';
+    if (!!ta !== !!tb) return ta ? 1 : -1;
+    if (aKey !== bKey) return aKey.localeCompare(bKey);
+    return String(a?.name || '').toLowerCase().localeCompare(String(b?.name || '').toLowerCase());
+  });
+
+  const teamsSorted = [...(teamsCache || [])]
+    .filter(t => !t?.archived)
+    .sort((a, b) => String(a?.teamName || '').localeCompare(String(b?.teamName || '')));
+
+  if (!sorted.length) {
+    list.innerHTML = '<div class="empty-state">No players match your search.</div>';
+    return;
+  }
+
+  list.innerHTML = sorted.map(p => {
+    const uid = String(p.id || '').trim();
+    const name = String(p.name || '—').trim();
+    const currentTeam = roster.memberTeamByUserId.get(uid) || null;
+    const currentTid = currentTeam ? String(currentTeam.id || '') : '';
+
+    const options = [
+      `<option value="">Unassigned</option>`,
+      ...teamsSorted.map(t => {
+        const tid = String(t.id || '').trim();
+        const label = truncateTeamName(t.teamName || 'Team');
+        return `<option value="${esc(tid)}" ${tid === currentTid ? 'selected' : ''}>${esc(label)}</option>`;
+      })
+    ].join('');
+
+    return `
+      <div class="admin-assign-row" data-admin-assign-row="${esc(uid)}">
+        <div class="admin-assign-left">
+          <div class="admin-assign-name">${esc(name)}</div>
+          <div class="admin-assign-meta">${formatTeamPill(currentTeam)}</div>
+        </div>
+        <div class="admin-assign-right">
+          <select class="input admin-assign-select" data-admin-assign-select="${esc(uid)}">${options}</select>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach handlers (single assignment action on change)
+  list.querySelectorAll('[data-admin-assign-select]')?.forEach(sel => {
+    sel.addEventListener('change', async (e) => {
+      const uid = sel.getAttribute('data-admin-assign-select');
+      const nextTeamId = String(sel.value || '').trim();
+      if (!uid) return;
+
+      // UI feedback
+      const row = list.querySelector(`[data-admin-assign-row="${CSS.escape(uid)}"]`);
+      if (row) row.style.opacity = '0.65';
+      setHint('admin-assign-hint', 'Updating…');
+
+      try {
+        await adminAssignPlayerToTeam(uid, nextTeamId || null);
+        setHint('admin-assign-hint', 'Updated.');
+      } catch (err) {
+        console.error(err);
+        setHint('admin-assign-hint', err?.message || 'Could not update.');
+      } finally {
+        if (row) row.style.opacity = '';
+      }
+    });
+  });
+}
+
+async function adminAssignPlayerToTeam(userId, teamIdOrNull) {
+  if (!isAdminUser()) throw new Error('Admin only');
+  const uid = String(userId || '').trim();
+  if (!uid) return;
+
+  const targetTid = teamIdOrNull ? String(teamIdOrNull || '').trim() : '';
+  const targetTeam = targetTid ? (teamsCache || []).find(t => String(t?.id || '').trim() === targetTid) : null;
+  if (targetTid && !targetTeam) throw new Error('Team not found.');
+
+  // Resolve player name (best effort)
+  const dir = buildPlayersDirectory(playersCache, teamsCache);
+  const me = dir.find(p => String(p?.id || '').trim() === uid) || (playersCache || []).find(p => String(p?.id || '').trim() === uid);
+  const name = String(me?.name || findKnownUserName(uid) || uid).trim() || uid;
+
+  const batch = db.batch();
+  let writes = 0;
+
+  // Remove from any existing team rosters + pending lists
+  const updates = new Map(); // tid -> {members, pending}
+  for (const t of (teamsCache || [])) {
+    const tid = String(t?.id || '').trim();
+    if (!tid) continue;
+    const members = getMembers(t);
+    const pending = getPending(t);
+    const hadMember = members.some(m => isSameAccount(m, uid));
+    const hadPending = pending.some(r => isSameAccount(r, uid));
+    if (!hadMember && !hadPending) continue;
+
+    const nextMembers = members.filter(m => !isSameAccount(m, uid));
+    const nextPending = pending.filter(r => !isSameAccount(r, uid));
+    updates.set(tid, { members: nextMembers, pending: nextPending });
+  }
+
+  // Add to target team (after removal)
+  if (targetTid) {
+    const base = updates.get(targetTid) || { members: getMembers(targetTeam), pending: getPending(targetTeam) };
+    const nextMembers = dedupeRosterByAccount(base.members.concat([{ userId: uid, name }]));
+    const nextPending = base.pending.filter(r => !isSameAccount(r, uid));
+    updates.set(targetTid, { members: nextMembers, pending: nextPending });
+  }
+
+  // Apply updates
+  for (const [tid, data] of updates.entries()) {
+    batch.update(db.collection('teams').doc(tid), {
+      members: data.members,
+      pending: data.pending,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    writes++;
+    if (writes >= 450) break;
+  }
+
+  if (writes === 0) {
+    // No-op assignment (e.g., already unassigned)
+    return;
+  }
+
+  await batch.commit();
+
+  try {
+    const targetName = targetTid ? String(targetTeam?.teamName || 'Team').trim() : 'Unassigned';
+    logEvent('admin_assign', `Admin assigned ${normalizeUsername(name)} → ${targetName}`, {
+      targetUserId: uid,
+      targetName: normalizeUsername(name),
+      teamId: targetTid || null,
+      teamName: targetTid ? String(targetTeam?.teamName || '').trim() : null,
+    });
+  } catch (_) {}
 }
 
 /* =========================

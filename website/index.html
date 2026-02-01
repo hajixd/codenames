@@ -338,6 +338,10 @@
           <div class="panel-inner">
             <h2>Players</h2>
             <p class="subtitle small">Everyone who has entered their name. Anyone on a team can invite players (including people already on teams).</p>
+            <div class="admin-assign-bar" id="admin-assign-bar" style="display:none;">
+              <button class="btn small" id="open-admin-assign" type="button">Admin: Assign players</button>
+              <span class="hint" id="admin-assign-bar-hint"></span>
+            </div>
             <span class="hint" id="players-hint"></span>
             <div class="players-directory" id="players-list"></div>
           </div>
@@ -881,6 +885,24 @@
               <button class="btn primary" id="team-modal-join" type="button">Request to join</button>
               <span class="hint" id="team-modal-hint"></span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin: Assign Players to Teams Modal -->
+      <div class="modal admin-assign-modal" id="admin-assign-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-card admin-assign-card">
+          <div class="modal-head">
+            <div class="modal-title">Assign players to teams</div>
+            <button class="icon-btn" id="admin-assign-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body admin-assign-body">
+            <div class="admin-assign-controls">
+              <input class="input admin-assign-search" id="admin-assign-search" type="text" placeholder="Search players…" />
+              <button class="btn small" id="admin-assign-refresh" type="button">Refresh</button>
+            </div>
+            <div class="admin-assign-list" id="admin-assign-list"></div>
+            <div class="hint" id="admin-assign-hint" style="margin-top:10px;"></div>
           </div>
         </div>
       </div>

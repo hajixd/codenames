@@ -9240,6 +9240,124 @@ body.tournament.has-team-color .input:focus {
 .log-badge.leave { background: rgba(239, 68, 68, 0.12); color: var(--red); }
 .log-badge.admin { background: rgba(148, 163, 184, 0.12); color: rgba(226, 232, 240, 0.95); }
 
+/* =========================
+   Admin: Assign players modal
+========================= */
+
+.admin-assign-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 8px;
+}
+
+.admin-assign-modal .modal-card.admin-assign-card {
+  width: min(920px, calc(100vw - 28px));
+  max-height: min(84vh, 720px);
+}
+
+.admin-assign-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-assign-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-assign-search {
+  flex: 1;
+}
+
+.admin-assign-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+  max-height: 56vh;
+}
+
+.admin-assign-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+}
+
+.admin-assign-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.admin-assign-name {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.admin-assign-meta {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.admin-assign-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-assign-select {
+  min-width: 220px;
+}
+
+.admin-assign-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+}
+
+.admin-assign-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.7);
+}
+
+@media (max-width: 620px) {
+  .admin-assign-modal .modal-card.admin-assign-card {
+    width: calc(100vw - 16px);
+    max-height: 90vh;
+  }
+  .admin-assign-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .admin-assign-right {
+    justify-content: space-between;
+  }
+  .admin-assign-select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .log-tag{
   font-size: 10px;
   font-weight: 800;
