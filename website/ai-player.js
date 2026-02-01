@@ -22,18 +22,6 @@ const AI_NAMES = [
   'max', 'sam', 'jamie', 'robin', 'frankie', 'charlie', 'pat', 'dana',
 ];
 
-function aiCapWords(v) {
-  const s = String(v || '').trim();
-  if (!s) return '';
-  return s.split(/\s+/g).map(w => w ? (w[0].toUpperCase() + w.slice(1)) : '').join(' ');
-}
-function formatAIDisplayName(name) {
-  const pretty = aiCapWords(name);
-  if (!pretty) return 'AI';
-  if (/^ai\s+/i.test(pretty)) return pretty;
-  return `AI ${pretty}`;
-}
-
 // ─── State ───────────────────────────────────────────────────────────────────
 let aiPlayers = []; // { id, name, team, seatRole, mode, status, statusColor }
 let aiIntervals = {}; // keyed by ai id → interval handle for game loop
@@ -392,12 +380,6 @@ async function addAIToFirestoreLobby(ai) {
       // Don't add duplicate
       if (players.some(p => p.odId === ai.odId)) return;
 
-      // Only one spymaster per team.
-      if (String(ai.seatRole || 'operative') === 'spymaster' && players.some(p => String(p?.role || 'operative') === 'spymaster')) {
-        console.warn('AI spymaster not added: team already has a spymaster');
-        return;
-      }
-
       players.push({
         odId: ai.odId,
         name: ai.name,
@@ -573,8 +555,6 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief e
     // Add a human-like thinking delay (2-8 seconds)
     await humanDelay(2000, 8000);
 
-    const chatCtx = await getRecentTeamChatContext(game.id, team, 12);
-
     // First, chat about thinking (if autonomous)
     if (ai.mode === 'autonomous') {
       // Don't chat about strategy since spymaster shouldn't reveal info
@@ -582,9 +562,7 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief e
 
     const result = await aiChatCompletion([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: (chatCtx ? `${chatCtx}
-
-Give your clue now as JSON.` : 'Give your clue now as JSON.') },
+      { role: 'user', content: 'Give your clue now as JSON.' },
     ], {
       temperature: 0.7,
       max_tokens: 256,
@@ -623,9 +601,9 @@ Give your clue now as JSON.` : 'Give your clue now as JSON.') },
 
     await db.collection('games').doc(game.id).update({
       currentClue: { word: clueWord, number: clueNumber },
-      guessesRemaining: -1,
+      guessesRemaining: clueNumber + 1,
       currentPhase: 'operatives',
-      log: firebase.firestore.FieldValue.arrayUnion(`${formatAIDisplayName(ai.name)} (Spymaster) gave "${clueWord}" for ${clueNumber}`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
@@ -695,7 +673,7 @@ Rules:
 - Return JSON only.
 - Include BOTH the board index and the word.
 
-You have ${Number(game.guessesRemaining) === -1 ? 'unlimited' : game.guessesRemaining} guesses remaining.
+You have ${game.guessesRemaining} guesses remaining.
 
 ${ai.mode === 'autonomous' ? 'You are confident and decisive. Pick the word you think is most likely correct.' : ''}
 
@@ -705,8 +683,6 @@ Respond with valid JSON matching:
   try {
     // Human-like thinking delay (3-10 seconds)
     await humanDelay(3000, 10000);
-
-    const chatCtx = await getRecentTeamChatContext(game.id, team, 12);
 
     // Chat in operative chat before guessing
     if (ai.mode === 'autonomous') {
@@ -810,7 +786,7 @@ async function aiRevealCard(ai, game, cardIndex) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   };
 
-  let logEntry = `${formatAIDisplayName(ai.name)} guessed "${card.word}" - `;
+  let logEntry = `${teamName} guessed "${card.word}" - `;
   let endTurn = false;
   let winner = null;
 
@@ -826,10 +802,8 @@ async function aiRevealCard(ai, game, cardIndex) {
       updates.blueCardsLeft = game.blueCardsLeft - 1;
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
-    if (Number(game.guessesRemaining) !== -1) {
-      updates.guessesRemaining = game.guessesRemaining - 1;
-      if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
-    }
+    updates.guessesRemaining = game.guessesRemaining - 1;
+    if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
   } else if (card.type === 'neutral') {
     logEntry += 'Neutral. Turn ends.';
     endTurn = true;
@@ -896,7 +870,6 @@ async function aiRevealCard(ai, game, cardIndex) {
 
 async function aiConsiderEndTurn(ai, game) {
   if (ai.mode !== 'autonomous') return false;
-  if (Number(game.guessesRemaining) === -1) return false;
   if (game.guessesRemaining > 0) return false;
 
   // Auto end turn when no guesses left
@@ -907,7 +880,7 @@ async function aiConsiderEndTurn(ai, game) {
       currentPhase: 'spymaster',
       currentClue: null,
       guessesRemaining: 0,
-      log: firebase.firestore.FieldValue.arrayUnion(`${formatAIDisplayName(ai.name)} ended their turn.`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
     return true;
@@ -991,7 +964,7 @@ async function sendAIChatMessage(ai, game, text) {
       .collection(`${teamColor}Chat`)
       .add({
         senderId: ai.odId,
-        senderName: formatAIDisplayName(ai.name),
+        senderName: ai.name,
         text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
@@ -999,32 +972,6 @@ async function sendAIChatMessage(ai, game, text) {
     console.error(`AI ${ai.name} send chat error:`, e);
   }
 }
-
-async function getRecentTeamChatContext(gameId, teamColor, limit = 10) {
-  if (!gameId || !teamColor) return '';
-  try {
-    const col = `${teamColor}Chat`;
-    const snap = await db.collection('games').doc(gameId)
-      .collection(col)
-      .orderBy('createdAt', 'desc')
-      .limit(limit)
-      .get();
-
-    if (snap.empty) return '';
-    const rows = snap.docs.map(d => d.data()).reverse().map(m => {
-      const sid = String(m.senderId || '').trim();
-      const sname = String(m.senderName || '').trim();
-      const name = /^ai_/.test(sid) ? formatAIDisplayName(sname.replace(/^AI\s+/i, '')) : sname;
-      const text = String(m.text || '').trim();
-      return `- ${name}: ${text}`;
-    }).filter(Boolean);
-
-    return rows.length ? `RECENT TEAM CHAT (operatives):\n${rows.join('\n')}` : '';
-  } catch (_) {
-    return '';
-  }
-}
-
 
 // ─── AI Helper Mode: Observe & React ────────────────────────────────────────
 

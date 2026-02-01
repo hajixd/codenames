@@ -47,34 +47,6 @@ let currentGame = null;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
-// Animation / UI trackers (reset when Quick Play starts a new round)
-let _lastBoardRevealed = null; // array<boolean>
-let _lastClueSig = null;
-let _lastInstanceId = null;
-
-function showClueToast(word, number, team) {
-  try {
-    const el = document.createElement('div');
-    el.className = 'clue-toast';
-    el.setAttribute('role', 'status');
-    el.setAttribute('aria-live', 'polite');
-
-    const teamLabel = team === 'red' ? 'RED' : (team === 'blue' ? 'BLUE' : '');
-    const w = String(word || '').trim();
-    const n = (typeof number === 'number' || typeof number === 'string') ? String(number) : '';
-
-    el.innerHTML = `
-      <span class="clue-toast-word">${escapeHtml(w)}</span>
-      <span class="clue-toast-num">${escapeHtml(n)}</span>
-      ${teamLabel ? `<span class="clue-toast-team" style="margin-left:10px; font-size:12px; opacity:0.85;">${teamLabel}</span>` : ''}
-    `;
-
-    document.body.appendChild(el);
-    // Remove after animation completes.
-    setTimeout(() => { try { el.remove(); } catch (_) {} }, 1600);
-  } catch (_) {}
-}
-
 // Best-effort local resume: remember the last active game so a page refresh can jump straight back in.
 // NOTE: This is purely device-local (localStorage) and does not write anything to Firestore.
 window.restoreLastGameFromStorage = function restoreLastGameFromStorage() {
@@ -1255,15 +1227,6 @@ async function joinQuickLobby(role, seatRole) {
       const nextSpec = spectators.filter(p => p.odId !== odId);
 
       const seat = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-
-      // Only one spymaster per team (game state stores a single spymaster name).
-      if (seat === 'spymaster') {
-        const target = (role === 'red') ? nextRed : (role === 'blue' ? nextBlue : []);
-        if (target.some(p => String(p?.role || 'operative') === 'spymaster')) {
-          throw new Error('That team already has a Spymaster. Switch to Operative or pick the other team.');
-        }
-      }
-
       const player = { odId, name: userName, ready: false, role: seat };
       if (role === 'red') nextRed.push(player);
       else if (role === 'blue') nextBlue.push(player);
@@ -1324,12 +1287,6 @@ async function setQuickSeatRole(seatRole) {
       const players = Array.isArray(game[key]) ? [...game[key]] : [];
       const idx = players.findIndex(p => p.odId === odId);
       if (idx === -1) throw new Error('Join a team first.');
-
-      // Only one spymaster per team.
-      if (nextSeat === 'spymaster') {
-        const someoneElseIsSpy = players.some((p, i) => i !== idx && String(p?.role || 'operative') === 'spymaster');
-        if (someoneElseIsSpy) throw new Error('That team already has a Spymaster.');
-      }
 
       // Preserve readiness, just switch seat.
       players[idx] = { ...players[idx], role: nextSeat };
@@ -1472,11 +1429,8 @@ function bothTeamsFullyReady(game) {
 async function maybeAutoStartQuickPlay(game) {
   if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
   if (!bothTeamsFullyReady(game)) return;
-  if (!quickTeamsHaveMinRoles(game)) return;
 
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  let didStart = false;
-
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -1484,10 +1438,10 @@ async function maybeAutoStartQuickPlay(game) {
       const g = snap.data();
       if (g.currentPhase !== 'waiting' || g.winner != null) return;
       if (!bothTeamsFullyReady(g)) return;
-      if (!quickTeamsHaveMinRoles(g)) return;
 
       const s = getQuickSettings(g);
       const firstTeam = 'red';
+      // Use the Quick Play deck settings (s), not an undefined variable.
       const words = getRandomWords(BOARD_SIZE, s.deckId);
       const keyCard = generateKeyCard(firstTeam, s.blackCards);
       const cards = words.map((word, i) => ({
@@ -1496,18 +1450,17 @@ async function maybeAutoStartQuickPlay(game) {
         revealed: false
       }));
 
-      // Assign the pre-selected spymasters from the lobby (required to start).
+      // If players pre-selected Spymaster in the lobby, pre-assign them.
       const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
       const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
       const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
-      if (!redSpy || !blueSpy) return;
+      const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
 
-      didStart = true;
       tx.update(ref, {
         cards,
         currentTeam: firstTeam,
-        currentPhase: 'spymaster',
+        currentPhase: startPhase,
         redSpymaster: redSpy,
         blueSpymaster: blueSpy,
         redCardsLeft: FIRST_TEAM_CARDS,
@@ -1515,81 +1468,16 @@ async function maybeAutoStartQuickPlay(game) {
         currentClue: null,
         guessesRemaining: 0,
         winner: null,
-        // Bump a new "instance id" so clients can detect a fresh game.
-        instanceId: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
         log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
-
-    if (didStart) {
-      // Clear operative chats for this reusable Quick Play doc.
-      clearOperativeChatsForGame(QUICKPLAY_DOC_ID);
-      // Play game start sound
-      if (window.playSound) window.playSound('gameStart');
-    }
+    // Play game start sound
+    if (window.playSound) window.playSound('gameStart');
   } catch (e) {
-    // Benign race: another client may have started the game first.
-    console.warn('Auto-start Quick Play skipped:', e);
+    console.error('Auto-start Quick Play failed:', e);
   }
 }
-
-
-async function startQuickGame(_gameId) {
-  await ensureQuickPlayGameExists();
-
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  let didStart = false;
-
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error('Quick Play lobby not found');
-      const g = snap.data();
-
-      if (g.currentPhase !== 'waiting' || g.winner != null) throw new Error('Game already started.');
-      if (!bothTeamsFullyReady(g)) throw new Error('Everyone must be READY to start.');
-      if (!quickTeamsHaveMinRoles(g)) throw new Error('Need at least 1 Spymaster and 1 Operative on each team.');
-
-      const s = getQuickSettings(g);
-      const firstTeam = 'red';
-      const words = getRandomWords(BOARD_SIZE, s.deckId);
-      const keyCard = generateKeyCard(firstTeam, s.blackCards);
-      const cards = words.map((word, i) => ({ word, type: keyCard[i], revealed: false }));
-
-      const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
-      const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
-      const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
-      const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
-      if (!redSpy || !blueSpy) throw new Error('Both teams must have a Spymaster selected.');
-
-      didStart = true;
-      tx.update(ref, {
-        cards,
-        currentTeam: firstTeam,
-        currentPhase: 'spymaster',
-        redSpymaster: redSpy,
-        blueSpymaster: blueSpy,
-        redCardsLeft: FIRST_TEAM_CARDS,
-        blueCardsLeft: SECOND_TEAM_CARDS,
-        currentClue: null,
-        guessesRemaining: 0,
-        winner: null,
-        instanceId: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-        log: firebase.firestore.FieldValue.arrayUnion('Starting game…'),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-
-    if (didStart) {
-      clearOperativeChatsForGame(QUICKPLAY_DOC_ID);
-      if (window.playSound) window.playSound('gameStart');
-    }
-  } catch (e) {
-    alert(e.message || 'Failed to start.');
-  }
-}
-window.startQuickGame = startQuickGame;
 
 function renderQuickLobby(game) {
   latestQuickGame = game || null;
@@ -1795,25 +1683,6 @@ function renderQuickLobby(game) {
   } else {
     status.textContent = '';
   }
-
-
-function teamHasSeat(players, seatRole) {
-  const list = Array.isArray(players) ? players : [];
-  const role = (seatRole === 'spymaster') ? 'spymaster' : 'operative';
-  return list.some(p => String(p?.role || 'operative') === role);
-}
-
-function quickTeamsHaveMinRoles(game) {
-  const red = Array.isArray(game?.redPlayers) ? game.redPlayers : [];
-  const blue = Array.isArray(game?.bluePlayers) ? game.bluePlayers : [];
-  if (!red.length || !blue.length) return false;
-  return (
-    teamHasSeat(red, 'spymaster') &&
-    teamHasSeat(red, 'operative') &&
-    teamHasSeat(blue, 'spymaster') &&
-    teamHasSeat(blue, 'operative')
-  );
-}
 }
 
 function escapeHtml(str) {
@@ -1826,25 +1695,12 @@ function escapeHtml(str) {
 }
 
 // Display names: show AIs as "AI <Name>" everywhere for consistency.
-function capitalizeWords(v) {
-  const s = String(v || '').trim();
-  if (!s) return '';
-  // Capitalize each word boundary (handles "mary", "mary jane", "dr. who")
-  return s.split(/\s+/g).map(w => w ? (w[0].toUpperCase() + w.slice(1)) : '').join(' ');
-}
-
 function displayPlayerName(p) {
   const raw = String((p && p.name) ? p.name : '').trim();
-  if (!p) return raw;
-
-  // Title-case AI names for UI consistency (names are stored lower-case).
-  const pretty = p.isAI ? capitalizeWords(raw) : raw;
-
-  if (!p.isAI) return pretty;
-
+  if (!p || !p.isAI) return raw;
   // Avoid double-prefixing if the AI name was already stored with the prefix.
-  if (/^ai\s+/i.test(pretty)) return pretty;
-  return pretty ? `AI ${pretty}` : 'AI';
+  if (/^ai\s+/i.test(raw)) return raw;
+  return raw ? `AI ${raw}` : 'AI';
 }
 
 // Some fields store a player name as a string (e.g., redSpymaster/blueSpymaster).
@@ -1852,17 +1708,11 @@ function displayPlayerName(p) {
 function displayNameFromRoster(name, rosterPlayers) {
   const raw = String(name || '').trim();
   if (!raw) return raw;
-  const prettyRaw = capitalizeWords(raw);
-  if (/^ai\s+/i.test(raw)) return `AI ${capitalizeWords(raw.replace(/^ai\s+/i, ''))}`.trim();
+  if (/^ai\s+/i.test(raw)) return raw;
   const list = Array.isArray(rosterPlayers) ? rosterPlayers : [];
   const match = list.find(p => p && String(p.name || '').trim() === raw);
-  if (match && match.isAI) return `AI ${prettyRaw}`;
+  if (match && match.isAI) return `AI ${raw}`;
   return raw;
-
-function isUnlimitedGuesses(v) {
-  return Number(v) === -1;
-}
-
 }
 
 function truncateTeamNameGame(name, maxLen = 20) {
@@ -2687,14 +2537,6 @@ function renderGame() {
 
   // Top bar names (desktop)
   renderTopbarTeamNames();
-  // Reset per-round UI trackers when a new Quick Play round starts.
-  const inst = String(currentGame.instanceId || '');
-  if (inst && inst !== _lastInstanceId) {
-    _lastInstanceId = inst;
-    _lastBoardRevealed = null;
-    _lastClueSig = null;
-  }
-
 
   // Role selection
   const roleSelectionEl = document.getElementById('role-selection');
@@ -2715,15 +2557,6 @@ function renderGame() {
 
   // Clue area - handle waiting phase
   renderClueArea(isSpymaster, myTeamColor, spectator);
-
-  // Clue toast animation: show whenever a new clue is set.
-  if (currentGame.currentPhase === 'operatives' && currentGame.currentClue) {
-    const sig = `${currentGame.currentTeam}|${currentGame.currentClue.word}|${currentGame.currentClue.number}|${String(currentGame.instanceId || '')}`;
-    if (sig !== _lastClueSig) {
-      _lastClueSig = sig;
-      showClueToast(currentGame.currentClue.word, currentGame.currentClue.number, currentGame.currentTeam);
-    }
-  }
 
   // Game log
   renderGameLog();
@@ -2818,23 +2651,6 @@ function renderBoard(isSpymaster) {
     `;
   }).join('');
 
-  // Animate newly revealed cards (pop)
-  try {
-    const now = currentGame.cards.map(c => !!c.revealed);
-    if (_lastBoardRevealed) {
-      now.forEach((rev, i) => {
-        if (rev && !_lastBoardRevealed[i]) {
-          const el = boardEl.querySelector(`.game-card[data-index="${i}"]`);
-          if (el) {
-            el.classList.add('reveal-pop');
-            el.addEventListener('animationend', () => el.classList.remove('reveal-pop'), { once: true });
-          }
-        }
-      });
-    }
-    _lastBoardRevealed = now;
-  } catch (_) {}
-
   // Re-render tags and votes after board re-renders
   setTimeout(() => {
     renderCardTags();
@@ -2871,21 +2687,11 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     } else if (!hasPlayers) {
       waitingFor.textContent = 'at least 1 player on each team.';
     } else {
-      const ready = bothTeamsFullyReady(currentGame);
-      const rolesOk = quickTeamsHaveMinRoles(currentGame);
-
-      if (ready && rolesOk) {
-        // Show start button (manual start; auto-start will also kick in).
-        waitingFor.innerHTML = `
-          <span>Ready to start!</span>
-          <button class="btn primary small" style="margin-left: 12px;" onclick="startQuickGame('${currentGame.id}')">Start Game</button>
-        `;
-      } else {
-        const missing = !rolesOk
-          ? 'Need at least 1 Spymaster and 1 Operative on each team.'
-          : 'Everyone must be READY.';
-        waitingFor.textContent = missing;
-      }
+      // Show start button
+      waitingFor.innerHTML = `
+        <span>Ready to start!</span>
+        <button class="btn primary small" style="margin-left: 12px;" onclick="startQuickGame('${currentGame.id}')">Start Game</button>
+      `;
     }
     return;
   }
@@ -2915,8 +2721,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       currentClueEl.style.display = 'flex';
       document.getElementById('clue-word').textContent = currentGame.currentClue.word;
       document.getElementById('clue-number').textContent = currentGame.currentClue.number;
-      const gr = currentGame.guessesRemaining;
-      document.getElementById('guesses-left').textContent = isUnlimitedGuesses(gr) ? '(∞ guesses)' : `(${gr} guesses left)`;
+      document.getElementById('guesses-left').textContent = `(${currentGame.guessesRemaining} guesses left)`;
     }
 
     if (!spectator && isMyTurn && !isSpymaster) {
@@ -3047,7 +2852,6 @@ async function handleClueSubmit(e) {
   }
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const who = getUserName() || 'Spymaster';
 
   try {
     // Add clue to history
@@ -3061,9 +2865,9 @@ async function handleClueSubmit(e) {
 
     await db.collection('games').doc(currentGame.id).update({
       currentClue: { word, number },
-      guessesRemaining: -1, // Unlimited guesses (until you end turn or miss)
+      guessesRemaining: number + 1, // Can guess number + 1 times
       currentPhase: 'operatives',
-      log: firebase.firestore.FieldValue.arrayUnion(`${who} (Spymaster) gave "${word}" for ${number}`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -3105,13 +2909,12 @@ async function handleCardClick(cardIndex) {
   updatedCards[cardIndex] = { ...card, revealed: true };
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const who = getUserName() || 'Spymaster';
   const updates = {
     cards: updatedCards,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
 
-  let logEntry = `${guessByName} guessed "${card.word}" - `;
+  let logEntry = `${teamName} guessed "${card.word}" - `;
   let endTurn = false;
   let winner = null;
 
@@ -3140,12 +2943,10 @@ async function handleCardClick(cardIndex) {
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
 
-    // Decrease guesses remaining (unless unlimited)
-    if (!isUnlimitedGuesses(currentGame.guessesRemaining)) {
-      updates.guessesRemaining = currentGame.guessesRemaining - 1;
-      if (updates.guessesRemaining <= 0 && !winner) {
-        endTurn = true;
-      }
+    // Decrease guesses remaining
+    updates.guessesRemaining = currentGame.guessesRemaining - 1;
+    if (updates.guessesRemaining <= 0 && !winner) {
+      endTurn = true;
     }
   } else if (card.type === 'neutral') {
     // Neutral - end turn
@@ -3214,7 +3015,6 @@ async function handleEndTurn() {
   if (currentGame.currentTeam !== myTeamColor) return;
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const who = getUserName() || 'Spymaster';
 
   // Play end turn sound
   if (window.playSound) window.playSound('endTurn');
@@ -3225,7 +3025,7 @@ async function handleEndTurn() {
       currentPhase: 'spymaster',
       currentClue: null,
       guessesRemaining: 0,
-      log: firebase.firestore.FieldValue.arrayUnion(`${userName} ended their turn.`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (e) {
@@ -3627,32 +3427,6 @@ function updatePendingCardSelectionUI() {
    Operative Team Chat
 ========================= */
 
-// Quick Play reuses the same game document across rounds, so we proactively
-// clear team chat subcollections at the start of each new game.
-async function clearOperativeChatsForGame(gameId) {
-  if (!gameId) return;
-  const cols = ['redChat', 'blueChat'];
-
-  for (const col of cols) {
-    try {
-      const collRef = db.collection('games').doc(gameId).collection(col);
-      // Delete in small batches (best-effort).
-      // Firestore batch limit is 500; we keep it conservative.
-      while (true) {
-        const snap = await collRef.orderBy('createdAt', 'asc').limit(200).get();
-        if (snap.empty) break;
-        const batch = db.batch();
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        // If we pulled fewer than the limit, we're done.
-        if (snap.size < 200) break;
-      }
-    } catch (e) {
-      console.warn('Failed clearing chat:', col, e);
-    }
-  }
-}
-
 function initOperativeChat() {
   if (!currentGame?.id) return;
 
@@ -3690,24 +3464,11 @@ function renderOperativeChat(messages) {
     const isMe = msg.senderId === odId;
     const time = msg.createdAt?.toDate?.() ? formatTime(msg.createdAt.toDate()) : '';
     const teamColor = getMyTeamColor();
-    const senderId = String(msg.senderId || '').trim();
-    let senderName = String(msg.senderName || '').trim();
-
-    // If this message came from an AI, render it as "AI <Name>" with proper capitalization.
-    try {
-      const aiList = window.aiPlayers || [];
-      const ai = senderId ? aiList.find(a => a.odId === senderId) : null;
-      if (ai) {
-        senderName = displayPlayerName({ name: ai.name, isAI: true });
-      } else if (/^ai\s+/i.test(senderName)) {
-        senderName = `AI ${capitalizeWords(senderName.replace(/^ai\s+/i, ''))}`.trim();
-      }
-    } catch (_) {}
 
     return `
-      <div class="chat-message ${isMe ? 'my-message' : ''}" data-sender-id="${escapeHtml(senderId)}">
+      <div class="chat-message ${isMe ? 'my-message' : ''}">
         <div class="chat-message-header">
-          <span class="chat-sender ${teamColor}">${escapeHtml(senderName)}</span>
+          <span class="chat-sender ${teamColor}">${escapeHtml(msg.senderName)}</span>
           <span class="chat-time">${time}</span>
         </div>
         <div class="chat-text">${escapeHtml(msg.text)}</div>
@@ -3955,8 +3716,8 @@ function renderTopbarTeamNames() {
       : 4;
     const gapY = (count <= 4) ? 4 : 3;
 
-    // Keep the group centered; adjust perceived distance via gap variables.
-    el.classList.toggle('spread', false);
+    // When teams are small, spread names across the available half to increase perceived distance.
+    el.classList.toggle('spread', count === 2 || count === 3);
     el.classList.toggle('cols-2', false);
     el.style.setProperty('--topbar-name-size', `${size}px`);
     el.style.setProperty('--topbar-name-gap-x', `${gapX}px`);
@@ -3970,7 +3731,7 @@ function renderTopbarTeamNames() {
     el.innerHTML = list.map(p => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const name = escapeHtml(displayPlayerName(p) || '—');
+      const name = escapeHtml(String(p?.name || '—'));
 
       // Clickable names: reuse the existing profile popup system.
       const attrs = pid
@@ -4080,7 +3841,7 @@ function renderPlayersPopup() {
     container.innerHTML = list.map(p => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const name = escapeHtml(displayPlayerName(p) || '—');
+      const name = escapeHtml(String(p?.name || '—'));
       const role = (team === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster) === p?.name ? 'Spy' : 'Op';
       const attrs = pid
         ? `class="players-popup-item ${team} ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
@@ -4350,15 +4111,9 @@ function renderQuickLobbyWithAI(game) {
       const nameEl = el.querySelector('.quick-player-name');
       if (!nameEl) return;
 
-      // Find AI by id match (names can be decorated like \"AI Mary\")
-
-
-      const pid = String(nameEl.getAttribute('data-profile-id') || '').trim();
-
-
-      const ai = pid ? aiPlayersList.find(a => a.odId === pid) : null;
-
-
+      // Find AI by name match
+      const nameText = (nameEl.textContent || '').replace(/\s*\(you\)\s*/, '').trim();
+      const ai = aiPlayersList.find(a => a.name === nameText);
       if (!ai) return;
 
       // Add AI class
@@ -4465,8 +4220,8 @@ function renderAIIndicatorsInTopbar() {
 
   const topbarBtns = document.querySelectorAll('.topbar-player');
   topbarBtns.forEach(btn => {
-    const pid = String(btn.getAttribute('data-profile-id') || '').trim();
-    const ai = pid ? aiPlayersList.find(a => a.odId === pid) : null;
+    const name = (btn.textContent || '').trim();
+    const ai = aiPlayersList.find(a => a.name === name);
     if (ai && !btn.classList.contains('ai-topbar-player')) {
       btn.classList.add('ai-topbar-player');
     }
@@ -4481,8 +4236,8 @@ function renderAIChatIndicators() {
   chatMsgs.forEach(msg => {
     const senderEl = msg.querySelector('.chat-sender');
     if (!senderEl) return;
-    const senderId = String(msg.getAttribute('data-sender-id') || '').trim();
-    const ai = senderId ? aiPlayersList.find(a => a.odId === senderId) : null;
+    const senderName = (senderEl.textContent || '').trim();
+    const ai = aiPlayersList.find(a => a.name === senderName);
     if (ai && !senderEl.classList.contains('ai-chat-sender')) {
       senderEl.classList.add('ai-chat-sender');
     }

@@ -3304,23 +3304,6 @@ body.quickplay .main-content {
   display: block !important;
 }
 
-/* Quick Play hides the nav tab bars; remove the reserved bottom space that is
-   normally kept for the mobile tab bar. This prevents the empty/black strip at
-   the bottom of the viewport on both mobile and desktop. */
-body.quickplay .panel{
-  bottom: env(safe-area-inset-bottom) !important;
-}
-body.quickplay .panel-inner{
-  padding-bottom: max(20px, env(safe-area-inset-bottom)) !important;
-}
-
-/* Keep the Quick Play controls visually anchored near the bottom when there
-   is extra vertical space. */
-body.quickplay .quick-lobby-controls{
-  position: sticky;
-  bottom: 12px;
-}
-
 /* Quick Play also hides the tab bar */
 body.quickplay .app{ --tabs-h: 0px; }
 
@@ -4140,8 +4123,7 @@ button.player-tag.pill-action:disabled{
 
 /* Game Panel */
 .panel-game .panel-inner {
-  /* Smaller desktop footprint (cards were too large at 900px) */
-  max-width: 760px;
+  max-width: 900px;
 }
 
 /* When game board is active, remove panel constraints */
@@ -6875,12 +6857,17 @@ body.tournament.has-team-color .input:focus {
   text-align: center;
 }
 
-/* Keep names centered; perceived distance is controlled via gap variables. */
+/* When teams are small, spread names out more across the available half so it feels airy */
 .topbar-team-names.spread {
-  width: auto;
-  justify-content: center;
+  width: 100%;
+  justify-content: space-between;
 }
 
+/* When a team has only a couple of players, give names extra breathing room. */
+.topbar-team-names.spread {
+  width: 100%;
+  justify-content: space-between;
+}
 
 /* Team name colors */
 .topbar-team-red .topbar-player { color: var(--game-red); }
@@ -7387,23 +7374,6 @@ body.tournament.has-team-color .input:focus {
   aspect-ratio: 5 / 4;
   max-width: min(100%, calc((100dvh - 220px) * 1.2));
   max-height: 100%;
-}
-
-/* Desktop: cap board size so cards don't become gigantic on tall/wide screens */
-@media (min-width: 1024px){
-  .game-center-area .game-board{
-    max-width: 720px;
-    gap: 6px;
-  }
-  .game-center-area .game-card{
-    border-width: 1.5px !important;
-    border-radius: 9px !important;
-    padding: 5px 8px !important;
-  }
-  .game-center-area .game-card .card-word{
-    font-size: clamp(9px, 0.85vw, 13px) !important;
-    letter-spacing: 0.45px !important;
-  }
 }
 
 .game-center-area .game-card {
@@ -10038,46 +10008,3 @@ body.light-mode .ai-mode-card:hover:not(:disabled){
   .ai-badge{ font-size: 8px; padding: 1px 5px; }
   .ai-remove-btn{ width: 16px; height: 16px; font-size: 11px; }
 }
-
-
-/* =========================
-   Animations
-========================= */
-@keyframes cardRevealPop {
-  0% { transform: scale(1); }
-  45% { transform: scale(1.08); }
-  100% { transform: scale(1); }
-}
-
-.game-card.reveal-pop {
-  animation: cardRevealPop 280ms ease-out;
-}
-
-@keyframes clueToastInOut {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
-  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.02); }
-  35% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
-  100% { opacity: 0; transform: translate(-50%, -62%) scale(0.98); }
-}
-
-.clue-toast {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 9999;
-  pointer-events: none;
-  padding: 14px 18px;
-  border-radius: 14px;
-  background: rgba(15, 18, 24, 0.86);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.12);
-  font-weight: 750;
-  letter-spacing: 0.02em;
-  animation: clueToastInOut 1400ms ease-in-out forwards;
-}
-
-.clue-toast .clue-toast-word { font-size: 20px; margin-right: 10px; }
-.clue-toast .clue-toast-num { font-size: 18px; opacity: 0.9; }

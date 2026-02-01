@@ -28,9 +28,6 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Reduce noisy Firestore client warnings (transactions can legitimately race).
-try { firebase.firestore.setLogLevel('error'); } catch (_) {}
-
 // Keep users signed in across refreshes.
 try {
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
