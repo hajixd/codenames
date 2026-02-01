@@ -452,12 +452,12 @@
                       <div class="quick-team-status" id="quick-red-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters <button class="ai-add-btn" id="ai-add-red-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); openAIModal('red','spymaster')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster"><span class="quick-seat-label">Spymasters</span> <button class="ai-add-btn" id="ai-add-red-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); openAIModal('red','spymaster')">+AI</button></div>
                           <div class="quick-team-list" id="quick-red-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives <button class="ai-add-btn" id="ai-add-red-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); openAIModal('red','operative')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative"><span class="quick-seat-label">Operatives</span> <button class="ai-add-btn" id="ai-add-red-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); openAIModal('red','operative')">+AI</button></div>
                           <div class="quick-team-list" id="quick-red-operative-list"></div>
                         </div>
                       </div>
@@ -481,12 +481,12 @@
                       <div class="quick-team-status" id="quick-blue-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters <button class="ai-add-btn" id="ai-add-blue-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); openAIModal('blue','spymaster')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster"><span class="quick-seat-label">Spymasters</span> <button class="ai-add-btn" id="ai-add-blue-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); openAIModal('blue','spymaster')">+AI</button></div>
                           <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives <button class="ai-add-btn" id="ai-add-blue-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); openAIModal('blue','operative')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative"><span class="quick-seat-label">Operatives</span> <button class="ai-add-btn" id="ai-add-blue-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); openAIModal('blue','operative')">+AI</button></div>
                           <div class="quick-team-list" id="quick-blue-operative-list"></div>
                         </div>
                       </div>
@@ -639,43 +639,30 @@
               <!-- Enhanced Game Header with Timer -->
               <div class="game-header-expanded">
                 <div class="game-topbar">
-  <div class="topbar-team topbar-team-red" id="topbar-red">
-    <button class="topbar-team-icon red" id="topbar-red-icon" type="button" aria-label="Show Red team roster" title="Red team">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M12 12c2.761 0 5-2.239 5-5S14.761 2 12 2 7 4.239 7 7s2.239 5 5 5Z"></path>
-        <path d="M4 22c0-4.418 3.582-8 8-8s8 3.582 8 8"></path>
-      </svg>
-    </button>
-    <div class="topbar-team-status" id="topbar-red-status">—</div>
-    <div class="team-popover team-popover-red" id="team-popover-red" aria-label="Red team roster"></div>
-  </div>
+                  <div class="topbar-team topbar-team-red">
+                    <div class="topbar-team-names" id="topbar-red-names"></div>
+                  </div>
 
-  <div class="topbar-center">
-    <div class="topbar-score" aria-label="Score">
-      <span class="topbar-score-num red" id="game-red-left">9</span>
-      <span class="topbar-score-sep">v</span>
-      <span class="topbar-score-num blue" id="game-blue-left">8</span>
-    </div>
+                  <div class="topbar-center">
+                    <div class="topbar-score" aria-label="Score">
+                      <span class="topbar-score-num red" id="game-red-left">9</span>
+                      <span class="topbar-score-sep">v</span>
+                      <span class="topbar-score-num blue" id="game-blue-left">8</span>
+                    </div>
 
-    <div class="game-timer-display topbar-timer" id="game-timer" style="display:none;">
-      <div class="timer-bar">
-        <div class="timer-fill" id="timer-fill"></div>
-      </div>
-      <span class="timer-text" id="timer-text">0:00</span>
-    </div>
-  </div>
+                    <div class="game-timer-display topbar-timer" id="game-timer" style="display:none;">
+                      <div class="timer-bar">
+                        <div class="timer-fill" id="timer-fill"></div>
+                      </div>
+                      <span class="timer-text" id="timer-text">0:00</span>
+                    </div>
+                  </div>
 
-  <div class="topbar-team topbar-team-blue" id="topbar-blue">
-    <div class="team-popover team-popover-blue" id="team-popover-blue" aria-label="Blue team roster"></div>
-    <div class="topbar-team-status" id="topbar-blue-status">—</div>
-    <button class="topbar-team-icon blue" id="topbar-blue-icon" type="button" aria-label="Show Blue team roster" title="Blue team">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M12 12c2.761 0 5-2.239 5-5S14.761 2 12 2 7 4.239 7 7s2.239 5 5 5Z"></path>
-        <path d="M4 22c0-4.418 3.582-8 8-8s8 3.582 8 8"></path>
-      </svg>
-    </button>
-  </div>
-</div>
+                  <div class="topbar-team topbar-team-blue">
+                    <div class="topbar-team-names" id="topbar-blue-names"></div>
+                  </div>
+                </div>
+
                 <!-- Legacy header fields still referenced by game logic -->
                 <div class="game-header-meta" aria-hidden="true">
                   <span class="sr-only" id="game-red-team"></span>
@@ -755,6 +742,7 @@
                       </button>
                     </div>
                     <span class="tag-legend-hint">Click a mark, then click cards</span>
+                    <span class="tag-legend-note">Marks reset each game</span>
                   </div>
 
                   <!-- Action Bar -->
@@ -1282,13 +1270,8 @@
           <button class="icon-btn" id="ai-mode-modal-close" type="button" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
-          <div class="ai-mode-subtitle" id="ai-mode-subtitle">Choose AI mode</div>
-          <div class="ai-mode-cards">
-            <button class="ai-mode-card" id="ai-mode-helper" type="button">
-              <div class="ai-mode-icon">💬</div>
-              <div class="ai-mode-title">AI Helper</div>
-              <div class="ai-mode-desc">Chats strategy, reacts to cards, and helps the team discuss. Never selects cards or gives clues.</div>
-            </button>
+          <div class="ai-mode-subtitle" id="ai-mode-subtitle">Add an autonomous AI player</div>
+          <div class="ai-mode-cards single">
             <button class="ai-mode-card" id="ai-mode-autonomous" type="button">
               <div class="ai-mode-icon">🤖</div>
               <div class="ai-mode-title">AI Autonomous</div>
