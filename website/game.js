@@ -2885,13 +2885,54 @@ function renderGameLog() {
 
     return 'neutral';
   };
-
   const renderWithQuotes = (raw) => {
     const str = String(raw || '');
     const parts = str.split(/"([^"]+)"/g); // even = normal, odd = inside quotes
+
+    const wrapOutside = (segment) => {
+      let rawSeg = String(segment || '');
+
+      // Team name placeholders (avoid double-escaping / partial matches)
+      const RED = '__LOG_RED_TEAM__';
+      const BLUE = '__LOG_BLUE_TEAM__';
+      if (redName) rawSeg = rawSeg.split(redName).join(RED);
+      if (blueName) rawSeg = rawSeg.split(blueName).join(BLUE);
+
+      // Common phrases
+      rawSeg = rawSeg.replace(/Red team/gi, RED);
+      rawSeg = rawSeg.replace(/Blue team/gi, BLUE);
+
+      // Escape after placeholders
+      let s = escapeHtml(rawSeg);
+
+      // Re-insert team spans
+      if (redName) s = s.split(RED).join(`<span class="log-team red">${escapeHtml(redName)}</span>`);
+      if (blueName) s = s.split(BLUE).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
+
+      // Color only certain keywords (keep the rest readable)
+      s = s.replace(/Spymaster/g, '<span class="log-token role">Spymaster</span>');
+      s = s.replace(/Operatives?/g, (m) => `<span class="log-token role">${m}</span>`);
+
+      s = s.replace(/guessed/gi, (m) => `<span class="log-token action">${m}</span>`);
+      s = s.replace(/ended their turn/gi, (m) => `<span class="log-token action">${m}</span>`);
+      s = s.replace(/updated rules/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/Game started!/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/Starting game/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/Game ended/gi, (m) => `<span class="log-token system">${m}</span>`);
+      s = s.replace(/Game over/gi, (m) => `<span class="log-token system">${m}</span>`);
+
+      s = s.replace(/Correct!/g, '<span class="log-token result-correct">Correct!</span>');
+      s = s.replace(/Wrong!/g, '<span class="log-token result-wrong">Wrong!</span>');
+      s = s.replace(/Neutral/g, '<span class="log-token result-neutral">Neutral</span>');
+      s = s.replace(/ASSASSIN/g, '<span class="log-token result-assassin">ASSASSIN</span>');
+      s = s.replace(/wins!/g, '<span class="log-token system">wins!</span>');
+
+      return s;
+    };
+
     return parts.map((p, i) => {
       if (i % 2 === 1) return `<span class="log-quote">${escapeHtml(p)}</span>`;
-      return escapeHtml(p);
+      return wrapOutside(p);
     }).join('');
   };
 
