@@ -115,6 +115,7 @@ function extractAIPlayersFromGame(game) {
       if (!p || !p.isAI) continue;
       const odId = String(p.odId || '').trim();
       if (!odId) continue;
+      const ready = !!p.ready;
       out.push({
         id: String(p.aiId || p.ai_id || p.ai || odId),
         odId,
@@ -122,8 +123,11 @@ function extractAIPlayersFromGame(game) {
         team,
         seatRole: (String(p.role || 'operative') === 'spymaster') ? 'spymaster' : 'operative',
         mode: String(p.aiMode || 'autonomous'),
-        statusColor: 'none',
-        ready: !!p.ready,
+        // IMPORTANT: other clients may not have local ready-check state.
+        // Derive the lobby indicator from Firestore ready flag so AIs don't show
+        // "CHECKING" forever on non-host clients.
+        statusColor: ready ? 'green' : 'none',
+        ready,
         isAI: true,
       });
     }
@@ -147,16 +151,18 @@ function syncAIPlayersFromGame(game) {
   const prev = new Map((aiPlayers || []).map(a => [a.odId, a]));
   aiPlayers = fromDoc.map(a => {
     const p = prev.get(a.odId);
-    return p ? { ...a, statusColor: p.statusColor || a.statusColor } : a;
+    // Keep non-trivial local statusColor (yellow/red), but never overwrite
+    // a Firestore-derived green with a local "none".
+    const keep = (p && p.statusColor && p.statusColor !== 'none') ? p.statusColor : a.statusColor;
+    return p ? { ...a, statusColor: keep } : a;
   });
 
   window.aiPlayers = aiPlayers;
 
-  // Best-effort: if we're in the lobby and some AIs aren't ready, the controller will verify them.
-  if (String(game.currentPhase || '') === 'waiting') {
-    // Fire-and-forget, controller-gated inside.
-    maybeVerifyLobbyAIs(game).catch(() => {});
-  }
+  // NOTE: We intentionally do NOT auto-run ready checks from every client.
+  // Ready checks are performed when an AI is added, and readiness is stored
+  // on the game doc. That keeps the lobby stable and avoids multi-client
+  // Firestore lease contention.
 }
 
 window.syncAIPlayersFromGame = syncAIPlayersFromGame;
