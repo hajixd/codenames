@@ -14,35 +14,6 @@ const TEAM_MIN = 3;
 // Teams can go over; they simply become ineligible and show "Too many players".
 const SOFT_TEAM_MAX = 5;
 
-// =========================
-// iOS Safari viewport height fix
-// =========================
-// On iOS Safari the browser chrome can cause 100vh/100dvh to behave oddly,
-// leaving a "dead" strip at the bottom of the app. We drive a CSS variable
-// from visualViewport/innerHeight so panels always size to the visible area.
-function updateAppHeightVar() {
-  try {
-    const h = (window.visualViewport && window.visualViewport.height)
-      ? Math.round(window.visualViewport.height)
-      : Math.round(window.innerHeight);
-    document.documentElement.style.setProperty('--app-h', `${h}px`);
-  } catch (_) {}
-}
-
-function installViewportHeightFix() {
-  updateAppHeightVar();
-  window.addEventListener('resize', updateAppHeightVar, { passive: true });
-  window.addEventListener('orientationchange', updateAppHeightVar, { passive: true });
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateAppHeightVar, { passive: true });
-    // Some iOS versions change visualViewport height during scroll as the URL
-    // bar collapses/expands.
-    window.visualViewport.addEventListener('scroll', updateAppHeightVar, { passive: true });
-  }
-}
-
-installViewportHeightFix();
-
 // Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyCX_g7RxQsIatEhAnZgeXHedFsxhi8M2m8",

@@ -2432,9 +2432,6 @@ function stopGameListener() {
   // Hide in-game controls in settings once we are out of a game.
   updateSettingsInGameActions(false);
 
-  // Ensure mobile layout returns to normal (showing tabs, etc.)
-  document.body.classList.remove('in-game');
-
   // Clear resume info when the user intentionally leaves the game.
   try {
     localStorage.removeItem(LS_ACTIVE_GAME_ID);
@@ -2447,7 +2444,6 @@ function stopGameListener() {
 ========================= */
 function showGameLobby() {
   updateSettingsInGameActions(false);
-  document.body.classList.remove('in-game');
   // Go back to mode selection
   showModeSelect();
 }
@@ -2458,7 +2454,6 @@ function showGameBoard() {
   document.getElementById('tournament-lobby').style.display = 'none';
   document.getElementById('game-board-container').style.display = 'flex';
   document.getElementById('panel-game').classList.add('game-active');
-  document.body.classList.add('in-game');
 }
 
 // Settings modal: show/hide in-game actions when a user is inside a game.

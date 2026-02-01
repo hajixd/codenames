@@ -117,13 +117,13 @@ body.light-mode {
 
 
 /*
-  iOS Safari note:
-  - 100vh/100dvh can be unreliable when the browser chrome expands/collapses.
-  - We set a JS-driven --app-h based on visualViewport/innerHeight for a stable
-    "actually visible" height.
+  IMPORTANT (iOS Safari): prefer dynamic viewport units (dvh) when available.
+  The previous ordering accidentally forced 100vh to win, which can prevent
+  inner panels from scrolling fully when the browser chrome expands/collapses.
 */
 html, body {
-  height: var(--app-h, 100dvh);
+  height: 100vh;   /* fallback */
+  height: 100dvh;  /* preferred */
   overflow: hidden;
 }
 
@@ -170,7 +170,8 @@ body.tournament #panel-home #name-card{ display:none !important; }
 body.tournament #play-mode-select{ display:none !important; }
 
 .app {
-  height: var(--app-h, 100dvh);
+  height: 100vh;   /* fallback */
+  height: 100dvh;  /* preferred */
   display: flex;
   flex-direction: column;
   /* Layout constants (used to keep the top strip ALWAYS visible) */
@@ -634,9 +635,7 @@ body.tournament #play-mode-select{ display:none !important; }
 
 /* ==================== MOBILE ==================== */
 @media (max-width: 768px) {
-  /* Mobile shows the bottom tab bar by default.
-     Modes that hide tabs (Launch, Quick Play, in-game) override --tabs-h to 0. */
-  .app{ --header-h: 54px; --tabs-h: 72px; }
+  .app{ --header-h: 54px; --tabs-h: 0px; }
   .app-header {
     display: flex;
     justify-content: space-between;
@@ -675,7 +674,7 @@ body.tournament #play-mode-select{ display:none !important; }
     top: var(--header-h);
     left: 0;
     right: 0;
-    bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+    bottom: calc(72px + env(safe-area-inset-bottom));
     display: none;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -3177,8 +3176,8 @@ body.light .chat-meta{ color: var(--text); }
   body.quickplay .panel-game .panel-inner{
     padding: 14px;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-    /* Fill the panel (the panel itself is already sized to the viewport). */
-    height: 100%;
+    height: 100vh;  /* fallback */
+    height: 100dvh; /* preferred */
     min-height: 0;
   }
 
@@ -3190,7 +3189,8 @@ body.light .chat-meta{ color: var(--text); }
   body.quickplay #quick-play-lobby{
     display: flex;
     flex-direction: column;
-    height: 100%;
+    height: 100vh;  /* fallback */
+    height: 100dvh; /* preferred */
     min-height: 0;
   }
 
@@ -3351,16 +3351,6 @@ body.quickplay .main-content {
 
 /* Quick Play also hides the tab bar */
 body.quickplay .app{ --tabs-h: 0px; }
-
-@media (max-width: 768px){
-  /* In-game on mobile: hide the bottom tab bar and let the board use the full height.
-     Reserving space for tabs during play can show up as a "black bar" on iOS Safari. */
-  body.in-game .mobile-tabs{ display: none !important; }
-  body.in-game .app{ --tabs-h: 0px; }
-  /* The expanded game layout already pads for the safe-area. Don't reserve extra
-     space at the panel level while playing. */
-  body.in-game #panel-game{ bottom: 0; }
-}
 
 /* Auth screen (sign in / create account) */
 .auth-screen{
