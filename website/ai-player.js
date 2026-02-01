@@ -73,16 +73,42 @@ async function verifyAIReady(ai) {
 
   try {
     const result = await aiChatCompletion([
-      { role: 'system', content: 'You are testing connectivity. Respond with exactly the word "Ready" and nothing else.' },
-      { role: 'user', content: 'Are you ready?' }
-    ], { max_tokens: 10, temperature: 0 });
+      { role: 'system', content: 'You are testing connectivity. Respond with a JSON object containing a "status" field set to "Ready". Example: {"status": "Ready"}' },
+      { role: 'user', content: 'Are you ready? Respond as JSON.' }
+    ], {
+      max_tokens: 20,
+      temperature: 0,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'ready_check',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              status: { type: 'string', enum: ['Ready'] }
+            },
+            required: ['status'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
 
-    const trimmed = result.trim();
-    if (trimmed === 'Ready') {
+    let parsed;
+    try {
+      parsed = JSON.parse(result);
+    } catch {
+      const match = result.match(/\{[\s\S]*?\}/);
+      if (match) parsed = JSON.parse(match[0]);
+      else throw new Error('Could not parse ready check JSON');
+    }
+
+    if (parsed?.status === 'Ready') {
       ai.statusColor = 'green';
     } else {
       ai.statusColor = 'yellow';
-      console.warn(`AI ${ai.name} ready check returned: "${trimmed}" (expected "Ready")`);
+      console.warn(`AI ${ai.name} ready check returned: ${JSON.stringify(parsed)} (expected {"status": "Ready"})`);
     }
   } catch (err) {
     ai.statusColor = 'red';
