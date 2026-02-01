@@ -1501,6 +1501,8 @@ function bothTeamsFullyReady(game) {
 
 async function maybeAutoStartQuickPlay(game) {
   if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
+  // If some client already claimed the start, don't fight it.
+  if (game.starting === true) return;
   if (!bothTeamsFullyReady(game)) return;
 
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
@@ -1509,6 +1511,10 @@ async function maybeAutoStartQuickPlay(game) {
       const snap = await tx.get(ref);
       if (!snap.exists) return;
       const g = snap.data();
+      // Reduce start contention: allow only one client to "claim" the start.
+      // If another client already claimed it, exit quickly (no-op) so we don't
+      // spam failed-precondition warnings and we don't block AI turns.
+      if (g.starting === true) return;
       if (g.currentPhase !== 'waiting' || g.winner != null) return;
       if (!bothTeamsFullyReady(g)) return;
 
@@ -1543,6 +1549,8 @@ async function maybeAutoStartQuickPlay(game) {
         guessesRemaining: 0,
         chatRound: (Number(g.chatRound || 0) + 1),
         winner: null,
+        // Claim the start so other clients back off quickly.
+        starting: true,
         log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -1550,6 +1558,9 @@ async function maybeAutoStartQuickPlay(game) {
     // Play game start sound
     if (window.playSound) window.playSound('gameStart');
   } catch (e) {
+    // If another client started first, this can surface as a precondition failure.
+    // That's fine; the snapshot will advance everyone.
+    if (String(e?.code || '').includes('failed-precondition') || String(e?.code || '').includes('aborted')) return;
     console.error('Auto-start Quick Play failed:', e);
   }
 }

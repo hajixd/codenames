@@ -693,14 +693,16 @@ Respond with valid JSON matching:
 {"index": <0-24 integer>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "reasoning": "short"}`;
 
   try {
-    // Human-like thinking delay (3-10 seconds)
-    await humanDelay(3000, 10000);
+    // Human-like thinking delay.
+    // Keep this short so the game feels snappy on larger models.
+    await humanDelay(800, 2500);
 
-    // Chat in operative chat before guessing
+    // Optional: send a quick collaborative message.
+    // Do this asynchronously so it doesn't delay the actual guess.
     if (ai.mode === 'autonomous') {
-      const chatMsg = await generateAIChatMessage(ai, game, 'pre_guess');
-      if (chatMsg) await sendAIChatMessage(ai, game, chatMsg);
-      await humanDelay(1000, 3000);
+      generateAIChatMessage(ai, game, 'pre_guess')
+        .then((chatMsg) => chatMsg ? sendAIChatMessage(ai, game, chatMsg) : null)
+        .catch(() => {});
     }
 
     let parsed = null;
@@ -763,8 +765,8 @@ Respond with valid JSON matching:
     }
 
     // Mark the intended card for the team before committing the guess.
-    // This helps human teammates follow the AI's thinking.
-    await aiSetTeamMark(ai, game, card.index, true);
+    // Fire-and-forget so a transient Firestore conflict can't stall guessing.
+    aiSetTeamMark(ai, game, card.index, true).catch(() => {});
 
     // Submit the guess by simulating card click on Firestore
     await aiRevealCard(ai, game, card.index);
@@ -790,96 +792,110 @@ Respond with valid JSON matching:
 }
 
 async function aiRevealCard(ai, game, cardIndex) {
-  const card = game.cards[cardIndex];
-  if (!card || card.revealed) return;
-
-  const updatedCards = [...game.cards];
-  updatedCards[cardIndex] = { ...card, revealed: true };
-
-  const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
-  const updates = {
-    cards: updatedCards,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-  };
-
-  let logEntry = `${ai.name} guessed "${card.word}" - `;
-  let endTurn = false;
-  let winner = null;
-
-  if (card.type === 'assassin') {
-    winner = game.currentTeam === 'red' ? 'blue' : 'red';
-    logEntry += 'ASSASSIN! Game over.';
-  } else if (card.type === game.currentTeam) {
-    logEntry += 'Correct!';
-    if (game.currentTeam === 'red') {
-      updates.redCardsLeft = game.redCardsLeft - 1;
-      if (updates.redCardsLeft === 0) winner = 'red';
-    } else {
-      updates.blueCardsLeft = game.blueCardsLeft - 1;
-      if (updates.blueCardsLeft === 0) winner = 'blue';
-    }
-    if (Number(game.guessesRemaining) !== -1) {
-      updates.guessesRemaining = game.guessesRemaining - 1;
-      if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
-    }
-  } else if (card.type === 'neutral') {
-    logEntry += 'Neutral. Turn ends.';
-    endTurn = true;
-  } else {
-    logEntry += `Wrong! (${card.type === 'red' ? (game.redTeamName || 'Red') : (game.blueTeamName || 'Blue')}'s card)`;
-    if (card.type === 'red') {
-      updates.redCardsLeft = game.redCardsLeft - 1;
-      if (updates.redCardsLeft === 0) winner = 'red';
-    } else {
-      updates.blueCardsLeft = game.blueCardsLeft - 1;
-      if (updates.blueCardsLeft === 0) winner = 'blue';
-    }
-    endTurn = true;
-  }
-
-  // We need to write both the guess log and (optionally) the winner log.
-  // Firestore arrayUnion can't be stacked on the same field in one update,
-  // so we'll do the guess log first, then a second update for the win.
-  let winnerLogEntry = null;
-
-  if (winner) {
-    updates.winner = winner;
-    updates.currentPhase = 'ended';
-    const winnerName = winner === 'red' ? (game.redTeamName || 'Red') : (game.blueTeamName || 'Blue');
-    winnerLogEntry = `${winnerName} wins!`;
-  } else if (endTurn) {
-    updates.currentTeam = game.currentTeam === 'red' ? 'blue' : 'red';
-    updates.currentPhase = 'spymaster';
-    updates.currentClue = null;
-    updates.guessesRemaining = 0;
-  }
+  const ref = db.collection('games').doc(game.id);
+  let revealedMeta = null; // for clue-history write after transaction
 
   try {
-    // Write the guess log entry
-    updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
-    await db.collection('games').doc(game.id).update(updates);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      const cards = Array.isArray(g.cards) ? g.cards : [];
+      const card = cards[cardIndex];
+      if (!card || card.revealed) return;
 
-    // Write the winner log entry separately so it doesn't overwrite the guess log
-    if (winnerLogEntry) {
-      await db.collection('games').doc(game.id).update({
-        log: firebase.firestore.FieldValue.arrayUnion(winnerLogEntry),
-      });
-    }
+      const updatedCards = [...cards];
+      updatedCards[cardIndex] = { ...card, revealed: true };
 
-    // Update clue history
-    if (game.currentClue?.word) {
+      const updates = {
+        cards: updatedCards,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+
+      let logEntry = `${ai.name} guessed "${card.word}" - `;
+      let endTurn = false;
+      let winner = null;
+
+      if (card.type === 'assassin') {
+        winner = g.currentTeam === 'red' ? 'blue' : 'red';
+        logEntry += 'ASSASSIN! Game over.';
+      } else if (card.type === g.currentTeam) {
+        logEntry += 'Correct!';
+        if (g.currentTeam === 'red') {
+          updates.redCardsLeft = Number(g.redCardsLeft || 0) - 1;
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = Number(g.blueCardsLeft || 0) - 1;
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+        // Unlimited guesses: do not decrement.
+        if (Number(g.guessesRemaining) !== -1) {
+          updates.guessesRemaining = Number(g.guessesRemaining || 0) - 1;
+          if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
+        }
+      } else if (card.type === 'neutral') {
+        logEntry += 'Neutral. Turn ends.';
+        endTurn = true;
+      } else {
+        logEntry += `Wrong! (${card.type === 'red' ? (g.redTeamName || 'Red') : (g.blueTeamName || 'Blue')}'s card)`;
+        if (card.type === 'red') {
+          updates.redCardsLeft = Number(g.redCardsLeft || 0) - 1;
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = Number(g.blueCardsLeft || 0) - 1;
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+        endTurn = true;
+      }
+
+      const logArgs = [logEntry];
+
+      if (winner) {
+        updates.winner = winner;
+        updates.currentPhase = 'ended';
+        const winnerName = winner === 'red' ? (g.redTeamName || 'Red') : (g.blueTeamName || 'Blue');
+        logArgs.push(`${winnerName} wins!`);
+      } else if (endTurn) {
+        updates.currentTeam = g.currentTeam === 'red' ? 'blue' : 'red';
+        updates.currentPhase = 'spymaster';
+        updates.currentClue = null;
+        updates.guessesRemaining = 0;
+      }
+
+      updates.log = firebase.firestore.FieldValue.arrayUnion(...logArgs);
+      tx.update(ref, updates);
+
+      // Remember metadata for clue history after commit.
+      if (g.currentClue?.word) {
+        revealedMeta = {
+          gameId: game.id,
+          team: g.currentTeam,
+          clueWord: g.currentClue.word,
+          clueNumber: g.currentClue.number,
+          guessWord: card.word,
+          type: card.type,
+        };
+      }
+    });
+
+    if (revealedMeta) {
+      const { gameId, team, clueWord, clueNumber, guessWord, type } = revealedMeta;
       const guessResult = {
-        word: card.word,
-        result: card.type === 'assassin' ? 'assassin' : (card.type === game.currentTeam ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
-        type: card.type,
+        word: guessWord,
+        result: type === 'assassin' ? 'assassin' : (type === team ? 'correct' : (type === 'neutral' ? 'neutral' : 'wrong')),
+        type,
         by: ai.name,
         timestamp: new Date().toISOString(),
       };
-      await addGuessToClueHistory(game.id, game.currentTeam, game.currentClue.word, game.currentClue.number, guessResult);
+      await addGuessToClueHistory(gameId, team, clueWord, clueNumber, guessResult);
     }
 
     if (window.playSound) window.playSound('cardReveal');
   } catch (e) {
+    // Conflicts can occur if a human clicks at the same time.
+    // We'll simply rely on the latest snapshot and let the AI try again.
+    const code = String(e?.code || '');
+    if (code.includes('failed-precondition') || code.includes('aborted')) return;
     console.error(`AI ${ai.name} reveal card error:`, e);
   }
 }
@@ -888,23 +904,30 @@ async function aiRevealCard(ai, game, cardIndex) {
 async function aiSetTeamMark(ai, game, cardIndex, marked = true) {
   try {
     if (!ai?.team || !game?.id) return;
-    const c = game.cards?.[cardIndex];
-    if (!c || c.revealed) return;
+    const ref = db.collection('games').doc(game.id);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data();
+      const cards = Array.isArray(g.cards) ? g.cards : [];
+      const c = cards?.[cardIndex];
+      if (!c || c.revealed) return;
 
-    const marks = { ...(c.marks || { red: false, blue: false }) };
-    if (!!marks[ai.team] === !!marked) return;
+      const marks = { ...(c.marks || { red: false, blue: false }) };
+      if (!!marks[ai.team] === !!marked) return;
 
-    marks[ai.team] = !!marked;
-    const updatedCards = [...game.cards];
-    updatedCards[cardIndex] = { ...c, marks };
+      marks[ai.team] = !!marked;
+      const updatedCards = [...cards];
+      updatedCards[cardIndex] = { ...c, marks };
 
-    const action = marked ? 'marked' : 'unmarked';
-    const logEntry = `${ai.name} ${action} "${c.word}".`;
+      const action = marked ? 'marked' : 'unmarked';
+      const logEntry = `${ai.name} ${action} "${c.word}".`;
 
-    await db.collection('games').doc(game.id).update({
-      cards: updatedCards,
-      log: firebase.firestore.FieldValue.arrayUnion(logEntry),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      tx.update(ref, {
+        cards: updatedCards,
+        log: firebase.firestore.FieldValue.arrayUnion(logEntry),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
     });
   } catch (e) {
     // Non-fatal
