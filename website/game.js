@@ -44,6 +44,8 @@ function getWordsForDeck(deckId) {
 }
 
 let currentGame = null;
+let _prevRevealedIndexes = new Set(); // Track previously revealed cards for animation
+let _prevClue = null; // Track previous clue for clue animation
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -1419,10 +1421,18 @@ async function quickReadyOrJoin() {
   await toggleQuickReady();
 }
 
+function teamHasRequiredRoles(players) {
+  const list = Array.isArray(players) ? players : [];
+  const hasSpymaster = list.some(p => String(p?.role || 'operative') === 'spymaster');
+  const hasOperative = list.some(p => String(p?.role || 'operative') === 'operative');
+  return hasSpymaster && hasOperative;
+}
+
 function bothTeamsFullyReady(game) {
   const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
   const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
   if (red.length === 0 || blue.length === 0) return false;
+  if (!teamHasRequiredRoles(red) || !teamHasRequiredRoles(blue)) return false;
   return red.every(p => p.ready) && blue.every(p => p.ready);
 }
 
@@ -1472,10 +1482,26 @@ async function maybeAutoStartQuickPlay(game) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
+    // Clear operative chats from previous game
+    clearOperativeChats(QUICKPLAY_DOC_ID);
     // Play game start sound
     if (window.playSound) window.playSound('gameStart');
   } catch (e) {
     console.error('Auto-start Quick Play failed:', e);
+  }
+}
+
+async function clearOperativeChats(gameId) {
+  try {
+    const gameRef = db.collection('games').doc(gameId);
+    for (const chatName of ['redChat', 'blueChat']) {
+      const snap = await gameRef.collection(chatName).get();
+      const batch = db.batch();
+      snap.docs.forEach(doc => batch.delete(doc.ref));
+      if (snap.docs.length > 0) await batch.commit();
+    }
+  } catch (e) {
+    console.error('Failed to clear operative chats:', e);
   }
 }
 
@@ -1680,6 +1706,17 @@ function renderQuickLobby(game) {
     status.textContent = 'Everyone is ready — starting…';
   } else if (red.length === 0 || blue.length === 0) {
     status.textContent = '';
+  } else if (!teamHasRequiredRoles(red) || !teamHasRequiredRoles(blue)) {
+    const missingRed = [];
+    const missingBlue = [];
+    if (!red.some(p => String(p?.role || 'operative') === 'spymaster')) missingRed.push('Spymaster');
+    if (!red.some(p => String(p?.role || 'operative') === 'operative')) missingRed.push('Operative');
+    if (!blue.some(p => String(p?.role || 'operative') === 'spymaster')) missingBlue.push('Spymaster');
+    if (!blue.some(p => String(p?.role || 'operative') === 'operative')) missingBlue.push('Operative');
+    const parts = [];
+    if (missingRed.length) parts.push(`Red needs: ${missingRed.join(', ')}`);
+    if (missingBlue.length) parts.push(`Blue needs: ${missingBlue.join(', ')}`);
+    status.textContent = parts.join(' · ');
   } else {
     status.textContent = '';
   }
@@ -2376,7 +2413,45 @@ function startGameListener(gameId, options = {}) {
       checkAndEndEmptyQuickPlayGame(currentGame);
     }
 
+    // Detect newly revealed cards for animation
+    const newRevealedIndexes = new Set();
+    if (Array.isArray(currentGame.cards)) {
+      currentGame.cards.forEach((c, i) => { if (c.revealed) newRevealedIndexes.add(i); });
+    }
+    const freshReveals = [];
+    for (const idx of newRevealedIndexes) {
+      if (!_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
+    }
+
+    // Detect new clue for animation
+    const newClueWord = currentGame.currentClue?.word || null;
+    const newClueNumber = currentGame.currentClue?.number ?? null;
+    const clueChanged = newClueWord && (newClueWord !== _prevClue);
+
     renderGame();
+
+    // Animate newly revealed cards
+    if (freshReveals.length > 0) {
+      requestAnimationFrame(() => {
+        freshReveals.forEach(idx => {
+          const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+          if (cardEl) {
+            cardEl.classList.add('guess-animate');
+            cardEl.addEventListener('animationend', () => {
+              cardEl.classList.remove('guess-animate');
+            }, { once: true });
+          }
+        });
+      });
+    }
+
+    // Animate new clue (center screen overlay)
+    if (clueChanged && newClueWord) {
+      showClueAnimation(newClueWord, newClueNumber);
+    }
+
+    _prevRevealedIndexes = newRevealedIndexes;
+    _prevClue = newClueWord;
   }, (err) => {
     console.error('Game listener error:', err);
   });
@@ -2404,6 +2479,8 @@ function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
   currentGame = null;
+  _prevRevealedIndexes = new Set();
+  _prevClue = null;
   spectatorMode = false;
   spectatingGameId = null;
 
@@ -2721,7 +2798,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       currentClueEl.style.display = 'flex';
       document.getElementById('clue-word').textContent = currentGame.currentClue.word;
       document.getElementById('clue-number').textContent = currentGame.currentClue.number;
-      document.getElementById('guesses-left').textContent = `(${currentGame.guessesRemaining} guesses left)`;
+      document.getElementById('guesses-left').textContent = `(Unlimited guesses)`;
     }
 
     if (!spectator && isMyTurn && !isSpymaster) {
@@ -2865,7 +2942,7 @@ async function handleClueSubmit(e) {
 
     await db.collection('games').doc(currentGame.id).update({
       currentClue: { word, number },
-      guessesRemaining: number + 1, // Can guess number + 1 times
+      guessesRemaining: 999, // Unlimited guesses
       currentPhase: 'operatives',
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
@@ -2914,7 +2991,7 @@ async function handleCardClick(cardIndex) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
 
-  let logEntry = `${teamName} guessed "${card.word}" - `;
+  let logEntry = `${guessByName} (${teamName}) guessed "${card.word}" - `;
   let endTurn = false;
   let winner = null;
 
@@ -2943,11 +3020,7 @@ async function handleCardClick(cardIndex) {
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
 
-    // Decrease guesses remaining
-    updates.guessesRemaining = currentGame.guessesRemaining - 1;
-    if (updates.guessesRemaining <= 0 && !winner) {
-      endTurn = true;
-    }
+    // Unlimited guesses - correct guesses never end the turn
   } else if (card.type === 'neutral') {
     // Neutral - end turn
     logEntry += 'Neutral. Turn ends.';
@@ -3731,7 +3804,9 @@ function renderTopbarTeamNames() {
     el.innerHTML = list.map(p => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const name = escapeHtml(String(p?.name || '—'));
+      const rawName = String(p?.name || '—');
+      const displayName = p?.isAI ? `AI ${rawName}` : rawName;
+      const name = escapeHtml(displayName);
 
       // Clickable names: reuse the existing profile popup system.
       const attrs = pid
@@ -3841,7 +3916,9 @@ function renderPlayersPopup() {
     container.innerHTML = list.map(p => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const name = escapeHtml(String(p?.name || '—'));
+      const rawName = String(p?.name || '—');
+      const displayName = p?.isAI ? `AI ${rawName}` : rawName;
+      const name = escapeHtml(displayName);
       const role = (team === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster) === p?.name ? 'Spy' : 'Op';
       const attrs = pid
         ? `class="players-popup-item ${team} ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
@@ -3852,6 +3929,34 @@ function renderPlayersPopup() {
 
   render(currentGame.redPlayers, redEl, 'red');
   render(currentGame.bluePlayers, blueEl, 'blue');
+}
+
+/* =========================
+   Clue Announcement Animation
+========================= */
+function showClueAnimation(word, number) {
+  // Remove any existing overlay
+  const existing = document.querySelector('.clue-announcement-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'clue-announcement-overlay';
+  overlay.innerHTML = `
+    <div class="clue-announcement-card">
+      <div class="clue-announcement-label">New Clue</div>
+      <div class="clue-announcement-word">${escapeHtml(String(word))}</div>
+      <div class="clue-announcement-number">${number != null ? number : ''}</div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Remove after animation ends
+  overlay.addEventListener('animationend', () => {
+    overlay.remove();
+  });
+  // Fallback removal
+  setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 2500);
 }
 
 /* =========================

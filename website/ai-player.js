@@ -17,9 +17,9 @@ const AI_CONFIG = {
 
 // AI name pools - human-sounding names
 const AI_NAMES = [
-  'alex', 'jordan', 'morgan', 'casey', 'riley', 'quinn', 'avery', 'sage',
-  'rowan', 'finley', 'skyler', 'blake', 'drew', 'reese', 'kai', 'nova',
-  'max', 'sam', 'jamie', 'robin', 'frankie', 'charlie', 'pat', 'dana',
+  'Alex', 'Jordan', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery', 'Sage',
+  'Rowan', 'Finley', 'Skyler', 'Blake', 'Drew', 'Reese', 'Kai', 'Nova',
+  'Max', 'Sam', 'Jamie', 'Robin', 'Frankie', 'Charlie', 'Pat', 'Dana',
 ];
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -232,6 +232,23 @@ async function aiChatCompletion(messages, options = {}) {
   return data.choices?.[0]?.message?.content || '';
 }
 
+// ─── Fetch Recent Team Chat (so AI can see human messages) ──────────────────
+
+async function fetchRecentTeamChat(gameId, teamColor, limit = 15) {
+  try {
+    const snap = await db.collection('games').doc(gameId)
+      .collection(`${teamColor}Chat`)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    const msgs = snap.docs.map(d => d.data()).reverse();
+    return msgs.map(m => `${m.senderName}: ${m.text}`).join('\n');
+  } catch (e) {
+    console.warn('Failed to fetch team chat for AI:', e);
+    return '';
+  }
+}
+
 // ─── Ready-Up Verification ──────────────────────────────────────────────────
 
 async function verifyAIReady(ai) {
@@ -294,7 +311,7 @@ function getUsedAINames() {
 function pickAIName() {
   const used = getUsedAINames();
   const available = AI_NAMES.filter(n => !used.has(n));
-  if (available.length === 0) return `ai_${aiNextId}`;
+  if (available.length === 0) return `Bot${aiNextId}`;
   return available[Math.floor(Math.random() * available.length)];
 }
 
@@ -601,7 +618,7 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief e
 
     await db.collection('games').doc(game.id).update({
       currentClue: { word: clueWord, number: clueNumber },
-      guessesRemaining: clueNumber + 1,
+      guessesRemaining: 999,
       currentPhase: 'operatives',
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
@@ -638,6 +655,10 @@ async function aiGuessCard(ai, game) {
     .map((c, i) => ({ word: c.word, index: i, revealed: c.revealed }))
     .filter(c => !c.revealed);
 
+  // Fetch recent team chat so AI can see what teammates are discussing
+  const teamChat = await fetchRecentTeamChat(game.id, team);
+  const teamChatContext = teamChat ? `\nRECENT TEAM CHAT:\n${teamChat}\n\nConsider your teammates' suggestions and discussion when making your choice.` : '';
+
   // Helper: strict-ish JSON parse with best-effort extraction
   const parseJsonLoose = (raw) => {
     const s = String(raw || '').trim();
@@ -666,14 +687,16 @@ ${unrevealedLines}
 
 ${clueHistory}
 ${summary}
+${teamChatContext}
 
 Your job: Pick the ONE unrevealed board word that BEST matches the clue "${currentClue.word}".
 Rules:
 - You MUST choose a word from the unrevealed list.
 - Return JSON only.
 - Include BOTH the board index and the word.
+- Pay attention to what your teammates are saying in chat - they may have good suggestions.
 
-You have ${game.guessesRemaining} guesses remaining.
+You have unlimited guesses but choose wisely.
 
 ${ai.mode === 'autonomous' ? 'You are confident and decisive. Pick the word you think is most likely correct.' : ''}
 
@@ -786,7 +809,7 @@ async function aiRevealCard(ai, game, cardIndex) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   };
 
-  let logEntry = `${teamName} guessed "${card.word}" - `;
+  let logEntry = `AI ${ai.name} (${teamName}) guessed "${card.word}" - `;
   let endTurn = false;
   let winner = null;
 
@@ -802,8 +825,7 @@ async function aiRevealCard(ai, game, cardIndex) {
       updates.blueCardsLeft = game.blueCardsLeft - 1;
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
-    updates.guessesRemaining = game.guessesRemaining - 1;
-    if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
+    // Unlimited guesses - correct guesses never end the turn
   } else if (card.type === 'neutral') {
     logEntry += 'Neutral. Turn ends.';
     endTurn = true;
@@ -870,9 +892,8 @@ async function aiRevealCard(ai, game, cardIndex) {
 
 async function aiConsiderEndTurn(ai, game) {
   if (ai.mode !== 'autonomous') return false;
-  if (game.guessesRemaining > 0) return false;
 
-  // Auto end turn when no guesses left
+  // End turn when AI decides it has guessed enough
   const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
   try {
     await db.collection('games').doc(game.id).update({
@@ -901,20 +922,28 @@ async function generateAIChatMessage(ai, game, context) {
     .filter(c => !c.revealed)
     .map(c => c.word);
 
+  // Fetch recent team chat so AI can respond to human messages
+  const teamChat = await fetchRecentTeamChat(game.id, team, 10);
+  const chatContext = teamChat ? `\nRecent team chat:\n${teamChat}` : '';
+
   let contextPrompt = '';
   if (context === 'pre_guess' && currentClue) {
-    contextPrompt = `The clue is "${currentClue.word}" for ${currentClue.number}. You're about to guess. Share a brief thought with your team about what you're thinking. Be conversational and natural - like a real person chatting. Keep it to 1-2 short sentences. Don't reveal you're an AI.`;
+    contextPrompt = `The clue is "${currentClue.word}" for ${currentClue.number}. You're about to guess. Share a brief thought with your team about what you're thinking. Be conversational and natural - like a real person chatting. Keep it to 1-2 short sentences. Don't reveal you're an AI.${chatContext ? ` If teammates have said something relevant, respond to or build on what they said.` : ''}`;
   } else if (context === 'new_clue' && currentClue) {
     contextPrompt = `A new clue was just given: "${currentClue.word}" for ${currentClue.number}. React naturally to this clue - are you excited, puzzled, have an idea? Keep it to 1-2 short sentences. Be casual and human-like.`;
   } else if (context === 'discuss') {
-    contextPrompt = `The game is ongoing. ${summary}. Share a brief strategic thought or reaction with your team. Be casual, human-like, conversational. 1-2 short sentences max. Don't reveal you're an AI.`;
+    contextPrompt = `The game is ongoing. ${summary}. Share a brief strategic thought or reaction with your team. Be casual, human-like, conversational. 1-2 short sentences max. Don't reveal you're an AI.${chatContext ? ` If a teammate just said something, respond to them naturally.` : ''}`;
   } else if (context === 'start') {
     contextPrompt = `The game just started! Say something brief and casual to your teammates. Keep it natural - like "gl everyone" or "let's do this". 1 short sentence max.`;
   } else {
     return null;
   }
 
-  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team. You chat naturally in short, informal messages. No emojis unless it feels natural. Don't be overly enthusiastic. Sound like a real person in a game chat. Never mention being an AI. Never use formal language. Keep responses very brief.`;
+  if (chatContext) {
+    contextPrompt += `\n${chatContext}`;
+  }
+
+  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team. You chat naturally in short, informal messages. No emojis unless it feels natural. Don't be overly enthusiastic. Sound like a real person in a game chat. Never mention being an AI. Never use formal language. Keep responses very brief. If your teammates message you, respond to what they're saying - you're working together as a team.`;
 
   try {
     const result = await aiChatCompletion([
@@ -964,7 +993,7 @@ async function sendAIChatMessage(ai, game, text) {
       .collection(`${teamColor}Chat`)
       .add({
         senderId: ai.odId,
-        senderName: ai.name,
+        senderName: `AI ${ai.name}`,
         text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
@@ -1108,12 +1137,21 @@ function startAIGameLoop() {
         if (aiThinkingState[ai.id]) continue;
 
         if (ai.mode === 'autonomous') {
-          // Autonomous: make guesses
-          if (game.guessesRemaining > 0) {
+          // Unlimited guesses: AI decides to end turn after making clueNumber + 1 correct guesses
+          // Count how many correct guesses were made for the current clue
+          const clueNum = game.currentClue?.number || 1;
+          const clueWord = game.currentClue?.word;
+          const currentClueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
+            .filter(c => c.word === clueWord && c.team === currentTeam)
+            .pop()?.results || [];
+          const correctGuesses = currentClueResults.filter(r => r.result === 'correct').length;
+
+          if (correctGuesses >= clueNum + 1) {
+            // AI has guessed enough, end turn
+            await aiConsiderEndTurn(ai, game);
+          } else {
             await aiGuessCard(ai, game);
             break; // One guess at a time
-          } else {
-            await aiConsiderEndTurn(ai, game);
           }
         } else if (ai.mode === 'helper') {
           // Helper: just chat and react
