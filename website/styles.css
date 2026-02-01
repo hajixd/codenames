@@ -4611,294 +4611,84 @@ button.player-tag.pill-action:disabled{
   gap: 6px;
 }
 
-.log-entry{
+.log-entry {
   font-size: 13px;
-  line-height: 1.35;
-  padding: 8px 10px;
+  line-height: 1.4;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+/* Colored game log entries (background + text) */
+.log-entry {
+  position: relative;
+  padding: 9px 10px 9px 12px;
+  border-bottom: none;
   border-radius: 12px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border-soft);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
 }
 
-.log-entry:last-child{ margin-bottom: 2px; }
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
-}
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
-}
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
-}
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
-}
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
-}
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
-}
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
+.log-entry::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(148, 163, 184, 0.45);
 }
 
+.log-entry.team-red::before { background: rgba(239, 68, 68, 0.85); }
+.log-entry.team-blue::before { background: rgba(59, 130, 246, 0.85); }
 
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
+.log-entry.type-clue {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: rgba(253, 230, 138, 0.98);
 }
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
+.log-entry.type-start {
+  background: rgba(59, 130, 246, 0.10);
+  border-color: rgba(59, 130, 246, 0.20);
+  color: rgba(191, 219, 254, 0.98);
 }
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
+.log-entry.type-end {
+  background: rgba(168, 85, 247, 0.10);
+  border-color: rgba(168, 85, 247, 0.20);
+  color: rgba(233, 213, 255, 0.98);
 }
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
+.log-entry.type-correct {
+  background: rgba(34, 197, 94, 0.10);
+  border-color: rgba(34, 197, 94, 0.20);
+  color: rgba(187, 247, 208, 0.98);
 }
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
+.log-entry.type-wrong {
+  background: rgba(239, 68, 68, 0.11);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: rgba(254, 202, 202, 0.98);
 }
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
+.log-entry.type-neutral {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.16);
+  color: rgba(226, 232, 240, 0.92);
 }
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
-}
-
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
-}
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
-}
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
-}
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
-}
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
-}
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
-}
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
+.log-entry.type-assassin {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.34);
+  color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0.55);
 }
 
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
-}
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
-}
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
-}
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
-}
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
-}
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
-}
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
-}
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
-}
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
-}
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
-}
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
-}
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
-}
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
-}
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
-}
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
-}
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
-}
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
-}
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
-}
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
-}
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
-}
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
-}
-
-/* Team edge tint */
-.log-entry.team-red{ border-left: 4px solid var(--game-red); padding-left: 12px; }
-.log-entry.team-blue{ border-left: 4px solid var(--game-blue); padding-left: 12px; }
-
-/* Semantic coloring */
-.log-entry.log-start{
-  background: rgba(59,130,246,0.10);
-  border-color: rgba(59,130,246,0.25);
-}
-.log-entry.log-clue{
-  background: rgba(250,204,21,0.11);
-  border-color: rgba(250,204,21,0.28);
-}
-.log-entry.log-correct{
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.25);
-}
-.log-entry.log-wrong{
-  background: rgba(239,68,68,0.10);
-  border-color: rgba(239,68,68,0.22);
-}
-.log-entry.log-neutral{
-  background: rgba(161,161,170,0.10);
-  border-color: rgba(161,161,170,0.22);
-}
-.log-entry.log-assassin{
-  background: rgba(239,68,68,0.18);
-  border-color: rgba(239,68,68,0.45);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 40px rgba(239,68,68,0.10);
-}
-.log-entry.log-end{
-  background: rgba(168,85,247,0.10);
-  border-color: rgba(168,85,247,0.25);
-}
-.log-entry.log-turn{
-  background: rgba(148,163,184,0.10);
-  border-color: rgba(148,163,184,0.20);
+.log-entry .log-quote {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 0 2px;
+  color: currentColor;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.35);
 }
 
 .log-entry .log-team {
@@ -6786,39 +6576,76 @@ body.tournament.has-team-color .btn.primary:hover {
   animation: cardReveal 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Card guess animation - ultra dramatic expand, slow, exaggerated */
+/* Card guess animation - dramatic expand, glow, settle */
 @keyframes cardGuessExpand {
   0% {
-    transform: scale(1);
+    transform: translate(0px, 0px) scale(1);
     filter: brightness(1);
   }
-  /* Anticipation squash */
   10% {
-    transform: scale(0.72);
+    transform: translate(0px, 0px) scale(0.82);
     filter: brightness(1.06);
   }
-  /* Big overshoot (hold it) */
-  34% {
-    transform: scale(2.2);
+  26% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2);
+    filter: brightness(1.55);
+    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 80px rgba(255, 255, 255, 0.16);
+  }
+  /* Hold big for a beat */
+  56% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2);
     filter: brightness(1.45);
-    box-shadow: 0 28px 92px rgba(0, 0, 0, 0.72), 0 0 96px rgba(255, 255, 255, 0.16);
+    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 80px rgba(255, 255, 255, 0.16);
   }
-  52% {
-    transform: scale(2.2) rotateY(110deg);
-    filter: brightness(1.65);
+  /* Dramatic flip while still large */
+  66% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2) rotateY(102deg);
+    filter: brightness(1.55);
   }
-  64% {
-    transform: scale(2.2) rotateY(110deg);
-    filter: brightness(1.35);
-  }
-  /* Settle (still big) */
-  84% {
-    transform: scale(1.7) rotateY(0deg);
+  74% {
+    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2) rotateY(102deg);
     filter: brightness(1.2);
+  }
+  86% {
+    transform: translate(calc(var(--guess-tx, 0px) * 0.35), calc(var(--guess-ty, 0px) * 0.35)) scale(1.35) rotateY(0deg);
+    filter: brightness(1.12);
     box-shadow: 0 18px 58px rgba(0, 0, 0, 0.6);
   }
   94% {
-    transform: scale(1.12);
+    transform: translate(0px, 0px) scale(1.08);
+    filter: brightness(1.06);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+    filter: brightness(1);
+    box-shadow: none;
+  }
+}
+
+  12% {
+    transform: scale(0.88);
+    filter: brightness(1.05);
+  }
+  32% {
+    transform: scale(1.55);
+    filter: brightness(1.35);
+    box-shadow: 0 20px 64px rgba(0, 0, 0, 0.65), 0 0 60px rgba(255, 255, 255, 0.14);
+  }
+  48% {
+    transform: scale(1.55) rotateY(95deg);
+    filter: brightness(1.5);
+  }
+  60% {
+    transform: scale(1.55) rotateY(95deg);
+    filter: brightness(1.25);
+  }
+  78% {
+    transform: scale(1.4) rotateY(0deg);
+    filter: brightness(1.18);
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
+  }
+  92% {
+    transform: scale(1.08);
     filter: brightness(1.08);
   }
   100% {
@@ -6855,30 +6682,30 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .game-card.guess-animate {
-  animation: cardGuessExpand 6.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  z-index: 10;
+  animation: cardGuessExpand 7.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  z-index: 50;
   position: relative;
   transform-style: preserve-3d;
 }
 
 .game-card.guess-animate.card-red {
-  animation: cardGuessExpand 6.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowRed 6.2s ease forwards;
+  animation: cardGuessExpand 7.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowRed 7.2s ease forwards;
 }
 
 .game-card.guess-animate.card-blue {
-  animation: cardGuessExpand 6.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowBlue 6.2s ease forwards;
+  animation: cardGuessExpand 7.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowBlue 7.2s ease forwards;
 }
 
 .game-card.guess-animate.card-neutral {
-  animation: cardGuessExpand 6.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowNeutral 6.2s ease forwards;
+  animation: cardGuessExpand 7.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowNeutral 7.2s ease forwards;
 }
 
 .game-card.guess-animate.card-assassin {
-  animation: cardGuessExpand 6.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowAssassin 6.8s ease forwards;
+  animation: cardGuessExpand 7.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             cardRevealGlowAssassin 7.8s ease forwards;
 }
 
 /* Card pulse animation for hints */
@@ -7598,6 +7425,200 @@ body.tournament.has-team-color .input:focus {
 .topbar-timer {
   width: 120px;
   margin-top: 4px;
+}
+
+/* New top strip: turn status + team roster popovers */
+.topbar-team {
+  position: relative;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.topbar-team-red { justify-content: flex-start; }
+.topbar-team-blue { justify-content: flex-end; }
+
+.topbar-team-status {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-team-red .topbar-team-status { text-align: left; }
+.topbar-team-blue .topbar-team-status { text-align: right; }
+
+.topbar-team-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  flex: 0 0 auto;
+}
+
+.topbar-team-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: rgba(255, 255, 255, 0.9);
+  fill: none;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.topbar-team-icon:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.topbar-team-icon.red { border-color: rgba(239, 68, 68, 0.35); }
+.topbar-team-icon.blue { border-color: rgba(59, 130, 246, 0.35); }
+
+.topbar-team-icon.red:hover { box-shadow: 0 10px 26px rgba(239, 68, 68, 0.14), 0 10px 26px rgba(0,0,0,0.45); }
+.topbar-team-icon.blue:hover { box-shadow: 0 10px 26px rgba(59, 130, 246, 0.14), 0 10px 26px rgba(0,0,0,0.45); }
+
+/* Popover */
+.team-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  width: 320px;
+  max-width: min(360px, calc(100vw - 28px));
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(10, 10, 12, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  z-index: 120;
+}
+
+.team-popover-red { left: 0; transform-origin: top left; }
+.team-popover-blue { right: 0; transform-origin: top right; }
+
+.topbar-team:hover .team-popover,
+.topbar-team:focus-within .team-popover,
+.topbar-team.popover-open .team-popover {
+  opacity: 1;
+  transform: translateY(0px) scale(1);
+  pointer-events: auto;
+}
+
+.team-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.team-popover-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.team-popover-sub {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.team-popover-section {
+  padding: 10px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.team-popover-section + .team-popover-section {
+  margin-top: 10px;
+}
+
+.team-popover-role {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.team-popover-player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.team-popover-player + .team-popover-player { margin-top: 6px; }
+
+.team-popover-name {
+  font-weight: 850;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-popover-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.team-popover-player.spymaster {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.14) inset;
+}
+
+.team-popover-player.spymaster .team-popover-badge {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.10);
+  color: rgba(253, 230, 138, 0.95);
+}
+
+.team-popover-player.operative {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.team-popover-player.is-me {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 12px 30px rgba(0,0,0,0.35);
 }
 
 .topbar-timer .timer-text {
@@ -10667,4 +10688,10 @@ body.light-mode .ai-mode-card:hover:not(:disabled){
   .ai-mode-cards{ flex-direction: column; }
   .ai-badge{ font-size: 8px; padding: 1px 5px; }
   .ai-remove-btn{ width: 16px; height: 16px; font-size: 11px; }
+}
+/* Ensure guess animations can expand outward without clipping */
+.game-board-wrapper,
+.game-board,
+.game-center-area {
+  overflow: visible;
 }

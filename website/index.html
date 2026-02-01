@@ -639,30 +639,43 @@
               <!-- Enhanced Game Header with Timer -->
               <div class="game-header-expanded">
                 <div class="game-topbar">
-                  <div class="topbar-team topbar-team-red">
-                    <div class="topbar-team-names" id="topbar-red-names"></div>
-                  </div>
+  <div class="topbar-team topbar-team-red" id="topbar-red">
+    <button class="topbar-team-icon red" id="topbar-red-icon" type="button" aria-label="Show Red team roster" title="Red team">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 12c2.761 0 5-2.239 5-5S14.761 2 12 2 7 4.239 7 7s2.239 5 5 5Z"></path>
+        <path d="M4 22c0-4.418 3.582-8 8-8s8 3.582 8 8"></path>
+      </svg>
+    </button>
+    <div class="topbar-team-status" id="topbar-red-status">—</div>
+    <div class="team-popover team-popover-red" id="team-popover-red" aria-label="Red team roster"></div>
+  </div>
 
-                  <div class="topbar-center">
-                    <div class="topbar-score" aria-label="Score">
-                      <span class="topbar-score-num red" id="game-red-left">9</span>
-                      <span class="topbar-score-sep">v</span>
-                      <span class="topbar-score-num blue" id="game-blue-left">8</span>
-                    </div>
+  <div class="topbar-center">
+    <div class="topbar-score" aria-label="Score">
+      <span class="topbar-score-num red" id="game-red-left">9</span>
+      <span class="topbar-score-sep">v</span>
+      <span class="topbar-score-num blue" id="game-blue-left">8</span>
+    </div>
 
-                    <div class="game-timer-display topbar-timer" id="game-timer" style="display:none;">
-                      <div class="timer-bar">
-                        <div class="timer-fill" id="timer-fill"></div>
-                      </div>
-                      <span class="timer-text" id="timer-text">0:00</span>
-                    </div>
-                  </div>
+    <div class="game-timer-display topbar-timer" id="game-timer" style="display:none;">
+      <div class="timer-bar">
+        <div class="timer-fill" id="timer-fill"></div>
+      </div>
+      <span class="timer-text" id="timer-text">0:00</span>
+    </div>
+  </div>
 
-                  <div class="topbar-team topbar-team-blue">
-                    <div class="topbar-team-names" id="topbar-blue-names"></div>
-                  </div>
-                </div>
-
+  <div class="topbar-team topbar-team-blue" id="topbar-blue">
+    <div class="team-popover team-popover-blue" id="team-popover-blue" aria-label="Blue team roster"></div>
+    <div class="topbar-team-status" id="topbar-blue-status">—</div>
+    <button class="topbar-team-icon blue" id="topbar-blue-icon" type="button" aria-label="Show Blue team roster" title="Blue team">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 12c2.761 0 5-2.239 5-5S14.761 2 12 2 7 4.239 7 7s2.239 5 5 5Z"></path>
+        <path d="M4 22c0-4.418 3.582-8 8-8s8 3.582 8 8"></path>
+      </svg>
+    </button>
+  </div>
+</div>
                 <!-- Legacy header fields still referenced by game logic -->
                 <div class="game-header-meta" aria-hidden="true">
                   <span class="sr-only" id="game-red-team"></span>

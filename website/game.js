@@ -2436,6 +2436,32 @@ function startGameListener(gameId, options = {}) {
         freshReveals.forEach(idx => {
           const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
           if (cardEl) {
+            // Make the expansion feel like it bursts OUTWARD from the board center.
+            try {
+              const boardEl = document.getElementById('game-board');
+              const boardRect = boardEl ? boardEl.getBoundingClientRect() : null;
+              const r = cardEl.getBoundingClientRect();
+              if (boardRect) {
+                const cx = boardRect.left + boardRect.width / 2;
+                const cy = boardRect.top + boardRect.height / 2;
+                const dx = (r.left + r.width / 2) - cx;
+                const dy = (r.top + r.height / 2) - cy;
+
+                const sx = Math.abs(dx) < 6 ? 0 : (dx > 0 ? 1 : -1);
+                const sy = Math.abs(dy) < 6 ? 0 : (dy > 0 ? 1 : -1);
+
+                // Tune these for a big outward "pop".
+                const tx = sx * 42;
+                const ty = sy * 34;
+
+                cardEl.style.setProperty('--guess-tx', `${tx}px`);
+                cardEl.style.setProperty('--guess-ty', `${ty}px`);
+              } else {
+                cardEl.style.setProperty('--guess-tx', `0px`);
+                cardEl.style.setProperty('--guess-ty', `0px`);
+              }
+            } catch (_) {}
+
             cardEl.classList.add('guess-animate');
             let cleaned = false;
             const cleanup = () => {
@@ -2445,7 +2471,7 @@ function startGameListener(gameId, options = {}) {
             };
             cardEl.addEventListener('animationend', cleanup, { once: true });
             // Fallback cleanup for longer animations
-            setTimeout(cleanup, 2500);
+            setTimeout(cleanup, 9000);
           }
         });
       });
@@ -2823,32 +2849,58 @@ function renderGameLog() {
   const sidebarEl = document.getElementById('game-log-entries-sidebar');
   if ((!popoverEl && !sidebarEl) || !currentGame?.log) return;
 
-  const redName = (currentGame.redTeamName || '').trim();
-  const blueName = (currentGame.blueTeamName || '').trim();
+  const redName = String(currentGame.redTeamName || 'Red').trim();
+  const blueName = String(currentGame.blueTeamName || 'Blue').trim();
 
-  const html = currentGame.log.map((entryRaw) => {
-    const raw = String(entryRaw ?? '');
-    const t = raw.toLowerCase();
+  const detectTeam = (entry) => {
+    if (!entry) return null;
 
-    // Type classification
-    let kind = 'turn';
-    if (t.includes('spymaster:')) kind = 'clue';
-    else if (t.includes('game started')) kind = 'start';
-    else if (t.includes('wins!') || t.includes('game ended')) kind = 'end';
-    else if (t.includes('assassin')) kind = 'assassin';
-    else if (t.includes('correct!')) kind = 'correct';
-    else if (t.includes('wrong!')) kind = 'wrong';
-    else if (t.includes('neutral')) kind = 'neutral';
+    // Common patterns:
+    // - "Alice (TeamName) guessed ..."
+    // - "TeamName Spymaster: ..."
+    // - "TeamName ended their turn."
+    if (redName && entry.includes(`(${redName})`)) return 'red';
+    if (blueName && entry.includes(`(${blueName})`)) return 'blue';
 
-    // Team tint classification
-    let teamClass = '';
-    if (redName && raw.includes(redName)) teamClass = 'team-red';
-    else if (blueName && raw.includes(blueName)) teamClass = 'team-blue';
-    else if (t.includes('red team')) teamClass = 'team-red';
-    else if (t.includes('blue team')) teamClass = 'team-blue';
+    if (redName && entry.startsWith(redName)) return 'red';
+    if (blueName && entry.startsWith(blueName)) return 'blue';
 
-    const safeText = (typeof escapeHtml === 'function') ? escapeHtml(raw) : raw;
-    return `<div class="log-entry log-${kind} ${teamClass}">${safeText}</div>`;
+    if (/Red team/i.test(entry)) return 'red';
+    if (/Blue team/i.test(entry)) return 'blue';
+
+    return null;
+  };
+
+  const detectType = (entry) => {
+    if (!entry) return 'neutral';
+    const s = String(entry);
+
+    if (/Spymaster:\s*/i.test(s)) return 'clue';
+    if (/ASSASSIN/i.test(s)) return 'assassin';
+    if (/\bCorrect!\b/i.test(s)) return 'correct';
+    if (/\bWrong!\b/i.test(s)) return 'wrong';
+    if (/\bNeutral\b/i.test(s)) return 'neutral';
+    if (/wins!/i.test(s) || /Game ended/i.test(s) || /ended the game/i.test(s) || /Game over/i.test(s)) return 'end';
+    if (/Game started/i.test(s) || /Starting game/i.test(s)) return 'start';
+
+    return 'neutral';
+  };
+
+  const renderWithQuotes = (raw) => {
+    const str = String(raw || '');
+    const parts = str.split(/"([^"]+)"/g); // even = normal, odd = inside quotes
+    return parts.map((p, i) => {
+      if (i % 2 === 1) return `<span class="log-quote">${escapeHtml(p)}</span>`;
+      return escapeHtml(p);
+    }).join('');
+  };
+
+  const html = currentGame.log.map(entry => {
+    const team = detectTeam(entry);
+    const type = detectType(entry);
+    const cls = ['log-entry', `type-${type}`];
+    if (team) cls.push(`team-${team}`);
+    return `<div class="${cls.join(' ')}">${renderWithQuotes(entry)}</div>`;
   }).join('');
 
   if (popoverEl) popoverEl.innerHTML = html;
@@ -3789,68 +3841,143 @@ function renderTeamRoster() {
 
 
 /* =========================
-   Top Bar Team Names (Desktop)
+   Top Bar Turn Strip + Team Popovers
 ========================= */
 function renderTopbarTeamNames() {
   if (!currentGame) return;
 
-  const redEl = document.getElementById('topbar-red-names');
-  const blueEl = document.getElementById('topbar-blue-names');
-  if (!redEl && !blueEl) return;
+  // One-time init: click-to-toggle popovers + outside click to close
+  if (!window.__topbarPopoversInit) {
+    window.__topbarPopoversInit = true;
+
+    const closeAll = () => {
+      document.querySelectorAll('.topbar-team.popover-open').forEach(el => el.classList.remove('popover-open'));
+    };
+
+    document.addEventListener('click', (e) => {
+      const inTopbarTeam = e.target && e.target.closest && e.target.closest('.topbar-team');
+      if (!inTopbarTeam) closeAll();
+    });
+
+    const bindIcon = (iconId, teamId) => {
+      const icon = document.getElementById(iconId);
+      const teamEl = document.getElementById(teamId);
+      if (!icon || !teamEl) return;
+
+      icon.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const willOpen = !teamEl.classList.contains('popover-open');
+        closeAll();
+        if (willOpen) teamEl.classList.add('popover-open');
+      });
+    };
+
+    // Best-effort now + later (icons don't exist on lobby)
+    setTimeout(() => {
+      bindIcon('topbar-red-icon', 'topbar-red');
+      bindIcon('topbar-blue-icon', 'topbar-blue');
+    }, 0);
+  }
+
+  const redStatusEl = document.getElementById('topbar-red-status');
+  const blueStatusEl = document.getElementById('topbar-blue-status');
+  const redPop = document.getElementById('team-popover-red');
+  const bluePop = document.getElementById('team-popover-blue');
+
+  const phaseToLabel = (phase) => {
+    if (phase === 'spymaster') return 'Spymaster Turn';
+    if (phase === 'operatives') return 'Operatives Turn';
+    if (phase === 'role-selection') return 'Pick roles';
+    if (phase === 'waiting') return 'Waiting';
+    if (phase === 'ended') return 'Game Over';
+    return '—';
+  };
+
+  const isEnded = !!currentGame.winner || currentGame.currentPhase === 'ended';
+  const activeTeam = isEnded ? null : currentGame.currentTeam;
+  const activeLabel = isEnded ? 'Game Over' : phaseToLabel(currentGame.currentPhase);
+
+  if (redStatusEl) {
+    if (activeTeam === 'red') redStatusEl.textContent = activeLabel;
+    else if (currentGame.currentPhase === 'waiting') redStatusEl.textContent = 'Waiting for players';
+    else if (isEnded) redStatusEl.textContent = '—';
+    else redStatusEl.textContent = 'Waiting';
+  }
+
+  if (blueStatusEl) {
+    if (activeTeam === 'blue') blueStatusEl.textContent = activeLabel;
+    else if (currentGame.currentPhase === 'waiting') blueStatusEl.textContent = 'Waiting for players';
+    else if (isEnded) blueStatusEl.textContent = '—';
+    else blueStatusEl.textContent = 'Waiting';
+  }
 
   const myId = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
 
-  const render = (players, el, team) => {
-    if (!el) return;
+  const buildTeamPopover = (team) => {
+    const isRed = team === 'red';
+    const teamName = truncateTeamNameGame(isRed ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team'));
+    const roster = isRed ? (currentGame.redPlayers || []) : (currentGame.bluePlayers || []);
+    const spymasterName = isRed ? currentGame.redSpymaster : currentGame.blueSpymaster;
 
-    const list = Array.isArray(players) ? players : [];
-    const count = Math.max(1, list.length);
+    const spymasterEntry = spymasterName
+      ? roster.find(p => String(p?.name || '').trim() === String(spymasterName).trim())
+      : null;
 
-    // Horizontal layout: scale font size a bit as teams grow so names still fit.
-    const size = count <= 3 ? 13 : (count <= 5 ? 12 : 11);
-    // Spacing: fewer players => more breathing room. More players => tighter.
-    // We drive this via CSS vars so the layout remains flexible with wrapping.
-    const gapX = (count <= 1) ? 0
-      : (count === 2) ? 18
-      : (count === 3) ? 12
-      : (count === 4) ? 8
-      : (count === 5) ? 6
-      : (count === 6) ? 5
-      : 4;
-    const gapY = (count <= 4) ? 4 : 3;
+    const operatives = roster.filter(p => String(p?.name || '').trim() !== String(spymasterName || '').trim());
 
-    // When teams are small, spread names across the available half to increase perceived distance.
-    el.classList.toggle('spread', count === 2 || count === 3);
-    el.classList.toggle('cols-2', false);
-    el.style.setProperty('--topbar-name-size', `${size}px`);
-    el.style.setProperty('--topbar-name-gap-x', `${gapX}px`);
-    el.style.setProperty('--topbar-name-gap-y', `${gapY}px`);
-
-    if (list.length === 0) {
-      el.innerHTML = `<div class="topbar-player" style="color: var(--text-dim);">—</div>`;
-      return;
-    }
-
-    el.innerHTML = list.map(p => {
+    const renderPlayerRow = (p, role) => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const rawName = String(p?.name || '—');
-      const displayName = p?.isAI ? `AI ${rawName}` : rawName;
-      const name = escapeHtml(displayName);
+      const name = escapeHtml(displayPlayerName(p));
+      const badge = role === 'spymaster' ? 'Spymaster' : 'Operative';
+      const classes = ['team-popover-player', role, isMe ? 'is-me' : ''].filter(Boolean).join(' ');
+      return `
+        <div class="${classes}">
+          <div class="team-popover-name">${name}</div>
+          <div class="team-popover-badge">${badge}</div>
+        </div>
+      `;
+    };
 
-      // Clickable names: reuse the existing profile popup system.
-      const attrs = pid
-        ? `class="topbar-player ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
-        : `class="topbar-player ${isMe ? 'is-me' : ''}"`;
+    const spymasterHtml = spymasterEntry
+      ? renderPlayerRow(spymasterEntry, 'spymaster')
+      : `<div class="team-popover-player spymaster" style="opacity:0.78;">
+           <div class="team-popover-name">No Spymaster yet</div>
+           <div class="team-popover-badge">Spymaster</div>
+         </div>`;
 
-      // Use a button for better a11y + consistent click targets.
-      return `<button type="button" ${attrs}>${name}</button>`;
-    }).join('');
+    const opsHtml = (operatives.length > 0)
+      ? operatives.map(p => renderPlayerRow(p, 'operative')).join('')
+      : `<div class="team-popover-player operative" style="opacity:0.78;">
+           <div class="team-popover-name">No Operatives yet</div>
+           <div class="team-popover-badge">Operative</div>
+         </div>`;
+
+    return `
+      <div class="team-popover-header">
+        <div>
+          <div class="team-popover-title">${escapeHtml(teamName)}</div>
+          <div class="team-popover-sub">${roster.length || 0} player${(roster.length || 0) === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+
+      <div class="team-popover-section">
+        <div class="team-popover-role">Spymaster</div>
+        ${spymasterHtml}
+      </div>
+
+      <div class="team-popover-section">
+        <div class="team-popover-role">Operatives</div>
+        ${opsHtml}
+      </div>
+    `;
   };
 
-  render(currentGame.redPlayers, redEl, 'red');
-  render(currentGame.bluePlayers, blueEl, 'blue');
+  if (redPop) redPop.innerHTML = buildTeamPopover('red');
+  if (bluePop) bluePop.innerHTML = buildTeamPopover('blue');
 }
+
 
 /* =========================
    Sidebar Toggles
