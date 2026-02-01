@@ -129,6 +129,30 @@ const QUICKPLAY_DOC_ID = 'quickplay';
 // Expose the Quick Play doc id so other modules can reference it without
 // duplicating constants.
 window.QUICKPLAY_DOC_ID = QUICKPLAY_DOC_ID;
+
+// Quick Play readiness gate
+// Used by app.js to keep the loading screen up until the first usable state
+// is rendered (e.g., your name appears in the lobby or the game board renders).
+function _makeDeferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve, resolved: false };
+}
+let _quickPlayReady = _makeDeferred();
+function _signalQuickPlayReady() {
+  if (_quickPlayReady.resolved) return;
+  _quickPlayReady.resolved = true;
+  try { _quickPlayReady.resolve(true); } catch (_) {}
+}
+window.resetQuickPlayReady = function resetQuickPlayReady() {
+  _quickPlayReady = _makeDeferred();
+};
+window.waitForQuickPlayReady = function waitForQuickPlayReady(opts = {}) {
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? Math.max(0, opts.timeoutMs) : 15000;
+  // Resolve on timeout as a safety so the UI never gets stuck.
+  const t = new Promise((r) => setTimeout(() => r(false), timeoutMs));
+  return Promise.race([_quickPlayReady.promise, t]);
+};
 let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
@@ -183,7 +207,7 @@ function formatQuickRules(settings) {
   const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, deckId: 'standard', vibe: '' };
   const d = getDeckMeta(s.deckId || 'standard');
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-  return `Deck: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}${vibeStr}`;
+  return `Words: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}${vibeStr}`;
 }
 
 
@@ -873,7 +897,7 @@ function updateQuickRulesUI(game) {
   }
   if (modalStatus) {
     modalStatus.textContent = !myTeam
-      ? 'Join Red or Blue to change Quick Play settings.'
+      ? 'Join a team to change Quick Play settings.'
       : 'Changes apply immediately (no agreement step).';
   }
 }
@@ -890,7 +914,7 @@ async function offerQuickRulesFromModal() {
       const game = snap.data();
       if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
       const role = getQuickPlayerRole(game, odId);
-      if (role !== 'red' && role !== 'blue') throw new Error('Join Red or Blue to change settings.');
+      if (role !== 'red' && role !== 'blue') throw new Error('Join a team to change settings.');
 
       // Any settings change resets readiness so the lobby restarts clean.
       const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
@@ -1366,7 +1390,7 @@ async function setQuickSeatRole(seatRole) {
       }
 
       const team = getQuickPlayerRole(game, odId);
-      if (team !== 'red' && team !== 'blue') throw new Error('Join Red or Blue first.');
+      if (team !== 'red' && team !== 'blue') throw new Error('Join a team first.');
       const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
       const players = Array.isArray(game[key]) ? [...game[key]] : [];
       const idx = players.findIndex(p => p.odId === odId);
@@ -1621,6 +1645,11 @@ function renderQuickLobby(game) {
   const odId = getUserId();
   const userName = getUserName();
   const role = getQuickPlayerRole(game, odId);
+
+  // If we're in Quick Play and the server state contains us, consider the lobby ready.
+  if (userName && role) {
+    try { _signalQuickPlayReady(); } catch (_) {}
+  }
 
   // Auto-join as spectator when opening Quick Play (so you can see who is here).
   if (!role && userName && !quickAutoJoinedSpectator) {
@@ -2511,6 +2540,12 @@ function startGameListener(gameId, options = {}) {
     const clueChanged = newClueWord && (newClueWord !== _prevClue);
 
     renderGame();
+
+    // If the app is entering Quick Play directly into an in-progress game,
+    // keep the loader up until we have rendered at least once.
+    if (document.body.classList.contains('quickplay')) {
+      _signalQuickPlayReady();
+    }
 
     // Animate newly revealed cards (dramatic reveal)
     if (freshReveals.length > 0) {

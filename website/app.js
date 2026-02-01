@@ -1493,7 +1493,17 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
   // No doc -> treat as no live game.
   if (!snap || !snap.exists) {
     scheduleAfterMinDelay(() => {
-      try { onProceed(); } finally { finish(); }
+      (async () => {
+        try {
+          try { if (typeof window.resetQuickPlayReady === 'function') window.resetQuickPlayReady(); } catch (_) {}
+          await Promise.resolve(onProceed());
+          if (typeof window.waitForQuickPlayReady === 'function') {
+            await window.waitForQuickPlayReady({ timeoutMs: 12000 });
+          }
+        } finally {
+          finish();
+        }
+      })();
     });
     return;
   }
@@ -1503,7 +1513,17 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
 
   if (!inProgress) {
     scheduleAfterMinDelay(() => {
-      try { onProceed(); } finally { finish(); }
+      (async () => {
+        try {
+          try { if (typeof window.resetQuickPlayReady === 'function') window.resetQuickPlayReady(); } catch (_) {}
+          await Promise.resolve(onProceed());
+          if (typeof window.waitForQuickPlayReady === 'function') {
+            await window.waitForQuickPlayReady({ timeoutMs: 12000 });
+          }
+        } finally {
+          finish();
+        }
+      })();
     });
     return;
   }
@@ -1519,18 +1539,26 @@ async function maybeGateQuickPlayWithLiveGame(opts = {}) {
   const canRejoin = !!uid && ids.has(uid);
 
   scheduleAfterMinDelay(() => {
-    try {
-      // Enter Quick Play, but skip the lobby so users never see it flash.
-      enterAppFromLaunch('quick', { skipQuickLobby: true, restore: true });
+    (async () => {
+      try {
+        // Enter Quick Play, but skip the lobby so users never see it flash.
+        try { if (typeof window.resetQuickPlayReady === 'function') window.resetQuickPlayReady(); } catch (_) {}
+        enterAppFromLaunch('quick', { skipQuickLobby: true, restore: true });
 
-      // Start a spectator preview of the live game so it plays behind the overlay.
-      try { window.startQuickPlayLiveBackdrop?.({ spectator: true }); } catch (_) {}
+        // Start a spectator preview of the live game so it plays behind the overlay.
+        try { window.startQuickPlayLiveBackdrop?.({ spectator: true }); } catch (_) {}
 
-      // Show the chooser.
-      showQuickPlayGate({ gameId: QUICKPLAY_DOC_ID, canRejoin });
-    } finally {
-      finish();
-    }
+        // Show the chooser.
+        showQuickPlayGate({ gameId: QUICKPLAY_DOC_ID, canRejoin });
+
+        // Keep the loader up until the backdrop/game has rendered at least once.
+        if (typeof window.waitForQuickPlayReady === 'function') {
+          await window.waitForQuickPlayReady({ timeoutMs: 12000 });
+        }
+      } finally {
+        finish();
+      }
+    })();
   });
 }
 
@@ -1557,7 +1585,7 @@ function initLaunchScreen() {
 
   const hint = document.getElementById('launch-name-hint');
 
-  const requireAuthThen = (mode, opts = {}) => {
+  const requireAuthThen = async (mode, opts = {}) => {
     const u = auth.currentUser;
     const name = getUserName();
     if (!u || !name) {
@@ -1576,10 +1604,20 @@ function initLaunchScreen() {
 
     // Show loading screen during navigation transition
     showAuthLoadingScreen();
-    setTimeout(() => {
-      enterAppFromLaunch(mode);
-      hideAuthLoadingScreen();
-    }, 300);
+
+    // Ensure the loader stays up until the destination has rendered a usable first state.
+    try { if (mode === 'quick' && typeof window.resetQuickPlayReady === 'function') window.resetQuickPlayReady(); } catch (_) {}
+
+    (async () => {
+      try {
+        enterAppFromLaunch(mode);
+        if (mode === 'quick' && typeof window.waitForQuickPlayReady === 'function') {
+          await window.waitForQuickPlayReady({ timeoutMs: 15000 });
+        }
+      } finally {
+        hideAuthLoadingScreen();
+      }
+    })();
   };
 
   // Quick Play can be gated if there's already a live game in progress.
