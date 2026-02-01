@@ -513,7 +513,7 @@ async function aiGiveClue(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, true);
   const teamContext = buildTeamContext(game, team);
-  const recentChat = await getRecentTeamChatText(game.id, team, 10);
+  const recentChat = await getRecentTeamChatText(game.id, team, 10, game.chatRound);
 
   // Compute which words belong to our team and haven't been revealed
   const ourWords = game.cards
@@ -639,7 +639,7 @@ async function aiGuessCard(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, false);
   const currentClue = game.currentClue;
-  const recentChat = await getRecentTeamChatText(game.id, team, 12);
+  const recentChat = await getRecentTeamChatText(game.id, team, 12, game.chatRound);
 
   if (!currentClue) {
     aiThinkingState[ai.id] = false;
@@ -943,7 +943,7 @@ async function generateAIChatMessage(ai, game, context) {
   const team = ai.team;
   const currentClue = game.currentClue;
   const summary = buildGameSummary(game, team, false);
-  const recentChat = await getRecentTeamChatText(game.id, team, 10);
+  const recentChat = await getRecentTeamChatText(game.id, team, 10, game.chatRound);
 
   const unrevealed = game.cards
     .filter(c => !c.revealed)
@@ -1021,6 +1021,7 @@ async function sendAIChatMessage(ai, game, text) {
         senderId: ai.odId,
         senderName: ai.name,
         text,
+        round: Number(game.chatRound || 0),
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
   } catch (e) {
@@ -1066,6 +1067,7 @@ async function aiSelectRole(ai, game) {
   if (otherSpymaster) {
     updates.currentPhase = 'spymaster';
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
+    updates.chatRound = (Number(game.chatRound || 0) + 1);
   }
 
   try {
@@ -1088,22 +1090,27 @@ async function getGameSnapshot(gameId) {
 }
 
 // Fetch recent team chat messages so AIs can coordinate with human teammates.
-async function getRecentTeamChatText(gameId, team, limit = 10) {
+async function getRecentTeamChatText(gameId, team, limit = 10, round = 0) {
   if (!gameId || !team) return '';
   try {
+    const wantRound = Number(round || 0);
+    // Fetch a bit more than we need and filter client-side so we don't rely on
+    // additional Firestore indexes.
     const snap = await db.collection('games').doc(gameId)
       .collection(`${team}Chat`)
       .orderBy('createdAt', 'desc')
-      .limit(Math.max(1, Math.min(30, limit)))
+      .limit(50)
       .get();
 
-    const msgs = snap.docs
+    const filtered = snap.docs
       .map(d => d.data())
       .filter(m => m && typeof m.text === 'string' && m.text.trim())
+      .filter(m => Number(m.round || 0) === wantRound)
+      .slice(0, Math.max(1, Math.min(30, limit)))
       .slice()
       .reverse();
 
-    return msgs
+    return filtered
       .map(m => `${String(m.senderName || 'Someone').trim()}: ${String(m.text || '').trim()}`)
       .join('\n');
   } catch (e) {

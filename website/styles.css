@@ -6556,6 +6556,18 @@ body.tournament.has-team-color .btn.primary:hover {
   animation: cardReveal var(--anim-duration-slower) var(--anim-ease);
 }
 
+/* Pop animation when a guess reveals a card */
+@keyframes cardGuessPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.075); }
+  100% { transform: scale(1); }
+}
+
+.game-card.guess-pop {
+  animation: cardGuessPop 360ms var(--anim-ease);
+  will-change: transform;
+}
+
 /* Card pulse animation for hints */
 @keyframes cardPulse {
   0%, 100% {
@@ -6915,14 +6927,15 @@ body.tournament.has-team-color .input:focus {
 
 /* When teams are small, spread names out more across the available half so it feels airy */
 .topbar-team-names.spread {
-  width: 100%;
-  justify-content: space-between;
+  /* Legacy class: keep the roster centered (gap is controlled by CSS vars set in JS). */
+  width: auto;
+  justify-content: center;
 }
 
 /* When a team has only a couple of players, give names extra breathing room. */
 .topbar-team-names.spread {
-  width: 100%;
-  justify-content: space-between;
+  width: auto;
+  justify-content: center;
 }
 
 /* Team name colors */
@@ -10030,6 +10043,65 @@ body.tournament .mobile-tabs .tab[data-panel="panel-game"]{ display:none !import
 /* AI sender in chat - subtle indicator */
 .ai-chat-sender{
   position: relative;
+}
+
+/* ─── Clue Splash Animation ─────────────────────────────────────────────── */
+.clue-splash{
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 9999;
+}
+
+.clue-splash-card{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(15, 17, 21, 0.86);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 55px rgba(0,0,0,0.55);
+}
+
+.clue-splash-word{
+  font-size: 26px;
+  font-weight: 850;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.clue-splash-num{
+  font-size: 18px;
+  font-weight: 750;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.clue-splash-card.team-red .clue-splash-word{ color: var(--game-red); }
+.clue-splash-card.team-blue .clue-splash-word{ color: var(--game-blue); }
+
+@keyframes clueSplashInOut {
+  0% { opacity: 0; transform: translateY(18px) scale(0.92); }
+  18% { opacity: 1; transform: translateY(0) scale(1.05); }
+  35% { opacity: 1; transform: translateY(0) scale(1); }
+  85% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(0.96); }
+}
+
+.clue-splash.show{
+  opacity: 1;
+}
+
+.clue-splash.show .clue-splash-card{
+  animation: clueSplashInOut 1.25s var(--anim-ease);
 }
 
 /* Light mode overrides */
