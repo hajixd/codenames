@@ -4912,6 +4912,16 @@ function renderQuickLobbyWithAI(game) {
       const ai = aiPlayersList.find(a => a.name === nameText);
       if (!ai) return;
 
+      // Make AI name clickable to show traits (same as in-game)
+      try {
+        nameEl.classList.add('profile-link');
+        nameEl.style.cursor = 'pointer';
+        nameEl.onclick = (e) => {
+          e.stopPropagation();
+          if (typeof window.openAITraitsPopup === 'function') window.openAITraitsPopup(ai.odId);
+        };
+      } catch (_) {}
+
       // Add AI class
       el.classList.add('ai-player');
 
