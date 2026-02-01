@@ -3705,10 +3705,23 @@ function renderTopbarTeamNames() {
 
     // Horizontal layout: scale font size a bit as teams grow so names still fit.
     const size = count <= 3 ? 13 : (count <= 5 ? 12 : 11);
-    const gap = count <= 3 ? 4 : 3;
+    // Spacing: fewer players => more breathing room. More players => tighter.
+    // We drive this via CSS vars so the layout remains flexible with wrapping.
+    const gapX = (count <= 1) ? 0
+      : (count === 2) ? 18
+      : (count === 3) ? 12
+      : (count === 4) ? 8
+      : (count === 5) ? 6
+      : (count === 6) ? 5
+      : 4;
+    const gapY = (count <= 4) ? 4 : 3;
+
+    // When teams are small, spread names across the available half to increase perceived distance.
+    el.classList.toggle('spread', count === 2 || count === 3);
     el.classList.toggle('cols-2', false);
     el.style.setProperty('--topbar-name-size', `${size}px`);
-    el.style.setProperty('--topbar-name-gap', `${gap}px`);
+    el.style.setProperty('--topbar-name-gap-x', `${gapX}px`);
+    el.style.setProperty('--topbar-name-gap-y', `${gapY}px`);
 
     if (list.length === 0) {
       el.innerHTML = `<div class="topbar-player" style="color: var(--text-dim);">—</div>`;

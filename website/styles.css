@@ -6839,12 +6839,13 @@ body.tournament.has-team-color .input:focus {
 
 .topbar-team-names {
   --topbar-name-size: 12px;
-  --topbar-name-gap: 4px;
+  --topbar-name-gap-x: 6px;
+  --topbar-name-gap-y: 4px;
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  column-gap: calc(var(--topbar-name-gap) + 4px);
-  row-gap: var(--topbar-name-gap);
+  column-gap: calc(var(--topbar-name-gap-x) + 4px);
+  row-gap: var(--topbar-name-gap-y);
   font-size: var(--topbar-name-size);
   font-weight: 650;
   line-height: 1.05;
@@ -6854,6 +6855,18 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   justify-content: center;
   text-align: center;
+}
+
+/* When teams are small, spread names out more across the available half so it feels airy */
+.topbar-team-names.spread {
+  width: 100%;
+  justify-content: space-between;
+}
+
+/* When a team has only a couple of players, give names extra breathing room. */
+.topbar-team-names.spread {
+  width: 100%;
+  justify-content: space-between;
 }
 
 /* Team name colors */
