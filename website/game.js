@@ -2423,9 +2423,14 @@ function updateSettingsInGameActions(isInGame) {
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
 
-  // End Game should only be enabled for active players (not spectators) and typically only for spymasters.
+  // End Game permissions:
+  // - Tournament games: only your team's spymaster can end.
+  // - Quick Play: anyone (including spectators) can end, to keep the lobby moving.
   const spectator = (typeof isSpectating === 'function') ? !!isSpectating() : false;
-  const canEnd = !spectator && (typeof isCurrentUserSpymaster === 'function' ? !!isCurrentUserSpymaster() : true);
+  const isQuick = !!(currentGame && currentGame.type === 'quick');
+  const canEnd = isQuick
+    ? true
+    : (!spectator && (typeof isCurrentUserSpymaster === 'function' ? !!isCurrentUserSpymaster() : true));
 
   if (leaveBtn) {
     // Label updated in renderGame (Leave vs Stop Spectating)
@@ -2434,7 +2439,7 @@ function updateSettingsInGameActions(isInGame) {
 
   if (endBtn) {
     endBtn.disabled = !canEnd;
-    endBtn.title = canEnd ? '' : (spectator ? 'Spectators cannot end the game' : 'Only spymasters can end the game');
+    endBtn.title = canEnd ? '' : (spectator ? 'Spectators cannot end tournament games' : 'Only spymasters can end tournament games');
   }
 }
 
@@ -2459,9 +2464,13 @@ function renderGame() {
 
   const endBtn = document.getElementById('end-game-btn');
   if (endBtn) {
-    // Keep the action visible in settings, but only allow active players to end.
-    endBtn.disabled = !!spectator || !isSpymaster;
-    endBtn.title = endBtn.disabled ? 'Only your team\'s spymaster can end the game' : 'End the game for everyone';
+    // Keep the action visible in settings.
+    // Tournament: spymaster only. Quick Play: anyone can end.
+    const isQuick = currentGame.type === 'quick';
+    endBtn.disabled = isQuick ? false : (!!spectator || !isSpymaster);
+    endBtn.title = endBtn.disabled
+      ? 'Only your team\'s spymaster can end tournament games'
+      : 'End the game for everyone';
   }
 
   // Update header with team names and player counts for quick play
