@@ -117,13 +117,13 @@ body.light-mode {
 
 
 /*
-  IMPORTANT (iOS Safari): prefer dynamic viewport units (dvh) when available.
-  The previous ordering accidentally forced 100vh to win, which can prevent
-  inner panels from scrolling fully when the browser chrome expands/collapses.
+  iOS Safari note:
+  - 100vh/100dvh can be unreliable when the browser chrome expands/collapses.
+  - We set a JS-driven --app-h based on visualViewport/innerHeight for a stable
+    "actually visible" height.
 */
 html, body {
-  height: 100vh;   /* fallback */
-  height: 100dvh;  /* preferred */
+  height: var(--app-h, 100dvh);
   overflow: hidden;
 }
 
@@ -170,8 +170,7 @@ body.tournament #panel-home #name-card{ display:none !important; }
 body.tournament #play-mode-select{ display:none !important; }
 
 .app {
-  height: 100vh;   /* fallback */
-  height: 100dvh;  /* preferred */
+  height: var(--app-h, 100dvh);
   display: flex;
   flex-direction: column;
   /* Layout constants (used to keep the top strip ALWAYS visible) */
@@ -3178,8 +3177,8 @@ body.light .chat-meta{ color: var(--text); }
   body.quickplay .panel-game .panel-inner{
     padding: 14px;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-    height: 100vh;  /* fallback */
-    height: 100dvh; /* preferred */
+    /* Fill the panel (the panel itself is already sized to the viewport). */
+    height: 100%;
     min-height: 0;
   }
 
@@ -3191,8 +3190,7 @@ body.light .chat-meta{ color: var(--text); }
   body.quickplay #quick-play-lobby{
     display: flex;
     flex-direction: column;
-    height: 100vh;  /* fallback */
-    height: 100dvh; /* preferred */
+    height: 100%;
     min-height: 0;
   }
 
