@@ -513,7 +513,7 @@ async function aiGiveClue(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, true);
   const teamContext = buildTeamContext(game, team);
-  const recentChat = await getRecentTeamChatText(game.id, team, 10, game.chatRound);
+  const recentChat = await getRecentTeamChatText(game.id, team, 10);
 
   // Compute which words belong to our team and haven't been revealed
   const ourWords = game.cards
@@ -639,7 +639,7 @@ async function aiGuessCard(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, false);
   const currentClue = game.currentClue;
-  const recentChat = await getRecentTeamChatText(game.id, team, 12, game.chatRound);
+  const recentChat = await getRecentTeamChatText(game.id, team, 12);
 
   if (!currentClue) {
     aiThinkingState[ai.id] = false;
@@ -693,16 +693,14 @@ Respond with valid JSON matching:
 {"index": <0-24 integer>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "reasoning": "short"}`;
 
   try {
-    // Human-like thinking delay.
-    // Keep this short so the game feels snappy on larger models.
-    await humanDelay(800, 2500);
+    // Human-like thinking delay (3-10 seconds)
+    await humanDelay(3000, 10000);
 
-    // Optional: send a quick collaborative message.
-    // Do this asynchronously so it doesn't delay the actual guess.
+    // Chat in operative chat before guessing
     if (ai.mode === 'autonomous') {
-      generateAIChatMessage(ai, game, 'pre_guess')
-        .then((chatMsg) => chatMsg ? sendAIChatMessage(ai, game, chatMsg) : null)
-        .catch(() => {});
+      const chatMsg = await generateAIChatMessage(ai, game, 'pre_guess');
+      if (chatMsg) await sendAIChatMessage(ai, game, chatMsg);
+      await humanDelay(1000, 3000);
     }
 
     let parsed = null;
@@ -765,8 +763,8 @@ Respond with valid JSON matching:
     }
 
     // Mark the intended card for the team before committing the guess.
-    // Fire-and-forget so a transient Firestore conflict can't stall guessing.
-    aiSetTeamMark(ai, game, card.index, true).catch(() => {});
+    // This helps human teammates follow the AI's thinking.
+    await aiSetTeamMark(ai, game, card.index, true);
 
     // Submit the guess by simulating card click on Firestore
     await aiRevealCard(ai, game, card.index);
@@ -792,110 +790,96 @@ Respond with valid JSON matching:
 }
 
 async function aiRevealCard(ai, game, cardIndex) {
-  const ref = db.collection('games').doc(game.id);
-  let revealedMeta = null; // for clue-history write after transaction
+  const card = game.cards[cardIndex];
+  if (!card || card.revealed) return;
+
+  const updatedCards = [...game.cards];
+  updatedCards[cardIndex] = { ...card, revealed: true };
+
+  const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+  const updates = {
+    cards: updatedCards,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  };
+
+  let logEntry = `${ai.name} guessed "${card.word}" - `;
+  let endTurn = false;
+  let winner = null;
+
+  if (card.type === 'assassin') {
+    winner = game.currentTeam === 'red' ? 'blue' : 'red';
+    logEntry += 'ASSASSIN! Game over.';
+  } else if (card.type === game.currentTeam) {
+    logEntry += 'Correct!';
+    if (game.currentTeam === 'red') {
+      updates.redCardsLeft = game.redCardsLeft - 1;
+      if (updates.redCardsLeft === 0) winner = 'red';
+    } else {
+      updates.blueCardsLeft = game.blueCardsLeft - 1;
+      if (updates.blueCardsLeft === 0) winner = 'blue';
+    }
+    if (Number(game.guessesRemaining) !== -1) {
+      updates.guessesRemaining = game.guessesRemaining - 1;
+      if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
+    }
+  } else if (card.type === 'neutral') {
+    logEntry += 'Neutral. Turn ends.';
+    endTurn = true;
+  } else {
+    logEntry += `Wrong! (${card.type === 'red' ? (game.redTeamName || 'Red') : (game.blueTeamName || 'Blue')}'s card)`;
+    if (card.type === 'red') {
+      updates.redCardsLeft = game.redCardsLeft - 1;
+      if (updates.redCardsLeft === 0) winner = 'red';
+    } else {
+      updates.blueCardsLeft = game.blueCardsLeft - 1;
+      if (updates.blueCardsLeft === 0) winner = 'blue';
+    }
+    endTurn = true;
+  }
+
+  // We need to write both the guess log and (optionally) the winner log.
+  // Firestore arrayUnion can't be stacked on the same field in one update,
+  // so we'll do the guess log first, then a second update for the win.
+  let winnerLogEntry = null;
+
+  if (winner) {
+    updates.winner = winner;
+    updates.currentPhase = 'ended';
+    const winnerName = winner === 'red' ? (game.redTeamName || 'Red') : (game.blueTeamName || 'Blue');
+    winnerLogEntry = `${winnerName} wins!`;
+  } else if (endTurn) {
+    updates.currentTeam = game.currentTeam === 'red' ? 'blue' : 'red';
+    updates.currentPhase = 'spymaster';
+    updates.currentClue = null;
+    updates.guessesRemaining = 0;
+  }
 
   try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const g = snap.data();
-      const cards = Array.isArray(g.cards) ? g.cards : [];
-      const card = cards[cardIndex];
-      if (!card || card.revealed) return;
+    // Write the guess log entry
+    updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
+    await db.collection('games').doc(game.id).update(updates);
 
-      const updatedCards = [...cards];
-      updatedCards[cardIndex] = { ...card, revealed: true };
+    // Write the winner log entry separately so it doesn't overwrite the guess log
+    if (winnerLogEntry) {
+      await db.collection('games').doc(game.id).update({
+        log: firebase.firestore.FieldValue.arrayUnion(winnerLogEntry),
+      });
+    }
 
-      const updates = {
-        cards: updatedCards,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      };
-
-      let logEntry = `${ai.name} guessed "${card.word}" - `;
-      let endTurn = false;
-      let winner = null;
-
-      if (card.type === 'assassin') {
-        winner = g.currentTeam === 'red' ? 'blue' : 'red';
-        logEntry += 'ASSASSIN! Game over.';
-      } else if (card.type === g.currentTeam) {
-        logEntry += 'Correct!';
-        if (g.currentTeam === 'red') {
-          updates.redCardsLeft = Number(g.redCardsLeft || 0) - 1;
-          if (updates.redCardsLeft === 0) winner = 'red';
-        } else {
-          updates.blueCardsLeft = Number(g.blueCardsLeft || 0) - 1;
-          if (updates.blueCardsLeft === 0) winner = 'blue';
-        }
-        // Unlimited guesses: do not decrement.
-        if (Number(g.guessesRemaining) !== -1) {
-          updates.guessesRemaining = Number(g.guessesRemaining || 0) - 1;
-          if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
-        }
-      } else if (card.type === 'neutral') {
-        logEntry += 'Neutral. Turn ends.';
-        endTurn = true;
-      } else {
-        logEntry += `Wrong! (${card.type === 'red' ? (g.redTeamName || 'Red') : (g.blueTeamName || 'Blue')}'s card)`;
-        if (card.type === 'red') {
-          updates.redCardsLeft = Number(g.redCardsLeft || 0) - 1;
-          if (updates.redCardsLeft === 0) winner = 'red';
-        } else {
-          updates.blueCardsLeft = Number(g.blueCardsLeft || 0) - 1;
-          if (updates.blueCardsLeft === 0) winner = 'blue';
-        }
-        endTurn = true;
-      }
-
-      const logArgs = [logEntry];
-
-      if (winner) {
-        updates.winner = winner;
-        updates.currentPhase = 'ended';
-        const winnerName = winner === 'red' ? (g.redTeamName || 'Red') : (g.blueTeamName || 'Blue');
-        logArgs.push(`${winnerName} wins!`);
-      } else if (endTurn) {
-        updates.currentTeam = g.currentTeam === 'red' ? 'blue' : 'red';
-        updates.currentPhase = 'spymaster';
-        updates.currentClue = null;
-        updates.guessesRemaining = 0;
-      }
-
-      updates.log = firebase.firestore.FieldValue.arrayUnion(...logArgs);
-      tx.update(ref, updates);
-
-      // Remember metadata for clue history after commit.
-      if (g.currentClue?.word) {
-        revealedMeta = {
-          gameId: game.id,
-          team: g.currentTeam,
-          clueWord: g.currentClue.word,
-          clueNumber: g.currentClue.number,
-          guessWord: card.word,
-          type: card.type,
-        };
-      }
-    });
-
-    if (revealedMeta) {
-      const { gameId, team, clueWord, clueNumber, guessWord, type } = revealedMeta;
+    // Update clue history
+    if (game.currentClue?.word) {
       const guessResult = {
-        word: guessWord,
-        result: type === 'assassin' ? 'assassin' : (type === team ? 'correct' : (type === 'neutral' ? 'neutral' : 'wrong')),
-        type,
+        word: card.word,
+        result: card.type === 'assassin' ? 'assassin' : (card.type === game.currentTeam ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
+        type: card.type,
         by: ai.name,
         timestamp: new Date().toISOString(),
       };
-      await addGuessToClueHistory(gameId, team, clueWord, clueNumber, guessResult);
+      await addGuessToClueHistory(game.id, game.currentTeam, game.currentClue.word, game.currentClue.number, guessResult);
     }
 
     if (window.playSound) window.playSound('cardReveal');
   } catch (e) {
-    // Conflicts can occur if a human clicks at the same time.
-    // We'll simply rely on the latest snapshot and let the AI try again.
-    const code = String(e?.code || '');
-    if (code.includes('failed-precondition') || code.includes('aborted')) return;
     console.error(`AI ${ai.name} reveal card error:`, e);
   }
 }
@@ -904,30 +888,23 @@ async function aiRevealCard(ai, game, cardIndex) {
 async function aiSetTeamMark(ai, game, cardIndex, marked = true) {
   try {
     if (!ai?.team || !game?.id) return;
-    const ref = db.collection('games').doc(game.id);
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const g = snap.data();
-      const cards = Array.isArray(g.cards) ? g.cards : [];
-      const c = cards?.[cardIndex];
-      if (!c || c.revealed) return;
+    const c = game.cards?.[cardIndex];
+    if (!c || c.revealed) return;
 
-      const marks = { ...(c.marks || { red: false, blue: false }) };
-      if (!!marks[ai.team] === !!marked) return;
+    const marks = { ...(c.marks || { red: false, blue: false }) };
+    if (!!marks[ai.team] === !!marked) return;
 
-      marks[ai.team] = !!marked;
-      const updatedCards = [...cards];
-      updatedCards[cardIndex] = { ...c, marks };
+    marks[ai.team] = !!marked;
+    const updatedCards = [...game.cards];
+    updatedCards[cardIndex] = { ...c, marks };
 
-      const action = marked ? 'marked' : 'unmarked';
-      const logEntry = `${ai.name} ${action} "${c.word}".`;
+    const action = marked ? 'marked' : 'unmarked';
+    const logEntry = `${ai.name} ${action} "${c.word}".`;
 
-      tx.update(ref, {
-        cards: updatedCards,
-        log: firebase.firestore.FieldValue.arrayUnion(logEntry),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
+    await db.collection('games').doc(game.id).update({
+      cards: updatedCards,
+      log: firebase.firestore.FieldValue.arrayUnion(logEntry),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
   } catch (e) {
     // Non-fatal
@@ -966,7 +943,7 @@ async function generateAIChatMessage(ai, game, context) {
   const team = ai.team;
   const currentClue = game.currentClue;
   const summary = buildGameSummary(game, team, false);
-  const recentChat = await getRecentTeamChatText(game.id, team, 10, game.chatRound);
+  const recentChat = await getRecentTeamChatText(game.id, team, 10);
 
   const unrevealed = game.cards
     .filter(c => !c.revealed)
@@ -1044,7 +1021,6 @@ async function sendAIChatMessage(ai, game, text) {
         senderId: ai.odId,
         senderName: ai.name,
         text,
-        round: Number(game.chatRound || 0),
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
   } catch (e) {
@@ -1090,7 +1066,6 @@ async function aiSelectRole(ai, game) {
   if (otherSpymaster) {
     updates.currentPhase = 'spymaster';
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
-    updates.chatRound = (Number(game.chatRound || 0) + 1);
   }
 
   try {
@@ -1113,27 +1088,22 @@ async function getGameSnapshot(gameId) {
 }
 
 // Fetch recent team chat messages so AIs can coordinate with human teammates.
-async function getRecentTeamChatText(gameId, team, limit = 10, round = 0) {
+async function getRecentTeamChatText(gameId, team, limit = 10) {
   if (!gameId || !team) return '';
   try {
-    const wantRound = Number(round || 0);
-    // Fetch a bit more than we need and filter client-side so we don't rely on
-    // additional Firestore indexes.
     const snap = await db.collection('games').doc(gameId)
       .collection(`${team}Chat`)
       .orderBy('createdAt', 'desc')
-      .limit(50)
+      .limit(Math.max(1, Math.min(30, limit)))
       .get();
 
-    const filtered = snap.docs
+    const msgs = snap.docs
       .map(d => d.data())
       .filter(m => m && typeof m.text === 'string' && m.text.trim())
-      .filter(m => Number(m.round || 0) === wantRound)
-      .slice(0, Math.max(1, Math.min(30, limit)))
       .slice()
       .reverse();
 
-    return filtered
+    return msgs
       .map(m => `${String(m.senderName || 'Someone').trim()}: ${String(m.text || '').trim()}`)
       .join('\n');
   } catch (e) {

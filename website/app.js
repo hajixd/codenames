@@ -57,15 +57,6 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Reduce noisy Firestore SDK warnings in the console (e.g., benign
-// precondition retries during concurrent updates). Real errors are still
-// surfaced via our own catches/logs.
-try {
-  if (firebase.firestore && typeof firebase.firestore.setLogLevel === 'function') {
-    firebase.firestore.setLogLevel('error');
-  }
-} catch (_) {}
-
 // Keep users signed in across refreshes.
 try {
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);

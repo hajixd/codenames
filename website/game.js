@@ -44,62 +44,6 @@ function getWordsForDeck(deckId) {
 }
 
 let currentGame = null;
-
-// ─── UI state: animations & diffs ─────────────────────────────────────────
-let lastBoardRevealed = null; // boolean[]
-let lastClueSplashKey = null; // string
-
-function titleCaseName(name) {
-  const raw = String(name || '').trim();
-  if (!raw) return '';
-  // Title-case each token split on spaces/underscores/dashes.
-  const parts = raw.split(/([\s_-]+)/);
-  return parts.map(part => {
-    if (/^[\s_-]+$/.test(part)) return part;
-    const p = String(part);
-    return p.charAt(0).toUpperCase() + p.slice(1);
-  }).join('');
-}
-
-function displayPlayerNameFromObj(p) {
-  const raw = String(p?.name || '').trim();
-  if (!raw) return '—';
-  if (p?.isAI) {
-    const stripped = raw.replace(/^ai\s+/i, '');
-    const base = titleCaseName(stripped);
-    return base ? `AI ${base}` : 'AI';
-  }
-  // Keep human names as-is (they may intentionally be lowercase usernames).
-  return raw;
-}
-
-function showClueSplash(word, number, team) {
-  const host = document.getElementById('clue-splash');
-  if (!host) return;
-  const w = String(word || '').trim();
-  if (!w) return;
-  const n = (typeof number === 'number' || typeof number === 'string') ? String(number) : '';
-  const t = (team === 'blue') ? 'blue' : 'red';
-
-  host.innerHTML = `
-    <div class="clue-splash-card team-${t}">
-      <div class="clue-splash-word">${escapeHtml(w)}</div>
-      <div class="clue-splash-num">×${escapeHtml(n)}</div>
-    </div>
-  `;
-
-  // Restart animation
-  host.classList.remove('show');
-  // Force reflow
-  void host.offsetWidth;
-  host.classList.add('show');
-
-  // Cleanup after animation
-  window.clearTimeout(host._hideTimer);
-  host._hideTimer = window.setTimeout(() => {
-    host.classList.remove('show');
-  }, 1300);
-}
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -1187,8 +1131,6 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
     guessesRemaining: 0,
-    // Used to "clear" operative chats between games without requiring deletes.
-    chatRound: 0,
     quickSettings: {
       blackCards: settings.blackCards,
       clueTimerSeconds: settings.clueTimerSeconds,
@@ -1501,8 +1443,6 @@ function bothTeamsFullyReady(game) {
 
 async function maybeAutoStartQuickPlay(game) {
   if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
-  // If some client already claimed the start, don't fight it.
-  if (game.starting === true) return;
   if (!bothTeamsFullyReady(game)) return;
 
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
@@ -1511,10 +1451,6 @@ async function maybeAutoStartQuickPlay(game) {
       const snap = await tx.get(ref);
       if (!snap.exists) return;
       const g = snap.data();
-      // Reduce start contention: allow only one client to "claim" the start.
-      // If another client already claimed it, exit quickly (no-op) so we don't
-      // spam failed-precondition warnings and we don't block AI turns.
-      if (g.starting === true) return;
       if (g.currentPhase !== 'waiting' || g.winner != null) return;
       if (!bothTeamsFullyReady(g)) return;
 
@@ -1526,8 +1462,7 @@ async function maybeAutoStartQuickPlay(game) {
       const cards = words.map((word, i) => ({
         word,
         type: keyCard[i],
-        revealed: false,
-        marks: { red: false, blue: false },
+        revealed: false
       }));
 
       // If players pre-selected Spymaster in the lobby, pre-assign them.
@@ -1547,10 +1482,7 @@ async function maybeAutoStartQuickPlay(game) {
         blueCardsLeft: SECOND_TEAM_CARDS,
         currentClue: null,
         guessesRemaining: 0,
-        chatRound: (Number(g.chatRound || 0) + 1),
         winner: null,
-        // Claim the start so other clients back off quickly.
-        starting: true,
         log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -1558,9 +1490,6 @@ async function maybeAutoStartQuickPlay(game) {
     // Play game start sound
     if (window.playSound) window.playSound('gameStart');
   } catch (e) {
-    // If another client started first, this can surface as a precondition failure.
-    // That's fine; the snapshot will advance everyone.
-    if (String(e?.code || '').includes('failed-precondition') || String(e?.code || '').includes('aborted')) return;
     console.error('Auto-start Quick Play failed:', e);
   }
 }
@@ -1789,11 +1718,10 @@ function escapeHtml(str) {
 // Display names: show AIs as "AI <Name>" everywhere for consistency.
 function displayPlayerName(p) {
   const raw = String((p && p.name) ? p.name : '').trim();
-  if (!p) return raw;
-  if (!p.isAI) return raw;
-  const stripped = raw.replace(/^ai\s+/i, '');
-  const base = titleCaseName(stripped);
-  return base ? `AI ${base}` : 'AI';
+  if (!p || !p.isAI) return raw;
+  // Avoid double-prefixing if the AI name was already stored with the prefix.
+  if (/^ai\s+/i.test(raw)) return raw;
+  return raw ? `AI ${raw}` : 'AI';
 }
 
 // Some fields store a player name as a string (e.g., redSpymaster/blueSpymaster).
@@ -1801,18 +1729,10 @@ function displayPlayerName(p) {
 function displayNameFromRoster(name, rosterPlayers) {
   const raw = String(name || '').trim();
   if (!raw) return raw;
-  // If it is already prefixed, normalize capitalization of the AI name.
-  if (/^ai\s+/i.test(raw)) {
-    const stripped = raw.replace(/^ai\s+/i, '');
-    const base = titleCaseName(stripped);
-    return base ? `AI ${base}` : 'AI';
-  }
+  if (/^ai\s+/i.test(raw)) return raw;
   const list = Array.isArray(rosterPlayers) ? rosterPlayers : [];
   const match = list.find(p => p && String(p.name || '').trim() === raw);
-  if (match && match.isAI) {
-    const base = titleCaseName(raw);
-    return base ? `AI ${base}` : 'AI';
-  }
+  if (match && match.isAI) return `AI ${raw}`;
   return raw;
 }
 
@@ -2665,20 +2585,6 @@ function renderGame() {
   // Clue area - handle waiting phase
   renderClueArea(isSpymaster, myTeamColor, spectator);
 
-  // Clue splash animation (for everyone) when a new clue is given.
-  try {
-    const cc = currentGame.currentClue;
-    if (cc && cc.word) {
-      const key = `${currentGame.currentTeam || ''}:${String(cc.word)}:${String(cc.number)}`;
-      if (key !== lastClueSplashKey && currentGame.currentPhase === 'operatives') {
-        showClueSplash(cc.word, cc.number, currentGame.currentTeam);
-        lastClueSplashKey = key;
-      }
-    } else {
-      lastClueSplashKey = null;
-    }
-  } catch (_) {}
-
   // Game log
   renderGameLog();
 
@@ -2775,24 +2681,6 @@ function renderBoard(isSpymaster) {
       </div>
     `;
   }).join('');
-
-  // Animate newly revealed cards (pop/expand then settle) so guesses feel punchy.
-  try {
-    const now = currentGame.cards.map(c => !!c.revealed);
-    const prev = Array.isArray(lastBoardRevealed) ? lastBoardRevealed : [];
-    boardEl.querySelectorAll('.game-card').forEach((el) => {
-      const idx = Number(el.dataset.index);
-      if (!Number.isInteger(idx)) return;
-      if (now[idx] && !prev[idx]) {
-        el.classList.remove('guess-pop');
-        // Force reflow so re-rendering in the same frame still plays.
-        void el.offsetWidth;
-        el.classList.add('guess-pop');
-        el.addEventListener('animationend', () => el.classList.remove('guess-pop'), { once: true });
-      }
-    });
-    lastBoardRevealed = now;
-  } catch (_) {}
 
   // Re-render tags and votes after board re-renders
   setTimeout(() => {
@@ -3018,7 +2906,6 @@ async function selectRole(role) {
       hasOperative(blueRoster, willHaveBlueSpymaster)) {
     updates.currentPhase = 'spymaster';
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
-    updates.chatRound = (Number(currentGame.chatRound || 0) + 1);
   }
 
   try {
@@ -3669,19 +3556,14 @@ function renderOperativeChat(messages) {
   const container = document.getElementById('operative-chat-messages');
   if (!container) return;
 
-  const round = Number(currentGame?.chatRound || 0);
-  const msgs = Array.isArray(messages)
-    ? messages.filter(m => Number(m?.round || 0) === round)
-    : [];
-
   const odId = getUserId();
 
-  if (!msgs || msgs.length === 0) {
+  if (!messages || messages.length === 0) {
     container.innerHTML = '<div class="chat-empty-state">No messages yet. Discuss with your team!</div>';
     return;
   }
 
-  container.innerHTML = msgs.map(msg => {
+  container.innerHTML = messages.map(msg => {
     const isMe = msg.senderId === odId;
     const time = msg.createdAt?.toDate?.() ? formatTime(msg.createdAt.toDate()) : '';
     const teamColor = getMyTeamColor();
@@ -3733,7 +3615,6 @@ async function handleOperativeChatSubmit(e) {
         senderId: odId,
         senderName: userName,
         text: text,
-        round: Number(currentGame.chatRound || 0),
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
   } catch (err) {
@@ -3925,14 +3806,21 @@ function renderTopbarTeamNames() {
     const list = Array.isArray(players) ? players : [];
     const count = Math.max(1, list.length);
 
-    // Keep names centered, but adjust gap dynamically based on team size.
-    // Fewer players => larger gap (still centered). More players => tighter.
+    // Horizontal layout: scale font size a bit as teams grow so names still fit.
     const size = count <= 3 ? 13 : (count <= 5 ? 12 : 11);
-    const gapX = (count <= 1) ? 0 : Math.max(4, 22 - (count * 3));
+    // Spacing: fewer players => more breathing room. More players => tighter.
+    // We drive this via CSS vars so the layout remains flexible with wrapping.
+    const gapX = (count <= 1) ? 0
+      : (count === 2) ? 18
+      : (count === 3) ? 12
+      : (count === 4) ? 8
+      : (count === 5) ? 6
+      : (count === 6) ? 5
+      : 4;
     const gapY = (count <= 4) ? 4 : 3;
 
-    // Centered layout always.
-    el.classList.toggle('spread', false);
+    // When teams are small, spread names across the available half to increase perceived distance.
+    el.classList.toggle('spread', count === 2 || count === 3);
     el.classList.toggle('cols-2', false);
     el.style.setProperty('--topbar-name-size', `${size}px`);
     el.style.setProperty('--topbar-name-gap-x', `${gapX}px`);
@@ -3946,14 +3834,12 @@ function renderTopbarTeamNames() {
     el.innerHTML = list.map(p => {
       const pid = String(p?.odId || p?.userId || '').trim();
       const isMe = !!(myId && pid && pid === myId);
-      const name = escapeHtml(displayPlayerNameFromObj(p));
-      const isAI = !!p?.isAI;
+      const name = escapeHtml(String(p?.name || '—'));
 
       // Clickable names: reuse the existing profile popup system.
-      const cls = `topbar-player ${isMe ? 'is-me' : ''} ${isAI ? 'ai-topbar-player' : ''}`.trim();
       const attrs = pid
-        ? `class="${cls} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
-        : `class="${cls}"`;
+        ? `class="topbar-player ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
+        : `class="topbar-player ${isMe ? 'is-me' : ''}"`;
 
       // Use a button for better a11y + consistent click targets.
       return `<button type="button" ${attrs}>${name}</button>`;
