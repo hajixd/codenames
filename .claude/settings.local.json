@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(node -c:*)"
+      "Bash(node -c:*)",
+      "WebFetch(domain:docs.tokenfactory.nebius.com)"
     ]
   }
 }

@@ -9719,3 +9719,229 @@ body.light .chat-personal-item{ background: rgba(0,0,0,.03); }
 /* Tournament: remove Play tab */
 body.tournament .desktop-tabs .tab[data-panel="panel-game"],
 body.tournament .mobile-tabs .tab[data-panel="panel-game"]{ display:none !important; }
+
+
+/* ═══════════════════════════════════════════
+   AI PLAYER STYLES
+   ═══════════════════════════════════════════ */
+
+/* ── +AI Button (in lobby role headers) ── */
+.btn-add-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text2, #aaa);
+  background: color-mix(in srgb, var(--surface2, #2a2a2e) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #444) 60%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+  vertical-align: middle;
+  line-height: 1;
+}
+.btn-add-ai:hover {
+  color: #fff;
+  background: color-mix(in srgb, var(--accent, #6c5ce7) 30%, var(--surface2, #2a2a2e));
+  border-color: var(--accent, #6c5ce7);
+  transform: scale(1.05);
+}
+.btn-add-ai:active {
+  transform: scale(0.97);
+}
+
+/* ── AI Player in Lobby ── */
+.quick-player.ai-player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface2, #2a2a2e) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #444) 40%, transparent);
+  position: relative;
+}
+
+/* ── AI Status Dot ── */
+.ai-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.ai-status-dot.ai-status-gray {
+  background: #666;
+}
+.ai-status-dot.ai-status-red {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+.ai-status-dot.ai-status-yellow {
+  background: #eab308;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.4);
+}
+.ai-status-dot.ai-status-green {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+
+/* Pulse animation for pending */
+.ai-status-dot.ai-status-gray {
+  animation: ai-pulse 1.5s ease-in-out infinite;
+}
+@keyframes ai-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── AI Player Name ── */
+.quick-player-name.ai-name {
+  font-style: italic;
+  opacity: 0.9;
+}
+
+/* ── AI Mode Badge (in lobby) ── */
+.ai-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Remove AI Button ── */
+.btn-remove-ai {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2, #888);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.btn-remove-ai:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ── AI Modal ── */
+.ai-modal .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+.ai-modal-card {
+  max-width: 440px;
+  width: 90vw;
+}
+.ai-modal-desc {
+  color: var(--text2, #aaa);
+  font-size: 13px;
+  margin: 0 0 14px 0;
+}
+.ai-mode-cards {
+  display: flex;
+  gap: 12px;
+}
+.ai-mode-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: var(--surface2, #2a2a2e);
+  border: 1.5px solid var(--border, #444);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: center;
+}
+.ai-mode-card:hover {
+  border-color: var(--accent, #6c5ce7);
+  background: color-mix(in srgb, var(--accent, #6c5ce7) 8%, var(--surface2, #2a2a2e));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(108, 92, 231, 0.15);
+}
+.ai-mode-card:active {
+  transform: translateY(0);
+}
+.ai-mode-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+.ai-mode-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text, #fff);
+}
+.ai-mode-desc {
+  font-size: 11px;
+  color: var(--text2, #aaa);
+  line-height: 1.4;
+}
+
+/* ── AI Chat Message Styles ── */
+.chat-message.ai-chat-message {
+  border-left: 2px solid rgba(139, 92, 246, 0.4);
+  padding-left: 8px;
+  background: rgba(139, 92, 246, 0.04);
+  border-radius: 0 6px 6px 0;
+}
+.chat-sender.ai-sender {
+  font-style: italic;
+}
+.ai-chat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  margin-left: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.12);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* ── Responsive: AI Mode cards stack on mobile ── */
+@media (max-width: 520px) {
+  .ai-mode-cards {
+    flex-direction: column;
+  }
+  .ai-mode-card {
+    flex-direction: row;
+    text-align: left;
+    gap: 12px;
+    padding: 12px;
+  }
+  .ai-mode-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+}
