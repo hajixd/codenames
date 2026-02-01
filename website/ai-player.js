@@ -882,6 +882,8 @@ THINK STEP BY STEP:
 3. Does it relate to opponent words? If yes, consider the risk
 4. Pick the clue that connects the most team words with the LEAST risk of assassin/opponent overlap
 5. Set the number to ONLY count words you're very confident your teammates will get
+6. Creative associations are allowed when helpful (synonyms, common phrases, pop culture, abbreviations, symbols like 0→O, simple formulas like H2O), but keep the clue a single common word and keep it SAFE.
+7. You may use number 0 only if you are intentionally giving a defensive "warning" clue (i.e., none of your words match it), but prefer normal clues when possible.
 ${reasoningInstr}
 
 Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["word1", "word2"], "private_reasoning": "your scratchpad: explain strategy and intended words"}`;
@@ -918,7 +920,9 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
     }
 
     const clueWord = String(parsed.clue || '').trim().toUpperCase();
-    const clueNumber = Math.max(0, Math.min(9, parseInt(parsed.number, 10) || 1));
+    let _n = parseInt(parsed.number, 10);
+    if (!Number.isFinite(_n)) _n = 1;
+    const clueNumber = Math.max(0, Math.min(9, _n));
 
     // Validate: must be single word, not on board
     if (!clueWord || clueWord.includes(' ') || boardWords.includes(clueWord)) {
@@ -1106,6 +1110,86 @@ Be strategic - mark words you'd warn teammates about as "no".`;
 
 let aiOpponentClueProcessed = {}; // keyed by `${gameId}:${team}` -> clueKey
 
+// Track our own team's "0" clues so we only run the defensive analysis once.
+let aiZeroClueProcessed = {}; // keyed by `${gameId}:${team}` -> clueKey
+
+// When a spymaster gives a 0 clue, humans often mean: "avoid anything related to this".
+// This helper marks the most clue-related board words as "no" and optionally chats a warning.
+async function aiAnalyzeZeroClueAndWarn(ai, game, zeroClue) {
+  try {
+    if (!ai || !game?.id || !zeroClue) return;
+    const myTeam = ai.team;
+    const clueWord = String(zeroClue.word || '').trim();
+    const clueNum = Number.isFinite(+zeroClue.number) ? +zeroClue.number : 0;
+    if (!clueWord || clueNum !== 0) return;
+
+    const clueKey = `${String(game.id)}:${myTeam}:${clueWord.toUpperCase()}:0`;
+    if (aiZeroClueProcessed[clueKey]) return;
+    aiZeroClueProcessed[clueKey] = true;
+
+    const unrevealed = (game.cards || [])
+      .map((c, i) => ({ word: c.word, index: i, revealed: !!c.revealed }))
+      .filter(c => !c.revealed);
+    if (!unrevealed.length) return;
+
+    const unrevealedLines = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\n');
+
+    const systemPrompt = `You are a Codenames Operative on the ${myTeam.toUpperCase()} team.
+Your Spymaster gave the clue "${clueWord}" for 0.
+
+In Codenames, a 0 clue usually means: "NONE of our remaining words match this — it's a WARNING."\
+Often it hints that one of the words strongly related to the clue is a dangerous trap (opponent or assassin).
+
+TASK:
+- From the unrevealed list, pick up to 4 words that are MOST related to the clue "${clueWord}".
+- Mark those words as "no" to warn the team to avoid them.
+- Also write ONE short chat message summarizing the warning and naming 1-2 likely trap words.
+
+UNREVEALED WORDS:
+${unrevealedLines}
+
+Return JSON ONLY:
+{"marks":[{"index":N,"mark":"no"},...],"chat":"short message"}`;
+
+    const result = await aiChatCompletion([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Analyze the 0 clue and warn the team. JSON only.' },
+    ], {
+      temperature: 0.25,
+      max_tokens: tokenBudgetFromTraits(ai.traits || {}, 650, 1600),
+      response_format: { type: 'json_object' },
+    });
+
+    let parsed = null;
+    try { parsed = JSON.parse(result); } catch {
+      const match = String(result || '').match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    }
+    if (!parsed) return;
+
+    const marks = Array.isArray(parsed.marks) ? parsed.marks : [];
+    const normalized = marks
+      .map(m => ({ idx: Number(m.index), mark: String(m.mark || '').toLowerCase() }))
+      .filter(m => Number.isInteger(m.idx) && m.idx >= 0 && m.idx < (game.cards || []).length)
+      .filter(m => m.mark === 'no')
+      .slice(0, 8);
+
+    for (const m of normalized) {
+      await humanDelay(350, 900);
+      aiMarkCard(game, m.idx, 'no');
+      await setTeamMarkerInFirestore(game.id, myTeam, m.idx, 'no');
+    }
+
+    const chat = String(parsed.chat || '').trim();
+    if (chat && ai.mode === 'autonomous') {
+      await humanDelay(550, 1500);
+      await sendAIChatMessage(ai, game, chat.slice(0, 160));
+    }
+  } catch (e) {
+    // best-effort; ignore
+  }
+}
+
 async function aiAnalyzeOpponentClueAndMarkAvoid(ai, game, opponentClue) {
   try {
     if (!ai || !game?.id || !opponentClue) return;
@@ -1189,6 +1273,10 @@ async function aiGuessCard(ai, game) {
     return;
   }
 
+  // IMPORTANT: clue number can legitimately be 0 in Codenames (often used as a "warning" clue).
+  // Never coerce 0 to 1.
+  const clueN = Number.isFinite(+currentClue?.number) ? +currentClue.number : 1;
+
   const unrevealed = game.cards
     .map((c, i) => ({ word: c.word, index: i, revealed: c.revealed }))
     .filter(c => !c.revealed);
@@ -1223,16 +1311,26 @@ async function aiGuessCard(ai, game) {
     .filter(c => c.word === currentClue.word && c.team === game.currentTeam)
     .pop()?.results || [];
   const correctGuesses = currentClueResults.filter(r => r.result === 'correct').length;
-  const wrongGuesses = currentClueResults.filter(r => r.result !== 'correct').length;
+  // (wrong guesses are tracked in clue history; used elsewhere for UI/logging)
   const guessNumber = correctGuesses + 1; // Which guess number this is
+
+  // If the clue number is 0, treat it as a defensive/warning clue by default.
+  // Prefer ending the turn rather than guessing something related to the clue.
+  if (clueN === 0 && correctGuesses === 0) {
+    try {
+      await aiAnalyzeZeroClueAndWarn(ai, game, currentClue);
+    } catch (_) {}
+    aiThinkingState[ai.id] = false;
+    return 'end_turn';
+  }
 
   // Build strategic context for the operative
   const traits = ai.traits || {};
   let guessStrategy = '';
-  if (correctGuesses >= currentClue.number) {
-    guessStrategy = `You have already correctly guessed ${correctGuesses} out of the ${currentClue.number} intended words. You may attempt ONE bonus guess if you're very confident, or you can recommend ending the turn. Risk assessment: ${analysis.riskTolerance} risk tolerance. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
+  if (correctGuesses >= clueN) {
+    guessStrategy = `You have already correctly guessed ${correctGuesses} out of the ${clueN} intended words. You may attempt ONE bonus guess if you're very confident, or you can recommend ending the turn. Risk assessment: ${analysis.riskTolerance} risk tolerance. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
   } else {
-    guessStrategy = `This is guess #${guessNumber} of ${currentClue.number} intended words. ${correctGuesses > 0 ? `Already got ${correctGuesses} correct.` : ''} Risk level: ${analysis.riskTolerance}.`;
+    guessStrategy = `This is guess #${guessNumber} of ${clueN} intended words. ${correctGuesses > 0 ? `Already got ${correctGuesses} correct.` : ''} Risk level: ${analysis.riskTolerance}.`;
   }
 
   // Trait-based operative modifications
@@ -1246,7 +1344,7 @@ async function aiGuessCard(ai, game) {
     guessStrategy += ' You are naturally very cautious - only guess when you are quite sure. Prefer ending turn over risky guesses.';
   }
 
-  let systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster gave the clue "${currentClue.word}" for ${currentClue.number}.
+  let systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster gave the clue "${currentClue.word}" for ${clueN}.
 ${personalityPrompt}
 
 BOARD (unrevealed words, choose ONLY from this list):
@@ -1274,6 +1372,11 @@ STRATEGY:
 - If you're confident, pick quickly. If uncertain, think carefully.
 - Consider: could ANY of these words be the assassin? Avoid those at all costs.
 - Also indicate if you think the team should END TURN after this guess
+
+ADVANCED ASSOCIATIONS (use when helpful):
+- Synonyms, hypernyms, common phrases, pop-culture references
+- Abbreviations and symbols (e.g., 0→O), simple formulas (e.g., H2O)
+- Parts/wholes, related places/things, and typical pairings
 
 ${analysis.riskTolerance === 'low' ? 'Play SAFE. Only guess words you are very confident about. If uncertain, recommend ending turn.' : ''}
 ${analysis.riskTolerance === 'high' ? 'You need to catch up. Be willing to take medium-confidence guesses.' : ''}
@@ -1902,7 +2005,8 @@ if (game.currentPhase === 'operatives' && game.currentClue && (currentTeam === '
         if (aiThinkingState[ai.id]) continue;
 
         if (ai.mode === 'autonomous') {
-          const clueNum = game.currentClue?.number || 1;
+          // NOTE: clue number can be 0. Do not coerce 0 to 1.
+          const clueNum = Number.isFinite(+game.currentClue?.number) ? +game.currentClue.number : 1;
           const clueWord = game.currentClue?.word;
           const currentClueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
             .filter(c => c.word === clueWord && c.team === currentTeam)
@@ -1915,6 +2019,13 @@ if (game.currentPhase === 'operatives' && game.currentClue && (currentTeam === '
 
           // Should we end the turn?
           let shouldEnd = false;
+
+          // Special case: 0 clue is typically a WARNING. Mark likely traps and end immediately.
+          if (clueNum === 0 && correctGuesses === 0) {
+            try { await aiAnalyzeZeroClueAndWarn(ai, game, game.currentClue); } catch (_) {}
+            await aiConsiderEndTurn(ai, game, true);
+            break;
+          }
 
           if (correctGuesses >= clueNum + 1) {
             // Got all intended words + 1 bonus - definitely end

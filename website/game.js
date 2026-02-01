@@ -266,8 +266,25 @@ async function generateAIWords(vibe) {
   const chatFn = window.aiChatCompletion;
   if (typeof chatFn !== 'function') throw new Error('AI not available');
 
-  const vibeInstruction = vibe
-    ? `Generate words themed around: "${vibe}". The words should all relate to or evoke the theme of ${vibe}, but still be varied enough for interesting word-association gameplay.`
+  const vibeStr = String(vibe || '').trim();
+
+  // Treat a non-empty vibe string as a list of "vibe words" (comma/semicolon separated).
+  // This lets players input: "ocean, beach, ship" and get a board that stays *strictly* on-theme.
+  const vibeTerms = vibeStr
+    ? vibeStr
+        .split(/[;,]/g)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+    : [];
+
+  const vibeInstruction = vibeTerms.length
+    ? [
+        `VIBE WORDS (use ONLY these as your thematic anchors): ${vibeTerms.map(t => `"${t}"`).join(', ')}`,
+        `Every generated board word MUST be clearly and directly related to AT LEAST ONE of the vibe words above (synonym, close associate, part-of, famous instance, etc.).`,
+        `Avoid generic filler words that do not strongly connect back to the vibe words.`,
+        `For each generated word, also output which vibe word it is anchored to.`
+      ].join('\n')
     : `Generate a diverse mix of words suitable for a Codenames board game. Include a variety of nouns covering different categories (animals, places, objects, professions, food, nature, science, history, etc.). Make them interesting for word-association gameplay.`;
 
   const systemPrompt = `You are a Codenames board generator. Generate exactly 25 unique single words for a Codenames game board.
@@ -282,7 +299,11 @@ RULES:
 
 ${vibeInstruction}
 
-Respond with valid JSON: {"words": ["WORD1", "WORD2", ..., "WORD25"]}`;
+Respond with valid JSON.
+- If vibe words are provided, use this schema:
+  {"words":["WORD1",..."WORD25"],"anchors":[{"word":"WORD1","vibe":"<one of the vibe words>"}, ...]}
+- If no vibe words are provided, you may omit "anchors".
+JSON only. No markdown.`;
 
   const result = await chatFn([
     { role: 'system', content: systemPrompt },
@@ -312,7 +333,56 @@ Respond with valid JSON: {"words": ["WORD1", "WORD2", ..., "WORD25"]}`;
     throw new Error('AI returned too many duplicates');
   }
 
+  // If the lobby used "vibe words", enforce that the model anchored each word to one of them.
+  if (vibeTerms.length) {
+    const anchors = Array.isArray(parsed.anchors) ? parsed.anchors : [];
+    const allowed = new Set(vibeTerms.map(t => t.toLowerCase()));
+    const byWord = new Map(
+      anchors
+        .map(a => ({
+          w: String(a?.word || '').trim().toUpperCase(),
+          v: String(a?.vibe || '').trim().toLowerCase(),
+        }))
+        .filter(a => a.w && a.v)
+        .map(a => [a.w, a.v])
+    );
+
+    // If too many are missing/invalid, force a regeneration so the board stays on-theme.
+    let okCount = 0;
+    for (const w of unique.slice(0, 25)) {
+      const v = byWord.get(w);
+      if (v && allowed.has(v)) okCount++;
+    }
+    if (okCount < 22) {
+      throw new Error('AI board was not strictly anchored to the provided vibe words.');
+    }
+  }
+
   return unique.slice(0, 25);
+}
+
+// Build a Quick Play board (cards) from settings.
+// IMPORTANT: This is async because it may call the LLM to generate vibe-based words.
+async function buildQuickPlayCardsFromSettings(settings) {
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, deckId: 'standard', vibe: '' };
+  const firstTeam = 'red';
+
+  let words;
+  const vibe = String(s.vibe || '').trim();
+  if (vibe && typeof window.aiChatCompletion === 'function') {
+    try {
+      words = await generateAIWords(vibe);
+    } catch (err) {
+      console.warn('AI vibe word generation failed, falling back to deck:', err);
+      words = getRandomWords(BOARD_SIZE, s.deckId);
+    }
+  } else {
+    // If no vibe was provided, use the selected deck bank.
+    words = getRandomWords(BOARD_SIZE, s.deckId);
+  }
+
+  const keyCard = generateKeyCard(firstTeam, s.blackCards);
+  return words.map((word, i) => ({ word, type: keyCard[i], revealed: false }));
 }
 
 /* =========================
@@ -1192,26 +1262,7 @@ async function checkAndEndEmptyQuickPlayGame(game) {
 async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
 
-  let words;
-  const vibe = String(settings.vibe || '').trim();
-  if (typeof window.aiChatCompletion === 'function') {
-    try {
-      words = await generateAIWords(vibe);
-    } catch (err) {
-      console.warn('AI word generation failed, falling back to standard bank:', err);
-      words = getRandomWords(BOARD_SIZE, settings.deckId);
-    }
-  } else {
-    words = getRandomWords(BOARD_SIZE, settings.deckId);
-  }
-
-  const keyCard = generateKeyCard(firstTeam, settings.blackCards);
-
-  const cards = words.map((word, i) => ({
-    word,
-    type: keyCard[i],
-    revealed: false
-  }));
+  const cards = await buildQuickPlayCardsFromSettings(settings);
 
   return {
     type: 'quick',
@@ -1548,6 +1599,24 @@ async function maybeAutoStartQuickPlay(game) {
   if (!game || game.currentPhase !== 'waiting' || game.winner != null) return;
   if (!bothTeamsFullyReady(game)) return;
 
+  // Generate the board OUTSIDE the transaction (may involve an async LLM call for vibe).
+  // We guard against races by checking a settings signature inside the transaction.
+  const s0 = getQuickSettings(game);
+  const settingsSig0 = JSON.stringify({
+    blackCards: Number(s0.blackCards || 1),
+    deckId: String(s0.deckId || 'standard'),
+    vibe: String(s0.vibe || '').trim(),
+  });
+
+  let cards0 = null;
+  try {
+    cards0 = await buildQuickPlayCardsFromSettings(s0);
+  } catch (e) {
+    console.warn('Failed to build Quick Play cards (best-effort), falling back to deck:', e);
+    const fallback = { ...s0, vibe: '' };
+    cards0 = await buildQuickPlayCardsFromSettings(fallback);
+  }
+
   const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
   try {
     await db.runTransaction(async (tx) => {
@@ -1558,15 +1627,17 @@ async function maybeAutoStartQuickPlay(game) {
       if (!bothTeamsFullyReady(g)) return;
 
       const s = getQuickSettings(g);
+      const settingsSig1 = JSON.stringify({
+        blackCards: Number(s.blackCards || 1),
+        deckId: String(s.deckId || 'standard'),
+        vibe: String(s.vibe || '').trim(),
+      });
+
+      // If settings changed while we were generating the board, abort.
+      if (settingsSig1 !== settingsSig0) return;
+
       const firstTeam = 'red';
-      // Use the Quick Play deck settings (s), not an undefined variable.
-      const words = getRandomWords(BOARD_SIZE, s.deckId);
-      const keyCard = generateKeyCard(firstTeam, s.blackCards);
-      const cards = words.map((word, i) => ({
-        word,
-        type: keyCard[i],
-        revealed: false
-      }));
+      const cards = Array.isArray(cards0) && cards0.length === BOARD_SIZE ? cards0 : (g.cards || []);
 
       // If players pre-selected Spymaster in the lobby, pre-assign them.
       const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
@@ -1598,6 +1669,88 @@ async function maybeAutoStartQuickPlay(game) {
     console.error('Auto-start Quick Play failed:', e);
   }
 }
+
+// Manual start button for Quick Play waiting screen.
+// (Some lobbies may prefer to click Start instead of relying on auto-start timing.)
+window.startQuickGame = async function startQuickGame(gameId) {
+  const gid = String(gameId || '').trim();
+  if (!gid || gid !== QUICKPLAY_DOC_ID) return;
+
+  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+  let snap;
+  try { snap = await ref.get(); } catch (_) { return; }
+  if (!snap || !snap.exists) return;
+
+  const g0 = { id: snap.id, ...snap.data() };
+  if (g0.currentPhase && g0.currentPhase !== 'waiting') return;
+  const redCount = (g0.redPlayers || []).length;
+  const blueCount = (g0.bluePlayers || []).length;
+  if (!(redCount > 0 && blueCount > 0)) return;
+
+  const s0 = getQuickSettings(g0);
+  const settingsSig0 = JSON.stringify({
+    blackCards: Number(s0.blackCards || 1),
+    deckId: String(s0.deckId || 'standard'),
+    vibe: String(s0.vibe || '').trim(),
+  });
+
+  let cards0 = null;
+  try {
+    cards0 = await buildQuickPlayCardsFromSettings(s0);
+  } catch (e) {
+    console.warn('Manual Quick Play start: failed to build cards (best-effort).', e);
+    const fallback = { ...s0, vibe: '' };
+    cards0 = await buildQuickPlayCardsFromSettings(fallback);
+  }
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists) return;
+      const g = s.data();
+      if (g.currentPhase !== 'waiting' || g.winner != null) return;
+      const r = (g.redPlayers || []).length;
+      const b = (g.bluePlayers || []).length;
+      if (!(r > 0 && b > 0)) return;
+
+      const qs = getQuickSettings(g);
+      const settingsSig1 = JSON.stringify({
+        blackCards: Number(qs.blackCards || 1),
+        deckId: String(qs.deckId || 'standard'),
+        vibe: String(qs.vibe || '').trim(),
+      });
+      if (settingsSig1 !== settingsSig0) return;
+
+      const firstTeam = 'red';
+      const cards = Array.isArray(cards0) && cards0.length === BOARD_SIZE ? cards0 : (g.cards || []);
+
+      const redPlayers = Array.isArray(g.redPlayers) ? g.redPlayers : [];
+      const bluePlayers = Array.isArray(g.bluePlayers) ? g.bluePlayers : [];
+      const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
+      const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
+      const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
+
+      tx.update(ref, {
+        cards,
+        currentTeam: firstTeam,
+        currentPhase: startPhase,
+        redSpymaster: redSpy,
+        blueSpymaster: blueSpy,
+        redCardsLeft: FIRST_TEAM_CARDS,
+        blueCardsLeft: SECOND_TEAM_CARDS,
+        currentClue: null,
+        guessesRemaining: 0,
+        winner: null,
+        log: firebase.firestore.FieldValue.arrayUnion('Game started.'),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    clearOperativeChats(QUICKPLAY_DOC_ID);
+    if (window.playSound) window.playSound('gameStart');
+  } catch (e) {
+    console.warn('Manual Quick Play start failed (best-effort):', e);
+  }
+};
 
 async function clearOperativeChats(gameId) {
   try {
