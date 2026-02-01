@@ -1688,22 +1688,51 @@ function renderQuickLobby(game) {
   blueCount.textContent = String(blue.length);
   specCount.textContent = String(specs.length);
 
-  const renderTeamList = (players) => {
-    if (!players.length) return '<div class="quick-empty">No one yet</div>';
-    return players.map(p => {
-      const isYou = p.odId === odId;
-      const ready = !!p.ready;
-      const playerId = p.odId || '';
-      return `
-        <div class="quick-player ${ready ? 'ready' : ''}">
-          <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(displayPlayerName(p))}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
-          <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
-        </div>
-      `;
-    }).join('');
-  };
+  
+const renderTeamList = (players) => {
+  if (!players.length) return '<div class="quick-empty">No one yet</div>';
+  return players.map(p => {
+    const isYou = p.odId === odId;
+    const ready = !!p.ready;
+    const playerId = p.odId || '';
+    const isAI = !!p.isAI;
 
-  const renderSpecList = (players) => {
+    // AI traits tooltip + click
+    let nameClass = `quick-player-name ${playerId ? 'profile-link' : ''}`;
+    let nameAttrs = '';
+    if (isAI && playerId) {
+      nameClass = 'quick-player-name ai-traits-link';
+      const tRaw = p.aiTraits || {};
+      const clamp = (v) => Math.max(0, Math.min(100, Math.floor(Number(v) || 0)));
+      const t = {
+        confidence: clamp(tRaw.confidence),
+        riskiness: clamp(tRaw.riskiness),
+        reasoning: clamp(tRaw.reasoning),
+        strategic: clamp(tRaw.strategic),
+        farFetched: clamp(tRaw.farFetched),
+      };
+      const title = `Confidence ${t.confidence} • Riskiness ${t.riskiness} • Reasoning ${t.reasoning} • Strategic ${t.strategic} • Far-Fetched ${t.farFetched}`;
+      nameAttrs = `title="${escapeHtml(title)}" onclick="event.stopPropagation(); if(window.openAITraitsPopup) window.openAITraitsPopup('${escapeHtml(playerId)}');" style="cursor:pointer;"`;
+    } else if (playerId) {
+      nameClass = 'quick-player-name profile-link';
+      nameAttrs = `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"`;
+    }
+
+    const removeBtn = (isAI && playerId)
+      ? `<button class="quick-remove-ai" type="button" title="Remove AI" onclick="event.stopPropagation(); if(window.removeAIFromLobbyByOdId) window.removeAIFromLobbyByOdId('${escapeHtml(playerId)}');">✕</button>`
+      : '';
+
+    return `
+      <div class="quick-player ${ready ? 'ready' : ''} ${isAI ? 'is-ai' : ''}">
+        <span class="${nameClass}" ${nameAttrs}>${escapeHtml(displayPlayerName(p))}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+        <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
+        ${removeBtn}
+      </div>
+    `;
+  }).join('');
+};
+
+const renderSpecList = (players) => {
     if (!players.length) return '<div class="quick-empty">No one yet</div>';
     return players.map(p => {
       const isYou = p.odId === odId;
@@ -3663,6 +3692,47 @@ function setActiveTagMode(mode) {
   });
 }
 
+
+async function syncTeamMarker(cardIndex, tag) {
+  try {
+    if (!currentGame?.id) return;
+    const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+    if (myTeam !== 'red' && myTeam !== 'blue') return;
+
+    const field = (myTeam === 'red') ? 'redMarkers' : 'blueMarkers';
+    const path = `${field}.${Number(cardIndex)}`;
+
+    if (!tag || tag === 'clear') {
+      await db.collection('games').doc(currentGame.id).update({
+        [path]: firebase.firestore.FieldValue.delete(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      const t = String(tag).toLowerCase();
+      if (!['yes','maybe','no'].includes(t)) return;
+      await db.collection('games').doc(currentGame.id).update({
+        [path]: t,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function clearTeamMarkers() {
+  try {
+    if (!currentGame?.id) return;
+    const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+    if (myTeam !== 'red' && myTeam !== 'blue') return;
+    const field = (myTeam === 'red') ? 'redMarkers' : 'blueMarkers';
+    await db.collection('games').doc(currentGame.id).update({
+      [field]: {},
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {}
+}
+
 function tagCard(cardIndex, tag) {
   if (tag === 'clear' || cardTags[cardIndex] === tag) {
     delete cardTags[cardIndex];
@@ -3671,6 +3741,8 @@ function tagCard(cardIndex, tag) {
   }
   renderCardTags();
   saveTagsToLocal();
+  // Share markers with your team (opponents never see them in the UI)
+  try { syncTeamMarker(cardIndex, tag); } catch (_) {}
 
   // Notify AI (and any other listeners) that a human tag changed.
   try {
@@ -3694,6 +3766,7 @@ function clearAllTags() {
   pendingCardSelection = null;
   renderCardTags();
   saveTagsToLocal();
+  try { clearTeamMarkers(); } catch (_) {}
   setActiveTagMode(null);
 }
 
@@ -3704,22 +3777,32 @@ function renderCardTags() {
     ? (window.getAICardMarksForGame(gameId) || {})
     : {};
 
+  const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+  const teamMarkers = (myTeam === 'red')
+    ? (currentGame?.redMarkers || {})
+    : (myTeam === 'blue')
+      ? (currentGame?.blueMarkers || {})
+      : {};
+
   cards.forEach((card, index) => {
-    // Remove existing tags (human or AI)
+    // Remove existing tags (human, team, or AI)
     card.querySelectorAll('.card-tag').forEach(el => el.remove());
 
     if (card.classList.contains('revealed')) return;
 
     const humanTag = cardTags[index];
+    const teamTag = teamMarkers ? teamMarkers[index] : null;
     const aiTag = aiMarks ? aiMarks[index] : null;
 
-    const tag = humanTag || aiTag;
+    // Priority: human local tags > team markers (shared with your team) > AI local marks
+    const tag = humanTag || teamTag || aiTag;
     if (!tag) return;
 
-    const isAI = !humanTag && !!aiTag;
+    const isShared = !humanTag && !!teamTag;
+    const isAI = !humanTag && !teamTag && !!aiTag;
 
     const tagEl = document.createElement('div');
-    tagEl.className = `card-tag ${isAI ? 'ai' : ''} tag-${tag}`;
+    tagEl.className = `card-tag ${isAI ? 'ai' : ''} ${isShared ? 'shared' : ''} tag-${tag}`;
 
     if (tag === 'yes') {
       tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -4911,16 +4994,6 @@ function renderQuickLobbyWithAI(game) {
       const nameText = (nameEl.textContent || '').replace(/\s*\(you\)\s*/, '').trim();
       const ai = aiPlayersList.find(a => a.name === nameText);
       if (!ai) return;
-
-      // Make AI name clickable to show traits (same as in-game)
-      try {
-        nameEl.classList.add('profile-link');
-        nameEl.style.cursor = 'pointer';
-        nameEl.onclick = (e) => {
-          e.stopPropagation();
-          if (typeof window.openAITraitsPopup === 'function') window.openAITraitsPopup(ai.odId);
-        };
-      } catch (_) {}
 
       // Add AI class
       el.classList.add('ai-player');

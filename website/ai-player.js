@@ -359,92 +359,6 @@ function sanitizeTraits(raw) {
   };
 }
 
-// ─── Trait → Behavior Levers (actual gameplay effects) ──────────────────────
-function _t01(v) {
-  const n = Math.max(0, Math.min(100, Math.floor(Number(v) || 0)));
-  return n / 100;
-}
-
-function formatTraitsForPrompt(traits) {
-  const t = sanitizeTraits(traits || {});
-  return `confidence=${t.confidence}, riskiness=${t.riskiness}, reasoning=${t.reasoning}, strategic=${t.strategic}, farFetched=${t.farFetched}`;
-}
-
-function deriveSpymasterLevers(traits, stateAnalysis) {
-  const t = sanitizeTraits(traits || {});
-  const r = _t01(t.riskiness), c = _t01(t.confidence), reas = _t01(t.reasoning), strat = _t01(t.strategic), ff = _t01(t.farFetched);
-
-  // Base target count depends on game state
-  let base = stateAnalysis?.earlyGame ? 2.6 : 2.2;
-  if (stateAnalysis?.weAreLosingBadly) base += 0.9;
-  if (stateAnalysis?.weAreLeading && !stateAnalysis?.endgame) base -= 0.6;
-  if (stateAnalysis?.endgame) base -= 0.4;
-
-  // Traits nudge number selection
-  const target = base + (r - 0.5) * 1.3 + (c - 0.5) * 0.6 - (reas - 0.5) * 0.8;
-  let targetN = Math.max(1, Math.min(5, Math.round(target)));
-
-  // Safety emphasis: higher means prioritize avoiding assassin/opponent overlap
-  let safety = 1.15 + (reas * 1.0) + (strat * 0.9) - (r * 0.75) - (ff * 0.55);
-  safety = Math.max(0.5, Math.min(2.6, safety));
-
-  // Abstractness / lateralness
-  let abstractness = 0.15 + ff * 0.75 + r * 0.15;
-  abstractness = Math.max(0.05, Math.min(0.95, abstractness));
-
-  // Allowed clue-number range (lets AI choose within personality bounds)
-  const nMin = Math.max(1, Math.min(5, targetN - (r < 0.35 ? 1 : 0)));
-  const nMax = Math.max(nMin, Math.min(5, targetN + (r > 0.65 ? 1 : 0)));
-
-  return { targetN, nMin, nMax, safety, abstractness };
-}
-
-function deriveOperativeLevers(traits, stateAnalysis, correctSoFar, clueNumber) {
-  const t = sanitizeTraits(traits || {});
-  const r = _t01(t.riskiness), c = _t01(t.confidence), reas = _t01(t.reasoning), strat = _t01(t.strategic), ff = _t01(t.farFetched);
-
-  const tol = stateAnalysis?.riskTolerance || 'medium';
-  const base = (tol === 'low') ? 0.76 : (tol === 'high' ? 0.58 : 0.66);
-  let continueThreshold = base + (reas - 0.5) * 0.14 - (r - 0.5) * 0.14 - (c - 0.5) * 0.08;
-  continueThreshold = Math.max(0.48, Math.min(0.86, continueThreshold));
-
-  // How open are you to indirect links?
-  let lateralness = 0.10 + ff * 0.80 + r * 0.10;
-  lateralness = Math.max(0.05, Math.min(0.95, lateralness));
-
-  const allowBonusGuess = (correctSoFar >= clueNumber) && (r > 0.6 || c > 0.7) && !(tol === 'low' && reas > 0.6);
-
-  // How much do you consider multi-turn planning / past clues
-  const memoryWeight = 0.35 + strat * 0.55 + reas * 0.25;
-  return { continueThreshold, lateralness, allowBonusGuess, memoryWeight };
-}
-
-function buildClueMemory(game, team) {
-  const history = Array.isArray(game?.clueHistory) ? game.clueHistory : [];
-  if (!history.length) return 'No clues yet.';
-
-  // For each clue entry, compute progress
-  const lines = [];
-  for (const entry of history) {
-    if (!entry || !entry.word) continue;
-    const eTeam = String(entry.team || '').toLowerCase();
-    const clue = String(entry.word || '');
-    const num = Number(entry.number || 0) || 0;
-    const results = Array.isArray(entry.results) ? entry.results : [];
-    const correct = results.filter(r => r && r.result === 'correct').map(r => r.word).filter(Boolean);
-    const wrong = results.filter(r => r && r.result !== 'correct').map(r => `${r.word}(${r.result})`).filter(Boolean);
-    const remaining = Math.max(0, num - correct.length);
-    const tag = (remaining === 0 && num > 0) ? 'resolved' : (correct.length ? `open:${remaining}` : 'open');
-    const who = eTeam ? eTeam.toUpperCase() : '??';
-    const you = (eTeam === String(team || '').toLowerCase()) ? ' (yours)' : '';
-    lines.push(`${who}${you}: "${clue}" for ${num} → correct: [${correct.join(', ') || '—'}]${wrong.length ? `, other: [${wrong.join(', ')}]` : ''} (${tag})`);
-  }
-  return lines.join('\n');
-}
-
-// Track which opponent clues we've already processed for marking
-let aiOpponentClueSeen = {}; // { [gameId_team]: "CLUE|NUM|ts" }
-
 // ─── Add / Remove AI Players ────────────────────────────────────────────────
 
 function getUsedAINames() {
@@ -609,6 +523,33 @@ async function removeAIFromFirestoreLobby(ai) {
   }
 }
 
+async function removeAIFromLobbyByOdId(aiOdId) {
+  try {
+    const od = String(aiOdId || '').trim();
+    if (!od) return;
+    const ref = db.collection('games').doc(getActiveGameIdForAI());
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const nextRed = (Array.isArray(game.redPlayers) ? game.redPlayers : []).filter(p => String(p?.odId || '') !== od);
+      const nextBlue = (Array.isArray(game.bluePlayers) ? game.bluePlayers : []).filter(p => String(p?.odId || '') !== od);
+      tx.update(ref, {
+        redPlayers: nextRed,
+        bluePlayers: nextBlue,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Also clear any local instance (for the current client)
+    const local = aiPlayers.find(a => String(a?.odId || '') === od);
+    if (local) removeAIPlayer(local.id);
+  } catch (e) {
+    console.warn('Failed to remove AI by odId:', e);
+  }
+}
+window.removeAIFromLobbyByOdId = removeAIFromLobbyByOdId;
+
 // ─── Game State Helpers ─────────────────────────────────────────────────────
 
 function getAIPlayerByOdId(odId) {
@@ -702,7 +643,7 @@ function buildReasoningInstruction(traits) {
   const depth = traits.reasoning > 80 ? 'exhaustive and extremely detailed' :
                 traits.reasoning > 60 ? 'thorough and detailed' : 'moderate';
 
-  let instruction = `\n\nBefore making your decision, provide ${depth} internal reasoning in the "reasoning" field of your JSON response.`;
+  let instruction = `\n\nBefore making your decision, provide ${depth} internal reasoning in the "private_reasoning" field of your JSON response. This field is for your own scratchpad and will NOT be shown to human players.`;
 
   if (traits.strategic > 60) {
     instruction += ' Include probability estimates and expected value calculations. For each option, estimate P(correct) and consider the Bayesian posterior given all revealed information and clue history. Quantify the expected value of each choice.';
@@ -738,12 +679,21 @@ function buildBoardContext(game, isSpymaster) {
 }
 
 function buildClueHistoryContext(game) {
-  const history = game.clueHistory || [];
+  const history = Array.isArray(game?.clueHistory) ? game.clueHistory : [];
   if (!history.length) return 'No clues given yet.';
   return history.map(c => {
-    const results = (c.results || []).map(r => `${r.word}(${r.result})`).join(', ');
-    return `${c.team.toUpperCase()} clue: "${c.word}" for ${c.number}${results ? ` → guesses: ${results}` : ''}`;
-  }).join('\n');
+    const team = String(c.team || '').toUpperCase();
+    const clueWord = String(c.word || '').toUpperCase();
+    const num = Number(c.number) || 0;
+    const resultsArr = Array.isArray(c.results) ? c.results : [];
+    const results = resultsArr.map(r => {
+      const w = String(r.word || '').toUpperCase();
+      const res = String(r.result || '').toLowerCase();
+      const by = String(r.by || '').trim();
+      return by ? `${w}(${res}, by ${by})` : `${w}(${res})`;
+    }).join(', ');
+    return `${team} clue: "${clueWord}" for ${num}${results ? ` → guesses: ${results}` : ''}`;
+  }).join('\\n');
 }
 
 function buildTeamContext(game, team) {
@@ -758,6 +708,76 @@ function buildGameSummary(game, team, isSpymaster) {
   const theirCards = team === 'red' ? game.blueCardsLeft : game.redCardsLeft;
   return `You are on ${team.toUpperCase()} team. Your team has ${myCards} cards left. ${otherTeam.toUpperCase()} has ${theirCards} cards left. Current turn: ${game.currentTeam.toUpperCase()} ${game.currentPhase}.`;
 }
+
+function buildGameLogContext(game, maxLines = 35) {
+  const log = Array.isArray(game?.log) ? game.log : [];
+  if (!log.length) return 'No game log entries yet.';
+  const slice = log.slice(Math.max(0, log.length - maxLines));
+  return slice.map((l, i) => `${i + 1}. ${String(l)}`).join('\n');
+}
+
+function buildScoreContext(game) {
+  const redLeft = Number(game?.redCardsLeft ?? 0);
+  const blueLeft = Number(game?.blueCardsLeft ?? 0);
+  const phase = String(game?.currentPhase || '');
+  const team = String(game?.currentTeam || '');
+  const clue = game?.currentClue ? `${String(game.currentClue.word || '').toUpperCase()}(${Number(game.currentClue.number || 0)})` : 'none';
+  return `SCORE/STATE: red_cards_left=${redLeft}, blue_cards_left=${blueLeft}, current_team=${team.toUpperCase()}, phase=${phase}, current_clue=${clue}.`;
+}
+
+function buildAIAttributesContext(game) {
+  const all = [
+    ...(Array.isArray(game?.redPlayers) ? game.redPlayers : []),
+    ...(Array.isArray(game?.bluePlayers) ? game.bluePlayers : []),
+  ];
+  const ais = all.filter(p => p && p.isAI);
+  if (!ais.length) return 'No AI players in this game.';
+  return ais.map(p => {
+    const role = String(p.role || 'operative');
+    const team = (Array.isArray(game?.redPlayers) ? game.redPlayers : []).some(x => String(x?.odId || '') === String(p?.odId || '')) ? 'red' : 'blue';
+    const t = sanitizeTraits(p.aiTraits);
+    return `- ${p.name} (${team}, ${role}): confidence=${t.confidence}, riskiness=${t.riskiness}, reasoning=${t.reasoning}, strategic=${t.strategic}, farFetched=${t.farFetched}`;
+  }).join('\n');
+}
+
+function buildTeamMarkersContext(game, team) {
+  const key = team === 'red' ? 'redMarkers' : 'blueMarkers';
+  const marks = (game && game[key] && typeof game[key] === 'object') ? game[key] : {};
+  const entries = Object.entries(marks || {})
+    .map(([k, v]) => ({ idx: Number(k), tag: String(v || '') }))
+    .filter(e => Number.isInteger(e.idx) && e.idx >= 0 && e.idx < (game?.cards?.length || 25) && ['yes','maybe','no'].includes(e.tag));
+  if (!entries.length) return 'TEAM MARKERS: none.';
+  const lines = entries
+    .sort((a,b)=>a.idx-b.idx)
+    .slice(0, 60)
+    .map(e => {
+      const w = game?.cards?.[e.idx]?.word ? String(game.cards[e.idx].word) : '';
+      return `- ${e.idx}: ${w} => ${e.tag}`;
+    });
+  return `TEAM MARKERS (visible to your team only):\n${lines.join('\n')}`;
+}
+
+function tokenBudgetFromTraits(traits, minTokens, maxTokens) {
+  const r = Math.max(0, Math.min(100, Number(traits?.reasoning ?? 50)));
+  return Math.round(minTokens + (maxTokens - minTokens) * (r / 100));
+}
+
+async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag) {
+  try {
+    if (!gameId) return;
+    const ref = db.collection('games').doc(String(gameId));
+    const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
+    const keyPath = `${field}.${Number(cardIndex)}`;
+    if (!tag || tag === 'clear') {
+      await ref.update({ [keyPath]: firebase.firestore.FieldValue.delete() });
+    } else {
+      const t = String(tag).toLowerCase();
+      if (!['yes','maybe','no'].includes(t)) return;
+      await ref.update({ [keyPath]: t });
+    }
+  } catch (_) {}
+}
+
 
 // ─── AI Spymaster: Give Clue (Structured Output) ───────────────────────────
 
@@ -789,8 +809,6 @@ async function aiGiveClue(ai, game) {
 
   // Build strategic guidance based on game state analysis
   const traits = ai.traits || {};
-  const traitLine = formatTraitsForPrompt(traits);
-  const spyLevers = deriveSpymasterLevers(traits, analysis);
   let strategyGuidance = '';
   if (analysis.weAreLosingBadly) {
     strategyGuidance = `STRATEGIC SITUATION: You are BEHIND by ${analysis.myCards - analysis.theirCards} cards. You MUST be aggressive. Try to connect 3+ words with one clue, even if some connections are looser. A safe 1-word clue will not catch up. Take calculated risks.`;
@@ -825,12 +843,6 @@ async function aiGiveClue(ai, game) {
   const systemPrompt = `You are a Codenames Spymaster for the ${team.toUpperCase()} team.
 ${personalityPrompt}
 
-YOUR ATTRIBUTES (these MUST affect your behavior): ${traitLine}
-BEHAVIOR LEVERS (derived from attributes + game state):
-- Target clue number range: ${spyLevers.nMin}–${spyLevers.nMax} (aim around ${spyLevers.targetN})
-- Safety emphasis (avoid assassin/opponent overlap): ${spyLevers.safety.toFixed(2)} (higher = safer)
-- Abstractness/lateralness: ${spyLevers.abstractness.toFixed(2)} (higher = more indirect)
-
 RULES:
 - Your clue must be a SINGLE word (no spaces, no hyphens, no compound words).
 - Your clue CANNOT be any word currently on the board: ${boardWords.join(', ')}
@@ -847,6 +859,19 @@ ASSASSIN WORDS (CRITICAL - AVOID AT ALL COSTS): ${assassinWords.join(', ')}
 ${strategyGuidance}
 ${strategicInstr}
 
+${buildScoreContext(game)}
+
+BOARD:
+${boardContext}
+
+${buildTeamMarkersContext(game, team)}
+
+AI PLAYERS (names/roles/traits):
+${buildAIAttributesContext(game)}
+
+GAME LOG (most recent last):
+${buildGameLogContext(game)}
+
 ${clueHistory}
 ${summary}
 Team: ${teamContext}
@@ -859,8 +884,7 @@ THINK STEP BY STEP:
 5. Set the number to ONLY count words you're very confident your teammates will get
 ${reasoningInstr}
 
-Respond with valid JSON (single object, no markdown):
-{"clue":"YOURWORD","number":N,"intended_words":["word1","word2"],"reasoning":"short teammate-facing summary (1-2 sentences)","private_scratchpad":"think step-by-step here; this will NOT be shown to players","candidates":[{"clue":"...","number":N,"intended_words":["..."],"risk_notes":"...","score":0.0}]}`;
+Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["word1", "word2"], "private_reasoning": "your scratchpad: explain strategy and intended words"}`;
 
   try {
     // Strategic thinking delay - scales with difficulty
@@ -880,7 +904,7 @@ Respond with valid JSON (single object, no markdown):
       { role: 'user', content: 'Analyze the board carefully, then give your clue as JSON.' },
     ], {
       temperature: spymasterTemp,
-      max_tokens: traits.reasoning > 60 ? 600 : 400,
+      max_tokens: tokenBudgetFromTraits(traits, 1200, 3200),
       response_format: { type: 'json_object' },
     });
 
@@ -1000,7 +1024,7 @@ function aiMarkCard(game, cardIndex, mark) {
   }
 }
 
-async function aiAnalyzeAndMarkCards(ai, game, currentClue, opts = {}) {
+async function aiAnalyzeAndMarkCards(ai, game, currentClue) {
   if (!currentClue || !game?.cards) return;
 
   const team = ai.team;
@@ -1010,26 +1034,13 @@ async function aiAnalyzeAndMarkCards(ai, game, currentClue, opts = {}) {
 
   const unrevealedLines = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\n');
   const clueHistory = buildClueHistoryContext(game);
-  const clueMemory = buildClueMemory(game, team);
-  const purpose = String(opts.purpose || 'self'); // 'self' or 'opponent'
-  const clueTeam = String(opts.clueTeam || game.currentTeam || '').toLowerCase();
-  const stateAnalysis = analyzeGameState(game, team);
-  const opLevers = deriveOperativeLevers(ai.traits || {}, stateAnalysis, 0, Number(currentClue.number || 1));
 
-  const systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team.
-You are analyzing ${purpose === 'opponent' ? 'the OPPONENT\'s clue (to identify likely opponent words / traps)' : 'your team\'s current clue (to identify best guesses)'}.
-CLUE TEAM: ${clueTeam.toUpperCase()}  |  CLUE: "${currentClue.word}" for ${currentClue.number}
-YOUR ATTRIBUTES (affect how you judge matches): ${formatTraitsForPrompt(ai.traits || {})}
-LEVER: lateralness=${opLevers.lateralness.toFixed(2)} (higher = allow indirect links)
-
+  const systemPrompt = `You are a Codenames Operative analyzing the board for clue "${currentClue.word}" for ${currentClue.number}.
 
 UNREVEALED WORDS:
 ${unrevealedLines}
 
 ${clueHistory}
-
-CLUE MEMORY (use past clues + progress to inform marking/avoidance):
-${clueMemory}
 
 For each unrevealed word, decide if it likely matches the clue:
 - "yes" = strongly matches the clue (you'd guess this)
@@ -1038,14 +1049,7 @@ For each unrevealed word, decide if it likely matches the clue:
 
 Return JSON: {"marks": [{"index": N, "mark": "yes|maybe|no"}]}
 Only include words you have an opinion on. Skip words you're neutral about.
-Be strategic - mark words you'd warn teammates about as "no".
-
-If purpose="opponent":
-- Treat the clue as belonging to the OTHER team.
-- Your job is to identify words the opponent is likely trying to guess.
-- Mark those likely opponent words as "no" (i.e., X) so your team avoids them in future.
-- Do NOT mark many "yes" for opponent clues; mostly use "no" and occasional "maybe".`;
-
+Be strategic - mark words you'd warn teammates about as "no".`;
 
   try {
     const result = await aiChatCompletion([
@@ -1053,7 +1057,7 @@ If purpose="opponent":
       { role: 'user', content: `Analyze each word for clue "${currentClue.word}" ${currentClue.number}. JSON only.` },
     ], {
       temperature: 0.3,
-      max_tokens: 500,
+      max_tokens: tokenBudgetFromTraits(ai.traits || {}, 900, 2200),
       response_format: { type: 'json_object' },
     });
 
@@ -1068,12 +1072,8 @@ If purpose="opponent":
 
     const marks = parsed.marks || parsed.analysis || [];
     if (!Array.isArray(marks)) return;
-    // Clear old AI marks for this game, but preserve existing "no" marks.
-    // "no" marks may encode opponent-clue traps we want to remember across turns.
-    if (!aiCardMarks[game.id]) aiCardMarks[game.id] = {};
-    for (const k of Object.keys(aiCardMarks[game.id])) {
-      if (aiCardMarks[game.id][k] !== 'no') delete aiCardMarks[game.id][k];
-    }
+    // Clear old marks for this game first (AI-only marks; human tags remain separate)
+    aiCardMarks[game.id] = {};
     if (typeof renderCardTags === 'function') renderCardTags();
 
     // Humans don't instantly annotate the whole board—do it progressively.
@@ -1093,6 +1093,7 @@ If purpose="opponent":
       if (!game.currentClue || game.currentClue.word !== currentClue.word) break;
       await humanDelay(420, 980);
       aiMarkCard(game, m.idx, m.mark);
+      await setTeamMarkerInFirestore(game.id, team, m.idx, m.mark);
     }
 
     // Brief pause after finishing marking
@@ -1103,37 +1104,72 @@ If purpose="opponent":
   }
 }
 
+let aiOpponentClueProcessed = {}; // keyed by `${gameId}:${team}` -> clueKey
 
-async function aiProcessOpponentClue(ai, game) {
+async function aiAnalyzeOpponentClueAndMarkAvoid(ai, game, opponentClue) {
   try {
-    if (!game?.id || !game.currentClue) return;
-    const myTeam = String(ai.team || '').toLowerCase();
-    const clueTeam = String(game.currentTeam || '').toLowerCase();
-    if (!myTeam || !clueTeam || myTeam === clueTeam) return;
+    if (!ai || !game?.id || !opponentClue) return;
+    const myTeam = ai.team;
+    const oppTeam = myTeam === 'red' ? 'blue' : 'red';
+    const clueWord = String(opponentClue.word || '').trim();
+    const clueNum = Number(opponentClue.number || 0);
 
-    const key = `${game.id}_${myTeam}`;
-    const sig = `${String(game.currentClue.word || '').toUpperCase()}|${Number(game.currentClue.number || 0)}|${tsToMs(game.updatedAt) || tsToMs(game.aiControllerHeartbeat) || 0}`;
-    if (aiOpponentClueSeen[key] === sig) return;
-    aiOpponentClueSeen[key] = sig;
+    const unrevealed = (game.cards || [])
+      .map((c, i) => ({ word: c.word, index: i, revealed: !!c.revealed }))
+      .filter(c => !c.revealed);
 
-    // One AI per non-active team processes the opponent clue to avoid spam.
-    if (aiThinkingState[ai.id]) return;
-    aiThinkingState[ai.id] = true;
+    if (!unrevealed.length || !clueWord) return;
 
-    await humanDelay(800, 1600);
-    await aiAnalyzeAndMarkCards(ai, game, game.currentClue, { purpose: 'opponent', clueTeam: clueTeam });
+    const unrevealedLines = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\n');
 
-    // Optional: short heads-up in team chat (keep it minimal)
-    if (ai.mode === 'autonomous') {
-      const msg = await generateAIChatMessage(ai, game, 'opponent_clue_observe', {
-        opponentClue: game.currentClue
-      });
-      if (msg) await sendAIChatMessage(ai, game, msg);
+    const systemPrompt = `You are a Codenames Operative on the ${myTeam.toUpperCase()} team.
+Your opponents (${oppTeam.toUpperCase()}) just gave the clue "${clueWord}" for ${clueNum}.
+Humans on your team can overhear opponent clues. Use that information defensively.
+
+TASK:
+- Identify unrevealed words that are LIKELY targets of the opponent's clue.
+- Mark those words as "no" (X) to warn your team to avoid guessing them on your team's turn.
+- If a word is only a weak match, mark it "maybe" instead.
+- ONLY choose from the unrevealed list below.
+
+UNREVEALED WORDS:
+${unrevealedLines}
+
+Return JSON:
+{"marks":[{"index":N,"mark":"no|maybe"}], "private_reasoning":"scratchpad"}.
+
+Do NOT include any other text.`;
+
+    const result = await aiChatCompletion([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Mark likely opponent targets now. JSON only.' },
+    ], {
+      temperature: 0.2,
+      max_tokens: tokenBudgetFromTraits(ai.traits || {}, 700, 1800),
+      response_format: { type: 'json_object' },
+    });
+
+    let parsed = null;
+    try { parsed = JSON.parse(result); } catch {
+      const match = String(result || '').match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
     }
-  } catch (_) {
-    // swallow
-  } finally {
-    aiThinkingState[ai.id] = false;
+    if (!parsed) return;
+
+    const marks = Array.isArray(parsed.marks) ? parsed.marks : [];
+    const normalized = marks
+      .map(m => ({ idx: Number(m.index), mark: String(m.mark || '').toLowerCase() }))
+      .filter(m => Number.isInteger(m.idx) && m.idx >= 0 && m.idx < (game.cards || []).length)
+      .filter(m => ['no','maybe'].includes(m.mark))
+      .slice(0, 10);
+
+    // Apply marks with small delays so it feels human-like.
+    for (const m of normalized) {
+      await humanDelay(300, 800);
+      await setTeamMarkerInFirestore(game.id, myTeam, m.idx, m.mark);
+    }
+  } catch (e) {
+    // ignore
   }
 }
 
@@ -1190,11 +1226,8 @@ async function aiGuessCard(ai, game) {
   const wrongGuesses = currentClueResults.filter(r => r.result !== 'correct').length;
   const guessNumber = correctGuesses + 1; // Which guess number this is
 
-  const clueMemory = buildClueMemory(game, team);
-
   // Build strategic context for the operative
   const traits = ai.traits || {};
-  const opLevers = deriveOperativeLevers(traits, analysis, correctGuesses, Number(currentClue.number || 1));
   let guessStrategy = '';
   if (correctGuesses >= currentClue.number) {
     guessStrategy = `You have already correctly guessed ${correctGuesses} out of the ${currentClue.number} intended words. You may attempt ONE bonus guess if you're very confident, or you can recommend ending the turn. Risk assessment: ${analysis.riskTolerance} risk tolerance. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
@@ -1213,30 +1246,21 @@ async function aiGuessCard(ai, game) {
     guessStrategy += ' You are naturally very cautious - only guess when you are quite sure. Prefer ending turn over risky guesses.';
   }
 
-
-  // Summarize the opponent's most recent clue (useful for inferring traps / opponent targets)
-  const oppTeam = team === 'red' ? 'blue' : 'red';
-  const h = Array.isArray(game.clueHistory) ? game.clueHistory : [];
-  const lastOppClue = [...h].reverse().find(e => String(e?.team || '').toLowerCase() === oppTeam && e?.word);
-  const oppClueSummary = lastOppClue ? `${oppTeam.toUpperCase()} last clue: "${String(lastOppClue.word)}" for ${Number(lastOppClue.number || 0)} (correct so far: ${(Array.isArray(lastOppClue.results) ? lastOppClue.results.filter(r=>r?.result==='correct').map(r=>r.word).filter(Boolean).join(', ') : '') || '—'})` : 'No opponent clue yet.';
-
   let systemPrompt = `You are a Codenames Operative on the ${team.toUpperCase()} team. Your Spymaster gave the clue "${currentClue.word}" for ${currentClue.number}.
 ${personalityPrompt}
 
-YOUR ATTRIBUTES (these MUST affect your behavior): ${formatTraitsForPrompt(traits)}
-BEHAVIOR LEVERS (derived from attributes + game state):
-- Continue/guess confidence threshold: ${opLevers.continueThreshold.toFixed(2)} (higher = stop sooner)
-- Lateralness: ${opLevers.lateralness.toFixed(2)} (higher = allow indirect links)
-- Allow bonus guess after N: ${opLevers.allowBonusGuess ? 'yes' : 'no'}
-- Memory weight (consider past clues): ${opLevers.memoryWeight.toFixed(2)}
-
-OPPONENT INFO (use this to infer traps / opponent targets): ${oppClueSummary}
-
-CLUE MEMORY (use past clues + progress to inform decisions):
-${clueMemory}
-
 BOARD (unrevealed words, choose ONLY from this list):
 ${unrevealedLines}
+
+${buildScoreContext(game)}
+
+${buildTeamMarkersContext(game, team)}
+
+AI PLAYERS (names/roles/traits):
+${buildAIAttributesContext(game)}
+
+GAME LOG (most recent last):
+${buildGameLogContext(game)}
 
 ${clueHistory}
 ${summary}
@@ -1257,8 +1281,8 @@ ${analysis.endgame ? 'ENDGAME: Every guess matters. Be precise.' : ''}
 ${strategicInstr}
 ${reasoningInstr}
 
-Respond with valid JSON (single object, no markdown):
-{"index":<0-24>,"word":"EXACT_BOARD_WORD","confidence":"high/medium/low","should_end_turn_after":true/false,"reasoning":"short teammate-facing summary (1-2 sentences)","private_scratchpad":"step-by-step internal thoughts (not shown)","ranked_candidates":[{"index":0,"word":"...","score":0.0,"notes":"..."}],"should_mark_no":[0,1]}`;
+Respond with valid JSON:
+{"index": <0-24>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "should_end_turn_after": true/false, "private_reasoning": "your scratchpad: strategic thinking"}`;
 
   try {
     // Mark cards first (human-like - study the board, mark thoughts)
@@ -1298,7 +1322,7 @@ Respond with valid JSON (single object, no markdown):
         { role: 'user', content: feedback },
       ], {
         temperature: 0.25 + (traits.farFetched / 100) * 0.35,
-        max_tokens: traits.reasoning > 60 ? 500 : 300,
+        max_tokens: tokenBudgetFromTraits(traits, 900, 2600),
         response_format: { type: 'json_object' },
       });
 
@@ -1336,18 +1360,6 @@ Respond with valid JSON (single object, no markdown):
       lastBad = `"${w || '(empty)'}" is not one of the unrevealed board words.`;
     }
 
-
-    // Apply any "avoid/trap" marks suggested by the model (helps teams remember traps across turns)
-    try {
-      const noList = (parsed && Array.isArray(parsed.should_mark_no)) ? parsed.should_mark_no : [];
-      const uniq = Array.from(new Set(noList.map(n => Number(n)).filter(n => Number.isInteger(n))));
-      const capped = uniq.slice(0, 6);
-      for (const idx of capped) {
-        if (idx >= 0 && idx < game.cards.length && !game.cards[idx].revealed) {
-          aiMarkCard(game, idx, 'no');
-        }
-      }
-    } catch (_) {}
     // If low confidence and conservative game state, consider not guessing
     // Trait modifiers: high confidence/riskiness AI won't bail on low confidence
     const traitBailResist = (traits.confidence > 70 || traits.riskiness > 70);
@@ -1370,6 +1382,7 @@ Respond with valid JSON (single object, no markdown):
 
     // Update card mark to show we're about to guess this one
     aiMarkCard(game, card.index, 'yes');
+    await setTeamMarkerInFirestore(game.id, team, card.index, 'yes');
     await humanDelay(500, 1000);
 
     // Submit the guess by simulating card click on Firestore
@@ -1577,18 +1590,6 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
   let contextPrompt = '';
   if (context === 'reply' && lastMessage) {
     contextPrompt = `Someone on your team just sent this message:\n${lastMessage}\n\nReply like a real teammate. Keep it short (1 line). If they asked a question, answer it. If they suggested a board word, only reference words that are actually on the board.${chatContext ? ` Respond to what they said.` : ''}`;
-  } else if (context === 'opponent_clue_observe' && opts?.opponentClue) {
-    const oc = opts.opponentClue;
-    contextPrompt = `The opponent just gave the clue "${String(oc.word || '').toUpperCase()}" for ${Number(oc.number || 0)}. Give a quick heads-up to your team (1 short line). If you mention any board words, ONLY use words from the unrevealed list. Focus on likely opponent targets / traps and suggest marking them as X (no). Avoid sounding like a robot.`;
-  } else if (context === 'opponent_clue_observe' && opts && opts.opponentClue) {
-    const oc = opts.opponentClue;
-    contextPrompt = `The opponent just gave the clue "${String(oc.word || '').toUpperCase()}" for ${Number(oc.number || 0)}. Give a quick heads-up to your team (1 short line). If you mention any board words, ONLY use words from the unrevealed list. Focus on likely opponent targets / traps and suggest marking them as X (no). Avoid sounding like a robot.`;
-  } else if (context === 'opponent_clue_observe' && opts && opts.opponentClue) {
-    const oc = opts.opponentClue;
-    contextPrompt = `The opponent just gave the clue "${String(oc.word || '').toUpperCase()}" for ${Number(oc.number || 0)}. Give a quick heads-up to your team (1 short line). If you mention any board words, ONLY use words from the unrevealed list. Focus on likely opponent targets / traps and suggest marking them as X (no). Avoid sounding like a robot.`;
-  } else if (context === 'opponent_clue_observe' && opts && opts.opponentClue) {
-    const oc = opts.opponentClue;
-    contextPrompt = `The opponent just gave the clue "${String(oc.word || '').toUpperCase()}" for ${Number(oc.number || 0)}. Give a quick heads-up to your team (1 short line). If you mention any board words, ONLY use words from the unrevealed list. Focus on likely opponent targets / traps and suggest marking them as X (no). Avoid sounding like a robot.`;
   } else if (context === 'pre_guess' && currentClue) {
     // Count guesses made so far for this clue
     const clueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
@@ -1862,19 +1863,27 @@ function startAIGameLoop() {
 
     const currentTeam = game.currentTeam;
 
-
-    // When the opponent gives a clue, have one AI on the non-active team observe it
-    // and mark likely opponent words as "no" (X) so humans + AIs can avoid them later.
-    if (game.currentPhase === 'operatives' && game.currentClue && currentTeam) {
-      const otherTeam = currentTeam === 'red' ? 'blue' : 'red';
-      const observers = (aiPlayers || []).filter(a => a && a.team === otherTeam && String(a.seatRole || '') !== 'spymaster');
-      if (observers.length) {
-        const observer = observers[Math.floor(Math.random() * observers.length)];
-        if (observer && !aiThinkingState[observer.id]) {
-          await aiProcessOpponentClue(observer, game);
-        }
-      }
+// Defensive marking: when the OTHER team is playing and gives a clue, allow our operatives
+// to overhear it and mark likely opponent targets with X (no) / maybe.
+if (game.currentPhase === 'operatives' && game.currentClue && (currentTeam === 'red' || currentTeam === 'blue')) {
+  const clueKey = `${currentTeam}:${String(game.currentClue.word || '').toUpperCase()}:${Number(game.currentClue.number || 0)}`;
+  const teams = ['red','blue'];
+  for (const t of teams) {
+    if (t === currentTeam) continue;
+    const k = `${gameId}:${t}`;
+    if (aiOpponentClueProcessed[k] === clueKey) continue;
+    const defenders = getAIOperatives(t);
+    const pick = defenders && defenders.length ? defenders[0] : null;
+    if (pick && !aiThinkingState[pick.id]) {
+      aiOpponentClueProcessed[k] = clueKey;
+      aiThinkingState[pick.id] = true;
+      await humanDelay(900, 2200);
+      await aiAnalyzeOpponentClueAndMarkAvoid(pick, game, game.currentClue);
+      aiThinkingState[pick.id] = false;
     }
+  }
+}
+
 
     // Spymaster phase
     if (game.currentPhase === 'spymaster') {

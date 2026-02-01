@@ -11842,3 +11842,23 @@ body.light-mode .confirm-icon-btn {
 body.light-mode .mode-modal {
   background: rgba(30,50,75,0.38);
 }
+
+/* Quick Lobby: AI remove + traits */
+.quick-player { position: relative; }
+.quick-player.is-ai { padding-right: 34px; }
+.quick-remove-ai {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+.quick-remove-ai:hover { background: rgba(0,0,0,0.4); }
+.ai-traits-link { text-decoration: underline dotted; text-underline-offset: 3px; }
