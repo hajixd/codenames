@@ -73,28 +73,15 @@ async function verifyAIReady(ai) {
 
   try {
     const result = await aiChatCompletion([
-      { role: 'system', content: 'You are testing connectivity. Respond with a JSON object containing a "status" field set to "Ready". Example: {"status": "Ready"}' },
-      { role: 'user', content: 'Are you ready? Respond as JSON.' }
-    ], {
-      max_tokens: 20,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-    });
+      { role: 'system', content: 'You are testing connectivity. Respond with exactly the word "Ready" and nothing else.' },
+      { role: 'user', content: 'Are you ready?' }
+    ], { max_tokens: 10, temperature: 0 });
 
-    let parsed;
-    try {
-      parsed = JSON.parse(result);
-    } catch {
-      const match = result.match(/\{[\s\S]*?\}/);
-      if (match) parsed = JSON.parse(match[0]);
-      else throw new Error('Could not parse ready check JSON');
-    }
-
-    if (parsed?.status === 'Ready') {
+    if (result && result.trim().length > 0) {
       ai.statusColor = 'green';
     } else {
       ai.statusColor = 'yellow';
-      console.warn(`AI ${ai.name} ready check returned: ${JSON.stringify(parsed)} (expected {"status": "Ready"})`);
+      console.warn(`AI ${ai.name} ready check returned empty response`);
     }
   } catch (err) {
     ai.statusColor = 'red';
