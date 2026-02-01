@@ -2754,8 +2754,12 @@ body.light .chat-meta{ color: var(--text); }
   transition: opacity 120ms ease, color 120ms ease;
 }
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
-.quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
+.quick-seat-choice:hover{ opacity: 1; text-decoration: none; }
 .quick-seat-choice:active{ opacity: 1; }
+
+/* Underline only the label text (prevents +AI button hover from underlining the header) */
+.quick-seat-label{ display:inline-block; }
+.quick-seat-label:hover{ text-decoration: underline; text-underline-offset: 4px; }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
@@ -4721,37 +4725,15 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 
 
 
-/* Normal game log (readable): keep the layout simple and let only key words be colored */
-.game-log-entries { gap: 0; }
-
-.log-entry {
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  padding: 10px 8px 10px 12px !important;
-  line-height: 1.5 !important;
-  overflow: visible !important;
-  color: rgba(255, 255, 255, 0.92) !important;
+/* Game log: card-style entries (keep the fun colors) */
+.game-log-entries{ gap: 8px; }
+.log-entry{
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
-
-.log-entry + .log-entry { border-top: 1px solid rgba(255, 255, 255, 0.06); }
-
-.log-entry::before { display: none !important; }
-
-.log-entry.team-red { border-left: 3px solid rgba(239, 68, 68, 0.85); padding-left: 10px !important; }
-.log-entry.team-blue { border-left: 3px solid rgba(59, 130, 246, 0.85); padding-left: 10px !important; }
-
-/* Remove full-row type tinting; keep semantic emphasis on the tokens/quotes only */
-.log-entry.type-clue,
-.log-entry.type-start,
-.log-entry.type-end,
-.log-entry.type-correct,
-.log-entry.type-wrong,
-.log-entry.type-neutral,
-.log-entry.type-assassin {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
+.log-entry:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.30);
 }
 /* Game Actions */
 .game-actions {

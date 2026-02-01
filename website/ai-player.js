@@ -26,6 +26,8 @@ const AI_NAMES = [
 let aiPlayers = []; // { id, name, team, seatRole, mode, status, statusColor }
 let aiIntervals = {}; // keyed by ai id → interval handle for game loop
 let aiChatTimers = {}; // keyed by ai id → timeout for delayed chat
+let aiLastChatSeenMs = {}; // keyed by ai id → last seen team-chat timestamp
+let aiLastChatReplyMs = {}; // keyed by ai id → last time we replied
 let aiNextId = 1;
 
 // ─── Multi-client AI hosting (one "controller" runs the AI loop) ─────────────
@@ -122,7 +124,8 @@ function extractAIPlayersFromGame(game) {
         name: String(p.name || 'AI'),
         team,
         seatRole: (String(p.role || 'operative') === 'spymaster') ? 'spymaster' : 'operative',
-        mode: String(p.aiMode || 'autonomous'),
+        // Helper mode was removed; coerce any legacy values to autonomous
+        mode: (String(p.aiMode || 'autonomous').toLowerCase() === 'helper') ? 'autonomous' : String(p.aiMode || 'autonomous'),
         // IMPORTANT: other clients may not have local ready-check state.
         // Derive the lobby indicator from Firestore ready flag so AIs don't show
         // "CHECKING" forever on non-host clients.
@@ -249,6 +252,32 @@ async function fetchRecentTeamChat(gameId, teamColor, limit = 15) {
   }
 }
 
+// Structured chat fetch (for conversational replies + de-duplication).
+async function fetchRecentTeamChatDocs(gameId, teamColor, limit = 12) {
+  try {
+    const snap = await db.collection('games').doc(gameId)
+      .collection(`${teamColor}Chat`)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    const out = snap.docs.map(d => {
+      const m = d.data() || {};
+      return {
+        senderId: String(m.senderId || ''),
+        senderName: String(m.senderName || ''),
+        text: String(m.text || ''),
+        createdAtMs: tsToMs(m.createdAt),
+      };
+    }).reverse();
+
+    return out;
+  } catch (e) {
+    console.warn('Failed to fetch team chat docs for AI:', e);
+    return [];
+  }
+}
+
 // ─── Ready-Up Verification ──────────────────────────────────────────────────
 
 async function verifyAIReady(ai) {
@@ -332,7 +361,8 @@ async function addAIPlayer(team, seatRole, mode) {
     name,
     team,
     seatRole,
-    mode, // 'helper' or 'autonomous'
+    // Helper mode removed; keep the field for compatibility
+    mode: 'autonomous',
     statusColor: 'none', // 'none' → 'red'|'yellow'|'green'
     ready: false,
     isAI: true,
@@ -1017,7 +1047,7 @@ Respond with valid JSON:
     await aiRevealCard(ai, game, card.index);
 
     // React after guess
-    if (ai.mode === 'autonomous' || ai.mode === 'helper') {
+    if (ai.mode === 'autonomous') {
       await humanDelay(1500, 3000);
       const freshGame = await getGameSnapshot(game.id);
       if (freshGame) {
@@ -1170,7 +1200,7 @@ async function aiConsiderEndTurn(ai, game, forceEnd = false) {
 
 // ─── AI Chat & Reactions ────────────────────────────────────────────────────
 
-async function generateAIChatMessage(ai, game, context) {
+async function generateAIChatMessage(ai, game, context, opts = {}) {
   const team = ai.team;
   const currentClue = game.currentClue;
   const summary = buildGameSummary(game, team, false);
@@ -1183,8 +1213,15 @@ async function generateAIChatMessage(ai, game, context) {
   const teamChat = await fetchRecentTeamChat(game.id, team, 10);
   const chatContext = teamChat ? `\nRecent team chat:\n${teamChat}` : '';
 
+  const lastMessage = (opts && opts.lastMessage) ? String(opts.lastMessage).trim() : '';
+  const boardGuard = unrevealed.length
+    ? `\nUNREVEALED BOARD WORDS (if you mention a board word/guess, ONLY use words from this list; don't invent new board words):\n${unrevealed.join(', ')}`
+    : '';
+
   let contextPrompt = '';
-  if (context === 'pre_guess' && currentClue) {
+  if (context === 'reply' && lastMessage) {
+    contextPrompt = `Someone on your team just sent this message:\n${lastMessage}\n\nReply like a real teammate. Keep it short (1 line). If they asked a question, answer it. If they suggested a board word, only reference words that are actually on the board.${chatContext ? ` Respond to what they said.` : ''}`;
+  } else if (context === 'pre_guess' && currentClue) {
     // Count guesses made so far for this clue
     const clueResults = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
       .filter(c => c.word === currentClue.word && c.team === game.currentTeam)
@@ -1212,7 +1249,15 @@ async function generateAIChatMessage(ai, game, context) {
     contextPrompt += `\n${chatContext}`;
   }
 
-  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team. You chat naturally in short, informal messages. No emojis unless it feels natural. Don't be overly enthusiastic. Sound like a real person in a game chat. Never mention being an AI. Never use formal language. Keep responses very brief. If your teammates message you, respond to what they're saying - you're working together as a team.`;
+  if (boardGuard) {
+    contextPrompt += `${boardGuard}`;
+  }
+
+  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team.
+Write like you're texting: short, informal, mostly lowercase, minimal punctuation. No "assistant" tone.
+Don't mention being an AI.
+If you reference a board word/guess, ONLY use words that are actually on the board list provided.
+If teammates say something, respond directly to them like a teammate.`;
 
   try {
     const result = await aiChatCompletion([
@@ -1271,19 +1316,58 @@ async function sendAIChatMessage(ai, game, text) {
   }
 }
 
-// ─── AI Helper Mode: Observe & React ────────────────────────────────────────
+// Lightweight conversational replies (texting vibes) so the AI can react to humans/other AIs.
+async function maybeAIRespondToTeamChat(ai, game) {
+  try {
+    if (!ai || !game?.id) return;
+    if (aiThinkingState[ai.id]) return;
 
-async function aiHelperObserve(ai, game) {
-  // Helper mode: react to clues, discuss strategy in chat, but NEVER guess or give clues
-  if (ai.seatRole === 'spymaster') return; // Helpers can't be spymasters
+    const now = Date.now();
+    const lastReply = Number(aiLastChatReplyMs[ai.id] || 0);
+    // Hard throttle to avoid spam
+    if (now - lastReply < 20000) return;
 
-  const team = ai.team;
-  if (game.currentTeam !== team) return;
+    const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 12);
+    if (!msgs || !msgs.length) return;
 
-  // React to new clues
-  if (game.currentPhase === 'operatives' && game.currentClue) {
-    const chatMsg = await generateAIChatMessage(ai, game, 'new_clue');
-    if (chatMsg) await sendAIChatMessage(ai, game, chatMsg);
+    const newest = Math.max(...msgs.map(m => Number(m.createdAtMs || 0)));
+    const lastSeen = Number(aiLastChatSeenMs[ai.id] || 0);
+    if (!lastSeen) {
+      // First time: mark as seen but don't reply
+      aiLastChatSeenMs[ai.id] = newest;
+      return;
+    }
+
+    // Find the most recent new message not from this AI
+    const fresh = msgs.filter(m => (Number(m.createdAtMs || 0) > lastSeen) && String(m.senderId || '') !== String(ai.odId || ''));
+    aiLastChatSeenMs[ai.id] = newest;
+    if (!fresh.length) return;
+
+    const last = fresh[fresh.length - 1];
+    const text = String(last.text || '').trim();
+    if (!text) return;
+
+    const lower = text.toLowerCase();
+    const nameHit = ai.name ? lower.includes(String(ai.name).toLowerCase()) : false;
+    const directHit = nameHit || lower.includes('ai') || lower.includes('bot');
+    const question = /\?\s*$/.test(text) || lower.includes('thoughts') || lower.includes('what do you think');
+
+    // Only reply when it looks conversational or direct
+    if (!directHit && !question) return;
+    // Add a little variability so it doesn't feel mechanical
+    if (!directHit && Math.random() < 0.35) return;
+
+    aiThinkingState[ai.id] = true;
+    await humanDelay(900, 2200);
+    const reply = await generateAIChatMessage(ai, game, 'reply', { lastMessage: `${last.senderName}: ${text}` });
+    if (reply) {
+      await sendAIChatMessage(ai, game, reply);
+      aiLastChatReplyMs[ai.id] = Date.now();
+    }
+  } catch (e) {
+    // don't crash the main loop
+  } finally {
+    aiThinkingState[ai.id] = false;
   }
 }
 
@@ -1376,6 +1460,14 @@ function startAIGameLoop() {
       return;
     }
 
+    // Low-frequency chat listening so AIs can actually "converse".
+    // (Throttled inside maybeAIRespondToTeamChat to avoid spam.)
+    const chatCandidates = (aiPlayers || []).filter(a => a && a.mode === 'autonomous');
+    if (chatCandidates.length && Math.random() < 0.55) {
+      const pick = chatCandidates[Math.floor(Math.random() * chatCandidates.length)];
+      await maybeAIRespondToTeamChat(pick, game);
+    }
+
     // Role selection phase
     if (game.currentPhase === 'role-selection') {
       for (const ai of aiPlayers) {
@@ -1442,23 +1534,8 @@ function startAIGameLoop() {
             }
             break; // One guess at a time
           }
-        } else if (ai.mode === 'helper') {
-          // Helper: just chat and react
-          await aiHelperObserve(ai, game);
         }
       }
-
-      // Also let helper AIs on the current team chat
-      const helperAIs = aiOps.filter(a => a.mode === 'helper');
-      for (const helper of helperAIs) {
-        if (!aiThinkingState[helper.id] && Math.random() < 0.15) {
-          aiThinkingState[helper.id] = true;
-          const msg = await generateAIChatMessage(helper, game, 'discuss');
-          if (msg) await sendAIChatMessage(helper, game, msg);
-          aiThinkingState[helper.id] = false;
-        }
-      }
-
       return;
     }
   }, 3000); // Check every 3 seconds

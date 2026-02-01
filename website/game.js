@@ -4340,100 +4340,40 @@ if (originalLeaveQuickGame) {
    - Game loop hooks
 ========================= */
 
-// ─── AI Modal ────────────────────────────────────────────────────────────────
-let pendingAITeam = null;
-let pendingAISeatRole = null;
-
-function openAIModal(team, seatRole) {
-  pendingAITeam = team;
-  pendingAISeatRole = seatRole;
-
-  const modal = document.getElementById('ai-mode-modal');
-  if (!modal) return;
-
-  const subtitle = document.getElementById('ai-mode-subtitle');
-  const statusEl = document.getElementById('ai-mode-status');
-  const teamLabel = team === 'red' ? 'Red' : 'Blue';
-  const roleLabel = seatRole === 'spymaster' ? 'Spymaster' : 'Operative';
-
-  if (subtitle) subtitle.textContent = `Adding AI ${roleLabel} to ${teamLabel} team`;
-  if (statusEl) statusEl.textContent = '';
-
-  // Helper mode not available for spymaster (helpers don't give clues)
-  const helperBtn = document.getElementById('ai-mode-helper');
-  if (helperBtn) {
-    helperBtn.disabled = (seatRole === 'spymaster');
-    helperBtn.title = (seatRole === 'spymaster') ? 'Helpers cannot be Spymasters' : '';
-  }
-
-  // Check max AI limit
-  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
-  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
-  if (currentCount >= max) {
-    if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
-  }
-
-  modal.style.display = 'flex';
-  void modal.offsetWidth;
-  modal.classList.add('modal-open');
-  modal.setAttribute('aria-hidden', 'false');
-}
-
-function closeAIModal() {
-  const modal = document.getElementById('ai-mode-modal');
-  if (!modal) return;
-  modal.classList.remove('modal-open');
-  setTimeout(() => {
-    if (!modal.classList.contains('modal-open')) modal.style.display = 'none';
-  }, 200);
-  modal.setAttribute('aria-hidden', 'true');
-  pendingAITeam = null;
-  pendingAISeatRole = null;
-}
-
-window.openAIModal = openAIModal;
-window.closeAIModal = closeAIModal;
-
-async function handleAIModeSelect(mode) {
-  if (!pendingAITeam || !pendingAISeatRole) return;
-
-  const statusEl = document.getElementById('ai-mode-status');
-
-  // Check max
-  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(pendingAITeam) : 0;
-  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
-  if (currentCount >= max) {
-    if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
-    return;
-  }
-
-  if (statusEl) statusEl.textContent = 'Adding AI player...';
-
+// ─── +AI: add an Autonomous AI directly (no mode popup) ────────────────────
+async function addAIAutonomous(team, seatRole) {
   try {
-    const ai = await addAIPlayer(pendingAITeam, pendingAISeatRole, mode);
-    if (ai) {
-      if (statusEl) {
-        if (ai.statusColor === 'green') statusEl.textContent = `${ai.name} is ready!`;
-        else if (ai.statusColor === 'yellow') statusEl.textContent = `${ai.name} connected but verification partial.`;
-        else if (ai.statusColor === 'red') statusEl.textContent = `${ai.name} failed to connect. Check API.`;
-        else statusEl.textContent = `${ai.name} added.`;
-      }
-      // Close modal after short delay
-      setTimeout(closeAIModal, 800);
+    const statusEl = document.getElementById('quick-lobby-status');
+
+    const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
+    const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
+    if (currentCount >= max) {
+      if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
+      return;
+    }
+
+    if (statusEl) statusEl.textContent = 'Adding AI…';
+    const ai = await addAIPlayer(team, seatRole, 'autonomous');
+    if (!ai) {
+      if (statusEl) statusEl.textContent = 'Failed to add AI.';
+      return;
+    }
+
+    if (statusEl) {
+      if (ai.statusColor === 'green') statusEl.textContent = `AI ${ai.name} joined (ready).`;
+      else if (ai.statusColor === 'yellow') statusEl.textContent = `AI ${ai.name} joined (partial).`;
+      else if (ai.statusColor === 'red') statusEl.textContent = `AI ${ai.name} joined (error).`;
+      else statusEl.textContent = `AI ${ai.name} joined.`;
+      setTimeout(() => { try { if (statusEl.textContent?.includes('AI')) statusEl.textContent = ''; } catch (_) {} }, 2500);
     }
   } catch (e) {
     console.error('Add AI failed:', e);
-    if (statusEl) statusEl.textContent = 'Failed to add AI player.';
+    const statusEl = document.getElementById('quick-lobby-status');
+    if (statusEl) statusEl.textContent = 'Failed to add AI.';
   }
 }
 
-// Wire up modal buttons
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('ai-mode-helper')?.addEventListener('click', () => handleAIModeSelect('helper'));
-  document.getElementById('ai-mode-autonomous')?.addEventListener('click', () => handleAIModeSelect('autonomous'));
-  document.getElementById('ai-mode-modal-close')?.addEventListener('click', closeAIModal);
-  document.getElementById('ai-mode-modal-backdrop')?.addEventListener('click', closeAIModal);
-});
+window.addAIAutonomous = addAIAutonomous;
 
 // ─── Enhanced Lobby Rendering with AI Players ────────────────────────────────
 
@@ -4481,13 +4421,13 @@ function renderQuickLobbyWithAI(game) {
         el.classList.add(`ai-status-${ai.statusColor}`);
       }
 
-      // Add AI mode badge
+      // Add AI badge (helper mode removed; all AIs are autonomous)
       const existingBadge = el.querySelector('.ai-badge');
       if (!existingBadge) {
         const badge = document.createElement('span');
-        badge.className = `ai-badge ai-badge-${ai.mode}`;
-        badge.textContent = ai.mode === 'helper' ? 'HELPER' : 'AUTO';
-        badge.title = ai.mode === 'helper' ? 'AI Helper - chats only' : 'AI Autonomous - plays independently';
+        badge.className = 'ai-badge ai-badge-autonomous';
+        badge.textContent = 'AI';
+        badge.title = 'AI Autonomous - plays independently';
         el.appendChild(badge);
       }
 
