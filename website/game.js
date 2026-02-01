@@ -1105,10 +1105,7 @@ function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0,
   const cards = words.map((word, i) => ({
     word,
     type: keyCard[i],
-    revealed: false,
-    // Shared, non-revealing team marks (used by operatives to coordinate).
-    // Stored per card so they sync across all clients.
-    marks: { red: false, blue: false },
+    revealed: false
   }));
 
   return {
@@ -1426,18 +1423,6 @@ function bothTeamsFullyReady(game) {
   const red = Array.isArray(game.redPlayers) ? game.redPlayers : [];
   const blue = Array.isArray(game.bluePlayers) ? game.bluePlayers : [];
   if (red.length === 0 || blue.length === 0) return false;
-  // Require each team to have at least 1 spymaster and 1 operative (AIs count)
-  const hasRoles = (players) => {
-    let hasSpy = false;
-    let hasOp = false;
-    for (const p of players) {
-      const r = String(p?.role || 'operative');
-      if (r === 'spymaster') hasSpy = true;
-      else hasOp = true;
-    }
-    return hasSpy && hasOp;
-  };
-  if (!hasRoles(red) || !hasRoles(blue)) return false;
   return red.every(p => p.ready) && blue.every(p => p.ready);
 }
 
@@ -1691,18 +1676,12 @@ function renderQuickLobby(game) {
     } else {
       status.textContent = 'Game in progress…';
     }
+  } else if (bothTeamsFullyReady(game)) {
+    status.textContent = 'Everyone is ready — starting…';
+  } else if (red.length === 0 || blue.length === 0) {
+    status.textContent = '';
   } else {
-    const rolesOk =
-      (redSplit.spymasters.length > 0 && redSplit.operatives.length > 0) &&
-      (blueSplit.spymasters.length > 0 && blueSplit.operatives.length > 0);
-
-    if (bothTeamsFullyReady(game)) {
-      status.textContent = 'Everyone is ready — starting…';
-    } else if ((red.length > 0 && blue.length > 0) && !rolesOk) {
-      status.textContent = 'To start, each team needs 1 Spymaster and 1 Operative.';
-    } else {
-      status.textContent = '';
-    }
+    status.textContent = '';
   }
 }
 
@@ -2269,8 +2248,7 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
   const cards = words.map((word, i) => ({
     word,
     type: keyCard[i],
-    revealed: false,
-    marks: { red: false, blue: false },
+    revealed: false
   }));
 
   const gameData = {
@@ -2665,13 +2643,9 @@ function renderBoard(isSpymaster) {
     const canClick = !card.revealed && !isSpymaster;
     const clickHandler = canClick ? `onclick="handleCardClick(${i})"` : '';
 
-    const marks = card.marks || { red: false, blue: false };
-    const showMark = !!(myTeamColor && !spectator && marks[myTeamColor] && !card.revealed);
-
     return `
       <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
         <div class="card-checkmark" aria-hidden="true">✓</div>
-        ${showMark ? '<div class="card-mark" aria-label="Marked">✓</div>' : ''}
         <span class="card-word">${escapeHtml(card.word)}</span>
       </div>
     `;
@@ -2680,60 +2654,7 @@ function renderBoard(isSpymaster) {
   // Re-render tags and votes after board re-renders
   setTimeout(() => {
     renderCardTags();
-    attachCardMarkHandlers();
   }, 10);
-}
-
-// Right-click (or trackpad two-finger click) to toggle a shared team mark on an unrevealed card.
-function attachCardMarkHandlers() {
-  const boardEl = document.getElementById('game-board');
-  if (!boardEl) return;
-
-  const spectator = isSpectating();
-  const myTeamColor = getMyTeamColor();
-  if (spectator || !myTeamColor) return;
-
-  boardEl.querySelectorAll('.game-card').forEach((el) => {
-    el.oncontextmenu = async (e) => {
-      try { e.preventDefault(); } catch (_) {}
-      if (!currentGame || currentGame.winner) return;
-      const idx = Number(el.dataset.index);
-      if (!Number.isInteger(idx)) return;
-      const card = currentGame.cards?.[idx];
-      if (!card || card.revealed) return;
-      await toggleTeamMark(idx);
-    };
-  });
-}
-
-async function toggleTeamMark(cardIndex) {
-  if (!currentGame?.id) return;
-  if (isSpectating()) return;
-  const myTeamColor = getMyTeamColor();
-  if (!myTeamColor) return;
-
-  const card = currentGame.cards?.[cardIndex];
-  if (!card || card.revealed) return;
-
-  const updatedCards = [...currentGame.cards];
-  const marks = { ...(card.marks || { red: false, blue: false }) };
-  const next = !marks[myTeamColor];
-  marks[myTeamColor] = next;
-  updatedCards[cardIndex] = { ...card, marks };
-
-  const actor = getUserName() || 'Someone';
-  const action = next ? 'marked' : 'unmarked';
-  const logEntry = `${actor} ${action} "${card.word}".`;
-
-  try {
-    await db.collection('games').doc(currentGame.id).update({
-      cards: updatedCards,
-      log: firebase.firestore.FieldValue.arrayUnion(logEntry),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-  } catch (e) {
-    console.error('Failed to toggle mark:', e);
-  }
 }
 
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
@@ -2800,10 +2721,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       currentClueEl.style.display = 'flex';
       document.getElementById('clue-word').textContent = currentGame.currentClue.word;
       document.getElementById('clue-number').textContent = currentGame.currentClue.number;
-      const gr = Number(currentGame.guessesRemaining);
-      document.getElementById('guesses-left').textContent = (gr === -1)
-        ? '(∞ guesses)'
-        : `(${gr} guesses left)`;
+      document.getElementById('guesses-left').textContent = `(${currentGame.guessesRemaining} guesses left)`;
     }
 
     if (!spectator && isMyTurn && !isSpymaster) {
@@ -2887,18 +2805,7 @@ async function selectRole(role) {
   const willHaveRedSpymaster = updates.redSpymaster || currentGame.redSpymaster;
   const willHaveBlueSpymaster = updates.blueSpymaster || currentGame.blueSpymaster;
 
-  // NEW: require at least one operative (someone besides the spymaster) on each team.
-  const redRoster = Array.isArray(currentGame.redPlayers) ? currentGame.redPlayers : [];
-  const blueRoster = Array.isArray(currentGame.bluePlayers) ? currentGame.bluePlayers : [];
-  const hasOperative = (roster, spyName) => {
-    const s = String(spyName || '').trim();
-    if (!s) return false;
-    return roster.some(p => String(p?.name || '').trim() && String(p?.name || '').trim() !== s);
-  };
-
-  if (willHaveRedSpymaster && willHaveBlueSpymaster &&
-      hasOperative(redRoster, willHaveRedSpymaster) &&
-      hasOperative(blueRoster, willHaveBlueSpymaster)) {
+  if (willHaveRedSpymaster && willHaveBlueSpymaster) {
     updates.currentPhase = 'spymaster';
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
   }
@@ -2945,7 +2852,6 @@ async function handleClueSubmit(e) {
   }
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const actor = getUserName() || 'Someone';
 
   try {
     // Add clue to history
@@ -2959,10 +2865,9 @@ async function handleClueSubmit(e) {
 
     await db.collection('games').doc(currentGame.id).update({
       currentClue: { word, number },
-      // Unlimited guesses (operatives can keep guessing until they end turn or miss)
-      guessesRemaining: -1,
+      guessesRemaining: number + 1, // Can guess number + 1 times
       currentPhase: 'operatives',
-      log: firebase.firestore.FieldValue.arrayUnion(`${actor} (Spymaster) gave clue "${word}" ×${number}`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -3009,7 +2914,7 @@ async function handleCardClick(cardIndex) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
 
-  let logEntry = `${guessByName} guessed "${card.word}" - `;
+  let logEntry = `${teamName} guessed "${card.word}" - `;
   let endTurn = false;
   let winner = null;
 
@@ -3038,12 +2943,10 @@ async function handleCardClick(cardIndex) {
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
 
-    // Decrease guesses remaining (unless unlimited)
-    if (Number(currentGame.guessesRemaining) !== -1) {
-      updates.guessesRemaining = currentGame.guessesRemaining - 1;
-      if (updates.guessesRemaining <= 0 && !winner) {
-        endTurn = true;
-      }
+    // Decrease guesses remaining
+    updates.guessesRemaining = currentGame.guessesRemaining - 1;
+    if (updates.guessesRemaining <= 0 && !winner) {
+      endTurn = true;
     }
   } else if (card.type === 'neutral') {
     // Neutral - end turn
@@ -3112,7 +3015,6 @@ async function handleEndTurn() {
   if (currentGame.currentTeam !== myTeamColor) return;
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const actor = getUserName() || 'Someone';
 
   // Play end turn sound
   if (window.playSound) window.playSound('endTurn');
@@ -3123,7 +3025,7 @@ async function handleEndTurn() {
       currentPhase: 'spymaster',
       currentClue: null,
       guessesRemaining: 0,
-      log: firebase.firestore.FieldValue.arrayUnion(`${actor} ended ${teamName}'s turn.`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (e) {
@@ -4038,12 +3940,7 @@ async function addGuessToClueHistory(gameId, team, clueWord, clueNumber, guess) 
 
       const entry = { ...history[idx] };
       const results = Array.isArray(entry.results) ? [...entry.results] : [];
-      // Dedupe: a revealed card can't be guessed twice, but multi-client updates
-      // (or retries) can cause duplicate writes. If the word already exists in
-      // this clue's results, ignore.
-      const gWord = String(guess?.word || '').trim().toUpperCase();
-      const already = results.some(r => String(r?.word || '').trim().toUpperCase() === gWord);
-      if (!already) results.push(guess);
+      results.push(guess);
       entry.results = results;
       history[idx] = entry;
 

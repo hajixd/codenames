@@ -87,25 +87,6 @@ body.light-mode {
   transform: scale(1);
 }
 
-/* Shared team mark (right-click to toggle). */
-.game-card .card-mark{
-  position:absolute;
-  bottom:6px;
-  right:6px;
-  width:22px;
-  height:22px;
-  border-radius:7px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background: rgba(16,185,129,0.15);
-  border: 1px solid rgba(16,185,129,0.35);
-  color: rgba(16,185,129,0.95);
-  font-size: 14px;
-  font-weight: 900;
-  pointer-events:none;
-}
-
 .game-card.pending-select:not(.revealed):not(.disabled){
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(59,130,246,0.22);
@@ -125,12 +106,6 @@ html, body {
   height: 100vh;   /* fallback */
   height: 100dvh;  /* preferred */
   overflow: hidden;
-}
-
-/* Ensure the iOS safe-area / letterbox uses the same background as the app.
-   (Without this, some devices show a black bar behind the home indicator.) */
-html {
-  background: var(--bg);
 }
 
 body {
@@ -185,26 +160,6 @@ body.tournament #play-mode-select{ display:none !important; }
 
 /* ==================== DESKTOP ==================== */
 @media (min-width: 769px) {
-  /* Desktop: slightly tighter overall sizing (requested). */
-  body{ font-size: 14px; }
-
-  .panel-inner{
-    max-width: 720px;
-    padding: 26px 22px;
-  }
-
-  .spots-number{ font-size: 48px; }
-
-  /* Game board + header tighten-up */
-  .game-container-expanded{ padding: 10px 16px; gap: 7px; }
-  .game-header-expanded{ padding: 6px 12px; }
-  .topbar-score-num{ font-size: 20px; }
-  .topbar-team-names{ --topbar-name-size: 11.5px; }
-
-  .game-board{ gap: 6px; margin-bottom: 14px; }
-  .game-card{ padding: 5px; border-radius: 8px; }
-  .game-card .card-word{ font-size: 11px; }
-
   /* On desktop we use a sleek top tab bar (not the mobile bottom tabs) */
   .mobile-tabs { display: none; }
 
@@ -3176,8 +3131,8 @@ body.light .chat-meta{ color: var(--text); }
   body.quickplay .panel-game .panel-inner{
     padding: 14px;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-    height: 100vh;  /* fallback */
-    height: 100dvh; /* preferred */
+    height: 100dvh;
+  height: 100vh; /* fallback */
     min-height: 0;
   }
 
@@ -3189,8 +3144,8 @@ body.light .chat-meta{ color: var(--text); }
   body.quickplay #quick-play-lobby{
     display: flex;
     flex-direction: column;
-    height: 100vh;  /* fallback */
-    height: 100dvh; /* preferred */
+    height: 100dvh;
+  height: 100vh; /* fallback */
     min-height: 0;
   }
 
@@ -6849,8 +6804,7 @@ body.tournament.has-team-color .input:focus {
     height: auto;
     max-height: none;
     flex: 1 1 auto;
-    /* Add bottom safe-area padding so the home indicator area never blocks controls */
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 12px;
   }
 }
 
