@@ -747,7 +747,6 @@
 
                   <!-- Card Tagging Legend (for operatives) -->
                   <div class="card-tag-legend" id="card-tag-legend" style="display:none;">
-                    <span class="tag-legend-title">Mark cards:</span>
                     <div class="tag-legend-items">
                       <button class="tag-btn tag-yes" data-tag="yes" title="Likely correct">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -762,7 +761,6 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                       </button>
                     </div>
-                    <span class="tag-legend-hint">Click a mark, then click cards</span>
                   </div>
 
                   <!-- Action Bar -->
@@ -1108,29 +1106,19 @@
 
               <!-- Admin Actions (visible to everyone; disabled unless admin) -->
               <div class="settings-admin" id="settings-admin">
-                <div class="settings-section-title">Admin</div>
                 <div class="settings-admin-actions">
-                  <button class="settings-row settings-row-action" id="admin-backup-now-btn" type="button">
-                    <span class="settings-row-label">Backup Teams/Players Now</span>
-                    <span class="settings-row-meta">Admin</span>
-                  </button>
-                  <button class="settings-row settings-row-action" id="admin-logs-btn" type="button">
-                    <span class="settings-row-label">Logs</span>
-                    <span class="settings-row-meta">Admin</span>
-                  </button>
-                  <button class="settings-row settings-row-action" id="admin-restore-5min-btn" type="button">
-                    <span class="settings-row-label">Restore Teams/Players (5 min ago)</span>
-                    <span class="settings-row-meta">Admin</span>
-                  </button>
+                  <button class="btn" id="admin-backup-now-btn" type="button">Backup</button>
+                  <button class="btn" id="admin-logs-btn" type="button">Logs</button>
+                  <button class="btn" id="admin-restore-5min-btn" type="button">Restore 15m</button>
                 </div>
                 <div class="hint" id="admin-restore-hint" aria-live="polite"></div>
               </div>
 
               <!-- In-Game Actions (shown whenever a user is in an active game) -->
-              <div class="settings-in-game-actions" id="settings-in-game-actions" style="display:none;">
+              <div class="settings-in-game-actions" id="settings-in-game-actions">
                                 <div class="settings-account-actions">
-                  <button class="btn" id="leave-game-btn" type="button">Leave Game</button>
-                  <button class="btn danger" id="end-game-btn" type="button">End Game</button>
+                  <button class="btn" id="leave-game-btn" type="button" disabled>Leave Game</button>
+                  <button class="btn danger" id="end-game-btn" type="button" disabled>End Game</button>
                 </div>
               </div>
             </div>

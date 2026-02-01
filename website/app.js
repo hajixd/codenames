@@ -5886,7 +5886,7 @@ function initSettings() {
 
     const ok = await showCustomConfirm({
       title: 'Restore tournament data?',
-      message: `This will <b>replace</b> the live <span class="mono">teams</span> and <span class="mono">players</span> collections with the most recent admin backup from <b>at or before ~5 minutes ago</b>.<br><br><b>There is no undo.</b>`,
+      message: `This will <b>replace</b> the live <span class="mono">teams</span> and <span class="mono">players</span> collections with the most recent admin backup from <b>at or before ~15 minutes ago</b>.<br><br><b>There is no undo.</b>`,
       okText: 'Restore',
       danger: true
     });
@@ -5896,7 +5896,7 @@ function initSettings() {
     adminRestoreBtn.disabled = true;
     try {
       setAdminHint('Restoring teams/players from backup…');
-      const r = await adminRestoreFromMinutesAgo(5);
+      const r = await adminRestoreFromMinutesAgo(15);
       setAdminHint(`Restored from backup ${r.restoredFromBackupId} (${r.teams} teams, ${r.players} players).`);
     } catch (e) {
       setAdminHint(e?.message || 'Restore failed.');

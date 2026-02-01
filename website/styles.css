@@ -4673,6 +4673,8 @@ button.player-tag.pill-action:disabled{
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .log-entry {
@@ -6127,14 +6129,14 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-modal-card {
   position: fixed;
-  top: 45%;
+  top: 52%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1000;
   width: 90%;
   /* Slightly smaller than before; content scrolls inside. */
-  max-width: 300px;
-  max-height: min(70vh, 560px);
+  max-width: 280px;
+  max-height: min(62vh, 520px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -6188,6 +6190,7 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 /* Disabled settings: visible but not clickable */
 .settings-row.is-disabled,
 .settings-account-actions .btn.is-disabled,
+.settings-admin-actions .btn.is-disabled,
 .settings-danger-actions .btn.is-disabled{
   opacity: .45;
   cursor: not-allowed;
@@ -6251,8 +6254,13 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-admin-actions {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-admin-actions .btn {
+  width: 100%;
+  justify-content: center;
 }
 
 /* Danger actions should look like regular full-width settings buttons */

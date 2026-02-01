@@ -2630,7 +2630,8 @@ function updateSettingsInGameActions(isInGame) {
   const section = document.getElementById('settings-in-game-actions');
   if (!section) return;
 
-  section.style.display = isInGame ? 'block' : 'none';
+  // Keep actions visible at all times; disable when not available.
+  section.style.display = 'block';
 
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
@@ -2647,11 +2648,17 @@ function updateSettingsInGameActions(isInGame) {
   if (leaveBtn) {
     // Label updated in renderGame (Leave vs Stop Spectating)
     leaveBtn.disabled = !isInGame;
+    leaveBtn.title = leaveBtn.disabled ? 'Join a game to use this' : '';
   }
 
   if (endBtn) {
-    endBtn.disabled = !canEnd;
-    endBtn.title = canEnd ? '' : (spectator ? 'Spectators cannot end tournament games' : 'Only spymasters can end tournament games');
+    const canUse = isInGame && canEnd;
+    endBtn.disabled = !canUse;
+    if (!isInGame) {
+      endBtn.title = 'Join a game to use this';
+    } else {
+      endBtn.title = canUse ? '' : (spectator ? 'Spectators cannot end tournament games' : 'Only spymasters can end tournament games');
+    }
   }
 }
 
@@ -2663,9 +2670,6 @@ function renderGame() {
 
   showGameBoard();
 
-  // Settings: show in-game actions whenever a user is actively in a game.
-  updateSettingsInGameActions(true);
-
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
   const isSpymaster = !spectator && isCurrentUserSpymaster();
@@ -2674,16 +2678,8 @@ function renderGame() {
   const leaveBtn = document.getElementById('leave-game-btn');
   if (leaveBtn) leaveBtn.textContent = spectator ? 'Stop Spectating' : 'Leave Game';
 
-  const endBtn = document.getElementById('end-game-btn');
-  if (endBtn) {
-    // Keep the action visible in settings.
-    // Tournament: spymaster only. Quick Play: anyone can end.
-    const isQuick = currentGame.type === 'quick';
-    endBtn.disabled = isQuick ? false : (!!spectator || !isSpymaster);
-    endBtn.title = endBtn.disabled
-      ? 'Only your team\'s spymaster can end tournament games'
-      : 'End the game for everyone';
-  }
+  // Settings: keep in-game actions visible, but only enable when allowed.
+  updateSettingsInGameActions(true);
 
   // Update header with team names and player counts for quick play
   const redTeamEl = document.getElementById('game-red-team');
@@ -2912,7 +2908,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       currentClueEl.style.display = 'flex';
       document.getElementById('clue-word').textContent = currentGame.currentClue.word;
       document.getElementById('clue-number').textContent = currentGame.currentClue.number;
-      document.getElementById('guesses-left').textContent = `(Unlimited guesses)`;
+      // Keep the UI minimal; we don't show an explicit "unlimited" label.
+      document.getElementById('guesses-left').textContent = '';
     }
 
     if (!spectator && isMyTurn && !isSpymaster) {
