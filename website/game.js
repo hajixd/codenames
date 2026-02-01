@@ -321,8 +321,8 @@ function initGameUI() {
 
   const redCol = document.getElementById('quick-red-col');
   const blueCol = document.getElementById('quick-blue-col');
-  redCol?.addEventListener('click', (e) => { if (e.target.closest('.btn-add-ai') || e.target.closest('.btn-remove-ai')) return; selectQuickRole('red'); });
-  blueCol?.addEventListener('click', (e) => { if (e.target.closest('.btn-add-ai') || e.target.closest('.btn-remove-ai')) return; selectQuickRole('blue'); });
+  redCol?.addEventListener('click', () => selectQuickRole('red'));
+  blueCol?.addEventListener('click', () => selectQuickRole('blue'));
   redCol?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectQuickRole('red'); }
   });
@@ -340,8 +340,6 @@ function initGameUI() {
     if (!el) return;
     const go = (e) => {
       if (e?.type === 'keydown' && !(e.key === 'Enter' || e.key === ' ')) return;
-      // Don't intercept AI button clicks
-      if (e?.target?.closest?.('.btn-add-ai') || e?.target?.closest?.('.btn-remove-ai')) return;
       e?.preventDefault?.();
       e?.stopPropagation?.();
 
@@ -906,8 +904,6 @@ async function startQuickLobbyListener() {
     if (currentPlayMode === 'quick') {
       renderQuickLobby(quickLobbyGame);
       maybeAutoStartQuickPlay(quickLobbyGame);
-      // Notify AI players of lobby/game state changes
-      try { window.notifyAIPlayersOfGameState?.(quickLobbyGame); } catch (_) {}
     }
   }, (err) => console.error('Quick Play lobby listener error:', err));
 }
@@ -1008,9 +1004,8 @@ async function checkAndRemoveInactiveLobbyPlayers(game) {
   const inactivePlayers = [];
 
   for (const p of [...redPlayers, ...bluePlayers, ...spectators]) {
-    // AI players are always considered active
-    if (p.isAI || (typeof p.odId === 'string' && p.odId.startsWith('ai_'))) continue;
     const status = presenceMap.get(p.odId);
+    // Remove players who are inactive or offline (or not in presence at all)
     // Remove players who are idle or offline (or not in presence at all)
     if (!status || status === 'idle' || status === 'offline') {
       inactivePlayers.push(p.odId);
@@ -1347,9 +1342,6 @@ async function leaveQuickLobby() {
     // Update role UI back to spectator highlight
     applyQuickRoleHighlight('spectator');
 
-    // Remove all AI players when leaving lobby
-    try { window.removeAllAIPlayers?.(); } catch (_) {}
-
     // Play leave sound
     if (window.playSound) window.playSound('leave');
 
@@ -1538,8 +1530,6 @@ function renderQuickLobby(game) {
     presenceMap.set(pr.odId || pr.id, status);
   }
   const isActive = (id) => {
-    // AI players are always considered active
-    if (typeof id === 'string' && id.startsWith('ai_')) return true;
     if (!presenceData.length) return true;
     return presenceMap.get(id) === 'online';
   };
@@ -1558,26 +1548,6 @@ function renderQuickLobby(game) {
       const isYou = p.odId === odId;
       const ready = !!p.ready;
       const playerId = p.odId || '';
-      const isAI = !!p.isAI;
-      const aiStatus = p.aiStatus || 'pending';
-      const aiMode = p.aiMode || '';
-
-      if (isAI) {
-        const statusClass = aiStatus === 'ready' ? 'ai-status-green'
-          : aiStatus === 'error' ? 'ai-status-red'
-          : aiStatus === 'warning' ? 'ai-status-yellow'
-          : 'ai-status-gray';
-        const modeBadge = aiMode === 'autonomous' ? 'AUTO' : 'HELPER';
-        return `
-          <div class="quick-player ai-player ${ready ? 'ready' : ''} ${statusClass}">
-            <span class="ai-status-dot ${statusClass}"></span>
-            <span class="quick-player-name ai-name">${escapeHtml(p.name)}</span>
-            <span class="ai-mode-badge">${modeBadge}</span>
-            <button class="btn-remove-ai" onclick="event.stopPropagation(); removeAIPlayer('${escapeHtml(playerId)}')" title="Remove AI">×</button>
-          </div>
-        `;
-      }
-
       return `
         <div class="quick-player ${ready ? 'ready' : ''}">
           <span class="quick-player-name ${playerId ? 'profile-link' : ''}" ${playerId ? `data-profile-type="player" data-profile-id="${escapeHtml(playerId)}"` : ''}>${escapeHtml(p.name)}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
@@ -2373,9 +2343,6 @@ function startGameListener(gameId, options = {}) {
     if (currentGame?.type === 'quick') {
       checkAndEndEmptyQuickPlayGame(currentGame);
     }
-
-    // Notify AI players of game state changes
-    try { window.notifyAIPlayersOfGameState?.(currentGame); } catch (_) {}
 
     renderGame();
   }, (err) => {
@@ -3453,17 +3420,13 @@ function renderOperativeChat(messages) {
 
   container.innerHTML = messages.map(msg => {
     const isMe = msg.senderId === odId;
-    const isAI = !!msg.isAI;
-    const aiMode = msg.aiMode || '';
     const time = msg.createdAt?.toDate?.() ? formatTime(msg.createdAt.toDate()) : '';
     const teamColor = getMyTeamColor();
-    const aiClass = isAI ? 'ai-chat-message' : '';
-    const aiLabel = isAI ? `<span class="ai-chat-badge">${aiMode === 'autonomous' ? 'AUTO' : 'HELPER'}</span>` : '';
 
     return `
-      <div class="chat-message ${isMe ? 'my-message' : ''} ${aiClass}">
+      <div class="chat-message ${isMe ? 'my-message' : ''}">
         <div class="chat-message-header">
-          <span class="chat-sender ${teamColor} ${isAI ? 'ai-sender' : ''}">${escapeHtml(msg.senderName)}${aiLabel}</span>
+          <span class="chat-sender ${teamColor}">${escapeHtml(msg.senderName)}</span>
           <span class="chat-time">${time}</span>
         </div>
         <div class="chat-text">${escapeHtml(msg.text)}</div>
@@ -3946,9 +3909,6 @@ function cleanupAdvancedFeatures() {
     operativeChatUnsub();
     operativeChatUnsub = null;
   }
-
-  // Cleanup AI players
-  try { window.removeAllAIPlayers?.(); } catch (_) {}
 
   cardTags = {};
   pendingCardSelection = null;

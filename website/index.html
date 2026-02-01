@@ -452,12 +452,12 @@
                       <div class="quick-team-status" id="quick-red-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters <button class="btn-add-ai" onclick="event.stopPropagation(); openAIModal('red','spymaster')" title="Add AI Spymaster">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster">Spymasters</div>
                           <div class="quick-team-list" id="quick-red-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives <button class="btn-add-ai" onclick="event.stopPropagation(); openAIModal('red','operative')" title="Add AI Operative">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative">Operatives</div>
                           <div class="quick-team-list" id="quick-red-operative-list"></div>
                         </div>
                       </div>
@@ -481,12 +481,12 @@
                       <div class="quick-team-status" id="quick-blue-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters <button class="btn-add-ai" onclick="event.stopPropagation(); openAIModal('blue','spymaster')" title="Add AI Spymaster">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster">Spymasters</div>
                           <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives <button class="btn-add-ai" onclick="event.stopPropagation(); openAIModal('blue','operative')" title="Add AI Operative">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative">Operatives</div>
                           <div class="quick-team-list" id="quick-blue-operative-list"></div>
                         </div>
                       </div>
@@ -1260,34 +1260,7 @@
 
 
 
-    <!-- AI Mode Selection Modal -->
-    <div class="modal ai-modal" id="ai-add-modal" style="display:none;" role="dialog" aria-modal="true" aria-label="Add AI Player">
-      <div class="modal-backdrop" id="ai-modal-backdrop"></div>
-      <div class="modal-card ai-modal-card">
-        <div class="modal-head">
-          <div class="modal-title">Add AI Player</div>
-          <button class="icon-btn" id="ai-modal-close" type="button" aria-label="Close" onclick="closeAIModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <p class="ai-modal-desc">Choose AI behavior mode:</p>
-          <div class="ai-mode-cards">
-            <button class="ai-mode-card" onclick="confirmAddAI('helper')" type="button">
-              <div class="ai-mode-icon">💬</div>
-              <div class="ai-mode-title">AI Helper</div>
-              <div class="ai-mode-desc">Chats and gives suggestions in team chat. Never selects cards or submits clues. A helpful teammate that assists with reasoning.</div>
-            </button>
-            <button class="ai-mode-card" onclick="confirmAddAI('autonomous')" type="button">
-              <div class="ai-mode-icon">🤖</div>
-              <div class="ai-mode-title">AI Autonomous</div>
-              <div class="ai-mode-desc">Fully autonomous player that reasons aloud, thinks in chat, may disagree with teammates, and makes its own moves when ready.</div>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <script src="app.js"></script>
     <script src="game.js"></script>
-    <script src="ai-player.js"></script>
   </body>
 </html>
