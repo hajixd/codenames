@@ -141,16 +141,6 @@ body {
   position: relative;
 }
 
-/* Small version badge in the top-left brand */
-.logo-version{
-  font-size: 10px;
-  letter-spacing: 0px;
-  font-weight: 800;
-  color: var(--text-dim);
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
 /* Subtle team glow frame */
 body.tournament.has-team-color::after{
   content:"";
@@ -262,15 +252,6 @@ body.tournament #play-mode-select{ display:none !important; }
     letter-spacing: 2px;
     cursor: pointer;
     user-select: none;
-  }
-
-  .logo .logo-version{
-    font-size: 10px;
-    letter-spacing: 0px;
-    font-weight: 800;
-    color: var(--text-dim);
-    margin-left: 6px;
-    vertical-align: middle;
   }
 
   /* (header-center removed for desktop) */
@@ -3104,11 +3085,7 @@ body.light-mode .chat-meta{ color: var(--text); }
   margin: 0;
   margin-top: -5vh;
   width: min(460px, calc(100vw - 24px));
-  display: flex;
-  flex-direction: column;
-  /* Fallback first, then dvh for iOS/modern browsers */
   max-height: calc(100vh - 140px);
-  max-height: calc(100dvh - 140px);
 
 }
 #quick-settings-modal .modal-head{
@@ -3119,9 +3096,7 @@ body.light-mode .chat-meta{ color: var(--text); }
 /* Quick Play settings: compact modal */
 #quick-settings-modal .modal-card{
   width: min(460px, calc(100vw - 24px));
-  /* Fallback first, then dvh for iOS/modern browsers */
   max-height: calc(100vh - 120px);
-  max-height: calc(100dvh - 120px);
 }
 #quick-settings-modal .modal-head{
   padding: 12px 14px;
@@ -3129,9 +3104,6 @@ body.light-mode .chat-meta{ color: var(--text); }
 #quick-settings-modal .modal-body{
   padding: 12px 14px 14px;
   touch-action: pan-y;
-  flex: 1 1 auto;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 #quick-settings-modal .qp-settings-banner{
   padding: 10px 10px;
@@ -3217,22 +3189,23 @@ body.light-mode .chat-meta{ color: var(--text); }
 
 /*
   Quick Play lobby on mobile:
-  - Allow normal vertical scrolling (users expect to scroll the lobby)
-  - Still reserve safe-area space on iOS
+  - Fit within the viewport (no page scrolling)
+  - Keep controls visible
+  - Allow *internal* scrolling inside player lists if needed
 */
 @media (max-width: 768px){
   /* Tabs are hidden in Quick Play mode, so remove the extra bottom padding reserved for them. */
   body.quickplay .panel-game .panel-inner{
     padding: 14px;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-    min-height: 100%;
+    height: 100dvh;
+  height: 100vh; /* fallback */
+    min-height: 0;
   }
 
-  /* In Quick Play we hide the bottom tab bar, so remove the reserved space
-     and let the panel scroll like the rest of the app. */
+  /* Avoid page scroll; the lobby itself manages its layout and internal scroll areas. */
   body.quickplay .panel-game{
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
     /* Tabs are hidden in Quick Play, so remove the 72px bottom offset
        that normally reserves space for the mobile tab bar. */
     bottom: 0;
@@ -3241,6 +3214,8 @@ body.light-mode .chat-meta{ color: var(--text); }
   body.quickplay #quick-play-lobby{
     display: flex;
     flex-direction: column;
+    height: 100dvh;
+  height: 100vh; /* fallback */
     min-height: 0;
   }
 
@@ -3288,7 +3263,7 @@ body.light-mode .chat-meta{ color: var(--text); }
     border-radius: 14px;
     min-width: 0;
     min-height: 180px; /* Ensure team boxes have good vertical presence */
-    overflow: visible;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
@@ -3310,7 +3285,7 @@ body.light-mode .chat-meta{ color: var(--text); }
     border-radius: 14px;
     padding: 10px;
     background: rgba(0,0,0,0.22);
-    max-height: none;
+    max-height: 120px; /* Keep spectators compact to give more room to teams */
   }
 
   body.quickplay .quick-team-head{ margin-bottom: 8px; }
@@ -3321,10 +3296,11 @@ body.light-mode .chat-meta{ color: var(--text); }
   body.quickplay .quick-player-name{ font-size: 12px; }
   body.quickplay .quick-player-badge{ font-size: 10px; padding: 3px 7px; }
 
-  /* On mobile, prefer a single scroll surface (the panel) to avoid iOS nested-scroll glitches. */
+  /* Let the lists scroll internally if needed; keep the overall lobby fixed. */
   body.quickplay .quick-team-list{
     min-height: 0;
-    overflow: visible;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Keep controls compact and always visible */
@@ -5277,12 +5253,16 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 
 /* Game Log Panel (Desktop sidebar) */
 .game-log-panel {
-  min-height: 120px;
+  /* On smaller viewports, this panel shares space with Clue History.
+     On desktop (>=1025px) flex is overridden with tuned ratios. */
+  flex: 1;
+  min-height: 0;
 }
 
 .game-log-panel .game-log-entries {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 8px;
   display: flex;
   flex-direction: column;

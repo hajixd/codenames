@@ -46,6 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevRevealedIndexes = new Set(); // Track previously revealed cards for animation
 let _prevClue = null; // Track previous clue for clue animation
+let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -1224,6 +1225,9 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
     bluePlayers: [],
     spectators: [],
     cards,
+    // Team-visible markers (reset each game)
+    redMarkers: {},
+    blueMarkers: {},
     currentTeam: firstTeam,
     currentPhase: 'waiting',
     redSpymaster: null,
@@ -2433,6 +2437,9 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
     blueTeamId,
     blueTeamName,
     cards,
+    // Team-visible markers (reset each game)
+    redMarkers: {},
+    blueMarkers: {},
     currentTeam: firstTeam,
     currentPhase: 'role-selection', // role-selection, spymaster, operatives, ended
     redSpymaster: null,
@@ -2529,6 +2536,23 @@ function startGameListener(gameId, options = {}) {
     }
 
     currentGame = { id: snap.id, ...snap.data() };
+
+    // Reset local per-card tags whenever we detect a brand-new board.
+    // This matters especially for Quick Play, where the doc id stays the same across games.
+    try {
+      const sig = (Array.isArray(currentGame?.cards) && currentGame.cards.length)
+        ? currentGame.cards.map(c => `${String(c?.word || '')}::${String(c?.type || '')}`).join('|')
+        : null;
+      if (sig && _prevBoardSignature && sig !== _prevBoardSignature) {
+        // Clear all local tags without writing anything to Firestore (markers are reset server-side).
+        cardTags = {};
+        pendingCardSelection = null;
+        renderCardTags();
+        saveTagsToLocal();
+        setActiveTagMode(null);
+      }
+      _prevBoardSignature = sig || _prevBoardSignature;
+    } catch (_) {}
     // Keep resume info fresh in case the game id changes due to edge cases.
     try {
       if (typeof safeLSSet === 'function') {
@@ -3734,15 +3758,37 @@ async function clearTeamMarkers() {
 }
 
 function tagCard(cardIndex, tag) {
-  if (tag === 'clear' || cardTags[cardIndex] === tag) {
-    delete cardTags[cardIndex];
+  const idx = Number(cardIndex);
+
+  // Determine what is currently visible on this card for *your team*.
+  const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+  const teamMarkers = (myTeam === 'red')
+    ? (currentGame?.redMarkers || {})
+    : (myTeam === 'blue')
+      ? (currentGame?.blueMarkers || {})
+      : {};
+
+  const currentLocal = cardTags[idx] || null;
+  const currentShared = (teamMarkers && typeof teamMarkers[idx] !== 'undefined') ? teamMarkers[idx] : null;
+  const currentEffective = currentLocal || currentShared || null;
+
+  // Toggle behavior:
+  // - First click applies the marker.
+  // - Clicking the same marker again clears it (for the team), not just locally.
+  let effectiveToSync = tag;
+
+  if (tag === 'clear' || (currentEffective && currentEffective === tag)) {
+    // Clear local + shared
+    delete cardTags[idx];
+    effectiveToSync = 'clear';
   } else {
-    cardTags[cardIndex] = tag;
+    cardTags[idx] = tag;
   }
+
   renderCardTags();
   saveTagsToLocal();
   // Share markers with your team (opponents never see them in the UI)
-  try { syncTeamMarker(cardIndex, tag); } catch (_) {}
+  try { syncTeamMarker(idx, effectiveToSync); } catch (_) {}
 
   // Notify AI (and any other listeners) that a human tag changed.
   try {
@@ -3752,8 +3798,8 @@ function tagCard(cardIndex, tag) {
       detail: {
         gameId,
         teamColor,
-        cardIndex,
-        tag,
+        cardIndex: idx,
+        tag: effectiveToSync,
         tags: { ...cardTags },
       }
     }));
