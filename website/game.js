@@ -3388,7 +3388,7 @@ async function handleClueSubmit(e) {
 
     await db.collection('games').doc(currentGame.id).update({
       currentClue: { word, number },
-      guessesRemaining: 999, // Unlimited guesses
+      guessesRemaining: (number === 0 ? 0 : (number + 1)), // guesses = number + 1 (0 means no guesses)
       currentPhase: 'operatives',
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
@@ -3472,7 +3472,7 @@ async function handleCardClick(cardIndex) {
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
 
-    // Unlimited guesses - correct guesses never end the turn
+    // Consume one guess. If no guesses remain after a correct guess, the turn ends.
   } else if (card.type === 'neutral') {
     // Neutral - end turn
     logEntry += 'Neutral. Turn ends.';
@@ -3494,6 +3494,21 @@ async function handleCardClick(cardIndex) {
     }
 
     endTurn = true;
+  }
+
+  // Decrement guesses remaining (standard Codenames: number + 1 total guesses)
+  const _gr = Number.isFinite(+currentGame.guessesRemaining) ? +currentGame.guessesRemaining : 0;
+  const _nextGr = Math.max(0, _gr - 1);
+  if (currentGame.currentClue) {
+    updates.guessesRemaining = _nextGr;
+    // If we used up our last guess on a correct card, the clue is "done" and the turn ends.
+    if (!winner && !endTurn && card.type === currentGame.currentTeam && _nextGr <= 0) {
+      endTurn = true;
+    }
+    // Any turn-ending event resets remaining guesses.
+    if (endTurn || winner) {
+      updates.guessesRemaining = 0;
+    }
   }
 
   const guessResult = {

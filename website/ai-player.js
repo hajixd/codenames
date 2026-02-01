@@ -779,6 +779,59 @@ async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag) {
 }
 
 
+
+async function aiValidateSpymasterClueSafety(ai, game, team, clueWord, ourWords, theirWords, neutralWords, assassinWords) {
+  try {
+    const systemPrompt = `You are a Codenames safety checker.
+Given a proposed clue, decide if it dangerously relates to ANY assassin word, and whether it likely overlaps opponents/neutral.
+
+Return JSON ONLY:
+{"safe": true/false, "assassin_overlap": ["WORD"], "opponent_overlap":["WORD"], "neutral_overlap":["WORD"], "note":"short"}.
+
+Board words:
+- OUR: ${ourWords.join(', ')}
+- OPPONENT: ${theirWords.join(', ')}
+- NEUTRAL: ${neutralWords.join(', ')}
+- ASSASSIN (critical): ${assassinWords.join(', ')}
+
+Proposed clue: "${clueWord}"
+
+Guidance:
+- Be conservative about assassin overlap: if there is a meaningful association, mark it unsafe.
+- Overlap with opponent words is risky but not automatically unsafe; include it in note.`;
+
+    const res = await aiChatCompletion(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: 'Safety-check the clue now. JSON only.' },
+      ],
+      {
+        temperature: 0.1,
+        max_tokens: 400,
+        response_format: { type: 'json_object' },
+      }
+    );
+
+    let parsed = null;
+    try { parsed = JSON.parse(res); } catch {
+      const m = String(res || '').match(/\{[\s\S]*\}/);
+      if (m) parsed = JSON.parse(m[0]);
+    }
+    if (!parsed) return { safe: true, note: 'no-parse' };
+
+    const assassinOverlap = Array.isArray(parsed.assassin_overlap) ? parsed.assassin_overlap.map(x => String(x || '').toUpperCase()).filter(Boolean) : [];
+    const opponentOverlap = Array.isArray(parsed.opponent_overlap) ? parsed.opponent_overlap.map(x => String(x || '').toUpperCase()).filter(Boolean) : [];
+    const neutralOverlap = Array.isArray(parsed.neutral_overlap) ? parsed.neutral_overlap.map(x => String(x || '').toUpperCase()).filter(Boolean) : [];
+    const safe = !!parsed.safe && assassinOverlap.length === 0;
+
+    return { safe, assassinOverlap, opponentOverlap, neutralOverlap, note: String(parsed.note || '') };
+  } catch (_) {
+    // Fail open: if the safety check fails, don't block play.
+    return { safe: true, note: 'checker-error' };
+  }
+}
+
+
 // ─── AI Spymaster: Give Clue (Structured Output) ───────────────────────────
 
 async function aiGiveClue(ai, game) {
@@ -901,32 +954,100 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
     const traitTemp = 0.3 + (traits.farFetched / 100) * 0.5 + (traits.riskiness / 100) * 0.15;
     const spymasterTemp = Math.min(1.0, (stateTemp * 0.5) + (traitTemp * 0.5));
 
-    const result = await aiChatCompletion([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Analyze the board carefully, then give your clue as JSON.' },
-    ], {
-      temperature: spymasterTemp,
-      max_tokens: tokenBudgetFromTraits(traits, 1200, 3200),
-      response_format: { type: 'json_object' },
-    });
+    let clueWord = '';
+    let clueNumber = 1;
+    let intendedWords = [];
+    let lastBad = '';
 
-    let parsed;
-    try {
-      parsed = JSON.parse(result);
-    } catch {
-      const match = result.match(/\{[\s\S]*?\}/);
-      if (match) parsed = JSON.parse(match[0]);
-      else throw new Error('Could not parse clue JSON');
+    const ourUpper = ourWords.map(w => String(w).toUpperCase());
+    const theirUpper = theirWords.map(w => String(w).toUpperCase());
+    const neutralUpper = neutralWords.map(w => String(w).toUpperCase());
+    const assassinUpper = assassinWords.map(w => String(w).toUpperCase());
+
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const userMsg = lastBad
+        ? `Your previous clue was rejected: ${lastBad}. Try again with a SAFER clue. JSON only.`
+        : 'Analyze the board carefully, then give your clue as JSON.';
+
+      const result = await aiChatCompletion([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMsg },
+      ], {
+        temperature: spymasterTemp,
+        max_tokens: tokenBudgetFromTraits(traits, 1200, 3200),
+        response_format: { type: 'json_object' },
+      });
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(result);
+      } catch {
+        const match = String(result || '').match(/\{[\s\S]*?\}/);
+        if (match) parsed = JSON.parse(match[0]);
+      }
+      if (!parsed) {
+        lastBad = 'could not parse JSON';
+        continue;
+      }
+
+      const cw = String(parsed.clue || '').trim().toUpperCase();
+      let nRaw = parseInt(parsed.number, 10);
+      if (!Number.isFinite(nRaw)) nRaw = 1;
+      let cn = Math.max(0, Math.min(9, nRaw));
+
+      // Validate: must be single word, not on board
+      if (!cw || cw.includes(' ') || boardWords.includes(cw)) {
+        lastBad = `invalid clue word "${cw}" (must be 1 word and not on board)`;
+        continue;
+      }
+
+      // Normalize intended words: keep only our team's unrevealed words
+      const intended = Array.isArray(parsed.intended_words) ? parsed.intended_words : [];
+      const intendedNorm = intended
+        .map(w => String(w || '').trim().toUpperCase())
+        .filter(Boolean)
+        .filter(w => ourUpper.includes(w));
+
+      // If the model claims a normal clue but gives no intended words, retry.
+      if (cn > 0 && intendedNorm.length === 0) {
+        lastBad = 'no intended_words were valid team words';
+        continue;
+      }
+
+      // If intended words exist, clamp the number to that set.
+      if (intendedNorm.length > 0) {
+        cn = Math.max(1, Math.min(9, Math.min(cn || 1, intendedNorm.length)));
+      }
+
+      // Defensive 0 clue should not point at our words.
+      if (cn === 0 && intendedNorm.length > 0) {
+        lastBad = '0 clue must have no intended_words';
+        continue;
+      }
+
+      // Safety-check against assassin overlap (strict).
+      const safety = await aiValidateSpymasterClueSafety(ai, game, team, cw, ourUpper, theirUpper, neutralUpper, assassinUpper);
+      if (!safety.safe) {
+        lastBad = `unsafe: overlaps assassin (${(safety.assassinOverlap || []).join(', ') || 'unknown'})`;
+        continue;
+      }
+
+      // If we are cautious, also avoid obvious opponent overlap.
+      const cautious = (traits.riskiness || 50) < 40;
+      if (cautious && Array.isArray(safety.opponentOverlap) && safety.opponentOverlap.length) {
+        lastBad = `too risky: overlaps opponent (${safety.opponentOverlap.join(', ')})`;
+        continue;
+      }
+
+      // Accept
+      clueWord = cw;
+      clueNumber = cn;
+      intendedWords = intendedNorm.slice(0, 9);
+      break;
     }
 
-    const clueWord = String(parsed.clue || '').trim().toUpperCase();
-    let _n = parseInt(parsed.number, 10);
-    if (!Number.isFinite(_n)) _n = 1;
-    const clueNumber = Math.max(0, Math.min(9, _n));
-
-    // Validate: must be single word, not on board
-    if (!clueWord || clueWord.includes(' ') || boardWords.includes(clueWord)) {
-      console.warn(`AI ${ai.name} gave invalid clue: "${clueWord}", retrying...`);
+    if (!clueWord) {
+      console.warn(`AI ${ai.name} failed to find a safe valid clue after retries.`);
       aiThinkingState[ai.id] = false;
       return;
     }
@@ -953,7 +1074,7 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
 
       tx.update(ref, {
         currentClue: { word: clueWord, number: clueNumber },
-        guessesRemaining: 999,
+        guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
         currentPhase: 'operatives',
         log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
         clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
@@ -1277,6 +1398,14 @@ async function aiGuessCard(ai, game) {
   // Never coerce 0 to 1.
   const clueN = Number.isFinite(+currentClue?.number) ? +currentClue.number : 1;
 
+  const remainingGuesses = Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : 999;
+  // If there are no guesses left (e.g., clue 0 or already consumed), end immediately.
+  if (remainingGuesses <= 0) {
+    aiThinkingState[ai.id] = false;
+    return 'end_turn';
+  }
+
+
   const unrevealed = game.cards
     .map((c, i) => ({ word: c.word, index: i, revealed: c.revealed }))
     .filter(c => !c.revealed);
@@ -1327,10 +1456,10 @@ async function aiGuessCard(ai, game) {
   // Build strategic context for the operative
   const traits = ai.traits || {};
   let guessStrategy = '';
-  if (correctGuesses >= clueN) {
-    guessStrategy = `You have already correctly guessed ${correctGuesses} out of the ${clueN} intended words. You may attempt ONE bonus guess if you're very confident, or you can recommend ending the turn. Risk assessment: ${analysis.riskTolerance} risk tolerance. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
+  if (clueN > 0 && correctGuesses >= clueN) {
+    guessStrategy = `You have already found the ${clueN} intended words for the clue. The clue is effectively COMPLETE. You have ${remainingGuesses} guess(es) left (usually 1 bonus guess). Only take a bonus guess if your confidence is HIGH and it is clearly safe; otherwise recommend ending the turn. Risk level: ${analysis.riskTolerance}. Assassins remaining: ${analysis.assassinsLeft}. Opponent cards remaining: ${analysis.opponentCardsLeft}.`;
   } else {
-    guessStrategy = `This is guess #${guessNumber} of ${clueN} intended words. ${correctGuesses > 0 ? `Already got ${correctGuesses} correct.` : ''} Risk level: ${analysis.riskTolerance}.`;
+    guessStrategy = `This is guess #${guessNumber} of ${clueN} intended words. ${correctGuesses > 0 ? `Already got ${correctGuesses} correct.` : ''} You have ${remainingGuesses} guess(es) remaining this turn. Risk level: ${analysis.riskTolerance}.`;
   }
 
   // Trait-based operative modifications
@@ -1466,7 +1595,7 @@ Respond with valid JSON:
     // If low confidence and conservative game state, consider not guessing
     // Trait modifiers: high confidence/riskiness AI won't bail on low confidence
     const traitBailResist = (traits.confidence > 70 || traits.riskiness > 70);
-    if (card && confidence === 'low' && !traitBailResist && analysis.riskTolerance === 'low' && correctGuesses >= currentClue.number) {
+    if (card && confidence === 'low' && !traitBailResist && analysis.riskTolerance === 'low' && (clueN > 0 && correctGuesses >= clueN)) {
       // AI decides to end turn instead of making a risky guess
       aiThinkingState[ai.id] = false;
       const chatMsg = await generateAIChatMessage(ai, game, 'discuss');
@@ -1550,6 +1679,11 @@ async function aiRevealCard(ai, game, cardIndex) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
 
+      // Consume one guess (standard Codenames: number + 1 total guesses per clue).
+      const _gr = Number.isFinite(+current.guessesRemaining) ? +current.guessesRemaining : 0;
+      const _nextGr = Math.max(0, _gr - 1);
+      updates.guessesRemaining = _nextGr;
+
       let logEntry = `AI ${ai.name} (${teamName}) guessed "${liveCard.word}" - `;
       let endTurn = false;
       let winner = null;
@@ -1565,6 +1699,12 @@ async function aiRevealCard(ai, game, cardIndex) {
         } else {
           updates.blueCardsLeft = current.blueCardsLeft - 1;
           if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+
+        // If we've used up the last allowed guess (number+1), the turn ends even on a correct guess.
+        if (!winner && _nextGr <= 0) {
+          logEntry += ' Out of guesses. Turn ends.';
+          endTurn = true;
         }
       } else if (liveCard.type === 'neutral') {
         logEntry += 'Neutral. Turn ends.';
