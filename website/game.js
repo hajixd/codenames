@@ -162,13 +162,12 @@ function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
-  const deckId = String(document.getElementById('qp-deck')?.value || 'standard');
   const vibe = String(document.getElementById('qp-vibe')?.value || '').trim();
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
-    deckId: normalizeDeckId(deckId),
+    deckId: "standard",// AI-driven words; fallback uses standard bank,
     vibe: vibe || '',
   };
 }
@@ -204,11 +203,11 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, deckId: 'standard', vibe: '' };
-  const d = getDeckMeta(s.deckId || 'standard');
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, vibe: '' };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-  return `Words: ${d.label} · Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}${vibeStr}`;
+  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}${vibeStr}`;
 }
+
 
 
 // Check if a team is fully ready (all players ready)
@@ -896,9 +895,7 @@ function updateQuickRulesUI(game) {
     applyBtn.textContent = !myTeam ? 'Join a team to apply' : 'Apply';
   }
   if (modalStatus) {
-    modalStatus.textContent = !myTeam
-      ? 'Join a team to change Quick Play settings.'
-      : 'Changes apply immediately (no agreement step).';
+    modalStatus.textContent = myTeam ? 'Changes apply immediately (no agreement step).' : '';
   }
 }
 
@@ -914,7 +911,7 @@ async function offerQuickRulesFromModal() {
       const game = snap.data();
       if (game.currentPhase && game.currentPhase !== 'waiting') throw new Error('Game already started.');
       const role = getQuickPlayerRole(game, odId);
-      if (role !== 'red' && role !== 'blue') throw new Error('Join a team to change settings.');
+      if (role !== 'red' && role !== 'blue') throw new Error('Only team members can change settings.');
 
       // Any settings change resets readiness so the lobby restarts clean.
       const nextRed = (game.redPlayers || []).map(p => ({ ...p, ready: false }));
@@ -1195,11 +1192,11 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
 
   let words;
   const vibe = String(settings.vibe || '').trim();
-  if (vibe && typeof window.aiChatCompletion === 'function') {
+  if (typeof window.aiChatCompletion === 'function') {
     try {
       words = await generateAIWords(vibe);
     } catch (err) {
-      console.warn('AI word generation failed, falling back to deck:', err);
+      console.warn('AI word generation failed, falling back to standard bank:', err);
       words = getRandomWords(BOARD_SIZE, settings.deckId);
     }
   } else {
@@ -3615,6 +3612,8 @@ function initAdvancedFeatures() {
       if (tag === 'clear') {
         clearAllTags();
         return;
+  // Mobile swipe gestures: swipe right for Clue History/Log, swipe left for Team Chat
+  initMobileSidebarSwipes();
       }
       setActiveTagMode(tag === activeTagMode ? null : tag);
     });
@@ -4346,6 +4345,244 @@ function closeMobileSidebars() {
   });
   toggleSidebarBackdrop(false);
 }
+
+/* =========================
+   Mobile Swipe Sidebars
+   - Swipe right: open Clue History + Game Log (left sidebar)
+   - Swipe left: open Operative chat (right sidebar)
+   - Supports partial swipe (drag) with snap open/close
+========================= */
+function initMobileSidebarSwipes() {
+  // Only relevant on touch devices / mobile layout.
+  if (!('ontouchstart' in window)) return;
+
+  const left = document.querySelector('.game-sidebar-left');
+  const right = document.querySelector('.game-sidebar-right');
+  const backdrop = document.getElementById('sidebar-backdrop') || document.querySelector('.sidebar-backdrop');
+  const container = document.getElementById('game-board-container') || document.getElementById('game-board') || document.body;
+  if (!left || !right || !container) return;
+
+  let active = null;
+
+  const isMobileLayout = () => window.innerWidth <= 1024;
+
+  const setBackdrop = (progress) => {
+    confirmBackdrop(true);
+    if (!backdrop) return;
+    backdrop.classList.add('visible');
+    backdrop.style.transition = 'none';
+    backdrop.style.opacity = String(Math.max(0, Math.min(1, progress)));
+  };
+
+  const clearBackdropStyles = () => {
+    if (!backdrop) return;
+    backdrop.style.transition = '';
+    backdrop.style.opacity = '';
+  };
+
+  const confirmBackdrop = (show) => {
+    // Reuse existing helper if available.
+    if (typeof toggleSidebarBackdrop === 'function') {
+      toggleSidebarBackdrop(show);
+    } else if (backdrop) {
+      backdrop.classList.toggle('visible', show);
+    }
+  };
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const prepareDrag = (sb) => {
+    sb.style.transition = 'none';
+    sb.style.willChange = 'transform, opacity';
+    sb.style.pointerEvents = 'auto';
+    sb.style.visibility = 'visible';
+  };
+
+  const clearDrag = (sb) => {
+    sb.style.transition = '';
+    sb.style.willChange = '';
+    sb.style.transform = '';
+    sb.style.opacity = '';
+  };
+
+  const setLeftTransform = (x, progress) => {
+    prepareDrag(left);
+    left.classList.add('mobile-visible');
+    right.classList.remove('mobile-visible');
+    left.style.transform = `translateX(${x}px)`;
+    left.style.opacity = String(progress);
+    setBackdrop(progress * 0.98);
+  };
+
+  const setRightTransform = (x, progress) => {
+    prepareDrag(right);
+    right.classList.add('mobile-visible');
+    left.classList.remove('mobile-visible');
+    right.style.transform = `translateX(${x}px)`;
+    right.style.opacity = String(progress);
+    setBackdrop(progress * 0.98);
+  };
+
+  const finish = (side, open) => {
+    if (side === 'left') {
+      if (open) {
+        left.classList.add('mobile-visible');
+      } else {
+        left.classList.remove('mobile-visible');
+      }
+      clearDrag(left);
+    } else {
+      if (open) {
+        right.classList.add('mobile-visible');
+      } else {
+        right.classList.remove('mobile-visible');
+      }
+      clearDrag(right);
+    }
+
+    clearBackdropStyles();
+    confirmBackdrop(!!document.querySelector('.game-sidebar.mobile-visible'));
+    active = null;
+  };
+
+  const isInteractiveTarget = (t) => {
+    if (!t) return false;
+    const tag = (t.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return true;
+    return !!t.closest?.('button, input, textarea, select, a, .operative-chat-form, .clue-form-expanded, .tag-legend-items');
+  };
+
+  const onStart = (e) => {
+    if (!isMobileLayout()) return;
+    if (!e.touches || e.touches.length !== 1) return;
+
+    // If a finger starts on an input/button, don't hijack.
+    if (isInteractiveTarget(e.target)) return;
+
+    const touch = e.touches[0];
+    const leftOpen = left.classList.contains('mobile-visible');
+    const rightOpen = right.classList.contains('mobile-visible');
+
+    active = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      lastX: touch.clientX,
+      lastT: performance.now(),
+      dragging: false,
+      side: null,
+      mode: null, // 'open' | 'close'
+      leftOpen,
+      rightOpen,
+    };
+  };
+
+  const onMove = (e) => {
+    if (!active || !isMobileLayout()) return;
+    if (!e.touches || e.touches.length !== 1) return;
+
+    const t = e.touches[0];
+    const dx = t.clientX - active.startX;
+    const dy = t.clientY - active.startY;
+
+    // Decide if this is a horizontal swipe.
+    if (!active.dragging) {
+      if (Math.abs(dx) < 12) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+
+      // Determine side + mode.
+      const leftIsOpen = left.classList.contains('mobile-visible');
+      const rightIsOpen = right.classList.contains('mobile-visible');
+
+      if (leftIsOpen && dx < 0) {
+        active.side = 'left';
+        active.mode = 'close';
+      } else if (rightIsOpen && dx > 0) {
+        active.side = 'right';
+        active.mode = 'close';
+      } else {
+        active.side = dx > 0 ? 'left' : 'right';
+        active.mode = 'open';
+      }
+
+      active.dragging = true;
+    }
+
+    // Prevent vertical scroll while dragging a side sheet.
+    if (active.dragging) e.preventDefault();
+
+    const width = (active.side === 'left' ? left : right).getBoundingClientRect().width;
+    const gutter = 16;
+
+    if (active.side === 'left') {
+      const closedX = -(width + gutter);
+      let x;
+      if (active.mode === 'open') {
+        x = clamp(closedX + dx, closedX, 0);
+      } else {
+        // close: dx will be negative to move toward closed
+        x = clamp(dx, closedX, 0);
+      }
+      const progress = 1 - Math.abs(x) / Math.abs(closedX);
+      setLeftTransform(x, clamp(progress, 0, 1));
+    } else {
+      const closedX = (width + gutter);
+      let x;
+      if (active.mode === 'open') {
+        x = clamp(closedX + dx, 0, closedX);
+      } else {
+        // close: dx will be positive to move toward closed
+        x = clamp(dx, 0, closedX);
+      }
+      const progress = 1 - Math.abs(x) / Math.abs(closedX);
+      setRightTransform(x, clamp(progress, 0, 1));
+    }
+
+    active.lastX = t.clientX;
+    active.lastT = performance.now();
+  };
+
+  const onEnd = () => {
+    if (!active) return;
+
+    if (!active.dragging) {
+      active = null;
+      return;
+    }
+
+    const side = active.side;
+    const sb = side === 'left' ? left : right;
+    const width = sb.getBoundingClientRect().width;
+    const gutter = 16;
+
+    // Read current inline transform if present
+    const tr = sb.style.transform || '';
+    let x = 0;
+    const m = tr.match(/translateX\(([-0-9.]+)px\)/);
+    if (m) x = parseFloat(m[1]) || 0;
+
+    const closedX = side === 'left' ? -(width + gutter) : (width + gutter);
+    const progress = 1 - Math.abs(x) / Math.abs(closedX);
+
+    // Snap threshold
+    const shouldOpen = progress > 0.35;
+    finish(side, shouldOpen);
+  };
+
+  // Attach with {passive:false} so we can preventDefault during drag.
+  container.addEventListener('touchstart', onStart, { passive: true });
+  container.addEventListener('touchmove', onMove, { passive: false });
+  container.addEventListener('touchend', onEnd, { passive: true });
+  container.addEventListener('touchcancel', onEnd, { passive: true });
+
+  // Also allow dragging directly on the side sheet to close.
+  [left, right].forEach((sb) => {
+    sb.addEventListener('touchstart', onStart, { passive: true });
+    sb.addEventListener('touchmove', onMove, { passive: false });
+    sb.addEventListener('touchend', onEnd, { passive: true });
+    sb.addEventListener('touchcancel', onEnd, { passive: true });
+  });
+}
+
 
 /* =========================
    Mobile Players Popup
