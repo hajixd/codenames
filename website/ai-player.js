@@ -122,8 +122,7 @@ function extractAIPlayersFromGame(game) {
         name: String(p.name || 'AI'),
         team,
         seatRole: (String(p.role || 'operative') === 'spymaster') ? 'spymaster' : 'operative',
-        // Only 'autonomous' is supported. Normalize any legacy helper entries.
-        mode: (String(p.aiMode || 'autonomous') === 'helper') ? 'autonomous' : String(p.aiMode || 'autonomous'),
+        mode: String(p.aiMode || 'autonomous'),
         // IMPORTANT: other clients may not have local ready-check state.
         // Derive the lobby indicator from Firestore ready flag so AIs don't show
         // "CHECKING" forever on non-host clients.

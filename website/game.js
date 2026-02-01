@@ -2618,14 +2618,6 @@ function renderGame() {
     }
   }
 
-  // Turn strip (top header): highlight the active team's half.
-  const topbarEl = document.querySelector('.game-topbar');
-  if (topbarEl) {
-    topbarEl.classList.remove('turn-red', 'turn-blue');
-    const team = currentGame.winner ? currentGame.winner : currentGame.currentTeam;
-    if (team === 'red' || team === 'blue') topbarEl.classList.add(`turn-${team}`);
-  }
-
   // Top bar names (desktop)
   renderTopbarTeamNames();
 
@@ -2674,10 +2666,6 @@ function renderAdvancedFeatures() {
     pendingCardSelection = null;
   }
 
-  // If the board changed (Quick Play reuses the same game doc), reset local marks
-  // so old tags don't carry across games.
-  maybeResetTagsForNewBoard();
-
   // Load tags from localStorage for this game
   loadTagsFromLocal();
 
@@ -2692,7 +2680,8 @@ function renderAdvancedFeatures() {
   if (tagLegend) {
     const isSpymaster = isCurrentUserSpymaster();
     const isSpectator = isSpectating();
-    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner) ? 'flex' : 'none';
+    const gameStarted = currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.currentPhase !== 'role-selection';
+    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner && gameStarted) ? 'flex' : 'none';
   }
 
   // Initialize operative chat
@@ -2703,33 +2692,6 @@ function renderAdvancedFeatures() {
     startGameTimer(currentGame.timerEnd, currentGame.currentPhase);
   } else {
     stopGameTimer();
-  }
-}
-
-// Quick Play reuses the same Firestore doc id across rounds.
-// Detect a new board and clear any saved marks.
-function maybeResetTagsForNewBoard() {
-  if (!currentGame?.id || !Array.isArray(currentGame.cards) || currentGame.cards.length === 0) return;
-
-  const sig = currentGame.cards.map(c => String(c?.word || '')).join('|');
-  const sigKey = `codenames_board_sig_${currentGame.id}`;
-  let prev = null;
-  try { prev = localStorage.getItem(sigKey); } catch (e) {}
-
-  // First time seeing this game, just record signature.
-  if (!prev) {
-    try { localStorage.setItem(sigKey, sig); } catch (e) {}
-    return;
-  }
-
-  if (prev !== sig) {
-    // New round: clear tags for this game id.
-    try { localStorage.removeItem(`codenames_tags_${currentGame.id}`); } catch (e) {}
-    cardTags = {};
-    pendingCardSelection = null;
-    setActiveTagMode(null);
-    if (typeof showToast === 'function') showToast('Card marks cleared for new game');
-    try { localStorage.setItem(sigKey, sig); } catch (e) {}
   }
 }
 
@@ -2868,6 +2830,16 @@ function renderGameLog() {
 
   if (popoverEl) popoverEl.innerHTML = html;
   if (sidebarEl) sidebarEl.innerHTML = html;
+
+  // Turn strip: highlight left (red) or right (blue) across all log cards.
+  const turn = currentGame?.currentTeam;
+  const logPopover = document.getElementById('game-log');
+  const logPanel = document.getElementById('desktop-game-log-panel');
+  [logPopover, logPanel].forEach((el) => {
+    if (!el) return;
+    el.classList.toggle('game-log-turn-red', turn === 'red');
+    el.classList.toggle('game-log-turn-blue', turn === 'blue');
+  });
 
   // Auto-scroll to bottom (popover container + sidebar scroller)
   const popover = document.getElementById('game-log');
@@ -3500,18 +3472,41 @@ function renderCardTags() {
 function saveTagsToLocal() {
   if (!currentGame?.id) return;
   try {
-    localStorage.setItem(`codenames_tags_${currentGame.id}`, JSON.stringify(cardTags));
+    const boardSig = (Array.isArray(currentGame?.cards) ? currentGame.cards.map(c => String(c.word || '')).join('|') : '');
+    localStorage.setItem(
+      `codenames_tags_${currentGame.id}`,
+      JSON.stringify({ boardSig, tags: cardTags })
+    );
   } catch (e) {}
 }
 
 function loadTagsFromLocal() {
   if (!currentGame?.id) return;
   try {
-    const saved = localStorage.getItem(`codenames_tags_${currentGame.id}`);
-    if (saved) {
-      cardTags = JSON.parse(saved);
-    } else {
+    const key = `codenames_tags_${currentGame.id}`;
+    const saved = localStorage.getItem(key);
+    const boardSigNow = (Array.isArray(currentGame?.cards) ? currentGame.cards.map(c => String(c.word || '')).join('|') : '');
+
+    if (!saved) {
       cardTags = {};
+      return;
+    }
+
+    // Backwards compatible: older builds stored tags as a plain object.
+    const parsed = JSON.parse(saved);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.tags && typeof parsed.boardSig === 'string') {
+      if (parsed.boardSig === boardSigNow) {
+        cardTags = parsed.tags || {};
+      } else {
+        // New round/new board: start clean.
+        cardTags = {};
+        localStorage.setItem(key, JSON.stringify({ boardSig: boardSigNow, tags: {} }));
+      }
+    } else {
+      // Old format (plain object). To avoid carrying marks between games (Quick Play reuses the same game id),
+      // migrate to the new format and start clean.
+      cardTags = {};
+      localStorage.setItem(key, JSON.stringify({ boardSig: boardSigNow, tags: {} }));
     }
   } catch (e) {
     cardTags = {};
@@ -4153,34 +4148,9 @@ if (originalLeaveQuickGame) {
 let pendingAITeam = null;
 let pendingAISeatRole = null;
 
-function openAIModal(team, seatRole) {
-  pendingAITeam = team;
-  pendingAISeatRole = seatRole;
-
-  const modal = document.getElementById('ai-mode-modal');
-  if (!modal) return;
-
-  const subtitle = document.getElementById('ai-mode-subtitle');
-  const statusEl = document.getElementById('ai-mode-status');
-  const teamLabel = team === 'red' ? 'Red' : 'Blue';
-  const roleLabel = seatRole === 'spymaster' ? 'Spymaster' : 'Operative';
-
-  if (subtitle) subtitle.textContent = `Adding AI ${roleLabel} to ${teamLabel} team`;
-  if (statusEl) statusEl.textContent = '';
-
-  // Only autonomous mode is available.
-
-  // Check max AI limit
-  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
-  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
-  if (currentCount >= max) {
-    if (statusEl) statusEl.textContent = `Maximum ${max} AIs per team reached.`;
-  }
-
-  modal.style.display = 'flex';
-  void modal.offsetWidth;
-  modal.classList.add('modal-open');
-  modal.setAttribute('aria-hidden', 'false');
+// +AI now immediately adds an Autonomous AI (no modal).
+async function openAIModal(team, seatRole) {
+  return addAIAutonomous(team, seatRole);
 }
 
 function closeAIModal() {
@@ -4198,6 +4168,43 @@ function closeAIModal() {
 window.openAIModal = openAIModal;
 window.closeAIModal = closeAIModal;
 
+async function addAIAutonomous(team, seatRole) {
+  // Visual feedback on the clicked button
+  const btn = document.getElementById(`ai-add-${team}-${seatRole}`);
+  const prevText = btn ? btn.textContent : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+  }
+
+  // Check max
+  const currentCount = typeof countAIsOnTeam === 'function' ? countAIsOnTeam(team) : 0;
+  const max = window.AI_CONFIG?.maxAIsPerTeam || 4;
+  if (currentCount >= max) {
+    if (btn) {
+      btn.textContent = 'Max';
+      setTimeout(() => {
+        btn.textContent = prevText || '+AI';
+        btn.disabled = false;
+      }, 900);
+    }
+    return null;
+  }
+
+  try {
+    const ai = await addAIPlayer(team, seatRole, 'autonomous');
+    return ai;
+  } catch (e) {
+    console.error('Add AI failed:', e);
+    return null;
+  } finally {
+    if (btn) {
+      btn.textContent = prevText || '+AI';
+      btn.disabled = false;
+    }
+  }
+}
+
 async function handleAIModeSelect(mode) {
   if (!pendingAITeam || !pendingAISeatRole) return;
 
@@ -4214,7 +4221,7 @@ async function handleAIModeSelect(mode) {
   if (statusEl) statusEl.textContent = 'Adding AI player...';
 
   try {
-    const ai = await addAIPlayer(pendingAITeam, pendingAISeatRole, 'autonomous');
+    const ai = await addAIPlayer(pendingAITeam, pendingAISeatRole, mode);
     if (ai) {
       if (statusEl) {
         if (ai.statusColor === 'green') statusEl.textContent = `${ai.name} is ready!`;
@@ -4231,21 +4238,19 @@ async function handleAIModeSelect(mode) {
   }
 }
 
-// Wire up modal buttons
+// Wire up modal buttons (legacy; modal is no longer used, but keep close handlers safe)
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('ai-mode-autonomous')?.addEventListener('click', () => handleAIModeSelect('autonomous'));
   document.getElementById('ai-mode-modal-close')?.addEventListener('click', closeAIModal);
   document.getElementById('ai-mode-modal-backdrop')?.addEventListener('click', closeAIModal);
 
-  // Prevent +AI hover/click from triggering the seat header's underline hover state.
-  // (Hovering a child also hovers the parent; we add a class so CSS can suppress.)
-  document.querySelectorAll('.ai-add-btn').forEach((btn) => {
-    const parent = btn.closest('.quick-seat-choice');
-    if (!parent) return;
-    btn.addEventListener('mouseenter', () => parent.classList.add('ai-hover'));
-    btn.addEventListener('mouseleave', () => parent.classList.remove('ai-hover'));
-    btn.addEventListener('focus', () => parent.classList.add('ai-hover'));
-    btn.addEventListener('blur', () => parent.classList.remove('ai-hover'));
+  // Hovering the +AI button should not underline the parent role header.
+  document.querySelectorAll('.ai-add-btn').forEach((b) => {
+    const seat = b.closest?.('.quick-seat-choice');
+    if (!seat) return;
+    b.addEventListener('pointerenter', () => seat.classList.add('suppress-underline'));
+    b.addEventListener('pointerleave', () => seat.classList.remove('suppress-underline'));
+    b.addEventListener('pointerdown', () => seat.classList.add('suppress-underline'));
+    b.addEventListener('pointerup', () => seat.classList.remove('suppress-underline'));
   });
 });
 
@@ -4299,9 +4304,9 @@ function renderQuickLobbyWithAI(game) {
       const existingBadge = el.querySelector('.ai-badge');
       if (!existingBadge) {
         const badge = document.createElement('span');
-        badge.className = `ai-badge ai-badge-autonomous`;
-        badge.textContent = 'AUTO';
-        badge.title = 'AI Autonomous - plays independently';
+        badge.className = 'ai-badge ai-badge-autonomous';
+        badge.textContent = 'AI';
+        badge.title = 'AI Autonomous';
         el.appendChild(badge);
       }
 

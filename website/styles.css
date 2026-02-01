@@ -2754,14 +2754,9 @@ body.light .chat-meta{ color: var(--text); }
   transition: opacity 120ms ease, color 120ms ease;
 }
 .quick-seat-choice:focus{ outline: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 8px; }
-.quick-seat-choice:hover{ opacity: 1; }
+.quick-seat-choice:hover{ opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
 .quick-seat-choice:active{ opacity: 1; }
-
-/* Only underline the seat label, not the whole row.
-   Prevent +AI hover from underlining the label via a JS-added .ai-hover class. */
-.quick-seat-label{ text-decoration: none; }
-.quick-seat-choice:hover .quick-seat-label{ text-decoration: underline; text-underline-offset: 4px; }
-.quick-seat-choice.ai-hover:hover .quick-seat-label{ text-decoration: none; }
+.quick-seat-choice.suppress-underline:hover{ text-decoration: none !important; }
 .quick-team-col.red .quick-seat-choice.selected{
   color: rgba(255, 120, 120, 0.95);
   opacity: 1;
@@ -4614,17 +4609,55 @@ button.player-tag.pill-action:disabled{
 .game-log-entries {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .log-entry {
+  position: relative;
   font-size: 13px;
-  line-height: 1.5;
-  padding: 8px 10px;
-  background: var(--surface2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  line-height: 1.25;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  white-space: normal;
   word-break: break-word;
+  overflow: visible;
+}
+
+/* Split turn strip (left = red, right = blue). The active side is set by a class on the panel/popover. */
+.log-entry::before,
+.log-entry::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  opacity: 0.9;
+}
+
+.log-entry::before {
+  left: 0;
+  border-radius: 999px 0 0 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.log-entry::after {
+  right: 0;
+  border-radius: 0 999px 999px 0;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.game-log-turn-red .log-entry::before {
+  background: rgba(255, 90, 90, 0.35); /* fallback */
+  background: color-mix(in srgb, var(--game-red) 70%, rgba(0, 0, 0, 0));
+  box-shadow: 0 0 18px rgba(255, 90, 90, 0.22);
+}
+
+.game-log-turn-blue .log-entry::after {
+  background: rgba(90, 140, 255, 0.35); /* fallback */
+  background: color-mix(in srgb, var(--game-blue) 70%, rgba(0, 0, 0, 0));
+  box-shadow: 0 0 18px rgba(90, 140, 255, 0.22);
 }
 
 .log-entry .log-team {
@@ -5093,7 +5126,7 @@ button.player-tag.pill-action:disabled{
 
 /* Game Log Panel (Desktop sidebar) */
 .game-log-panel {
-  min-height: 160px;
+  min-height: 120px;
 }
 
 .game-log-panel .game-log-entries {
@@ -5102,7 +5135,7 @@ button.player-tag.pill-action:disabled{
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .popover-header {
@@ -7194,37 +7227,6 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   width: 100%;
   gap: 12px;
-  position: relative;
-}
-
-/* Turn strip: highlights the active team's half (left = red, right = blue) */
-.game-topbar::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: -6px;
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    var(--turn-strip-left, rgba(255,255,255,0.08)) 0 50%,
-    var(--turn-strip-right, rgba(255,255,255,0.08)) 50 100%
-  );
-  pointer-events: none;
-  z-index: 1;
-}
-
-.game-topbar > * { position: relative; z-index: 2; }
-
-.game-topbar.turn-red {
-  --turn-strip-left: color-mix(in srgb, var(--game-red) 80%, transparent);
-  --turn-strip-right: rgba(255,255,255,0.08);
-}
-
-.game-topbar.turn-blue {
-  --turn-strip-left: rgba(255,255,255,0.08);
-  --turn-strip-right: color-mix(in srgb, var(--game-blue) 80%, transparent);
 }
 
 .topbar-team {
@@ -7940,12 +7942,6 @@ body.tournament.has-team-color .input:focus {
 .tag-legend-hint {
   font-size: 11px;
   color: var(--text-dim);
-}
-
-.tag-legend-note {
-  font-size: 11px;
-  color: var(--text-dim);
-  opacity: 0.9;
 }
 
 /* Expanded Action Bar */
@@ -10311,14 +10307,6 @@ body.tournament .mobile-tabs .tab[data-panel="panel-game"]{ display:none !import
 .ai-mode-cards{
   display: flex;
   gap: 12px;
-}
-
-.ai-mode-cards.single{
-  justify-content: center;
-}
-
-.ai-mode-cards.single .ai-mode-card{
-  max-width: 380px;
 }
 .ai-mode-card{
   flex: 1;
