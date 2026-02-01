@@ -513,6 +513,7 @@ async function aiGiveClue(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, true);
   const teamContext = buildTeamContext(game, team);
+  const recentChat = await getRecentTeamChatText(game.id, team, 10);
 
   // Compute which words belong to our team and haven't been revealed
   const ourWords = game.cards
@@ -545,8 +546,17 @@ OPPONENT'S UNREVEALED WORDS: ${theirWords.join(', ')}
 NEUTRAL WORDS: ${neutralWords.join(', ')}
 ASSASSIN WORDS: ${assassinWords.join(', ')}
 
+RECENT TEAM CHAT (operative coordination):
+${recentChat || '(no recent messages)'}
+
+TEAM CHAT (recent, from your operatives):
+${recentChat || '(no recent messages)'}
+
 ${clueHistory}
 ${summary}
+
+RECENT TEAM CHAT (coordinate with your teammate):
+${recentChat || '(no recent messages)'}
 Team: ${teamContext}
 
 Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief explanation of which words you're connecting"}`;
@@ -601,9 +611,10 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "reasoning": "brief e
 
     await db.collection('games').doc(game.id).update({
       currentClue: { word: clueWord, number: clueNumber },
-      guessesRemaining: clueNumber + 1,
+      // Unlimited guesses: operatives can keep guessing until they end turn or miss.
+      guessesRemaining: -1,
       currentPhase: 'operatives',
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${ai.name} (Spymaster) gave clue "${clueWord}" ×${clueNumber}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
@@ -628,6 +639,7 @@ async function aiGuessCard(ai, game) {
   const clueHistory = buildClueHistoryContext(game);
   const summary = buildGameSummary(game, team, false);
   const currentClue = game.currentClue;
+  const recentChat = await getRecentTeamChatText(game.id, team, 12);
 
   if (!currentClue) {
     aiThinkingState[ai.id] = false;
@@ -673,7 +685,7 @@ Rules:
 - Return JSON only.
 - Include BOTH the board index and the word.
 
-You have ${game.guessesRemaining} guesses remaining.
+${Number(game.guessesRemaining) === -1 ? 'You have unlimited guesses (you can keep guessing until the team ends the turn or makes a mistake).' : `You have ${game.guessesRemaining} guesses remaining.`}
 
 ${ai.mode === 'autonomous' ? 'You are confident and decisive. Pick the word you think is most likely correct.' : ''}
 
@@ -750,6 +762,10 @@ Respond with valid JSON matching:
       }
     }
 
+    // Mark the intended card for the team before committing the guess.
+    // This helps human teammates follow the AI's thinking.
+    await aiSetTeamMark(ai, game, card.index, true);
+
     // Submit the guess by simulating card click on Firestore
     await aiRevealCard(ai, game, card.index);
 
@@ -786,7 +802,7 @@ async function aiRevealCard(ai, game, cardIndex) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   };
 
-  let logEntry = `${teamName} guessed "${card.word}" - `;
+  let logEntry = `${ai.name} guessed "${card.word}" - `;
   let endTurn = false;
   let winner = null;
 
@@ -802,8 +818,10 @@ async function aiRevealCard(ai, game, cardIndex) {
       updates.blueCardsLeft = game.blueCardsLeft - 1;
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
-    updates.guessesRemaining = game.guessesRemaining - 1;
-    if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
+    if (Number(game.guessesRemaining) !== -1) {
+      updates.guessesRemaining = game.guessesRemaining - 1;
+      if (updates.guessesRemaining <= 0 && !winner) endTurn = true;
+    }
   } else if (card.type === 'neutral') {
     logEntry += 'Neutral. Turn ends.';
     endTurn = true;
@@ -866,10 +884,39 @@ async function aiRevealCard(ai, game, cardIndex) {
   }
 }
 
+// Shared team mark (non-revealing) so teammates can coordinate.
+async function aiSetTeamMark(ai, game, cardIndex, marked = true) {
+  try {
+    if (!ai?.team || !game?.id) return;
+    const c = game.cards?.[cardIndex];
+    if (!c || c.revealed) return;
+
+    const marks = { ...(c.marks || { red: false, blue: false }) };
+    if (!!marks[ai.team] === !!marked) return;
+
+    marks[ai.team] = !!marked;
+    const updatedCards = [...game.cards];
+    updatedCards[cardIndex] = { ...c, marks };
+
+    const action = marked ? 'marked' : 'unmarked';
+    const logEntry = `${ai.name} ${action} "${c.word}".`;
+
+    await db.collection('games').doc(game.id).update({
+      cards: updatedCards,
+      log: firebase.firestore.FieldValue.arrayUnion(logEntry),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    // Non-fatal
+  }
+}
+
 // ─── AI End Turn Decision ───────────────────────────────────────────────────
 
 async function aiConsiderEndTurn(ai, game) {
   if (ai.mode !== 'autonomous') return false;
+  // Unlimited guesses never force an auto-end.
+  if (Number(game.guessesRemaining) === -1) return false;
   if (game.guessesRemaining > 0) return false;
 
   // Auto end turn when no guesses left
@@ -880,7 +927,7 @@ async function aiConsiderEndTurn(ai, game) {
       currentPhase: 'spymaster',
       currentClue: null,
       guessesRemaining: 0,
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${ai.name} ended ${teamName}'s turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
     return true;
@@ -896,6 +943,7 @@ async function generateAIChatMessage(ai, game, context) {
   const team = ai.team;
   const currentClue = game.currentClue;
   const summary = buildGameSummary(game, team, false);
+  const recentChat = await getRecentTeamChatText(game.id, team, 10);
 
   const unrevealed = game.cards
     .filter(c => !c.revealed)
@@ -914,7 +962,14 @@ async function generateAIChatMessage(ai, game, context) {
     return null;
   }
 
-  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team. You chat naturally in short, informal messages. No emojis unless it feels natural. Don't be overly enthusiastic. Sound like a real person in a game chat. Never mention being an AI. Never use formal language. Keep responses very brief.`;
+  const systemPrompt = `You are ${ai.name}, a casual Codenames player on the ${team} team. You chat naturally in short, informal messages.
+
+You are collaborating with your teammate(s). If there's recent team chat, respond to it naturally (agree/disagree, build on ideas, ask a quick question).
+
+RECENT TEAM CHAT:
+${recentChat || '(no recent messages)'}
+
+Rules: No emojis unless it feels natural. Don't be overly enthusiastic. Never mention being an AI. Never use formal language. Keep responses very brief.`;
 
   try {
     const result = await aiChatCompletion([
@@ -1029,6 +1084,30 @@ async function getGameSnapshot(gameId) {
     return { id: snap.id, ...snap.data() };
   } catch (e) {
     return null;
+  }
+}
+
+// Fetch recent team chat messages so AIs can coordinate with human teammates.
+async function getRecentTeamChatText(gameId, team, limit = 10) {
+  if (!gameId || !team) return '';
+  try {
+    const snap = await db.collection('games').doc(gameId)
+      .collection(`${team}Chat`)
+      .orderBy('createdAt', 'desc')
+      .limit(Math.max(1, Math.min(30, limit)))
+      .get();
+
+    const msgs = snap.docs
+      .map(d => d.data())
+      .filter(m => m && typeof m.text === 'string' && m.text.trim())
+      .slice()
+      .reverse();
+
+    return msgs
+      .map(m => `${String(m.senderName || 'Someone').trim()}: ${String(m.text || '').trim()}`)
+      .join('\n');
+  } catch (e) {
+    return '';
   }
 }
 
