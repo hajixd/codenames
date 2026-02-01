@@ -2823,8 +2823,32 @@ function renderGameLog() {
   const sidebarEl = document.getElementById('game-log-entries-sidebar');
   if ((!popoverEl && !sidebarEl) || !currentGame?.log) return;
 
-  const html = currentGame.log.map(entry => {
-    return `<div class="log-entry">${entry}</div>`;
+  const redName = (currentGame.redTeamName || '').trim();
+  const blueName = (currentGame.blueTeamName || '').trim();
+
+  const html = currentGame.log.map((entryRaw) => {
+    const raw = String(entryRaw ?? '');
+    const t = raw.toLowerCase();
+
+    // Type classification
+    let kind = 'turn';
+    if (t.includes('spymaster:')) kind = 'clue';
+    else if (t.includes('game started')) kind = 'start';
+    else if (t.includes('wins!') || t.includes('game ended')) kind = 'end';
+    else if (t.includes('assassin')) kind = 'assassin';
+    else if (t.includes('correct!')) kind = 'correct';
+    else if (t.includes('wrong!')) kind = 'wrong';
+    else if (t.includes('neutral')) kind = 'neutral';
+
+    // Team tint classification
+    let teamClass = '';
+    if (redName && raw.includes(redName)) teamClass = 'team-red';
+    else if (blueName && raw.includes(blueName)) teamClass = 'team-blue';
+    else if (t.includes('red team')) teamClass = 'team-red';
+    else if (t.includes('blue team')) teamClass = 'team-blue';
+
+    const safeText = (typeof escapeHtml === 'function') ? escapeHtml(raw) : raw;
+    return `<div class="log-entry log-${kind} ${teamClass}">${safeText}</div>`;
   }).join('');
 
   if (popoverEl) popoverEl.innerHTML = html;
