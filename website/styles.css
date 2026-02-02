@@ -12035,47 +12035,182 @@ body.light-mode .mode-modal {
    Activated via body.og-mode class.
 ============================================== */
 
-/* --- OG Variables --- */
+/* --- OG Variables (from Style.txt) --- */
 body.og-mode {
-  --bg: #1B2838;
-  --surface: #1e3044;
-  --surface2: #233a50;
-  --card: #1e3044;
-  --border: #2a4560;
+  --fontSize: 18.56px;
+  --positive: 111 95.24% 24.71%;
+  --positive-foreground: 0 100% 100%;
+  --positive-lighter: 109.12 100% 40%;
+  --positive-border: 85 93% 61%;
+  --primary: 108 95% 36%;
+  --left-team-primary-color: #008ee0;
+  --right-team-primary-color: #ff5241;
+  --side1-team-primary-color: #5D9627;
+  --side2-team-primary-color: #007769;
+  --app: 18 100% 36%;
+  --app-lighter: 33 100% 46%;
+  --app-border: 33 91% 70%;
+  --bg-cn-gradient-1: #0FA3EF;
+  --bg-cn-gradient-2: #015580;
+  --bg-cn-duet-gradient-1: #94D234;
+  --bg-cn-duet-gradient-2: #009A58;
+  --bg-right-team-primary: #ff5241;
+  --bg-left-team-primary: #008ee0;
+  --left-highlight: radial-gradient(at center, rgba(42,240,255,1), rgba(42,240,255,0.6),rgba(2550,255,0,0.0),rgba(2550,255,0,0));
+  --right-highlight: radial-gradient(at center, rgba(255,196,83,1), rgba(255,196,83,0.6),rgba(2550,255,0,0.0),rgba(2550,255,0,0));
+  --bg-timer-blue: linear-gradient(180deg, #AEF4FF 0%, #9CF3FF 100%);
+  --bg-timer-red: linear-gradient(180deg, #FFD19D 0%, #FFB374 100%);
+  --blue-gradient: linear-gradient(to bottom, #008ee0, #52b7ff);
+  --red-gradient: linear-gradient(to bottom, #ff5241, #ff833d);
+  --green-gradient: linear-gradient(to bottom, hsla(108, 95%, 36%, 1), hsla(94, 73%, 48%, 1));
+  --green-gradient-light: linear-gradient(to bottom, hsla(99, 74%, 58%, 1), hsla(82, 86%, 66%, 1));
+  --side1-gradient: linear-gradient(to bottom, #94D234, #5D9627);
+  --side2-gradient: linear-gradient(to bottom, #0EA786, #007769);
+  --blue-red-gradient: linear-gradient(to bottom, #008ee0, #ff5241);
+  --side1-side2-gradient: linear-gradient(to bottom, #94D234, #007769);
+  --blue-shadow-a: #beffef;
+  --blue-shadow-b: #00b3ff;
+  --blue-shadow-c: #00b3ff;
+  --red-shadow-a: #ffe5be;
+  --red-shadow-b: #ff6b00;
+  --bg-null-layer1-1: rgba(0,0,0,1);
+  --bg-null-layer1-2: rgba(20,20,20,1);
+  --bg-null-layer1-3: rgba(40,40,40,1);
+  --bg-null-svg: rgba(0,0,0,0.2);
+  --bg-null-layer2-1: rgba(0,0,0,1);
+  --bg-null-layer2-2: rgba(0,0,0,0.2);
+  --bg-null-layer2-3: transparent;
+  --bg-home-layer1-1: rgb(65, 3, 24);
+  --bg-home-layer1-2: #790f32;
+  --bg-home-layer1-3: #981943;
+  --bg-home-svg: rgba(255,255,255,0.05);
+  --bg-home-layer2-1: transparent;
+  --bg-home-layer2-2: transparent;
+  --bg-home-layer2-3: transparent;
+  --bg-home-bottom-1: rgb(184,108,26);
+  --bg-home-bottom-2: rgba(178,105,27,0.5);
+  --bg-home-bottom-3: transparent;
+  --bg-red-layer1-1: #110707;
+  --bg-red-layer1-2: rgba(66,46,44,1);
+  --bg-red-layer1-3: rgba(85,59,53,1);
+  --bg-red-svg: rgba(0, 0, 0, 0.1);
+  --bg-red-layer2-1: transparent;
+  --bg-red-layer2-2: transparent;
+  --bg-red-layer2-3: transparent;
+  --bg-blue-layer1-1: rgba(4,3,7,1);
+  --bg-blue-layer1-2: #293543;
+  --bg-blue-layer1-3: #294054;
+  --bg-blue-svg: rgba(0, 0, 0, 0.1);
+  --bg-blue-layer2-1: transparent;
+  --bg-blue-layer2-2: transparent;
+  --bg-blue-layer2-3: transparent;
+  --border-cardcounter-red: #ff5241;
+  --border-cardcounter-blue: #008ee0;
+  --bg-warning: #ef4444;
+  --text-suggestion: #1BE1C6;
+  --text-suggestion-liked: #94D234;
+  --team-blue-400: #52b7ff;
+  --team-blue-500: #008ee0;
+  --team-blue-800: #193cb8;
+  --team-red-400: #ff5242;
+  --team-red-500: #fb2c36;
+  --team-red-800: #9f0712;
+  --logpanel-black-card: #000;
+  --logpanel-neutral-card: #af9973;
+  --guess-icon-bg: linear-gradient(to bottom, hsla(108, 95%, 36%, 1),hsla(94, 73%, 48%, 1));
+  --guess-icon-bg-light: linear-gradient(to bottom, hsla(99, 74%, 58%, 1),hsla(82, 86%, 66%, 1));
+  --neutral-cardBorder: #FFE8D4;
+  --neutral-cardBg: #FFD6B0;
+  --neutral-innerBorder: #AC8D77;
+  --neutral-innerBg: linear-gradient(to bottom, #FFDBBA, #FFDBBA 0%, #FFC48F 100%);
+  --neutral-darkWordBg: #967355;
+  --red-cardBorder: #FFD19D;
+  --red-cardBg: #FF9159;
+  --red-innerBorder: #B33E1D;
+  --red-innerBg: #F8543A;
+  --red-darkWordBg: #852D15;
+  --blue-cardBorder: #BAF5FF;
+  --blue-cardBg: #3DD1EE;
+  --blue-innerBorder: #2F75AA;
+  --blue-innerBg: #00A3D8;
+  --blue-darkWordBg: #17527F;
+  --black-cardBorder: #B6B5B5;
+  --black-cardBg: #8C8D8D;
+  --black-innerBorder: #2A2A2A;
+  --black-innerBg: #525252;
+  --black-darkWordBg: #2A2A2A;
+  --gold-cardBorder: #FEE9B7;
+  --gold-cardBg: #FDD878;
+  --gold-innerBorder: #B2670C;
+  --gold-innerBg: #FF9F2D;
+  --gold-darkWordBg: #B2670C;
+  --timertoken-cardBorder: #FFE8D4;
+  --timertoken-cardBg: #FFD6B0;
+  --timertoken-innerBorder: #AC8D77;
+  --particle-red-primary: #F8543A;
+  --particle-red-secondary: #FF9159;
+  --particle-blue-primary: #3DD1EE;
+  --particle-blue-secondary: #2F75AA;
+  --particle-neutral-primary: #FFD6B0;
+  --particle-neutral-secondary: #AC8D77;
+  --particle-black-primary: #000000;
+  --particle-black-secondary: #333333;
+  --avatar-neutral-nameBg: #444444;
+  --avatar-neutral-circleGradient: linear-gradient(to bottom, #C4C4C4, #6C6C6C);
+  --avatar-red-nameBg: #901800;
+  --avatar-red-circleGradient: linear-gradient(to bottom, #FFCC8B, #FF8D3B);
+  --avatar-blue-nameBg: #004F7B;
+  --avatar-blue-circleGradient: linear-gradient(to bottom, #ABEEFF, #51B6FE);
+
+  /* App token mapping (used by this codebase) */
+  --bg: var(--bg-null-layer1-1);
+  --surface: rgba(255,255,255,0.06);
+  --surface2: rgba(255,255,255,0.04);
+  --card: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.14);
   --text: #ffffff;
-  --text-dim: #8ba4be;
-  --accent: #3B8BEB;
-  --green: #4CAF50;
-  --gold: #FFD54F;
-  --red: #C8553A;
-  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
-  --focus-ring: 0 0 0 3px rgba(59, 139, 235, 0.35);
-  --game-red: #C8553A;
-  --game-red-bg: rgba(200, 85, 58, 0.13);
-  --game-red-border: rgba(200, 85, 58, 0.38);
-  --game-blue: #3B8BEB;
-  --game-blue-bg: rgba(59, 139, 235, 0.13);
-  --game-blue-border: rgba(59, 139, 235, 0.38);
-  --game-neutral: #D4C5A9;
-  --game-neutral-bg: rgba(212, 197, 169, 0.14);
-  --game-neutral-border: rgba(212, 197, 169, 0.35);
-  --game-assassin: #3A3A3A;
-  --game-assassin-bg: rgba(58, 58, 58, 0.82);
-  --game-assassin-border: rgba(58, 58, 58, 0.45);
+  --text-dim: rgba(255,255,255,0.68);
+  --accent: var(--bg-left-team-primary);
+  --green: #94D234;
+  --gold: var(--gold-cardBg);
+  --red: var(--bg-right-team-primary);
+
+  --panel: rgba(255,255,255,0.05);
+  --border-soft: rgba(255,255,255,0.10);
+  --surface-glass: rgba(255,255,255,0.06);
+  --shadow-lg: 0 18px 50px rgba(0,0,0,0.55);
+  --shadow-md: 0 10px 28px rgba(0,0,0,0.45);
+  --shadow-sm: 0 6px 18px rgba(0,0,0,0.35);
+  --focus-ring: 0 0 0 3px rgba(0,142,224,0.35);
+
+  /* Game accents */
+  --game-red: var(--bg-right-team-primary);
+  --game-red-bg: color-mix(in srgb, var(--bg-right-team-primary) 18%, transparent);
+  --game-red-border: color-mix(in srgb, var(--bg-right-team-primary) 42%, transparent);
+  --game-blue: var(--bg-left-team-primary);
+  --game-blue-bg: color-mix(in srgb, var(--bg-left-team-primary) 18%, transparent);
+  --game-blue-border: color-mix(in srgb, var(--bg-left-team-primary) 42%, transparent);
+  --game-neutral: #af9973;
+  --game-neutral-bg: rgba(175,153,115,0.18);
+  --game-neutral-border: rgba(175,153,115,0.42);
+  --game-assassin: #000000;
+  --game-assassin-bg: rgba(0,0,0,0.80);
+  --game-assassin-border: rgba(255,255,255,0.20);
 }
 
 /* --- OG Background --- */
 body.og-mode {
-  background-color: #1B2838;
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 3px,
-    rgba(255, 255, 255, 0.015) 3px,
-    rgba(255, 255, 255, 0.015) 4px
-  );
+  background:
+    linear-gradient(180deg, var(--bg-null-layer1-1) 0%, var(--bg-null-layer1-2) 55%, var(--bg-null-layer1-3) 100%),
+    radial-gradient(1200px 800px at 20% -10%, rgba(0,142,224,0.18) 0%, rgba(0,142,224,0.00) 55%),
+    radial-gradient(1200px 800px at 80% -10%, rgba(255,82,65,0.14) 0%, rgba(255,82,65,0.00) 55%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(255, 255, 255, 0.015) 3px,
+      rgba(255, 255, 255, 0.015) 4px
+    );
 }
 
 body.og-mode .game-container-expanded {
@@ -12178,99 +12313,100 @@ body.og-mode .game-board {
   margin-bottom: 12px;
 }
 
-/* --- OG Game Cards: Base (unrevealed, operative view) --- */
-body.og-mode .game-card {
-  background: #D4C5A9;
-  border: 2px solid #c4b494;
-  border-radius: 10px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+/* --- OG Game Cards: cno2 style --- */
+body.og-mode .game-card{
+  /* Defaults (unrevealed operative view) */
+  --cardBorder: var(--neutral-cardBorder);
+  --cardBg: var(--neutral-cardBg);
+  --innerBorder: var(--neutral-innerBorder);
+  --innerBg: var(--neutral-innerBg);
+  --wordBg: var(--neutral-darkWordBg);
+  --wordColor: #ffffff;
+
+  background: var(--cardBg);
+  border: 2px solid var(--cardBorder);
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  position: relative;
+  overflow: hidden;
   aspect-ratio: 1.5;
+  transform: translateZ(0);
 }
 
-body.og-mode .game-card .card-word {
-  color: #2c2416;
-  font-weight: 800;
+body.og-mode .game-card::before{
+  content:"";
+  position:absolute;
+  inset: 6px;
+  border-radius: 9px;
+  background: var(--innerBg);
+  border: 2px solid var(--innerBorder);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.20);
+  z-index: 1;
+}
+
+body.og-mode .game-card .card-word{
+  position: relative;
+  z-index: 2;
+  background: var(--wordBg);
+  color: var(--wordColor);
+  font-weight: 900;
   text-transform: uppercase;
-  font-size: clamp(10px, 1.3vw, 14px);
-  letter-spacing: 0.6px;
+  font-size: clamp(10px, 1.25vw, 14px);
+  letter-spacing: 0.8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
 }
 
-body.og-mode .game-card:hover:not(.revealed):not(.disabled) {
+/* Assigned/revealed colors (applies to spymaster-view + revealed) */
+body.og-mode .game-card.card-red{
+  --cardBorder: var(--red-cardBorder);
+  --cardBg: var(--red-cardBg);
+  --innerBorder: var(--red-innerBorder);
+  --innerBg: var(--red-innerBg);
+  --wordBg: var(--red-darkWordBg);
+}
+body.og-mode .game-card.card-blue{
+  --cardBorder: var(--blue-cardBorder);
+  --cardBg: var(--blue-cardBg);
+  --innerBorder: var(--blue-innerBorder);
+  --innerBg: var(--blue-innerBg);
+  --wordBg: var(--blue-darkWordBg);
+}
+body.og-mode .game-card.card-neutral{
+  --cardBorder: var(--neutral-cardBorder);
+  --cardBg: var(--neutral-cardBg);
+  --innerBorder: var(--neutral-innerBorder);
+  --innerBg: var(--neutral-innerBg);
+  --wordBg: var(--neutral-darkWordBg);
+}
+body.og-mode .game-card.card-assassin{
+  --cardBorder: var(--black-cardBorder);
+  --cardBg: var(--black-cardBg);
+  --innerBorder: var(--black-innerBorder);
+  --innerBg: var(--black-innerBg);
+  --wordBg: var(--black-darkWordBg);
+}
+
+body.og-mode .game-card:hover:not(.revealed):not(.disabled){
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  border-color: #b0a080;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.55);
+  filter: brightness(1.02);
 }
 
-/* --- OG Spymaster View: Solid color fills --- */
-body.og-mode .game-card.spymaster-view.card-red {
-  background: #C8553A;
-  border-color: #a8432c;
-}
-body.og-mode .game-card.spymaster-view.card-red .card-word {
-  color: #ffffff;
-}
-
-body.og-mode .game-card.spymaster-view.card-blue {
-  background: #3B8BEB;
-  border-color: #2a6fc0;
-}
-body.og-mode .game-card.spymaster-view.card-blue .card-word {
-  color: #ffffff;
-}
-
-body.og-mode .game-card.spymaster-view.card-neutral {
-  background: #D4C5A9;
-  border-color: #c4b494;
-}
-body.og-mode .game-card.spymaster-view.card-neutral .card-word {
-  color: #2c2416;
-}
-
-body.og-mode .game-card.spymaster-view.card-assassin {
-  background: #3A3A3A;
-  border-color: #2a2a2a;
-}
-body.og-mode .game-card.spymaster-view.card-assassin .card-word {
-  color: #ffffff;
-}
-
-/* --- OG Revealed Cards --- */
-body.og-mode .game-card.revealed.card-red {
-  background: #C8553A;
-  border-color: #a8432c;
-}
-
-body.og-mode .game-card.revealed.card-blue {
-  background: #3B8BEB;
-  border-color: #2a6fc0;
-}
-
-body.og-mode .game-card.revealed.card-neutral {
-  background: #D4C5A9;
-  border-color: #c4b494;
-}
-body.og-mode .game-card.revealed.card-neutral .card-word {
-  color: #2c2416;
-}
-
-body.og-mode .game-card.revealed.card-assassin {
-  background: #3A3A3A;
-  border-color: #2a2a2a;
-}
-
-body.og-mode .game-card.revealed .card-word {
-  color: #ffffff;
+body.og-mode .game-card.disabled:not(.spymaster-view){
+  opacity: 0.92;
 }
 
 /* --- OG Pending Selection --- */
-body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
-  border-color: #FFD54F;
-  box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
+body.og-mode .game-card.pending-select:not(.revealed):not(.disabled){
+  border-color: var(--text-suggestion);
+  box-shadow: 0 0 0 2px rgba(27,225,198,0.35), 0 4px 14px rgba(0,0,0,0.45);
 }
 
-body.og-mode .game-card .card-checkmark {
-  background: #4CAF50;
-  border-radius: 50%;
+body.og-mode .game-card .card-checkmark{
+  background: var(--green-gradient);
+  border-radius: 9px;
 }
 
 /* --- OG Clue Input --- */
@@ -12361,7 +12497,7 @@ body.og-mode .og-num-btn:hover {
 }
 
 body.og-mode .clue-form-expanded .btn.primary {
-  background: #4CAF50;
+  background: var(--green-gradient);
   border: none;
   border-radius: 50%;
   width: 40px;
@@ -12373,7 +12509,7 @@ body.og-mode .clue-form-expanded .btn.primary {
   justify-content: center;
   color: #fff;
   font-size: 0;
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
+  box-shadow: 0 2px 10px rgba(148, 210, 52, 0.35);
   transition: background 0.15s, transform 0.15s;
 }
 
@@ -12397,7 +12533,7 @@ body.og-mode .clue-display-expanded {
 }
 
 body.og-mode .clue-label {
-  color: #8ba4be;
+  color: var(--text-dim);
   text-transform: uppercase;
   font-weight: 700;
   font-size: 11px;
@@ -12433,7 +12569,7 @@ body.og-mode .operative-actions-expanded .btn:hover {
 
 /* --- OG Waiting Message --- */
 body.og-mode .waiting-expanded {
-  color: #8ba4be;
+  color: var(--text-dim);
   font-style: normal;
   text-transform: uppercase;
   font-weight: 700;
@@ -12458,13 +12594,13 @@ body.og-mode .og-team-panel {
 }
 
 .og-team-blue {
-  background: linear-gradient(180deg, rgba(59, 139, 235, 0.12) 0%, rgba(59, 139, 235, 0.04) 100%);
-  border: 1px solid rgba(59, 139, 235, 0.25);
+  background: linear-gradient(180deg, rgba(0, 142, 224, 0.14) 0%, rgba(0, 142, 224, 0.06) 100%);
+  border: 1px solid rgba(0, 142, 224, 0.35);
 }
 
 .og-team-red {
-  background: linear-gradient(180deg, rgba(200, 85, 58, 0.12) 0%, rgba(200, 85, 58, 0.04) 100%);
-  border: 1px solid rgba(200, 85, 58, 0.25);
+  background: linear-gradient(180deg, rgba(255, 82, 65, 0.14) 0%, rgba(255, 82, 65, 0.06) 100%);
+  border: 1px solid rgba(255, 82, 65, 0.35);
 }
 
 /* --- OG Section Headers --- */
@@ -12473,13 +12609,13 @@ body.og-mode .og-team-panel {
   font-weight: 800;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: #8ba4be;
+  color: var(--text-dim);
   padding: 4px 0 2px;
 }
 
 .og-team-red .og-section-header,
 .og-mobile-red .og-section-header {
-  color: #c4917e;
+  color: rgba(255, 82, 65, 0.75);
 }
 
 /* --- OG Illustration Boxes --- */
@@ -12496,14 +12632,14 @@ body.og-mode .og-team-panel {
 }
 
 .og-illustration-blue {
-  background: linear-gradient(145deg, #1a3a5c 0%, #2563a8 50%, #1e4d7a 100%);
-  border: 1px solid rgba(59, 139, 235, 0.35);
+  background: var(--blue-gradient);
+  border: 1px solid rgba(0, 142, 224, 0.40);
   box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.2);
 }
 
 .og-illustration-red {
-  background: linear-gradient(145deg, #4a2020 0%, #a84832 50%, #6b2d1e 100%);
-  border: 1px solid rgba(200, 85, 58, 0.35);
+  background: var(--red-gradient);
+  border: 1px solid rgba(255, 82, 65, 0.40);
   box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.2);
 }
 
@@ -12565,13 +12701,13 @@ body.og-mode .og-team-panel {
 }
 
 .og-score-blue .og-score-number {
-  color: #3B8BEB;
-  text-shadow: 0 3px 16px rgba(59, 139, 235, 0.35);
+  color: var(--bg-left-team-primary);
+  text-shadow: 0 3px 16px rgba(0, 142, 224, 0.35);
 }
 
 .og-score-red .og-score-number {
-  color: #C8553A;
-  text-shadow: 0 3px 16px rgba(200, 85, 58, 0.35);
+  color: var(--bg-right-team-primary);
+  text-shadow: 0 3px 16px rgba(255, 82, 65, 0.35);
 }
 
 /* --- OG Score Avatar --- */
@@ -12697,16 +12833,16 @@ body.og-mode .og-game-log .game-log-entry {
 
   .og-mobile-blue {
     background: linear-gradient(180deg, rgba(59, 139, 235, 0.15) 0%, rgba(59, 139, 235, 0.05) 100%);
-    border: 1px solid rgba(59, 139, 235, 0.25);
+    border: 1px solid rgba(0, 142, 224, 0.35);
   }
 
   .og-mobile-red {
     background: linear-gradient(180deg, rgba(200, 85, 58, 0.15) 0%, rgba(200, 85, 58, 0.05) 100%);
-    border: 1px solid rgba(200, 85, 58, 0.25);
+    border: 1px solid rgba(255, 82, 65, 0.35);
   }
 
   .og-mobile-red .og-section-header {
-    color: #c4917e;
+    color: rgba(255, 82, 65, 0.75);
   }
 
   .og-mobile-log {
