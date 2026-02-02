@@ -12028,3 +12028,483 @@ body.light-mode .mode-modal {
   opacity: 0.45;
   pointer-events: none;
 }
+
+/* ==============================================
+   OG CODENAMES UI MODE
+   Replicates the official Codenames Online look.
+   Activated via body.og-mode class.
+============================================== */
+
+/* --- OG Variables --- */
+body.og-mode {
+  --bg: #1B2838;
+  --surface: #1e3044;
+  --surface2: #233a50;
+  --card: #1e3044;
+  --border: #2a4560;
+  --text: #ffffff;
+  --text-dim: #8ba4be;
+  --accent: #3B8BEB;
+  --green: #4CAF50;
+  --gold: #FFD54F;
+  --red: #C8553A;
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+  --focus-ring: 0 0 0 3px rgba(59, 139, 235, 0.35);
+  --game-red: #C8553A;
+  --game-red-bg: rgba(200, 85, 58, 0.13);
+  --game-red-border: rgba(200, 85, 58, 0.38);
+  --game-blue: #3B8BEB;
+  --game-blue-bg: rgba(59, 139, 235, 0.13);
+  --game-blue-border: rgba(59, 139, 235, 0.38);
+  --game-neutral: #D4C5A9;
+  --game-neutral-bg: rgba(212, 197, 169, 0.14);
+  --game-neutral-border: rgba(212, 197, 169, 0.35);
+  --game-assassin: #3A3A3A;
+  --game-assassin-bg: rgba(58, 58, 58, 0.82);
+  --game-assassin-border: rgba(58, 58, 58, 0.45);
+}
+
+/* --- OG Background --- */
+body.og-mode {
+  background-color: #1B2838;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.015) 3px,
+    rgba(255, 255, 255, 0.015) 4px
+  );
+}
+
+body.og-mode .game-container-expanded {
+  background: transparent;
+}
+
+/* --- Hide standard elements in OG mode --- */
+body.og-mode .game-header-expanded {
+  display: none;
+}
+
+body.og-mode .clue-history-panel,
+body.og-mode .game-log-panel,
+body.og-mode .operative-chat-panel {
+  display: none !important;
+}
+
+/* --- OG Phase Banner --- */
+.og-phase-banner {
+  display: none;
+  text-align: center;
+  padding: 14px 0 8px;
+}
+
+body.og-mode .og-phase-banner {
+  display: block;
+}
+
+.og-phase-text {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+/* --- OG Game Board --- */
+body.og-mode .game-board {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* --- OG Game Cards: Base (unrevealed, operative view) --- */
+body.og-mode .game-card {
+  background: #D4C5A9;
+  border: 2px solid #c4b494;
+  border-radius: 10px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  aspect-ratio: 1.5;
+}
+
+body.og-mode .game-card .card-word {
+  color: #2c2416;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: clamp(10px, 1.3vw, 14px);
+  letter-spacing: 0.6px;
+}
+
+body.og-mode .game-card:hover:not(.revealed):not(.disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border-color: #b0a080;
+}
+
+/* --- OG Spymaster View: Solid color fills --- */
+body.og-mode .game-card.spymaster-view.card-red {
+  background: #C8553A;
+  border-color: #a8432c;
+}
+body.og-mode .game-card.spymaster-view.card-red .card-word {
+  color: #ffffff;
+}
+
+body.og-mode .game-card.spymaster-view.card-blue {
+  background: #3B8BEB;
+  border-color: #2a6fc0;
+}
+body.og-mode .game-card.spymaster-view.card-blue .card-word {
+  color: #ffffff;
+}
+
+body.og-mode .game-card.spymaster-view.card-neutral {
+  background: #D4C5A9;
+  border-color: #c4b494;
+}
+body.og-mode .game-card.spymaster-view.card-neutral .card-word {
+  color: #2c2416;
+}
+
+body.og-mode .game-card.spymaster-view.card-assassin {
+  background: #3A3A3A;
+  border-color: #2a2a2a;
+}
+body.og-mode .game-card.spymaster-view.card-assassin .card-word {
+  color: #ffffff;
+}
+
+/* --- OG Revealed Cards --- */
+body.og-mode .game-card.revealed.card-red {
+  background: #C8553A;
+  border-color: #a8432c;
+}
+
+body.og-mode .game-card.revealed.card-blue {
+  background: #3B8BEB;
+  border-color: #2a6fc0;
+}
+
+body.og-mode .game-card.revealed.card-neutral {
+  background: #D4C5A9;
+  border-color: #c4b494;
+}
+body.og-mode .game-card.revealed.card-neutral .card-word {
+  color: #2c2416;
+}
+
+body.og-mode .game-card.revealed.card-assassin {
+  background: #3A3A3A;
+  border-color: #2a2a2a;
+}
+
+body.og-mode .game-card.revealed .card-word {
+  color: #ffffff;
+}
+
+/* --- OG Pending Selection --- */
+body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
+  border-color: #FFD54F;
+  box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+body.og-mode .game-card .card-checkmark {
+  background: #4CAF50;
+  border-radius: 50%;
+}
+
+/* --- OG Clue Input --- */
+body.og-mode .game-center-area .game-action-bar {
+  background: transparent;
+  border: none;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+body.og-mode .clue-form-expanded {
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 5px 5px 5px 20px;
+  max-width: 460px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  gap: 6px;
+}
+
+body.og-mode .clue-input-expanded {
+  background: transparent;
+  border: none;
+  color: #333;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+body.og-mode .clue-input-expanded:focus {
+  box-shadow: none;
+  border: none;
+  outline: none;
+}
+
+body.og-mode .clue-input-expanded::placeholder {
+  color: #aaa;
+  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+body.og-mode .clue-num-expanded {
+  background: transparent;
+  border: none;
+  border-left: 2px solid #e0e0e0;
+  color: #333;
+  width: 48px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: none;
+}
+
+body.og-mode .clue-num-expanded:focus {
+  box-shadow: none;
+  border: none;
+  border-left: 2px solid #e0e0e0;
+  outline: none;
+}
+
+body.og-mode .clue-form-expanded .btn.primary {
+  background: #4CAF50;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
+  transition: background 0.15s, transform 0.15s;
+}
+
+body.og-mode .clue-form-expanded .btn.primary::after {
+  content: '\2192';
+  font-size: 20px;
+  font-weight: 700;
+}
+
+body.og-mode .clue-form-expanded .btn.primary:hover {
+  background: #43A047;
+  transform: scale(1.05);
+}
+
+/* --- OG Clue Display (operatives guessing phase) --- */
+body.og-mode .clue-display-expanded {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.og-mode .clue-label {
+  color: #8ba4be;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+body.og-mode .clue-word-expanded {
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 22px;
+}
+
+body.og-mode .clue-number-expanded {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* --- OG Operative Actions --- */
+body.og-mode .operative-actions-expanded .btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-radius: 20px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+body.og-mode .operative-actions-expanded .btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* --- OG Waiting Message --- */
+body.og-mode .waiting-expanded {
+  color: #8ba4be;
+  font-style: normal;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-size: 14px;
+}
+
+/* --- OG Team Side Panels --- */
+.og-team-panel {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+body.og-mode .og-team-panel {
+  display: flex;
+}
+
+.og-team-blue {
+  background: linear-gradient(180deg, rgba(59, 139, 235, 0.12) 0%, rgba(59, 139, 235, 0.04) 100%);
+  border: 1px solid rgba(59, 139, 235, 0.25);
+}
+
+.og-team-red {
+  background: linear-gradient(180deg, rgba(200, 85, 58, 0.12) 0%, rgba(200, 85, 58, 0.04) 100%);
+  border: 1px solid rgba(200, 85, 58, 0.25);
+}
+
+.og-section-header {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #8ba4be;
+  padding: 6px 0 4px;
+}
+
+.og-team-red .og-section-header {
+  color: #c4917e;
+}
+
+.og-player-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.og-player-slot {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.og-player-slot.og-empty {
+  color: #5a7a96;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* OG Score Block */
+.og-score-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.og-score-number {
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.og-score-blue .og-score-number {
+  color: #3B8BEB;
+  text-shadow: 0 3px 16px rgba(59, 139, 235, 0.35);
+}
+
+.og-score-red .og-score-number {
+  color: #C8553A;
+  text-shadow: 0 3px 16px rgba(200, 85, 58, 0.35);
+}
+
+/* OG Game Log in right panel */
+.og-game-log-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+  margin-top: auto;
+}
+
+.og-game-log {
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+
+/* --- OG Tag Legend --- */
+body.og-mode .card-tag-legend {
+  background: rgba(27, 40, 56, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+/* --- OG Role Selection --- */
+body.og-mode .role-selection-compact {
+  background: rgba(27, 40, 56, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+}
+
+body.og-mode .role-btn-compact {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+body.og-mode .role-btn-compact:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* --- OG Sidebar Panel Header (for game log) --- */
+body.og-mode .og-game-log .game-log-entry {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* --- OG Mobile Overrides --- */
+@media (max-width: 768px) {
+  body.og-mode .og-team-panel {
+    display: none !important;
+  }
+
+  body.og-mode .game-header-expanded {
+    display: flex;
+  }
+
+  body.og-mode .og-phase-banner {
+    padding: 8px 0 4px;
+  }
+
+  body.og-mode .og-phase-text {
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  body.og-mode .clue-form-expanded {
+    max-width: 100%;
+    border-radius: 22px;
+    padding: 4px 4px 4px 14px;
+  }
+}

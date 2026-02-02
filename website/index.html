@@ -703,6 +703,21 @@
                     </div>
                     <div class="game-log-entries" id="game-log-entries-sidebar"></div>
                   </div>
+
+                  <!-- OG Mode: Blue Team Panel -->
+                  <div class="og-team-panel og-team-blue" id="og-panel-blue">
+                    <div class="og-team-section">
+                      <div class="og-section-header">OPERATIVES</div>
+                      <div class="og-player-slots" id="og-blue-operatives"></div>
+                    </div>
+                    <div class="og-score-block og-score-blue">
+                      <span class="og-score-number" id="og-blue-score">8</span>
+                    </div>
+                    <div class="og-team-section">
+                      <div class="og-section-header">SPYMASTERS</div>
+                      <div class="og-player-slots" id="og-blue-spymasters"></div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Center - Game Board -->
@@ -726,6 +741,11 @@
                       </button>
                     </div>
                     <div class="role-status" id="role-status"></div>
+                  </div>
+
+                  <!-- OG Mode: Phase Banner -->
+                  <div class="og-phase-banner" id="og-phase-banner">
+                    <span class="og-phase-text" id="og-phase-text">GIVE YOUR OPERATIVES A CLUE</span>
                   </div>
 
                   <!-- Game Board -->
@@ -810,6 +830,25 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                       </button>
                     </form>
+                  </div>
+
+                  <!-- OG Mode: Red Team Panel -->
+                  <div class="og-team-panel og-team-red" id="og-panel-red">
+                    <div class="og-team-section">
+                      <div class="og-section-header">OPERATIVES</div>
+                      <div class="og-player-slots" id="og-red-operatives"></div>
+                    </div>
+                    <div class="og-score-block og-score-red">
+                      <span class="og-score-number" id="og-red-score">9</span>
+                    </div>
+                    <div class="og-team-section">
+                      <div class="og-section-header">SPYMASTERS</div>
+                      <div class="og-player-slots" id="og-red-spymasters"></div>
+                    </div>
+                    <div class="og-team-section og-game-log-section">
+                      <div class="og-section-header">GAME LOG</div>
+                      <div class="og-game-log" id="og-game-log"></div>
+                    </div>
                   </div>
 
                                   </div>
@@ -1090,6 +1129,14 @@
   <span class="settings-row-label">Light mode</span>
   <div class="toggle-switch">
     <input type="checkbox" id="settings-theme-toggle" />
+    <span class="toggle-slider"></span>
+  </div>
+</label>
+
+<label class="settings-row">
+  <span class="settings-row-label">OG Codenames</span>
+  <div class="toggle-switch">
+    <input type="checkbox" id="settings-og-mode-toggle" />
     <span class="toggle-slider"></span>
   </div>
 </label>

@@ -3203,6 +3203,72 @@ function renderAdvancedFeatures() {
   } else {
     stopGameTimer();
   }
+
+  // Render OG mode panels if active
+  renderOgPanels();
+}
+
+function renderOgPanels() {
+  const isOgMode = document.body.classList.contains('og-mode');
+  const ogPanelBlue = document.getElementById('og-panel-blue');
+  const ogPanelRed = document.getElementById('og-panel-red');
+  if (!ogPanelBlue || !ogPanelRed) return;
+
+  if (!isOgMode || !currentGame) {
+    ogPanelBlue.style.display = 'none';
+    ogPanelRed.style.display = 'none';
+    return;
+  }
+
+  ogPanelBlue.style.display = 'flex';
+  ogPanelRed.style.display = 'flex';
+
+  // Update scores
+  const blueScore = document.getElementById('og-blue-score');
+  const redScore = document.getElementById('og-red-score');
+  if (blueScore) blueScore.textContent = currentGame.blueCardsLeft ?? '';
+  if (redScore) redScore.textContent = currentGame.redCardsLeft ?? '';
+
+  // Split players into spymasters and operatives
+  const splitRoles = (players, spymasterName) => {
+    const spymasters = [];
+    const operatives = [];
+    (players || []).forEach(p => {
+      if (p?.name && String(p.name).trim() === String(spymasterName || '').trim()) {
+        spymasters.push(p);
+      } else {
+        operatives.push(p);
+      }
+    });
+    return { spymasters, operatives };
+  };
+
+  const renderSlotHtml = (players) => {
+    if (!players.length) return '<div class="og-player-slot og-empty">---</div>';
+    return players.map(p =>
+      `<div class="og-player-slot">${escapeHtml(displayPlayerName(p))}</div>`
+    ).join('');
+  };
+
+  const blue = splitRoles(currentGame.bluePlayers, currentGame.blueSpymaster);
+  const red = splitRoles(currentGame.redPlayers, currentGame.redSpymaster);
+
+  const blueOps = document.getElementById('og-blue-operatives');
+  const blueSpy = document.getElementById('og-blue-spymasters');
+  const redOps = document.getElementById('og-red-operatives');
+  const redSpy = document.getElementById('og-red-spymasters');
+
+  if (blueOps) blueOps.innerHTML = renderSlotHtml(blue.operatives);
+  if (blueSpy) blueSpy.innerHTML = renderSlotHtml(blue.spymasters);
+  if (redOps) redOps.innerHTML = renderSlotHtml(red.operatives);
+  if (redSpy) redSpy.innerHTML = renderSlotHtml(red.spymasters);
+
+  // Mirror game log into OG panel
+  const ogLog = document.getElementById('og-game-log');
+  const existingLog = document.getElementById('game-log-entries-sidebar');
+  if (ogLog && existingLog) {
+    ogLog.innerHTML = existingLog.innerHTML;
+  }
 }
 
 function renderBoard(isSpymaster) {
@@ -3263,6 +3329,30 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   clueFormEl.style.display = 'none';
   operativeActionsEl.style.display = 'none';
   waitingEl.style.display = 'none';
+
+  // Update OG mode phase banner
+  const ogBanner = document.getElementById('og-phase-banner');
+  const ogText = document.getElementById('og-phase-text');
+  if (ogBanner && ogText) {
+    const isOgMode = document.body.classList.contains('og-mode');
+    ogBanner.style.display = isOgMode ? 'block' : 'none';
+    if (isOgMode) {
+      if (currentGame.winner) {
+        const winnerName = currentGame.winner === 'red'
+          ? (currentGame.redTeamName || 'RED')
+          : (currentGame.blueTeamName || 'BLUE');
+        ogText.textContent = winnerName.toUpperCase() + ' TEAM WINS!';
+      } else if (currentGame.currentPhase === 'spymaster') {
+        ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
+      } else if (currentGame.currentPhase === 'operatives') {
+        ogText.textContent = 'GUESS THE WORDS';
+      } else if (currentGame.currentPhase === 'waiting') {
+        ogText.textContent = 'WAITING FOR PLAYERS';
+      } else if (currentGame.currentPhase === 'role-selection') {
+        ogText.textContent = 'SELECT YOUR ROLE';
+      }
+    }
+  }
 
   if (currentGame.winner) return;
 

@@ -43,6 +43,7 @@ const LS_SETTINGS_ANIMATIONS = 'ct_animations_v1';
 const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
+const LS_SETTINGS_OG_MODE = 'ct_og_mode_v1';
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -6242,6 +6243,7 @@ let settingsAnimations = true;
 let settingsSounds = true;
 let settingsVolume = 70;
 let settingsTheme = 'dark'; // 'dark' | 'light'
+let settingsOgMode = false;
 
 // Audio context for sound effects
 let audioCtx = null;
@@ -6252,16 +6254,19 @@ function initSettings() {
   const savedSounds = safeLSGet(LS_SETTINGS_SOUNDS);
   const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
   const savedTheme = safeLSGet(LS_SETTINGS_THEME);
+  const savedOgMode = safeLSGet(LS_SETTINGS_OG_MODE);
 
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
 
   settingsTheme = (savedTheme === 'light') ? 'light' : 'dark';
+  settingsOgMode = savedOgMode === 'true';
 
   // Apply initial state
   applyThemeSetting();
   applyAnimationsSetting();
+  applyOgModeSetting();
 
   // Get UI elements
   const gearBtn = document.getElementById('settings-gear-btn');
@@ -6270,6 +6275,7 @@ function initSettings() {
   const closeBtn = document.getElementById('settings-modal-close');
   const animToggle = document.getElementById('settings-animations-toggle');
   const themeToggle = document.getElementById('settings-theme-toggle');
+  const ogModeToggle = document.getElementById('settings-og-mode-toggle');
   const soundToggle = document.getElementById('settings-sounds-toggle');
   const volumeSlider = document.getElementById('settings-volume-slider');
   const volumeValue = document.getElementById('settings-volume-value');
@@ -6280,6 +6286,7 @@ function initSettings() {
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
   if (themeToggle) themeToggle.checked = (settingsTheme === 'light');
+  if (ogModeToggle) ogModeToggle.checked = settingsOgMode;
   if (soundToggle) soundToggle.checked = settingsSounds;
   if (volumeSlider) volumeSlider.value = settingsVolume;
   if (volumeValue) volumeValue.textContent = settingsVolume + '%';
@@ -6482,6 +6489,14 @@ themeToggle?.addEventListener('change', () => {
   playSound('toggle');
 });
 
+// OG Codenames mode toggle
+ogModeToggle?.addEventListener('change', () => {
+  settingsOgMode = ogModeToggle.checked;
+  safeLSSet(LS_SETTINGS_OG_MODE, settingsOgMode ? 'true' : 'false');
+  applyOgModeSetting();
+  playSound('toggle');
+});
+
 
   // Sounds toggle
   soundToggle?.addEventListener('change', () => {
@@ -6623,13 +6638,22 @@ function closeSettingsModal() {
 }
 
 function applyThemeSetting() {
-  const isLight = settingsTheme === 'light';
+  const isLight = settingsTheme === 'light' && !settingsOgMode;
   document.body.classList.toggle('light-mode', isLight);
   // Update browser theme color if present
   try {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isLight ? '#dfe6ee' : '#09090b');
+    if (meta) meta.setAttribute('content', isLight ? '#dfe6ee' : settingsOgMode ? '#1B2838' : '#09090b');
   } catch (_) {}
+}
+
+function applyOgModeSetting() {
+  document.body.classList.toggle('og-mode', settingsOgMode);
+  if (settingsOgMode) {
+    document.body.classList.remove('light-mode');
+  } else {
+    applyThemeSetting();
+  }
 }
 
 function applyAnimationsSetting() {
