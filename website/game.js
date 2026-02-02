@@ -262,26 +262,151 @@ function getRandomWords(count, deckId) {
 /* =========================
    AI Word Generation
 ========================= */
-async function generateAIWords(vibe) {
-  const chatFn = window.aiChatCompletion;
-  if (typeof chatFn !== 'function') throw new Error('AI not available');
-
-  const vibeStr = String(vibe || '').trim();
-
-  // Treat a non-empty vibe string as a list of "vibe words" (comma/semicolon separated).
-  // This lets players input: "ocean, beach, ship" and get a board that stays *strictly* on-theme.
-  const vibeTerms = vibeStr
-    ? vibeStr
+function parseVibeTerms(vibeStr) {
+  const s = String(vibeStr || '').trim();
+  return s
+    ? s
         .split(/[;,]/g)
-        .map(s => s.trim())
+        .map(t => t.trim())
         .filter(Boolean)
         .slice(0, 10)
     : [];
+}
+
+function safeJsonParse(result) {
+  try {
+    return JSON.parse(result);
+  } catch {
+    const match = String(result || '').match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Could not parse AI JSON');
+  }
+}
+
+function normalizeWordList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(w => String(w).trim().toUpperCase())
+    .filter(w => w.length >= 2);
+}
+
+// Strictly validate that each word is meaningfully related to the vibe terms.
+// Uses an LLM judge (fast, low-temp) rather than relying on anchors alone.
+async function validateVibeBoard(vibeTerms, words) {
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') throw new Error('AI not available');
+
+  const terms = Array.isArray(vibeTerms) ? vibeTerms.filter(Boolean).slice(0, 10) : [];
+  if (!terms.length) return { badWords: [], details: null };
+
+  const systemPrompt = `You are a strict content validator for a Codenames board.
+
+Task:
+- Given VIBE TERMS and a list of 25 BOARD WORDS, decide whether EACH board word is clearly and directly related to AT LEAST ONE vibe term.
+- "Related" means: synonym, closely associated concept, part-of, famous instance, key person/place/object/practice, or highly typical cultural reference.
+- If a word is only weakly related, ambiguous, generic filler, or unrelated, mark it NOT_RELATED.
+
+Safety:
+- Be respectful about religions/cultures. Do not introduce slurs or insults.
+
+Output JSON ONLY:
+{
+  "verdicts":[{"word":"WORD","related":true|false,"vibe":"<best matching term>","why":"1-4 words"}],
+  "summary":{"relatedCount":N,"notRelatedCount":M}
+}
+
+Rules:
+- Keep "why" extremely short.
+- Do not add extra commentary.`;
+
+  const userPrompt = `VIBE TERMS: ${terms.map(t => `"${t}"`).join(', ')}\nBOARD WORDS: ${words.map(w => `"${w}"`).join(', ')}`;
+
+  const result = await chatFn(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    {
+      temperature: 0.15,
+      max_tokens: 420,
+      response_format: { type: 'json_object' },
+    }
+  );
+
+  const parsed = safeJsonParse(result);
+  const verdicts = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];
+  const bad = new Set();
+  for (const v of verdicts) {
+    const w = String(v?.word || '').trim().toUpperCase();
+    const related = Boolean(v?.related);
+    if (w && !related) bad.add(w);
+  }
+
+  // If the validator returned fewer verdicts, treat missing ones as bad.
+  if (verdicts.length < words.length) {
+    for (const w of words) bad.add(String(w).trim().toUpperCase());
+  }
+
+  return { badWords: [...bad], details: parsed };
+}
+
+// Replace only the words the validator flagged as not related.
+async function generateVibeReplacements(vibeTerms, badWords, keepWords) {
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') throw new Error('AI not available');
+
+  const terms = Array.isArray(vibeTerms) ? vibeTerms.filter(Boolean).slice(0, 10) : [];
+  const bad = Array.isArray(badWords) ? badWords.filter(Boolean).slice(0, 25) : [];
+  const keep = Array.isArray(keepWords) ? keepWords.filter(Boolean).slice(0, 25) : [];
+  if (!terms.length || !bad.length) return [];
+
+  const systemPrompt = `You are a Codenames board fixer.
+
+Goal: Replace ONLY the flagged BAD WORDS with new words that are strongly related to the VIBE TERMS.
+
+Constraints for each replacement:
+- SINGLE word, ENGLISH, UPPERCASE
+- 3-12 characters
+- No spaces, hyphens, or punctuation
+- Must be clearly related to at least one vibe term
+- Must NOT duplicate any KEEP WORDS or other replacements
+
+Return JSON ONLY:
+{"replacements":[{"from":"BAD","to":"NEW"}, ...]}`;
+
+  const userPrompt = `VIBE TERMS: ${terms.map(t => `"${t}"`).join(', ')}\nKEEP WORDS: ${keep.map(w => `"${w}"`).join(', ')}\nBAD WORDS: ${bad.map(w => `"${w}"`).join(', ')}`;
+
+  const result = await chatFn(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    {
+      temperature: 0.7,
+      max_tokens: 320,
+      response_format: { type: 'json_object' },
+    }
+  );
+
+  const parsed = safeJsonParse(result);
+  const repl = Array.isArray(parsed.replacements) ? parsed.replacements : [];
+  return repl
+    .map(r => ({
+      from: String(r?.from || '').trim().toUpperCase(),
+      to: String(r?.to || '').trim().toUpperCase(),
+    }))
+    .filter(r => r.from && r.to);
+}
+
+async function generateAIWordsOnce(vibeTerms) {
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') throw new Error('AI not available');
 
   const vibeInstruction = vibeTerms.length
     ? [
         `VIBE WORDS (use ONLY these as your thematic anchors): ${vibeTerms.map(t => `"${t}"`).join(', ')}`,
-        `Every generated board word MUST be clearly and directly related to AT LEAST ONE of the vibe words above (synonym, close associate, part-of, famous instance, etc.).`,
+        `Every generated board word MUST be clearly and directly related to AT LEAST ONE vibe word above (synonym, close associate, part-of, famous instance, etc.).`,
+        `If the vibe is a religion/culture (e.g., Islam), choose respectful, accurate words related to beliefs, practices, history, places, artifacts, holidays, and culture.`,
         `Avoid generic filler words that do not strongly connect back to the vibe words.`,
         `For each generated word, also output which vibe word it is anchored to.`
       ].join('\n')
@@ -305,35 +430,30 @@ Respond with valid JSON.
 - If no vibe words are provided, you may omit "anchors".
 JSON only. No markdown.`;
 
-  const result = await chatFn([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: 'Generate the 25 words now as JSON.' },
-  ], {
-    temperature: 0.95,
-    max_tokens: 400,
-    response_format: { type: 'json_object' },
-  });
+  const result = await chatFn(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Generate the 25 words now as JSON.' },
+    ],
+    {
+      temperature: 0.9,
+      max_tokens: 450,
+      response_format: { type: 'json_object' },
+    }
+  );
 
-  let parsed;
-  try {
-    parsed = JSON.parse(result);
-  } catch {
-    const match = result.match(/\{[\s\S]*?\}/);
-    if (match) parsed = JSON.parse(match[0]);
-    else throw new Error('Could not parse AI words JSON');
-  }
-
+  const parsed = safeJsonParse(result);
   const raw = parsed.words;
-  if (!Array.isArray(raw) || raw.length < 25) {
-    throw new Error(`AI returned ${Array.isArray(raw) ? raw.length : 0} words, need 25`);
+  const normalized = normalizeWordList(raw);
+
+  if (normalized.length < 25) {
+    throw new Error(`AI returned ${normalized.length} words, need 25`);
   }
 
-  const unique = [...new Set(raw.map(w => String(w).trim().toUpperCase()).filter(w => w.length >= 2))];
-  if (unique.length < 25) {
-    throw new Error('AI returned too many duplicates');
-  }
+  const unique = [...new Set(normalized)];
+  if (unique.length < 25) throw new Error('AI returned too many duplicates');
 
-  // If the lobby used "vibe words", enforce that the model anchored each word to one of them.
+  // Anchor sanity check (still useful, but not sufficient).
   if (vibeTerms.length) {
     const anchors = Array.isArray(parsed.anchors) ? parsed.anchors : [];
     const allowed = new Set(vibeTerms.map(t => t.toLowerCase()));
@@ -346,19 +466,67 @@ JSON only. No markdown.`;
         .filter(a => a.w && a.v)
         .map(a => [a.w, a.v])
     );
-
-    // If too many are missing/invalid, force a regeneration so the board stays on-theme.
     let okCount = 0;
     for (const w of unique.slice(0, 25)) {
       const v = byWord.get(w);
       if (v && allowed.has(v)) okCount++;
     }
-    if (okCount < 22) {
-      throw new Error('AI board was not strictly anchored to the provided vibe words.');
-    }
+    if (okCount < 22) throw new Error('AI board was not anchored to the provided vibe words.');
   }
 
   return unique.slice(0, 25);
+}
+
+async function generateAIWords(vibe) {
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') throw new Error('AI not available');
+
+  const vibeStr = String(vibe || '').trim();
+
+  // Treat a non-empty vibe string as a list of "vibe words" (comma/semicolon separated).
+  // This lets players input: "ocean, beach, ship" and get a board that stays strictly on-theme.
+  const vibeTerms = parseVibeTerms(vibeStr);
+
+  // Performance / responsiveness: keep the number of LLM calls bounded.
+  const MAX_ATTEMPTS = 3;
+
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      let words = await generateAIWordsOnce(vibeTerms);
+
+      // Strict semantic validation. For a single-term vibe like "islam" we aim for 25/25 related.
+      const { badWords } = await validateVibeBoard(vibeTerms, words);
+      if (badWords.length === 0) return words;
+
+      // Try a fast patch pass: replace only the flagged words.
+      const keep = words.filter(w => !badWords.includes(w));
+      const repl = await generateVibeReplacements(vibeTerms, badWords, keep);
+      if (repl.length) {
+        const used = new Set(words);
+        const map = new Map(repl.map(r => [r.from, r.to]));
+        words = words.map(w => {
+          const to = map.get(w);
+          if (!to) return w;
+          if (used.has(to)) return w;
+          used.delete(w);
+          used.add(to);
+          return to;
+        });
+      }
+
+      const v2 = await validateVibeBoard(vibeTerms, words);
+      if (v2.badWords.length === 0) return words;
+
+      throw new Error(`Vibe validation failed (${v2.badWords.length} not-related words)`);
+    } catch (err) {
+      lastErr = err;
+      // Try again (bounded). If repeated failures, caller will fall back to deck.
+      console.warn(`AI vibe board attempt ${attempt} failed:`, err);
+    }
+  }
+
+  throw lastErr || new Error('AI vibe board generation failed');
 }
 
 // Build a Quick Play board (cards) from settings.
