@@ -12015,3 +12015,9 @@ body.light-mode .mode-modal {
 }
 .quick-remove-ai:hover { background: rgba(0,0,0,0.4); }
 .ai-traits-link { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+/* Spectator chat: read-only toggle */
+.operative-chat-form.spectator-readonly .chat-send-btn {
+  opacity: 0.45;
+  pointer-events: none;
+}

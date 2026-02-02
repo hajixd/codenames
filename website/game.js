@@ -3446,6 +3446,7 @@ function updateRoleButtons() {
   const statusEl = document.getElementById('role-status');
 
   const myTeamColor = getMyTeamColor();
+  // Spectators can view chats but cannot post.
   if (!myTeamColor) return;
 
   const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
@@ -3991,6 +3992,8 @@ let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
 let operativeChatUnsub = null;
+let operativeChatTeamViewing = null; // 'red' | 'blue'
+let spectatorChatTeam = 'red';
 let gameTimerInterval = null;
 let gameTimerEnd = null;
 
@@ -4021,6 +4024,13 @@ function initAdvancedFeatures() {
 
   // Operative chat form
   document.getElementById('operative-chat-form')?.addEventListener('submit', handleOperativeChatSubmit);
+
+  // Spectator: toggle between RED/BLUE operative chats
+  document.getElementById('spectator-chat-toggle')?.addEventListener('click', () => {
+    if (!spectatorMode && getMyTeamColor()) return;
+    spectatorChatTeam = (spectatorChatTeam === 'red') ? 'blue' : 'red';
+    initOperativeChat();
+  });
 
   // Close sidebars on backdrop click
   document.addEventListener('click', (e) => {
@@ -4255,12 +4265,39 @@ function initOperativeChat() {
     operativeChatUnsub = null;
   }
 
-  const myTeamColor = getMyTeamColor();
-  if (!myTeamColor) return;
+  let teamForChat = getMyTeamColor();
+  const isSpectatorChat = !teamForChat && !!spectatorMode;
+
+  // Spectators can toggle between RED/BLUE operative chats (read-only)
+  if (isSpectatorChat) {
+    teamForChat = spectatorChatTeam || 'red';
+  }
+
+  if (!teamForChat) return;
+  operativeChatTeamViewing = teamForChat;
+
+  // Update spectator toggle UI + read-only state
+  const toggleBtn = document.getElementById('spectator-chat-toggle');
+  const input = document.getElementById('operative-chat-input');
+  const form = document.getElementById('operative-chat-form');
+
+  if (toggleBtn) {
+    toggleBtn.style.display = isSpectatorChat ? 'inline-flex' : 'none';
+    toggleBtn.textContent = isSpectatorChat
+      ? `View ${teamForChat === 'red' ? 'Blue' : 'Red'} Chat`
+      : '';
+  }
+  if (input) {
+    input.disabled = isSpectatorChat;
+    input.placeholder = isSpectatorChat ? `Spectating ${teamForChat.toUpperCase()} chat…` : 'Message your team...';
+  }
+  if (form) {
+    form.classList.toggle('spectator-readonly', isSpectatorChat);
+  }
 
   // Listen to team chat subcollection
   operativeChatUnsub = db.collection('games').doc(currentGame.id)
-    .collection(`${myTeamColor}Chat`)
+    .collection(`${teamForChat}Chat`)
     .orderBy('createdAt', 'asc')
     .limitToLast(50)
     .onSnapshot(snap => {
@@ -4282,7 +4319,7 @@ function renderOperativeChat(messages) {
   container.innerHTML = messages.map(msg => {
     const isMe = msg.senderId === odId;
     const time = msg.createdAt?.toDate?.() ? formatTime(msg.createdAt.toDate()) : '';
-    const teamColor = getMyTeamColor();
+    const teamColor = operativeChatTeamViewing || getMyTeamColor() || 'red';
 
     return `
       <div class="chat-message ${isMe ? 'my-message' : ''}">
@@ -5444,8 +5481,17 @@ renderGame = function renderGameWithAI() {
   _origRenderGame();
 
   if (!currentGame) return;
+
+  // Ensure AI list is synced even on spectator/observer clients (prevents a chicken-and-egg where
+  // the AI loop never starts because aiPlayers hasn't been populated locally yet).
+  try { window.syncAIPlayersFromGame?.(currentGame); } catch (_) {}
+  const hasAIsInDoc = !!(
+    (Array.isArray(currentGame?.redPlayers) && currentGame.redPlayers.some(p => p && p.isAI)) ||
+    (Array.isArray(currentGame?.bluePlayers) && currentGame.bluePlayers.some(p => p && p.isAI))
+  );
+
   const aiPlayersList = window.aiPlayers || [];
-  if (aiPlayersList.length === 0) return;
+  if (aiPlayersList.length === 0 && !hasAIsInDoc) return;
 
   const phase = currentGame.currentPhase;
 

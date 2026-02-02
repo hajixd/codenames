@@ -1201,18 +1201,18 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
         const div = String(e.diversity_risk || 'med').toLowerCase();
 
         const riskPenalty =
-          (poly === 'high' ? 18 : poly === 'med' ? 8 : 0) +
-          (bait === 'high' ? 18 : bait === 'med' ? 8 : 0) +
-          (hub === 'high' ? 14 : hub === 'med' ? 6 : 0) +
-          (div === 'high' ? 8 : div === 'med' ? 3 : 0) +
-          oppOverlap * (10 + 12 * cautiousBias) +
-          neuOverlap * (3 + 5 * cautiousBias);
+          (poly === 'high' ? 14 : poly === 'med' ? 6 : 0) +
+          (bait === 'high' ? 16 : bait === 'med' ? 7 : 0) +
+          (hub === 'high' ? 12 : hub === 'med' ? 5 : 0) +
+          (div === 'high' ? 6 : div === 'med' ? 2 : 0) +
+          oppOverlap * (8 + 10 * cautiousBias) +
+          neuOverlap * (2 + 4 * cautiousBias);
 
         const coverage = Math.max(0, Math.min(6, c.intended_words.length));
-        const base = Number.isFinite(+e.overall_score) ? +e.overall_score : (55 + coverage * 8);
+        const base = Number.isFinite(+e.overall_score) ? +e.overall_score : (55 + coverage * 10);
 
-        // Safety dominates: unsafe gets crushed.
-        const score = (safe ? base : base - 120) + coverage * (6 + (riskiness / 100) * 4) - riskPenalty;
+        // Safety dominates: unsafe gets crushed, but we still value coverage when safe.
+        const score = (safe ? base : base - 120) + coverage * (10 + (riskiness / 100) * 6) - riskPenalty;
 
         const recommended = Number.isFinite(+e.recommended_number) ? Math.max(0, Math.min(9, +e.recommended_number)) : c.number;
         return { c, e, score, safe, recommended };
@@ -1231,6 +1231,16 @@ Respond with valid JSON: {"clue": "YOURWORD", "number": N, "intended_words": ["w
         }
         if (intendedWords.length) n = Math.max(1, Math.min(n || 1, intendedWords.length));
         clueNumber = Math.max(0, Math.min(9, n));
+
+        // Encourage broader coverage when SAFE: if we intended multiple words but ended up with a tiny number,
+        // bump it up conservatively (still clamped by intended words and max 4 unless very bold).
+        if (pick.safe && intendedWords.length >= 2) {
+          const bold = (ai.traits?.riskiness || 50) > 75;
+          const target = Math.min(intendedWords.length, bold ? 5 : 4);
+          if (clueNumber < 2) clueNumber = 2;
+          if (clueNumber < target && analysis.riskTolerance !== 'low') clueNumber = Math.min(target, clueNumber + 1);
+          clueNumber = Math.max(1, Math.min(9, Math.min(clueNumber, intendedWords.length)));
+        }
 
         // Final strict safety check against assassin overlap (fail-safe).
         const finalSafety = await aiValidateSpymasterClueSafety(ai, game, team, clueWord, ourUpper, theirUpper, neutralUpper, assassinUpper);
@@ -1736,6 +1746,12 @@ async function aiGuessCard(ai, game) {
   if (aiThinkingState[ai.id]) return;
   aiThinkingState[ai.id] = true;
 
+  // Always operate on the freshest board state to avoid off-board/stale choices.
+  try {
+    const fresh = await getGameSnapshot(game?.id);
+    if (fresh && fresh.cards) game = fresh;
+  } catch (_) {}
+
   const team = ai.team;
   const boardContext = buildBoardContext(game, false);
   const clueHistory = buildClueHistoryContext(game);
@@ -1871,7 +1887,7 @@ ${analysis.endgame ? 'ENDGAME: Every guess matters. Be precise.' : ''}
 ${strategicInstr}
 ${reasoningInstr}
 
-Respond with valid JSON:
+Respond with valid JSON (index is REQUIRED; word is optional but if provided must exactly match the board word at that index):
 {"index": <0-24>, "word": "EXACT_BOARD_WORD", "confidence": "high/medium/low", "should_end_turn_after": true/false, "public_thought": "short (<=120 chars) thought to share with the team", "private_reasoning": "your scratchpad: strategic thinking"}`;
 
   try {
@@ -1934,6 +1950,10 @@ Respond with valid JSON:
         const candidate = unrevealed.find(c => c.index === idx);
         if (candidate) {
           card = candidate;
+          // Normalize to the exact board word to prevent off-board strings.
+          if (card && card.word) {
+            parsed.word = card.word;
+          }
           break;
         }
         lastBad = `Index ${idx} is not an unrevealed card right now.`;
@@ -2535,7 +2555,11 @@ if (game.currentPhase === 'operatives' && game.currentClue && (currentTeam === '
             // If no team_chat, still let them "think out loud" briefly (kept short).
             const votes = Array.isArray(decision?.votes) ? decision.votes : [];
             if (votes.length) {
-              const compact = votes.slice(0, 3).map(v => `${String(v.ai||'AI')}:${String(v.word||'').toUpperCase()}(${String(v.confidence||'').slice(0,1)})`).join(' ');
+              const compact = votes.slice(0, 3).map(v => {
+                const idxV = Number(v?.index);
+                const exact = (Number.isInteger(idxV) && game?.cards?.[idxV]?.word) ? String(game.cards[idxV].word).toUpperCase() : String(v.word||'').toUpperCase();
+                return `${String(v.ai||'AI')}:${exact}(${String(v.confidence||'').slice(0,1)})`;
+              }).join(' ');
               if (compact) {
                 await humanDelay(AI_SPEED.operativeChatDelay[0], AI_SPEED.operativeChatDelay[1]);
                 await sendAIChatMessage(rep, game, `Votes: ${compact}`.slice(0, 160));
@@ -2558,7 +2582,8 @@ if (game.currentPhase === 'operatives' && game.currentClue && (currentTeam === '
 
           // Otherwise, guess.
           const idx = Number(choice.index);
-          const wU = String(choice.word || '').trim().toUpperCase();
+          const exactW = (Number.isInteger(idx) && game?.cards?.[idx]?.word) ? String(game.cards[idx].word) : String(choice.word || '');
+          const wU = String(exactW || '').trim().toUpperCase();
           const unrevealed = (game.cards || []).map((c, i) => ({ word: c.word, index: i, revealed: !!c.revealed })).filter(c => !c.revealed);
           let card = null;
 
