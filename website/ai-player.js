@@ -366,6 +366,10 @@ Teamwork & communication:
   - MAYBE = plausible but needs caution / could be later
   - NO = dangerous pull (likely wrong / likely assassin/opponent/neutral or too “hubby”)
 - Don’t spam: mark 1–3 key cards and write short chat messages that help the group converge.
+- Strongly prefer real conversation before actions:
+  - React to teammate suggestions (agree/disagree + why).
+  - If you want to END TURN, say so explicitly, give the reason, and ask if others are aligned.
+  - Avoid “silent” endings; a quick "I think we should stop unless someone sees a safe pick" is better.
 
 Spymaster fundamentals:
 - Your job is to give a single-word clue that connects multiple of your unrevealed team words while avoiding the assassin and minimizing pulls to opponent/neutral words.
@@ -405,6 +409,7 @@ Operative fundamentals:
 - Ending early is sometimes necessary:
   - Passing is a strategic choice when remaining candidates are shaky or high-risk.
   - Protecting the lead (or avoiding the assassin) is often correct.
+  - When you have teammates, treat ending as a team decision: propose it, listen for pushback, and only then commit.
 
 Association types you may use (both roles):
 - Synonyms and near-synonyms
@@ -935,6 +940,94 @@ function sanitizeChatText(text, vision, maxLen = 180) {
   }
 }
 
+// ─── Chat state helpers (live refresh before sending) ───────────────────────
+
+function _chatSignature(chatDocs, take = 10) {
+  try {
+    const docs = Array.isArray(chatDocs) ? chatDocs.slice(-take) : [];
+    return docs
+      .map(d => `${Number(d.createdAtMs || 0)}|${String(d.senderId || '')}|${String(d.text || '').slice(0, 60)}`)
+      .join('\\n');
+  } catch (_) {
+    return '';
+  }
+}
+
+async function getTeamChatState(gameId, team, limit = 12) {
+  try {
+    const docs = await fetchRecentTeamChatDocs(gameId, team, limit);
+    const newestMs = docs && docs.length ? Math.max(...docs.map(d => Number(d.createdAtMs || 0))) : 0;
+    return { docs: docs || [], newestMs, sig: _chatSignature(docs || []) };
+  } catch (_) {
+    return { docs: [], newestMs: 0, sig: '' };
+  }
+}
+
+function diffNewChatLines(oldDocs, newDocs, maxLines = 6) {
+  try {
+    const oldMax = oldDocs && oldDocs.length ? Math.max(...oldDocs.map(d => Number(d.createdAtMs || 0))) : 0;
+    const fresh = (newDocs || []).filter(d => Number(d.createdAtMs || 0) > oldMax);
+    return fresh.slice(-maxLines).map(d => `${d.senderName}: ${d.text}`);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDocs) {
+  try {
+    const core = ensureAICore(ai);
+    if (!core) return draft || '';
+    const vision = buildAIVision(game, ai);
+    const persona = core.personality;
+    const updates = diffNewChatLines(oldDocs, newDocs, 8);
+    if (!updates.length) return draft || '';
+
+    const systemPrompt = [
+      `You are ${ai.name}. You are a Codenames ${String(role || '').toUpperCase()} for ${String(ai.team).toUpperCase()}.`,
+      `PERSONALITY (follow strictly): ${persona.label}`,
+      ...persona.rules.map(r => `- ${r}`),
+      '',
+      `You are inside your private MIND. The only way you think is by writing.`,
+      `You had drafted a message, but NEW teammate messages arrived before you sent it.`,
+      `Update your thinking and rewrite what you'll say.`,
+      `Return JSON only: {"mind":"2-6 lines first-person", "msg":"1-2 natural sentences", "send":true|false}`,
+      `Rules:`,
+      `- Think first, then speak (mind before msg).`,
+      `- NEVER reference indices/numbers or write "N = WORD". Use board WORDS.`,
+      `- It's okay to change your mind; if your draft is now redundant, set send=false.`,
+    ].join('\n');
+
+    const mindContext = core.mindLog.slice(-8).join('\n');
+    const userPrompt = [
+      `VISION:\n${JSON.stringify(vision)}`,
+      '',
+      `YOUR DRAFT (not yet sent):\n${String(draft || '').trim()}`,
+      '',
+      `NEW TEAM MESSAGES (arrived after your draft):\n${updates.join('\n')}`,
+      '',
+      `RECENT MIND:\n${mindContext}`,
+    ].join('\n');
+
+    const raw = await aiChatCompletion(
+      [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      { temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
+    );
+
+    let parsed = null;
+    try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
+    if (!parsed) return draft || '';
+    const mind = String(parsed.mind || '').trim();
+    if (mind) appendMind(ai, mind);
+    const send = (parsed.send === false) ? false : true;
+    let msg = String(parsed.msg || '').trim();
+    msg = sanitizeChatText(msg, vision, 180);
+    if (!send) return '';
+    return msg ? msg.slice(0, 180) : '';
+  } catch (_) {
+    return draft || '';
+  }
+}
+
 /* ─── Multi-AI teamwork: rotation + councils ───────────────────────────── */
 
 function _aiSeqField(team, role) {
@@ -977,7 +1070,10 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const unrevealed = (vision.cards || []).filter(c => !c.revealed);
   if (!unrevealed.length) return null;
 
-  const list = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\n');
+  const list = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\\n');
+
+  const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
+  const teamChat = chatDocs.slice(-10).map(m => `${m.senderName}: ${m.text}`).join('\\n');
 
   const systemPrompt = [
     `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(team).toUpperCase()}.`,
@@ -997,8 +1093,11 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- You have ${remainingGuesses} guess(es) remaining.`,
     `- marks must reference unrevealed indices.`,
     `- chat must be 1–2 natural sentences like a human teammate (no robotic fragments).`,
-    `- In chat, NEVER use card indices or digits (e.g., do not write "13 = ..."). Refer to board WORDS instead.`,
-    `- If you propose ending the turn, say why and explicitly ask teammates if they're good to end.`,
+    `- In chat, NEVER reference card indices/numbers (e.g., do not write "13 = ..."). Refer to board WORDS instead.`,
+    `- If you propose ending the turn, say why and ask teammates if they're good to end (team agreement is strongly recommended).`,
+    `- Read TEAM CHAT below and respond to what others said. If a teammate suggested a plan/word, it's strongly recommended to acknowledge it (by name or paraphrase) before proposing your own.`,
+    `- Your chat should feel like a quick back-and-forth; don't speak into a void.`,
+    `- Think first, then speak: write your MIND before your chat message.`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
@@ -1006,6 +1105,8 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `VISION:\n${JSON.stringify(vision)}`,
     ``,
     `UNREVEALED WORDS (choose ONLY from this list):\n${list}`,
+    ``,
+    `TEAM CHAT (latest messages, read & respond):\n${teamChat}`,
     ``,
     `RECENT MIND:\n${mindContext}`
   ].join('\n');
@@ -1080,7 +1181,6 @@ function chooseOperativeAction(proposals, game, councilSize) {
   }
 
   const endVotes = ps.filter(p => p.action === 'end_turn').length;
-  const requiredEndVotes = (n <= 1) ? 1 : (n === 2 ? 2 : Math.ceil(n / 2)); // mutual agreement
 
   // Best guess by (avg confidence + consensus bonus)
   let best = null;
@@ -1090,11 +1190,13 @@ function chooseOperativeAction(proposals, game, councilSize) {
     if (!best || score > best.score) best = { index: idx, score, avg, n: v.n };
   }
 
-  // Only end if there's mutual agreement AND we don't have a decent shared guess.
-  if (endVotes >= requiredEndVotes) {
+  // Ending early is allowed, but we bias against "silent" bails when there is a decent shared guess.
+  // This is intentionally a soft heuristic (not a hard rule).
+  if (endVotes > 0) {
     if (!best) return { action: 'end_turn', index: null };
-    if (best.avg < 0.62 && best.n < 2) return { action: 'end_turn', index: null };
-    // If there IS a decent guess, take it instead of bailing early.
+    // If the team doesn't converge and confidence is low, ending is reasonable.
+    if (best.avg < 0.56 && best.n < 2) return { action: 'end_turn', index: null };
+    // Otherwise, prefer taking the shared guess.
   }
 
   if (!best) return { action: 'end_turn', index: null };
@@ -1104,39 +1206,336 @@ function chooseOperativeAction(proposals, game, councilSize) {
   return { action: 'guess', index: best.index };
 }
 
+async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {}) {
+  const core = ensureAICore(ai);
+  if (!core) return '';
+  const vision = buildAIVision(game, ai);
+  const persona = core.personality;
+
+  // Map indices to board words for clean, human-friendly summaries.
+  const idxToWord = new Map();
+  for (const c of (vision.cards || [])) {
+    const idx = Number(c?.index);
+    const w = String(c?.word || '').trim();
+    if (Number.isFinite(idx) && w) idxToWord.set(idx, w.toUpperCase());
+  }
+
+  const ps = Array.isArray(proposals) ? proposals.filter(Boolean) : [];
+  const proposalLines = ps.slice(0, 6).map(p => {
+    if (p.action === 'guess' && Number.isFinite(+p.index)) {
+      const w = idxToWord.get(Number(p.index)) || 'UNKNOWN';
+      const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
+      return `- ${String(p.ai?.name || 'AI')}: guess ${w} (~${c}%)`;
+    }
+    return `- ${String(p.ai?.name || 'AI')}: end turn`;
+  }).join('\n');
+
+  const decided = (decision?.action === 'guess' && Number.isFinite(+decision.index))
+    ? `GUESS ${idxToWord.get(Number(decision.index)) || 'UNKNOWN'}`
+    : 'END TURN';
+
+  const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
+  const teamChat = chatDocs.slice(-8).map(m => `${m.senderName}: ${m.text}`).join('\n');
+
+  const systemPrompt = [
+    `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(ai.team).toUpperCase()}.`,
+    `PERSONALITY (follow strictly): ${persona.label}`,
+    ...persona.rules.map(r => `- ${r}`),
+    ``,
+    AI_TIPS_MANUAL,
+    ``,
+    `You are inside your private MIND. The only way you think is by writing.`,
+    `Task: write a brief wrap-up message to teammates that reflects the discussion and the final plan.`,
+    `This is a FOLLOW-UP message; it's okay if you already spoke earlier this turn.`,
+    `Return JSON only: {"mind":"2-6 lines first-person", "chat":"1-2 natural sentences"}`,
+    `Guidance (strongly recommended):`,
+    `- Respond to what teammates suggested (agree/disagree + why) in a human way.`,
+    `- If the plan is END TURN, ask if anyone strongly objects or sees a safer pick.`,
+    `- Never reference card indices/numbers or write "N = WORD". Use board WORDS.`,
+  ].join('\n');
+
+  const mindContext = core.mindLog.slice(-8).join('\n');
+  const userPrompt = [
+    `VISION:\n${JSON.stringify(vision)}`,
+    ``,
+    `TEAM CHAT (latest):\n${teamChat}`,
+    ``,
+    `TEAM PROPOSALS:\n${proposalLines || '(none)'}`,
+    ``,
+    `FINAL PLAN: ${decided}`,
+    ``,
+    `RECENT MIND:\n${mindContext}`,
+  ].join('\n');
+
+  const raw = await aiChatCompletion(
+    [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+  );
+
+  let parsed = null;
+  try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
+  if (!parsed) return '';
+  const mind = String(parsed.mind || '').trim();
+  if (mind) appendMind(ai, mind);
+  let chat = String(parsed.chat || '').trim();
+  chat = sanitizeChatText(chat, vision, 180);
+  return chat ? chat.slice(0, 180) : '';
+}
+
+async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
+  try {
+    const core = ensureAICore(ai);
+    if (!core) return null;
+
+    const vision = buildAIVision(game, ai);
+    const persona = core.personality;
+    const team = ai.team;
+
+    const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
+    const teamChat = chatDocs.slice(-12).map(m => `${m.senderName}: ${m.text}`).join('\n');
+
+    // Summarize current proposals so the AI can react/adjust.
+    const idxToWord = new Map();
+    for (const c of (vision.cards || [])) {
+      const idx = Number(c?.index);
+      const w = String(c?.word || '').trim();
+      if (Number.isFinite(idx) && w) idxToWord.set(idx, w.toUpperCase());
+    }
+
+    const ps = Array.from((proposalsByAi || new Map()).values()).filter(Boolean);
+    const proposalLines = ps.slice(0, 8).map(p => {
+      if (p.action === 'guess' && Number.isFinite(+p.index)) {
+        const w = idxToWord.get(Number(p.index)) || 'UNKNOWN';
+        const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
+        return `- ${String(p.ai?.name || 'AI')}: guess ${w} (~${c}%)`;
+      }
+      return `- ${String(p.ai?.name || 'AI')}: end turn`;
+    }).join('\n');
+
+    const systemPrompt = [
+      `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(team).toUpperCase()}.`,
+      `PERSONALITY (follow strictly): ${persona.label}`,
+      ...persona.rules.map(r => `- ${r}`),
+      '',
+      AI_TIPS_MANUAL,
+      '',
+      `You are inside your private MIND. The only way you think is by writing.`,
+      `Task: optionally add another short teammate message to coordinate. You may also revise YOUR suggested action.`,
+      `This is a live conversation: if a teammate said something new, react to it.`,
+      `Return JSON only:`,
+      `{"mind":"2-8 lines first-person", "chat":"(optional) 1-2 natural sentences", "action":"guess|end_turn|no_change", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`, 
+      `Guidance (strongly recommended):`,
+      `- Think first, then speak (mind before chat).`,
+      `- If you speak, keep it natural and responsive (not a monologue).`,
+      `- NEVER reference card indices/numbers or write "N = WORD". Use board WORDS.`,
+      `- If you propose ending, it's strongly recommended to invite teammate agreement.`,
+      `- If you have nothing new, set chat="" and continue=false.`,
+    ].join('\n');
+
+    const myPrev = proposalsByAi?.get(ai.id);
+    const myPrevLine = myPrev
+      ? (myPrev.action === 'guess'
+          ? `Previously you leaned: GUESS ${(idxToWord.get(Number(myPrev.index)) || 'UNKNOWN')}`
+          : `Previously you leaned: END TURN`)
+      : `No previous proposal.`;
+
+    const unrevealed = (vision.cards || []).filter(c => !c.revealed).map(c => String(c.word || '').trim().toUpperCase()).filter(Boolean);
+    const mindContext = core.mindLog.slice(-10).join('\n');
+
+    const userPrompt = [
+      `VISION:\n${JSON.stringify(vision)}`,
+      '',
+      `TEAM CHAT (latest):\n${teamChat}`,
+      '',
+      `CURRENT TEAM LEANS:\n${proposalLines || '(none)'}`,
+      '',
+      myPrevLine,
+      '',
+      `UNREVEALED WORDS (for any mentions):\n${unrevealed.join(', ')}`,
+      '',
+      `RECENT MIND:\n${mindContext}`,
+    ].join('\n');
+
+    const raw = await aiChatCompletion(
+      [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    );
+
+    let parsed = null;
+    try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
+    if (!parsed) return null;
+
+    const mind = String(parsed.mind || '').trim();
+    if (mind) appendMind(ai, mind);
+
+    let chat = String(parsed.chat || '').trim();
+    chat = sanitizeChatText(chat, vision, 180);
+
+    const action = String(parsed.action || 'no_change').toLowerCase().trim();
+    const idx = Number(parsed.index);
+    const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+    const cont = (parsed.continue === true);
+
+    const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
+    const marks = [];
+    const unrevealedIdx = new Set((vision.cards || []).filter(c => !c.revealed).map(c => Number(c.index)));
+    for (const m of marksIn) {
+      const mi = Number(m?.index);
+      const tag = String(m?.tag || '').toLowerCase().trim();
+      if (!['yes','maybe','no'].includes(tag)) continue;
+      if (!unrevealedIdx.has(mi)) continue;
+      marks.push({ index: mi, tag });
+      if (marks.length >= 3) break;
+    }
+
+    const out = { ai, chat, marks, continue: cont };
+    if (action === 'guess' || action === 'end_turn') {
+      if (action === 'guess' && unrevealedIdx.has(idx)) {
+        out.action = 'guess';
+        out.index = idx;
+        out.confidence = Number.isFinite(conf) ? conf : 0.55;
+      } else if (action === 'end_turn') {
+        out.action = 'end_turn';
+        out.index = null;
+        out.confidence = Number.isFinite(conf) ? conf : 0.0;
+      }
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function runOperativeCouncil(game, team) {
   const ops = (getAIOperatives(team) || []).filter(a => a && a.mode === 'autonomous');
   if (!ops.length) return;
 
   const key = _turnKeyForCouncil(game, 'op', team);
 
-  // Collect proposals (each AI thinks in its own mind + personality)
-  const proposals = [];
+  // Collect proposals sequentially with refreshed chat context so AIs can
+  // read what others said and adjust.
+  let working = game;
+  const proposalsByAi = new Map();
+
   for (const ai of ops) {
     const core = ensureAICore(ai);
     if (!core) continue;
     if (core.lastSuggestionKey === key) continue;
     if (aiThinkingState[ai.id]) continue;
 
+    // Refresh snapshot so this AI sees prior teammate messages/markers.
+    try {
+      const g2 = await getGameSnapshot(game?.id);
+      if (g2 && g2.cards) working = g2;
+    } catch (_) {}
+
+    const chatBefore = await getTeamChatState(game.id, team, 14);
+
     aiThinkingState[ai.id] = true;
     try {
-      const prop = await aiOperativePropose(ai, game, { requireChat: ops.length >= 2, requireMarks: ops.length >= 2, councilSize: ops.length });
-      if (prop) proposals.push(prop);
+      const prop = await aiOperativePropose(ai, working, {
+        requireChat: ops.length >= 2,
+        requireMarks: ops.length >= 2,
+        councilSize: ops.length,
+        chatDocs: chatBefore.docs
+      });
+      if (!prop) {
+        core.lastSuggestionKey = key;
+        continue;
+      }
+
+      // If chat changed while the AI was drafting, let it rethink what it will say.
+      const chatAfter = await getTeamChatState(game.id, team, 14);
+      if (prop.chat && chatAfter.sig && chatAfter.sig !== chatBefore.sig) {
+        const rewritten = await rewriteDraftChatAfterUpdate(ai, working, 'operative', prop.chat, chatBefore.docs, chatAfter.docs);
+        prop.chat = rewritten;
+      }
+
+      proposalsByAi.set(ai.id, prop);
 
       // Share markers (team-visible) and short chat to coordinate
-      const existingMarkers = (team === 'red') ? (game.redMarkers || {}) : (game.blueMarkers || {});
+      const existingMarkers = (team === 'red') ? (working.redMarkers || {}) : (working.blueMarkers || {});
       for (const m of (prop?.marks || [])) {
         const cur = String(existingMarkers?.[String(m.index)] || existingMarkers?.[m.index] || '').toLowerCase();
         if (cur !== m.tag) await setTeamMarkerInFirestore(game.id, team, m.index, m.tag);
       }
-      if (prop?.chat) await sendAIChatMessage(ai, game, prop.chat);
+      if (prop?.chat) await sendAIChatMessage(ai, working, prop.chat);
 
       core.lastSuggestionKey = key;
     } catch (_) {
     } finally {
       aiThinkingState[ai.id] = false;
     }
+
+    // Give the next AI a moment to see/acknowledge what was just said.
+    if (ops.length >= 2) await sleep(AI_COUNCIL_PACE.betweenSpeakersMs);
   }
+
+  // If nobody proposed anything new for this key, don't re-act.
+  if (!proposalsByAi.size) return;
+
+  // Open discussion phase: AIs may send as many short back-and-forth messages as
+  // they want (bounded internally), always thinking first. They can also revise
+  // their own suggested action as the conversation evolves.
+  if (ops.length >= 2) {
+    let rounds = 0;
+    while (rounds < 6) {
+      rounds += 1;
+      let anySpoke = false;
+      for (const ai of ops) {
+        if (aiThinkingState[ai.id]) continue;
+        // Refresh snapshot + chat so replies can incorporate the newest updates.
+        try {
+          const g2 = await getGameSnapshot(game?.id);
+          if (g2 && g2.cards) working = g2;
+        } catch (_) {}
+        const chatBefore = await getTeamChatState(game.id, team, 16);
+
+        aiThinkingState[ai.id] = true;
+        try {
+          const follow = await aiOperativeFollowup(ai, working, proposalsByAi, { chatDocs: chatBefore.docs });
+          if (!follow) continue;
+
+          // If chat changed while drafting, rewrite the message to reflect it.
+          const chatAfter = await getTeamChatState(game.id, team, 16);
+          let chat = String(follow.chat || '').trim();
+          if (chat && chatAfter.sig && chatAfter.sig !== chatBefore.sig) {
+            chat = await rewriteDraftChatAfterUpdate(ai, working, 'operative', chat, chatBefore.docs, chatAfter.docs);
+          }
+
+          // Apply any new markers.
+          const existingMarkers = (team === 'red') ? (working.redMarkers || {}) : (working.blueMarkers || {});
+          for (const m of (follow.marks || [])) {
+            const cur = String(existingMarkers?.[String(m.index)] || existingMarkers?.[m.index] || '').toLowerCase();
+            if (cur !== m.tag) await setTeamMarkerInFirestore(game.id, team, m.index, m.tag);
+          }
+
+          // Update this AI's latest lean if it provided one.
+          if (follow.action === 'guess' || follow.action === 'end_turn') {
+            const prev = proposalsByAi.get(ai.id) || { ai };
+            proposalsByAi.set(ai.id, { ...prev, ...follow, chat: chat || '' });
+          }
+
+          if (chat) {
+            await sendAIChatMessage(ai, working, chat);
+            anySpoke = true;
+            // If they want to continue, they'll get another chance in the next round.
+          }
+        } catch (_) {
+        } finally {
+          aiThinkingState[ai.id] = false;
+        }
+
+        if (anySpoke) await sleep(Math.max(220, Math.min(900, AI_COUNCIL_PACE.betweenSpeakersMs)));
+      }
+
+      if (!anySpoke) break;
+      // Small pause between rounds to allow humans/AIs to interject.
+      await sleep(Math.max(280, Math.min(1000, AI_COUNCIL_PACE.beforeDecisionMs * 0.7)));
+    }
+  }
+
+  if (ops.length >= 2) await sleep(AI_COUNCIL_PACE.beforeDecisionMs);
 
   // Decide and act (rotating executor)
   const executor = pickRotatingAI(game, team, 'op', ops) || ops[0];
@@ -1144,7 +1543,7 @@ async function runOperativeCouncil(game, team) {
   if (aiThinkingState[executor.id]) return;
 
   // Use freshest snapshot before acting
-  let fresh = game;
+  let fresh = working;
   try {
     const g2 = await getGameSnapshot(game?.id);
     if (g2 && g2.cards) fresh = g2;
@@ -1153,7 +1552,25 @@ async function runOperativeCouncil(game, team) {
   // Re-check phase/turn
   if (fresh.currentPhase !== 'operatives' || fresh.currentTeam !== team) return;
 
+  const proposals = Array.from(proposalsByAi.values()).filter(Boolean);
   const decision = chooseOperativeAction(proposals, fresh, ops.length);
+
+  // Optional follow-up wrap-up message (allows an AI to speak twice and helps
+  // them actually process teammate input). This is advice-driven, not forced.
+  if (ops.length >= 2) {
+    try {
+      const core = ensureAICore(executor);
+      if (core && core.lastCouncilSummaryKey !== key) {
+        let chatDocs = [];
+        try { chatDocs = await fetchRecentTeamChatDocs(fresh.id, team, 10); } catch (_) {}
+        const wrap = await aiOperativeCouncilSummary(executor, fresh, proposals, decision, { chatDocs });
+        if (wrap) await sendAIChatMessage(executor, fresh, wrap);
+        core.lastCouncilSummaryKey = key;
+        await sleep(Math.min(450, AI_COUNCIL_PACE.betweenSpeakersMs));
+      }
+    } catch (_) {}
+  }
+
   if (decision.action === 'guess' && Number.isFinite(+decision.index)) {
     await aiRevealCard(executor, fresh, Number(decision.index), true);
   } else {
@@ -1161,7 +1578,7 @@ async function runOperativeCouncil(game, team) {
   }
 }
 
-async function aiSpymasterPropose(ai, game) {
+async function aiSpymasterPropose(ai, game, opts = {}) {
   const core = ensureAICore(ai);
   if (!core) return null;
 
@@ -1170,6 +1587,9 @@ async function aiSpymasterPropose(ai, game) {
   const persona = core.personality;
 
   const boardWords = (vision.cards || []).map(c => String(c.word || '').trim().toUpperCase()).filter(Boolean);
+
+  const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
+  const teamChat = chatDocs.slice(-10).map(m => `${m.senderName}: ${m.text}`).join('\n');
 
   const systemPrompt = [
     `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(team).toUpperCase()}.`,
@@ -1190,7 +1610,14 @@ async function aiSpymasterPropose(ai, game) {
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
-  const userPrompt = `VISION:\n${JSON.stringify(vision)}\n\nRECENT MIND:\n${mindContext}`;
+  const userPrompt = `VISION:
+${JSON.stringify(vision)}
+
+TEAM CHAT (latest messages):
+${teamChat}
+
+RECENT MIND:
+${mindContext}`;
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
@@ -1242,6 +1669,68 @@ function chooseSpymasterClue(proposals) {
   return best ? { clue: best.clue, number: best.number } : null;
 }
 
+async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
+  const core = ensureAICore(ai);
+  if (!core) return '';
+  const vision = buildAIVision(game, ai);
+  const persona = core.personality;
+
+  const ps = Array.isArray(proposals) ? proposals.filter(p => p && p.clue) : [];
+  const proposalLines = ps.slice(0, 6).map(p => {
+    const n = Number.isFinite(+p.number) ? +p.number : 1;
+    const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
+    return `- ${String(p.ai?.name || 'AI')}: ${String(p.clue).toUpperCase()} for ${n} (~${c}%)`;
+  }).join('\n');
+
+  const chosen = pick ? `${String(pick.clue || '').toUpperCase()} for ${Number(pick.number || 0)}` : '';
+
+  const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
+  const teamChat = chatDocs.slice(-8).map(m => `${m.senderName}: ${m.text}`).join('\n');
+
+  const systemPrompt = [
+    `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(ai.team).toUpperCase()}.`,
+    `PERSONALITY (follow strictly): ${persona.label}`,
+    ...persona.rules.map(r => `- ${r}`),
+    ``,
+    AI_TIPS_MANUAL,
+    ``,
+    `You are inside your private MIND. The only way you think is by writing.`,
+    `Task: write a brief teammate-facing wrap-up before submitting the clue.`,
+    `This is a FOLLOW-UP message; it's okay if you already spoke earlier this turn.`,
+    `Return JSON only: {"mind":"2-6 lines first-person", "chat":"1-2 natural sentences"}`,
+    `Guidance (strongly recommended):`,
+    `- Reflect the discussion (e.g., "I agree with Jordan that..."), but keep it short.`,
+    `- Avoid any card indices or "N = WORD" formatting.`,
+  ].join('\n');
+
+  const mindContext = core.mindLog.slice(-8).join('\n');
+  const userPrompt = [
+    `VISION:\n${JSON.stringify(vision)}`,
+    ``,
+    `TEAM CHAT (latest):\n${teamChat}`,
+    ``,
+    `SPYMASTER PROPOSALS:\n${proposalLines || '(none)'}`,
+    ``,
+    `CHOSEN CLUE: ${chosen}`,
+    ``,
+    `RECENT MIND:\n${mindContext}`,
+  ].join('\n');
+
+  const raw = await aiChatCompletion(
+    [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+  );
+
+  let parsed = null;
+  try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
+  if (!parsed) return '';
+  const mind = String(parsed.mind || '').trim();
+  if (mind) appendMind(ai, mind);
+  let chat = String(parsed.chat || '').trim();
+  chat = sanitizeChatText(chat, vision, 180);
+  return chat ? chat.slice(0, 180) : '';
+}
+
 async function submitClueDirect(ai, game, clueWord, clueNumber) {
   const team = ai.team;
   const ref = db.collection('games').doc(game.id);
@@ -1282,33 +1771,206 @@ async function submitClueDirect(ai, game, clueWord, clueNumber) {
   if (clueAccepted && window.playSound) window.playSound('clueGiven');
 }
 
+async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
+  try {
+    const core = ensureAICore(ai);
+    if (!core) return null;
+
+    const vision = buildAIVision(game, ai);
+    const persona = core.personality;
+    const team = ai.team;
+
+    const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
+    const teamChat = chatDocs.slice(-12).map(m => `${m.senderName}: ${m.text}`).join('\n');
+
+    const boardWords = (vision.cards || []).map(c => String(c.word || '').trim().toUpperCase()).filter(Boolean);
+
+    const ps = Array.from((proposalsByAi || new Map()).values()).filter(p => p && p.clue);
+    const proposalLines = ps.slice(0, 8).map(p => {
+      const n = Number.isFinite(+p.number) ? +p.number : 1;
+      const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
+      return `- ${String(p.ai?.name || 'AI')}: ${String(p.clue).toUpperCase()} for ${n} (~${c}%)`;
+    }).join('\n');
+
+    const myPrev = proposalsByAi?.get(ai.id);
+    const myPrevLine = myPrev && myPrev.clue
+      ? `Previously you leaned: ${String(myPrev.clue).toUpperCase()} for ${Number(myPrev.number || 0)}`
+      : `No previous clue proposal.`;
+
+    const systemPrompt = [
+      `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(team).toUpperCase()}.`,
+      `PERSONALITY (follow strictly): ${persona.label}`,
+      ...persona.rules.map(r => `- ${r}`),
+      '',
+      AI_TIPS_MANUAL,
+      '',
+      `You are inside your private MIND. The only way you think is by writing.`,
+      `Task: optionally add another short teammate message (strategy discussion). You may also revise YOUR clue proposal.`,
+      `Return JSON only:`,
+      `{"mind":"2-8 lines first-person", "chat":"(optional) 1-2 natural sentences", "action":"propose|no_change", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "continue":true|false}`,
+      `Rules:`,
+      `- Think first, then speak (mind before chat).`,
+      `- clue must be ONE word (no spaces, no hyphens), and NOT a board word.`,
+      `- chat must NEVER reference indices/numbers or write "N = WORD".`,
+      `- If you have nothing new, set chat="" and continue=false.`,
+    ].join('\n');
+
+    const mindContext = core.mindLog.slice(-10).join('\n');
+    const userPrompt = [
+      `VISION:\n${JSON.stringify(vision)}`,
+      '',
+      `TEAM CHAT (latest):\n${teamChat}`,
+      '',
+      `CURRENT SPYMASTER LEANS:\n${proposalLines || '(none)'}`,
+      '',
+      myPrevLine,
+      '',
+      `BOARD WORDS (clue must NOT match):\n${boardWords.join(', ')}`,
+      '',
+      `RECENT MIND:\n${mindContext}`,
+    ].join('\n');
+
+    const raw = await aiChatCompletion(
+      [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    );
+
+    let parsed = null;
+    try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
+    if (!parsed) return null;
+
+    const mind = String(parsed.mind || '').trim();
+    if (mind) appendMind(ai, mind);
+
+    let chat = String(parsed.chat || '').trim();
+    chat = sanitizeChatText(chat, vision, 180);
+
+    const action = String(parsed.action || 'no_change').toLowerCase().trim();
+    const cont = (parsed.continue === true);
+
+    const out = { ai, chat, continue: cont };
+    if (action === 'propose') {
+      let clueWord = String(parsed.clue || '').trim().toUpperCase();
+      let clueNumber = parseInt(parsed.number, 10);
+      if (!Number.isFinite(clueNumber)) clueNumber = 1;
+      clueNumber = Math.max(0, Math.min(9, clueNumber));
+      const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+      const bad =
+        (!clueWord) ? 'empty clue' :
+        (clueWord.includes(' ') || clueWord.includes('-')) ? 'not one word' :
+        (boardWords.includes(clueWord)) ? 'clue is on the board' :
+        null;
+      if (!bad) {
+        out.clue = clueWord;
+        out.number = clueNumber;
+        out.confidence = Number.isFinite(conf) ? conf : 0.6;
+      }
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function runSpymasterCouncil(game, team) {
   const spies = (getAISpymasters(team) || []).filter(a => a && a.mode === 'autonomous');
   if (!spies.length) return;
 
   const key = _turnKeyForCouncil(game, 'spy', team);
 
-  const proposals = [];
+  let working = game;
+  const proposalsByAi = new Map();
+
+  // Sequential proposals so later spymasters can read earlier chat/ideas.
   for (const ai of spies) {
     const core = ensureAICore(ai);
     if (!core) continue;
     if (core.lastSuggestionKey === key) continue;
     if (aiThinkingState[ai.id]) continue;
 
+    try {
+      const g2 = await getGameSnapshot(game?.id);
+      if (g2 && g2.cards) working = g2;
+    } catch (_) {}
+
+    const chatBefore = await getTeamChatState(game.id, team, 14);
+
     aiThinkingState[ai.id] = true;
     try {
-      const prop = await aiSpymasterPropose(ai, game);
+      const prop = await aiSpymasterPropose(ai, working, { chatDocs: chatBefore.docs });
       if (prop) {
-        proposals.push(prop);
-        if (prop.chat) await sendAIChatMessage(ai, game, prop.chat);
+        const chatAfter = await getTeamChatState(game.id, team, 14);
+        if (prop.chat && chatAfter.sig && chatAfter.sig !== chatBefore.sig) {
+          const rewritten = await rewriteDraftChatAfterUpdate(ai, working, 'spymaster', prop.chat, chatBefore.docs, chatAfter.docs);
+          prop.chat = rewritten;
+        }
+
+        proposalsByAi.set(ai.id, prop);
+        if (prop.chat) await sendAIChatMessage(ai, working, prop.chat);
       }
       core.lastSuggestionKey = key;
     } catch (_) {
     } finally {
       aiThinkingState[ai.id] = false;
     }
+
+    if (spies.length >= 2) await sleep(AI_COUNCIL_PACE.betweenSpeakersMs);
   }
 
+  if (!proposalsByAi.size) return;
+
+  // Open discussion phase (multiple short messages). Not forced; AIs may talk
+  // as much as they want (bounded internally) and can revise their own clue lean.
+  if (spies.length >= 2) {
+    let rounds = 0;
+    while (rounds < 5) {
+      rounds += 1;
+      let anySpoke = false;
+      for (const ai of spies) {
+        if (aiThinkingState[ai.id]) continue;
+        try {
+          const g2 = await getGameSnapshot(game?.id);
+          if (g2 && g2.cards) working = g2;
+        } catch (_) {}
+
+        const chatBefore = await getTeamChatState(game.id, team, 16);
+        aiThinkingState[ai.id] = true;
+        try {
+          const follow = await aiSpymasterFollowup(ai, working, proposalsByAi, { chatDocs: chatBefore.docs });
+          if (!follow) continue;
+
+          const chatAfter = await getTeamChatState(game.id, team, 16);
+          let chat = String(follow.chat || '').trim();
+          if (chat && chatAfter.sig && chatAfter.sig !== chatBefore.sig) {
+            chat = await rewriteDraftChatAfterUpdate(ai, working, 'spymaster', chat, chatBefore.docs, chatAfter.docs);
+          }
+
+          // Update this AI's latest clue lean if it provided one.
+          if (follow.clue) {
+            const prev = proposalsByAi.get(ai.id) || { ai };
+            proposalsByAi.set(ai.id, { ...prev, ...follow, chat: chat || '' });
+          }
+
+          if (chat) {
+            await sendAIChatMessage(ai, working, chat);
+            anySpoke = true;
+          }
+        } catch (_) {
+        } finally {
+          aiThinkingState[ai.id] = false;
+        }
+
+        if (anySpoke) await sleep(Math.max(220, Math.min(900, AI_COUNCIL_PACE.betweenSpeakersMs)));
+      }
+
+      if (!anySpoke) break;
+      await sleep(Math.max(280, Math.min(1000, AI_COUNCIL_PACE.beforeDecisionMs * 0.7)));
+    }
+  }
+
+  if (spies.length >= 2) await sleep(AI_COUNCIL_PACE.beforeDecisionMs);
+
+  const proposals = Array.from(proposalsByAi.values()).filter(Boolean);
   const pick = chooseSpymasterClue(proposals);
   if (!pick) return;
 
@@ -1317,7 +1979,7 @@ async function runSpymasterCouncil(game, team) {
   if (aiThinkingState[executor.id]) return;
 
   // Fresh snapshot before submit
-  let fresh = game;
+  let fresh = working;
   try {
     const g2 = await getGameSnapshot(game?.id);
     if (g2 && g2.cards) fresh = g2;
@@ -1325,12 +1987,24 @@ async function runSpymasterCouncil(game, team) {
 
   if (fresh.currentPhase !== 'spymaster' || fresh.currentTeam !== team) return;
 
+  // Optional follow-up wrap-up message (allows an AI to speak twice and helps
+  // them integrate teammate input). Advice-driven, not forced.
+  if (spies.length >= 2) {
+    try {
+      const core = ensureAICore(executor);
+      if (core && core.lastCouncilSummaryKey !== key) {
+        let chatDocs = [];
+        try { chatDocs = await fetchRecentTeamChatDocs(fresh.id, team, 10); } catch (_) {}
+        const wrap = await aiSpymasterCouncilSummary(executor, fresh, proposals, pick, { chatDocs });
+        if (wrap) await sendAIChatMessage(executor, fresh, wrap);
+        core.lastCouncilSummaryKey = key;
+        await sleep(Math.min(450, AI_COUNCIL_PACE.betweenSpeakersMs));
+      }
+    } catch (_) {}
+  }
+
   await submitClueDirect(executor, fresh, pick.clue, pick.number);
 }
-
-
-
-
 async function aiGiveClue(ai, game) {
   if (aiThinkingState[ai.id]) return;
   aiThinkingState[ai.id] = true;
@@ -1953,10 +2627,22 @@ async function getGameSnapshot(gameId) {
   }
 }
 
-// ─── Human-Like Delay ───────────────────────────────────────────────────────
+// ─── Timing / pacing ───────────────────────────────────────────────────────
+
+// We keep gameplay responsive, but when multiple AIs are collaborating we add
+// short "processing" pauses so they can read each other’s messages/markers
+// before acting. These are functional coordination pauses, not "human acting".
 
 const AI_SPEED = { spymasterDelay:[0,0], operativeThinkDelay:[0,0], operativeChatDelay:[0,0], betweenGuessesDelay:[0,0], idleLoopDelayMs: 250 };
 
+const AI_COUNCIL_PACE = {
+  betweenSpeakersMs: 650,  // pause after a teammate message/marker so others can read it
+  beforeDecisionMs: 900,   // pause after all proposals before executing an action
+};
+
+function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }
+
+// Legacy helper (kept for compatibility with older call sites)
 function humanDelay() { return Promise.resolve(); }
 
 // ─── Master AI Game Loop ────────────────────────────────────────────────────
@@ -2047,7 +2733,7 @@ function startAIGameLoop() {
       }
       return;
     }
-  }, 2000); // Check every 2 seconds
+  }, 2800); // Check every ~3 seconds (slower for coordination)
 }
 
 function stopAIGameLoop() {
