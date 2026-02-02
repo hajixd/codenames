@@ -739,6 +739,21 @@ function initGameUI() {
   // End turn button
   document.getElementById('end-turn-btn')?.addEventListener('click', handleEndTurn);
 
+  // OG Mode: Number minus button
+  document.getElementById('og-num-minus')?.addEventListener('click', () => {
+    const numInput = document.getElementById('clue-num-input');
+    if (numInput) {
+      const val = parseInt(numInput.value) || 0;
+      numInput.value = Math.max(0, val - 1);
+    }
+  });
+
+  // OG Mode: Settings button opens settings modal
+  document.getElementById('og-settings-btn')?.addEventListener('click', () => {
+    const modal = document.getElementById('settings-modal');
+    if (modal) modal.classList.add('active');
+  });
+
   // Leave game
   document.getElementById('leave-game-btn')?.addEventListener('click', handleLeaveGame);
 
@@ -3212,22 +3227,19 @@ function renderOgPanels() {
   const isOgMode = document.body.classList.contains('og-mode');
   const ogPanelBlue = document.getElementById('og-panel-blue');
   const ogPanelRed = document.getElementById('og-panel-red');
+  const ogMobilePanels = document.getElementById('og-mobile-panels');
+
   if (!ogPanelBlue || !ogPanelRed) return;
 
   if (!isOgMode || !currentGame) {
     ogPanelBlue.style.display = 'none';
     ogPanelRed.style.display = 'none';
+    if (ogMobilePanels) ogMobilePanels.style.display = '';
     return;
   }
 
   ogPanelBlue.style.display = 'flex';
   ogPanelRed.style.display = 'flex';
-
-  // Update scores
-  const blueScore = document.getElementById('og-blue-score');
-  const redScore = document.getElementById('og-red-score');
-  if (blueScore) blueScore.textContent = currentGame.blueCardsLeft ?? '';
-  if (redScore) redScore.textContent = currentGame.redCardsLeft ?? '';
 
   // Split players into spymasters and operatives
   const splitRoles = (players, spymasterName) => {
@@ -3253,6 +3265,15 @@ function renderOgPanels() {
   const blue = splitRoles(currentGame.bluePlayers, currentGame.blueSpymaster);
   const red = splitRoles(currentGame.redPlayers, currentGame.redSpymaster);
 
+  const blueCardsLeft = currentGame.blueCardsLeft ?? '';
+  const redCardsLeft = currentGame.redCardsLeft ?? '';
+
+  // --- Desktop panels ---
+  const blueScore = document.getElementById('og-blue-score');
+  const redScore = document.getElementById('og-red-score');
+  if (blueScore) blueScore.textContent = blueCardsLeft;
+  if (redScore) redScore.textContent = redCardsLeft;
+
   const blueOps = document.getElementById('og-blue-operatives');
   const blueSpy = document.getElementById('og-blue-spymasters');
   const redOps = document.getElementById('og-red-operatives');
@@ -3263,11 +3284,35 @@ function renderOgPanels() {
   if (redOps) redOps.innerHTML = renderSlotHtml(red.operatives);
   if (redSpy) redSpy.innerHTML = renderSlotHtml(red.spymasters);
 
-  // Mirror game log into OG panel
+  // Mirror game log into desktop OG panel
   const ogLog = document.getElementById('og-game-log');
   const existingLog = document.getElementById('game-log-entries-sidebar');
   if (ogLog && existingLog) {
     ogLog.innerHTML = existingLog.innerHTML;
+  }
+
+  // --- Mobile panels ---
+  const mBlueScore = document.getElementById('og-mobile-blue-score');
+  const mRedScore = document.getElementById('og-mobile-red-score');
+  if (mBlueScore) mBlueScore.textContent = blueCardsLeft;
+  if (mRedScore) mRedScore.textContent = redCardsLeft;
+
+  const mBlueSpy = document.getElementById('og-mobile-blue-spymasters');
+  const mRedSpy = document.getElementById('og-mobile-red-spymasters');
+  if (mBlueSpy) mBlueSpy.innerHTML = renderSlotHtml(blue.spymasters);
+  if (mRedSpy) mRedSpy.innerHTML = renderSlotHtml(red.spymasters);
+
+  // Mirror game log into mobile OG panel
+  const mOgLog = document.getElementById('og-mobile-game-log');
+  if (mOgLog && existingLog) {
+    mOgLog.innerHTML = existingLog.innerHTML;
+  }
+
+  // --- OG top bar player count ---
+  const countEl = document.getElementById('og-player-count');
+  if (countEl) {
+    const total = (currentGame.bluePlayers?.length || 0) + (currentGame.redPlayers?.length || 0);
+    countEl.textContent = total;
   }
 }
 

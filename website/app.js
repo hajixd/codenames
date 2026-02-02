@@ -6654,6 +6654,15 @@ function applyOgModeSetting() {
   } else {
     applyThemeSetting();
   }
+  // Update clue input placeholder for OG mode
+  const clueInput = document.getElementById('clue-input');
+  if (clueInput) {
+    clueInput.placeholder = settingsOgMode ? 'YOUR CLUE' : 'Enter your clue...';
+  }
+  // Re-render OG panels if game is active
+  if (typeof renderOgPanels === 'function') {
+    try { renderOgPanels(); } catch (_) { /* ignore if game not initialized */ }
+  }
 }
 
 function applyAnimationsSetting() {

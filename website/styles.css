@@ -12093,6 +12093,66 @@ body.og-mode .operative-chat-panel {
   display: none !important;
 }
 
+/* --- OG Top Bar --- */
+.og-topbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  flex-shrink: 0;
+}
+
+body.og-mode .og-topbar {
+  display: flex;
+}
+
+.og-topbar-left,
+.og-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.og-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  line-height: 1.2;
+}
+
+.og-topbar-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.og-topbar-icon-btn {
+  padding: 6px 10px;
+}
+
+.og-topbar-svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.og-topbar-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.og-topbar-count {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
 /* --- OG Phase Banner --- */
 .og-phase-banner {
   display: none;
@@ -12272,6 +12332,34 @@ body.og-mode .clue-num-expanded:focus {
   outline: none;
 }
 
+/* --- OG Number Minus Button --- */
+.og-num-btn {
+  display: none;
+}
+
+body.og-mode .og-num-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  border: none;
+  color: #666;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+body.og-mode .og-num-btn:hover {
+  background: #d0d0d0;
+}
+
 body.og-mode .clue-form-expanded .btn.primary {
   background: #4CAF50;
   border: none;
@@ -12357,7 +12445,7 @@ body.og-mode .waiting-expanded {
 .og-team-panel {
   display: none;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   padding: 14px;
   border-radius: 14px;
   flex: 1;
@@ -12379,23 +12467,63 @@ body.og-mode .og-team-panel {
   border: 1px solid rgba(200, 85, 58, 0.25);
 }
 
+/* --- OG Section Headers --- */
 .og-section-header {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: #8ba4be;
-  padding: 6px 0 4px;
+  padding: 4px 0 2px;
 }
 
-.og-team-red .og-section-header {
+.og-team-red .og-section-header,
+.og-mobile-red .og-section-header {
   color: #c4917e;
 }
 
+/* --- OG Illustration Boxes --- */
+.og-illustration {
+  width: 100%;
+  aspect-ratio: 1.55;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.og-illustration-blue {
+  background: linear-gradient(145deg, #1a3a5c 0%, #2563a8 50%, #1e4d7a 100%);
+  border: 1px solid rgba(59, 139, 235, 0.35);
+  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.2);
+}
+
+.og-illustration-red {
+  background: linear-gradient(145deg, #4a2020 0%, #a84832 50%, #6b2d1e 100%);
+  border: 1px solid rgba(200, 85, 58, 0.35);
+  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.2);
+}
+
+.og-illustration .og-player-slots {
+  position: relative;
+  z-index: 1;
+}
+
+.og-illustration .og-player-slot {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* --- OG Player Slots --- */
 .og-player-slots {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .og-player-slot {
@@ -12413,16 +12541,24 @@ body.og-mode .og-team-panel {
   font-weight: 400;
 }
 
-/* OG Score Block */
+/* --- OG Score Block --- */
 .og-score-block {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 16px 0;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.og-score-blue {
+  flex-direction: row;
+}
+
+.og-score-red {
+  flex-direction: row;
 }
 
 .og-score-number {
-  font-size: 72px;
+  font-size: 52px;
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -12438,7 +12574,33 @@ body.og-mode .og-team-panel {
   text-shadow: 0 3px 16px rgba(200, 85, 58, 0.35);
 }
 
-/* OG Game Log in right panel */
+/* --- OG Score Avatar --- */
+.og-score-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.og-score-avatar-blue {
+  background: linear-gradient(135deg, #1a3a5c 0%, #3B8BEB 100%);
+  border: 2px solid rgba(59, 139, 235, 0.4);
+  box-shadow: 0 2px 8px rgba(59, 139, 235, 0.25);
+}
+
+.og-score-avatar-red {
+  background: linear-gradient(135deg, #4a2020 0%, #C8553A 100%);
+  border: 2px solid rgba(200, 85, 58, 0.4);
+  box-shadow: 0 2px 8px rgba(200, 85, 58, 0.25);
+}
+
+.og-avatar-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+/* --- OG Game Log in right panel --- */
 .og-game-log-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 10px;
@@ -12483,22 +12645,99 @@ body.og-mode .og-game-log .game-log-entry {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+/* --- OG Mobile Panels --- */
+.og-mobile-panels {
+  display: none;
+}
+
+.og-mobile-score-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.og-score-number-sm {
+  font-size: 32px;
+}
+
+.og-player-slots-sm .og-player-slot {
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.og-game-log-mobile {
+  max-height: 120px;
+}
+
 /* --- OG Mobile Overrides --- */
 @media (max-width: 768px) {
+  /* Hide desktop side panels on mobile */
   body.og-mode .og-team-panel {
     display: none !important;
   }
 
-  body.og-mode .game-header-expanded {
+  /* Show mobile panels at top */
+  body.og-mode .og-mobile-panels {
     display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    flex-shrink: 0;
+  }
+
+  .og-mobile-team {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 10px;
+    min-width: 0;
+  }
+
+  .og-mobile-blue {
+    background: linear-gradient(180deg, rgba(59, 139, 235, 0.15) 0%, rgba(59, 139, 235, 0.05) 100%);
+    border: 1px solid rgba(59, 139, 235, 0.25);
+  }
+
+  .og-mobile-red {
+    background: linear-gradient(180deg, rgba(200, 85, 58, 0.15) 0%, rgba(200, 85, 58, 0.05) 100%);
+    border: 1px solid rgba(200, 85, 58, 0.25);
+  }
+
+  .og-mobile-red .og-section-header {
+    color: #c4917e;
+  }
+
+  .og-mobile-log {
+    flex: 0.8;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .og-illustration-sm {
+    aspect-ratio: 1.8;
+    border-radius: 8px;
+    padding: 4px;
+  }
+
+  /* Show standard game header on mobile for timer/scores (hidden behind mobile panels) */
+  body.og-mode .game-header-expanded {
+    display: none;
   }
 
   body.og-mode .og-phase-banner {
-    padding: 8px 0 4px;
+    padding: 6px 0 2px;
   }
 
   body.og-mode .og-phase-text {
-    font-size: 14px;
+    font-size: 13px;
     letter-spacing: 1px;
   }
 
@@ -12506,5 +12745,22 @@ body.og-mode .og-game-log .game-log-entry {
     max-width: 100%;
     border-radius: 22px;
     padding: 4px 4px 4px 14px;
+  }
+
+  body.og-mode .game-board {
+    gap: 5px;
+  }
+
+  body.og-mode .game-card .card-word {
+    font-size: clamp(8px, 2.8vw, 13px);
+  }
+
+  body.og-mode .og-topbar {
+    padding: 4px 8px;
+  }
+
+  body.og-mode .og-topbar-btn {
+    font-size: 11px;
+    padding: 4px 8px;
   }
 }
