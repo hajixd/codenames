@@ -902,6 +902,39 @@ function aiMarkCard(gameId, cardIndex, tag) {
 window.getAICardMarksForGame = function(gameId) {
   try { return (aiCardMarks && aiCardMarks[String(gameId)] ) ? aiCardMarks[String(gameId)] : {}; } catch (_) { return {}; }
 };
+
+function sanitizeChatText(text, vision, maxLen = 180) {
+  try {
+    let s = String(text || '').trim();
+    if (!s) return '';
+    // Remove ugly index mapping like "13 = WORD" (especially at start)
+    s = s.replace(/^\s*\d{1,2}\s*=\s*/g, '');
+    // Replace explicit "card 13"/"index 13"/"(13)" with the actual word, when possible
+    const cards = Array.isArray(vision?.cards) ? vision.cards : [];
+    const idxToWord = new Map();
+    for (const c of cards) {
+      const idx = Number(c?.index);
+      const w = String(c?.word || '').trim();
+      if (Number.isFinite(idx) && w) idxToWord.set(String(idx), w.toUpperCase());
+    }
+    const replIdx = (n) => idxToWord.get(String(n)) || '';
+    s = s.replace(/\b(?:card|index)\s*#?\s*(\d{1,2})\b/gi, (_, n) => replIdx(n) || '');
+    s = s.replace(/\(\s*(\d{1,2})\s*\)/g, (_, n) => {
+      const w = replIdx(n);
+      return w ? `(${w})` : '';
+    });
+
+    // If it still contains a standalone "N =" anywhere, drop the "N ="
+    s = s.replace(/\b\d{1,2}\s*=\s*/g, '');
+
+    s = s.replace(/\s{2,}/g, ' ').trim();
+    if (!s) return '';
+    return s.slice(0, maxLen);
+  } catch (_) {
+    return String(text || '').trim().slice(0, maxLen);
+  }
+}
+
 /* ─── Multi-AI teamwork: rotation + councils ───────────────────────────── */
 
 function _aiSeqField(team, role) {
@@ -926,13 +959,17 @@ function _turnKeyForCouncil(game, role, team) {
   return `${String(g.id||'')}:${String(role)}:${String(team)}:${String(g.currentPhase)}:${String(g.currentTeam)}:${clue}:${gr}:${cardsSig}`;
 }
 
-async function aiOperativePropose(ai, game) {
+async function aiOperativePropose(ai, game, opts = {}) {
   const core = ensureAICore(ai);
   if (!core) return null;
 
   const team = ai.team;
   const vision = buildAIVision(game, ai);
   const persona = core.personality;
+  const requireChat = !!opts.requireChat;
+  const requireMarks = !!opts.requireMarks;
+  const councilSize = Number(opts.councilSize || 0);
+
 
   if (!vision.clue || !vision.clue.word) return null;
 
@@ -952,13 +989,16 @@ async function aiOperativePropose(ai, game) {
     `You are inside your private MIND. The only way you think is by writing.`,
     `Task: propose a coordinated plan for this turn (guess or end turn), and optionally place 1–3 markers to help teammates.`,
     `Return JSON only with this schema:`,
-    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"short teammate message"}`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"teammate message (required when councilSize>=2)"}`,
     ``,
     `Hard requirements:`,
     `- If action="guess", index MUST be one of the unrevealed indices shown.`,
     `- Use clue: "${String(vision.clue.word || '').toUpperCase()}" for ${Number(vision.clue.number || 0)}.`,
     `- You have ${remainingGuesses} guess(es) remaining.`,
     `- marks must reference unrevealed indices.`,
+    `- chat must be 1–2 natural sentences like a human teammate (no robotic fragments).`,
+    `- In chat, NEVER use card indices or digits (e.g., do not write "13 = ..."). Refer to board WORDS instead.`,
+    `- If you propose ending the turn, say why and explicitly ask teammates if they're good to end.`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
@@ -972,7 +1012,7 @@ async function aiOperativePropose(ai, game) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 520, response_format: { type: 'json_object' } }
+    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -998,7 +1038,19 @@ async function aiOperativePropose(ai, game) {
     if (marks.length >= 3) break;
   }
 
-  const chat = String(parsed.chat || '').trim().slice(0, 180);
+  if (requireMarks && (!marks || marks.length === 0) && action === 'guess' && candidate) {
+    marks.push({ index: candidate.index, tag: 'yes' });
+  }
+
+  let chat = String(parsed.chat || '').trim();
+  chat = sanitizeChatText(chat, vision, 180);
+
+  // If we are coordinating with teammates, prefer always sending something human-readable.
+  if (!chat && requireChat) {
+    if (action === 'guess' && candidate) chat = `Leaning ${String(candidate.word || '').toUpperCase()}—feels like it fits ${String(vision.clue.word || '').toUpperCase()}.`;
+    else chat = `I'm not seeing a safe guess—are we all good to end here?`;
+  }
+  chat = chat.slice(0, 180);
 
   if (action === 'end_turn') {
     return { ai, action: 'end_turn', index: null, confidence: conf || 0.0, marks, chat };
@@ -1011,36 +1063,44 @@ async function aiOperativePropose(ai, game) {
   return { ai, action: 'end_turn', index: null, confidence: 0.0, marks, chat: chat || '' };
 }
 
-function chooseOperativeAction(proposals) {
+function chooseOperativeAction(proposals, game, councilSize) {
   const ps = (proposals || []).filter(Boolean);
+  const n = Number.isFinite(+councilSize) && +councilSize > 0 ? +councilSize : ps.length;
   if (!ps.length) return { action: 'end_turn', index: null };
 
-  // Count top-choice agreement
+  // Count guess consensus
   const byIndex = new Map();
   for (const p of ps) {
     if (p.action !== 'guess' || p.index === null || p.index === undefined) continue;
     const k = p.index;
     const cur = byIndex.get(k) || { sum: 0, n: 0, max: 0 };
-    const c = Number.isFinite(+p.confidence) ? +p.confidence : 0.5;
+    const c = Number.isFinite(+p.confidence) ? +p.confidence : 0.55;
     cur.sum += c; cur.n += 1; cur.max = Math.max(cur.max, c);
     byIndex.set(k, cur);
   }
 
-  // If majority wants to end, end.
   const endVotes = ps.filter(p => p.action === 'end_turn').length;
-  if (endVotes >= Math.ceil(ps.length * 0.6)) return { action: 'end_turn', index: null };
+  const requiredEndVotes = (n <= 1) ? 1 : (n === 2 ? 2 : Math.ceil(n / 2)); // mutual agreement
 
-  // Pick best index by (avg confidence + small consensus bonus)
+  // Best guess by (avg confidence + consensus bonus)
   let best = null;
   for (const [idx, v] of byIndex.entries()) {
     const avg = v.sum / Math.max(1, v.n);
-    const score = avg + (0.12 * v.n) + (0.05 * v.max);
+    const score = avg + (0.14 * v.n) + (0.06 * v.max);
     if (!best || score > best.score) best = { index: idx, score, avg, n: v.n };
   }
 
+  // Only end if there's mutual agreement AND we don't have a decent shared guess.
+  if (endVotes >= requiredEndVotes) {
+    if (!best) return { action: 'end_turn', index: null };
+    if (best.avg < 0.62 && best.n < 2) return { action: 'end_turn', index: null };
+    // If there IS a decent guess, take it instead of bailing early.
+  }
+
   if (!best) return { action: 'end_turn', index: null };
-  // Conservative threshold: require decent signal
-  if (best.avg < 0.58 && best.n < 2) return { action: 'end_turn', index: null };
+
+  // Threshold to guess: either decent avg confidence, or at least 2 AIs align.
+  if (best.avg < 0.55 && best.n < 2) return { action: 'end_turn', index: null };
   return { action: 'guess', index: best.index };
 }
 
@@ -1060,7 +1120,7 @@ async function runOperativeCouncil(game, team) {
 
     aiThinkingState[ai.id] = true;
     try {
-      const prop = await aiOperativePropose(ai, game);
+      const prop = await aiOperativePropose(ai, game, { requireChat: ops.length >= 2, requireMarks: ops.length >= 2, councilSize: ops.length });
       if (prop) proposals.push(prop);
 
       // Share markers (team-visible) and short chat to coordinate
@@ -1093,7 +1153,7 @@ async function runOperativeCouncil(game, team) {
   // Re-check phase/turn
   if (fresh.currentPhase !== 'operatives' || fresh.currentTeam !== team) return;
 
-  const decision = chooseOperativeAction(proposals);
+  const decision = chooseOperativeAction(proposals, fresh, ops.length);
   if (decision.action === 'guess' && Number.isFinite(+decision.index)) {
     await aiRevealCard(executor, fresh, Number(decision.index), true);
   } else {
@@ -1121,7 +1181,7 @@ async function aiSpymasterPropose(ai, game) {
     `You are inside your private MIND. The only way you think is by writing.`,
     `Task: propose a strong clue and number. Aim for 2–4 when safe; use 0 only if it is truly defensive.`,
     `Return JSON only:`,
-    `{"mind":"first-person inner monologue (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "chat":"optional short message to teammates"}`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "chat":"optional teammate message (1–2 natural sentences, no indices or "N =" formatting)"}`,
     ``,
     `Hard requirements:`,
     `- clue must be ONE word (no spaces, no hyphens).`,
@@ -1134,7 +1194,7 @@ async function aiSpymasterPropose(ai, game) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 420, response_format: { type: 'json_object' } }
+    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -1161,7 +1221,9 @@ async function aiSpymasterPropose(ai, game) {
     return null;
   }
 
-  const chat = String(parsed.chat || '').trim().slice(0, 180);
+  let chat = String(parsed.chat || '').trim();
+  chat = sanitizeChatText(chat, vision, 180);
+  chat = chat.slice(0, 180);
   return { ai, clue: clueWord, number: clueNumber, confidence: Number.isFinite(conf) ? conf : 0.6, chat };
 }
 
@@ -1440,7 +1502,7 @@ async function aiGuessCard(ai, game) {
       ``,
       `MIND RULE: The only way you think is by writing in your private inner monologue.`,
       `Return JSON only:`,
-      `{"mind":"first-person inner monologue", "action":"guess|end_turn", "index":N, "chat":"optional short message to teammates"}`,
+      `{"mind":"first-person inner monologue", "action":"guess|end_turn", "index":N, "chat":"optional teammate message (1–2 natural sentences, no indices or "N =" formatting)"}`,
       ``,
       `Hard requirements:`,
       `- If action="guess", index MUST be one of the unrevealed indices shown.`,
@@ -1462,7 +1524,7 @@ async function aiGuessCard(ai, game) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const raw = await aiChatCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { temperature: core.temperature, max_tokens: 520, response_format: { type: 'json_object' } }
+        { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
       );
       try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
       if (!parsed) continue;
@@ -1646,7 +1708,7 @@ async function aiConsiderEndTurn(ai, game, forceEnd = false, incrementSeq = fals
   currentPhase: 'spymaster',
   currentClue: null,
   guessesRemaining: 0,
-  log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
+  log: firebase.firestore.FieldValue.arrayUnion(`AI ${ai.name} (${teamName}) ended their turn.`),
   updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
 };
 if (incrementSeq) {
@@ -1689,8 +1751,10 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `PERSONALITY (follow strictly): ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       ``,
-      `Write ONE short message (<=160 chars).`,
-      `If you mention a board word, it MUST be from the unrevealed list provided.`,
+      `Write like a real human teammate: 1–2 natural sentences (not robotic fragments).`,
+      `Keep it <=160 chars, but avoid one-word replies like "Nice!" unless it actually ended the game.`,
+      `Never refer to card indices, coordinates, or numbers. Do not write things like "13 = WORD".`,
+      `If you mention a board word, it MUST be from the unrevealed list provided, and you must use the WORD itself (not an index).`,
       `Do not invent board words.`,
       `Return JSON only: {"mind":"(private inner monologue)", "msg":"(public chat message)"}`,
     ].join('\n');
@@ -1718,6 +1782,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     if (mind) appendMind(ai, mind);
 
     let msg = String(parsed.msg || '').trim();
+    msg = sanitizeChatText(msg, vision, 160);
     if (!msg) return '';
 
     // Basic guard: if message contains a token that matches a board word, ensure it's actually unrevealed.
@@ -1743,7 +1808,8 @@ async function generateAIReaction(ai, revealedCard, clue) {
       `You are ${ai.name}. React as a teammate to the last reveal in Codenames.`,
       `PERSONALITY (follow strictly): ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
-      `Write ONE short reaction (<=120 chars).`,
+      `Write like a human teammate: short, specific, not generic.`,
+      `Keep it <=120 chars. Avoid repetitive one-word reactions like "Nice!"—mention the revealed word or outcome.`,
       `Return JSON only: {"mind":"(private inner monologue)", "msg":"(public reaction)"}`,
     ].join('\n');
 
@@ -1761,7 +1827,8 @@ async function generateAIReaction(ai, revealedCard, clue) {
     const mind = String(parsed.mind || '').trim();
     if (mind) appendMind(ai, mind);
 
-    const msg = String(parsed.msg || '').trim();
+    const msgRaw = String(parsed.msg || '').trim();
+    const msg = sanitizeChatText(msgRaw, null, 120);
     return msg ? msg.slice(0, 120) : '';
   } catch (_) {
     return '';

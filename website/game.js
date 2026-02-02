@@ -3542,9 +3542,6 @@ async function handleClueSubmit(e) {
   // Prevent double-submission (rapid double-click / double Enter)
   if (_processingClue) return;
   _processingClue = true;
-
-  const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-
   try {
     // Add clue to history
     const clueEntry = {
@@ -3607,6 +3604,7 @@ async function handleCardClick(cardIndex) {
   updatedCards[cardIndex] = { ...card, revealed: true };
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+  const userName = getUserName() || 'Someone';
   const updates = {
     cards: updatedCards,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -3729,6 +3727,7 @@ async function handleEndTurn() {
   if (currentGame.currentTeam !== myTeamColor) return;
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
+  const userName = getUserName() || 'Someone';
 
   // Play end turn sound
   if (window.playSound) window.playSound('endTurn');
@@ -3739,7 +3738,7 @@ async function handleEndTurn() {
       currentPhase: 'spymaster',
       currentClue: null,
       guessesRemaining: 0,
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
+      log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (e) {

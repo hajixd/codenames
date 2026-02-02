@@ -4704,6 +4704,13 @@ button.player-tag.pill-action:disabled{
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.92);
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  max-height: 44px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .log-entry::before {
