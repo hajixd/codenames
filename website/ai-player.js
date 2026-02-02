@@ -358,48 +358,64 @@ CODENAMES OPERATING MANUAL (for both Spymasters and Operatives)
 Core objective:
 - As a TEAM, reveal all of your team's words before the other team does, without hitting the assassin.
 
+Teamwork & communication:
+- Talk to your teammates. Share hypotheses, doubts, and “why not” eliminations before committing.
+- Use quick, concrete messages: “I like 7=CAR because wheel→car; I dislike 12=RING because it’s too generic.”
+- Use markings to coordinate:
+  - YES = strong candidate for the current clue
+  - MAYBE = plausible but needs caution / could be later
+  - NO = dangerous pull (likely wrong / likely assassin/opponent/neutral or too “hubby”)
+- Don’t spam: mark 1–3 key cards and write short chat messages that help the group converge.
+
 Spymaster fundamentals:
-- Your job is to create a single-word clue that connects multiple of your unrevealed team words.
-- You also must avoid clues that point at: (1) the assassin, (2) opponent words, (3) neutral words.
-- Strong clues are about meaning, not just category labels. A clue should have a tight “center” that naturally pulls toward your targets.
+- Your job is to give a single-word clue that connects multiple of your unrevealed team words while avoiding the assassin and minimizing pulls to opponent/neutral words.
+- Strong clues have a tight “center” that naturally pulls toward your targets and away from everything else.
 - Prefer clues that:
   - Connect 2–4 targets cleanly
-  - Are specific enough to exclude common wrong-board pulls
+  - Are specific enough to exclude obvious wrong-board pulls
   - Leave future options (don’t waste a clue that will be even better later)
 
 How to choose a clue:
-1) Cluster your remaining team words into natural groups (themes, parts/wholes, common phrases, typical pairings, functions, contexts).
-2) For each candidate clue, imagine what an Operative will do:
-   - What are the top 3–5 board words this clue would pull?
-   - If any of those are assassin/opponent, the clue is dangerous.
+1) Cluster your remaining team words into natural groups (themes, parts/wholes, common phrases, functions, contexts).
+2) For each candidate clue, imagine what operatives will do:
+   - What are the top 3–6 board words this clue would pull?
+   - If any of those are assassin/opponent, the clue is risky.
 3) Reduce ambiguity:
-   - Avoid “hub” words with too many meanings (e.g., bank, ring, light, spring) unless board context makes the meaning obvious.
-   - Prefer clues that are hard to misread.
+   - Avoid “hub” words with too many meanings (bank, ring, light, spring) unless board context makes the intended sense obvious.
+   - Avoid clues that are easily misread into a different sense.
 4) Choose the number:
    - Number should match how many words you truly intend.
    - Bigger isn’t automatically better: a safe 3 often beats a risky 4.
-   - If your clue is borderline for one target, lower the number.
+   - If one target is borderline, lower the number.
+5) Using 0 can be useful:
+   - A 0-clue is a defensive tool: it can warn operatives away from a dangerous association (“WATER 0” to signal “don’t touch OCEAN if it feels assassin-ish”).
+   - Use it sparingly and only when it meaningfully reduces risk.
 
 Operative fundamentals:
-- Your job is to interpret the clue and guess which unrevealed words belong to your team.
-- Treat each guess as a risk decision: one wrong guess can swing the game, and assassin ends it.
+- Interpret the clue and guess unrevealed words that belong to your team.
+- Treat each guess as a risk decision; assassin ends the game.
 - Use elimination:
-  - If a word matches the clue but also matches an obvious assassin/opponent pull, be cautious.
-  - Avoid generic words that match almost any clue (“hub” words) unless the clue is very specific.
+  - If a word matches the clue but also matches a very plausible assassin/opponent pull, be cautious.
+  - Avoid generic “semantic hubs” unless the clue is very specific.
 - Maintain clue-sense consistency:
-  - If clue number is 3, your guesses should usually share the same sense of the clue (don’t mix meanings).
-- Use the bonus guess (number+1) only when confidence is high.
+  - For clue N≥2, your guesses should usually share the same sense of the clue (don’t mix meanings).
+- Respect the guess budget:
+  - First N guesses can be confident-but-practical.
+  - The bonus guess (N+1) should require very high confidence.
+- Ending early is sometimes necessary:
+  - Passing is a strategic choice when remaining candidates are shaky or high-risk.
+  - Protecting the lead (or avoiding the assassin) is often correct.
 
-Associations you may use (both roles):
+Association types you may use (both roles):
 - Synonyms and near-synonyms
 - Common phrases and collocations
 - Parts/whole relations (wheel↔car)
 - Typical contexts (casino↔gambling↔Vegas)
-- Pop culture or well-known references (only if they are widely recognizable)
+- Widely recognizable pop-culture references (only if they are broadly known)
 
-Game discipline:
-- If unsure, stop. Ending the turn is a strategic move.
-- Avoid “wishful thinking” guesses: you must be able to explain why the clue points to the word, not just that it vaguely could.
+Discipline:
+- If unsure, stop. Ending the turn is often better than gambling.
+- Don’t “wish-cast” guesses. Be able to explain the link clearly.
 `.trim();
 
 const AI_PERSONALITY_POOL = [
@@ -824,6 +840,10 @@ function getAISpymaster(team) {
   return aiPlayers.find(a => a.team === team && a.seatRole === 'spymaster') || null;
 }
 
+function getAISpymasters(team) {
+  return aiPlayers.filter(a => a.team === team && a.seatRole === 'spymaster');
+}
+
 function getAIOperatives(team) {
   return aiPlayers.filter(a => a.team === team && a.seatRole === 'operative');
 }
@@ -856,6 +876,396 @@ async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag) {
     }
   } catch (_) {}
 }
+
+/**
+ * Local-only AI marks overlay (separate from Firestore team markers).
+ * - Used for AI UI hints without writing to the shared board.
+ * - Shared/team communication uses Firestore markers via setTeamMarkerInFirestore().
+ */
+let aiCardMarks = {}; // gameId -> { [cardIndex]: "yes"|"maybe"|"no" }
+
+function aiMarkCard(gameId, cardIndex, tag) {
+  try {
+    const gid = String(gameId || '');
+    if (!gid) return;
+    const idx = Number(cardIndex);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    const t = String(tag || '').toLowerCase();
+    if (!['yes','maybe','no','clear',''].includes(t)) return;
+    if (!aiCardMarks[gid]) aiCardMarks[gid] = {};
+    if (!t || t === 'clear') delete aiCardMarks[gid][idx];
+    else aiCardMarks[gid][idx] = t;
+    if (typeof renderCardTags === 'function') renderCardTags();
+  } catch (_) {}
+}
+
+window.getAICardMarksForGame = function(gameId) {
+  try { return (aiCardMarks && aiCardMarks[String(gameId)] ) ? aiCardMarks[String(gameId)] : {}; } catch (_) { return {}; }
+};
+/* ─── Multi-AI teamwork: rotation + councils ───────────────────────────── */
+
+function _aiSeqField(team, role) {
+  const t = String(team || '').toLowerCase();
+  const r = String(role || '').toLowerCase(); // "op" or "spy"
+  return `aiSeq_${t}_${r}`;
+}
+
+function pickRotatingAI(game, team, role, list) {
+  const arr = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (!arr.length) return null;
+  const field = _aiSeqField(team, role);
+  const seq = Number.isFinite(+game?.[field]) ? +game[field] : 0;
+  return arr[seq % arr.length];
+}
+
+function _turnKeyForCouncil(game, role, team) {
+  const g = game || {};
+  const clue = g.currentClue ? `${String(g.currentClue.word || '').toUpperCase()}_${Number(g.currentClue.number || 0)}` : 'noclue';
+  const gr = Number.isFinite(+g.guessesRemaining) ? +g.guessesRemaining : 0;
+  const cardsSig = Array.isArray(g.cards) ? g.cards.map(c => c && c.revealed ? '1' : '0').join('') : '';
+  return `${String(g.id||'')}:${String(role)}:${String(team)}:${String(g.currentPhase)}:${String(g.currentTeam)}:${clue}:${gr}:${cardsSig}`;
+}
+
+async function aiOperativePropose(ai, game) {
+  const core = ensureAICore(ai);
+  if (!core) return null;
+
+  const team = ai.team;
+  const vision = buildAIVision(game, ai);
+  const persona = core.personality;
+
+  if (!vision.clue || !vision.clue.word) return null;
+
+  const remainingGuesses = Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : 0;
+  const unrevealed = (vision.cards || []).filter(c => !c.revealed);
+  if (!unrevealed.length) return null;
+
+  const list = unrevealed.map(c => `- ${c.index}: ${c.word}`).join('\n');
+
+  const systemPrompt = [
+    `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(team).toUpperCase()}.`,
+    `PERSONALITY (follow strictly): ${persona.label}`,
+    ...persona.rules.map(r => `- ${r}`),
+    ``,
+    AI_TIPS_MANUAL,
+    ``,
+    `You are inside your private MIND. The only way you think is by writing.`,
+    `Task: propose a coordinated plan for this turn (guess or end turn), and optionally place 1–3 markers to help teammates.`,
+    `Return JSON only with this schema:`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"short teammate message"}`,
+    ``,
+    `Hard requirements:`,
+    `- If action="guess", index MUST be one of the unrevealed indices shown.`,
+    `- Use clue: "${String(vision.clue.word || '').toUpperCase()}" for ${Number(vision.clue.number || 0)}.`,
+    `- You have ${remainingGuesses} guess(es) remaining.`,
+    `- marks must reference unrevealed indices.`,
+  ].join('\n');
+
+  const mindContext = core.mindLog.slice(-10).join('\n');
+  const userPrompt = [
+    `VISION:\n${JSON.stringify(vision)}`,
+    ``,
+    `UNREVEALED WORDS (choose ONLY from this list):\n${list}`,
+    ``,
+    `RECENT MIND:\n${mindContext}`
+  ].join('\n');
+
+  const raw = await aiChatCompletion(
+    [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+    { temperature: core.temperature, max_tokens: 520, response_format: { type: 'json_object' } }
+  );
+
+  let parsed = null;
+  try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
+  if (!parsed) return null;
+
+  const mind = String(parsed.mind || '').trim();
+  if (mind) appendMind(ai, mind);
+
+  const action = String(parsed.action || '').toLowerCase().trim();
+  const idx = Number(parsed.index);
+  const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+  const candidate = unrevealed.find(c => c.index === idx);
+
+  const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
+  const marks = [];
+  for (const m of marksIn) {
+    const mi = Number(m?.index);
+    const tag = String(m?.tag || '').toLowerCase().trim();
+    if (!['yes','maybe','no'].includes(tag)) continue;
+    const ok = unrevealed.some(c => c.index === mi);
+    if (ok) marks.push({ index: mi, tag });
+    if (marks.length >= 3) break;
+  }
+
+  const chat = String(parsed.chat || '').trim().slice(0, 180);
+
+  if (action === 'end_turn') {
+    return { ai, action: 'end_turn', index: null, confidence: conf || 0.0, marks, chat };
+  }
+  if (action === 'guess' && candidate) {
+    return { ai, action: 'guess', index: candidate.index, confidence: Number.isFinite(conf) ? conf : 0.55, marks, chat };
+  }
+
+  // If invalid, default safe.
+  return { ai, action: 'end_turn', index: null, confidence: 0.0, marks, chat: chat || '' };
+}
+
+function chooseOperativeAction(proposals) {
+  const ps = (proposals || []).filter(Boolean);
+  if (!ps.length) return { action: 'end_turn', index: null };
+
+  // Count top-choice agreement
+  const byIndex = new Map();
+  for (const p of ps) {
+    if (p.action !== 'guess' || p.index === null || p.index === undefined) continue;
+    const k = p.index;
+    const cur = byIndex.get(k) || { sum: 0, n: 0, max: 0 };
+    const c = Number.isFinite(+p.confidence) ? +p.confidence : 0.5;
+    cur.sum += c; cur.n += 1; cur.max = Math.max(cur.max, c);
+    byIndex.set(k, cur);
+  }
+
+  // If majority wants to end, end.
+  const endVotes = ps.filter(p => p.action === 'end_turn').length;
+  if (endVotes >= Math.ceil(ps.length * 0.6)) return { action: 'end_turn', index: null };
+
+  // Pick best index by (avg confidence + small consensus bonus)
+  let best = null;
+  for (const [idx, v] of byIndex.entries()) {
+    const avg = v.sum / Math.max(1, v.n);
+    const score = avg + (0.12 * v.n) + (0.05 * v.max);
+    if (!best || score > best.score) best = { index: idx, score, avg, n: v.n };
+  }
+
+  if (!best) return { action: 'end_turn', index: null };
+  // Conservative threshold: require decent signal
+  if (best.avg < 0.58 && best.n < 2) return { action: 'end_turn', index: null };
+  return { action: 'guess', index: best.index };
+}
+
+async function runOperativeCouncil(game, team) {
+  const ops = (getAIOperatives(team) || []).filter(a => a && a.mode === 'autonomous');
+  if (!ops.length) return;
+
+  const key = _turnKeyForCouncil(game, 'op', team);
+
+  // Collect proposals (each AI thinks in its own mind + personality)
+  const proposals = [];
+  for (const ai of ops) {
+    const core = ensureAICore(ai);
+    if (!core) continue;
+    if (core.lastSuggestionKey === key) continue;
+    if (aiThinkingState[ai.id]) continue;
+
+    aiThinkingState[ai.id] = true;
+    try {
+      const prop = await aiOperativePropose(ai, game);
+      if (prop) proposals.push(prop);
+
+      // Share markers (team-visible) and short chat to coordinate
+      const existingMarkers = (team === 'red') ? (game.redMarkers || {}) : (game.blueMarkers || {});
+      for (const m of (prop?.marks || [])) {
+        const cur = String(existingMarkers?.[String(m.index)] || existingMarkers?.[m.index] || '').toLowerCase();
+        if (cur !== m.tag) await setTeamMarkerInFirestore(game.id, team, m.index, m.tag);
+      }
+      if (prop?.chat) await sendAIChatMessage(ai, game, prop.chat);
+
+      core.lastSuggestionKey = key;
+    } catch (_) {
+    } finally {
+      aiThinkingState[ai.id] = false;
+    }
+  }
+
+  // Decide and act (rotating executor)
+  const executor = pickRotatingAI(game, team, 'op', ops) || ops[0];
+  if (!executor) return;
+  if (aiThinkingState[executor.id]) return;
+
+  // Use freshest snapshot before acting
+  let fresh = game;
+  try {
+    const g2 = await getGameSnapshot(game?.id);
+    if (g2 && g2.cards) fresh = g2;
+  } catch (_) {}
+
+  // Re-check phase/turn
+  if (fresh.currentPhase !== 'operatives' || fresh.currentTeam !== team) return;
+
+  const decision = chooseOperativeAction(proposals);
+  if (decision.action === 'guess' && Number.isFinite(+decision.index)) {
+    await aiRevealCard(executor, fresh, Number(decision.index), true);
+  } else {
+    await aiConsiderEndTurn(executor, fresh, true, true);
+  }
+}
+
+async function aiSpymasterPropose(ai, game) {
+  const core = ensureAICore(ai);
+  if (!core) return null;
+
+  const team = ai.team;
+  const vision = buildAIVision(game, ai);
+  const persona = core.personality;
+
+  const boardWords = (vision.cards || []).map(c => String(c.word || '').trim().toUpperCase()).filter(Boolean);
+
+  const systemPrompt = [
+    `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(team).toUpperCase()}.`,
+    `PERSONALITY (follow strictly): ${persona.label}`,
+    ...persona.rules.map(r => `- ${r}`),
+    ``,
+    AI_TIPS_MANUAL,
+    ``,
+    `You are inside your private MIND. The only way you think is by writing.`,
+    `Task: propose a strong clue and number. Aim for 2–4 when safe; use 0 only if it is truly defensive.`,
+    `Return JSON only:`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "chat":"optional short message to teammates"}`,
+    ``,
+    `Hard requirements:`,
+    `- clue must be ONE word (no spaces, no hyphens).`,
+    `- clue must NOT be any board word: ${boardWords.join(', ')}`,
+    `- number is an integer 0-9.`,
+  ].join('\n');
+
+  const mindContext = core.mindLog.slice(-10).join('\n');
+  const userPrompt = `VISION:\n${JSON.stringify(vision)}\n\nRECENT MIND:\n${mindContext}`;
+
+  const raw = await aiChatCompletion(
+    [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+    { temperature: core.temperature, max_tokens: 420, response_format: { type: 'json_object' } }
+  );
+
+  let parsed = null;
+  try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
+  if (!parsed) return null;
+
+  const mind = String(parsed.mind || '').trim();
+  if (mind) appendMind(ai, mind);
+
+  let clueWord = String(parsed.clue || '').trim().toUpperCase();
+  let clueNumber = parseInt(parsed.number, 10);
+  if (!Number.isFinite(clueNumber)) clueNumber = 1;
+  clueNumber = Math.max(0, Math.min(9, clueNumber));
+  const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+
+  const bad =
+    (!clueWord) ? 'empty clue' :
+    (clueWord.includes(' ') || clueWord.includes('-')) ? 'clue must be one word' :
+    (boardWords.includes(clueWord)) ? 'clue is on the board' :
+    null;
+
+  if (bad) {
+    appendMind(ai, `My proposed clue was invalid (${bad}). I'll try to stay safer next time.`);
+    return null;
+  }
+
+  const chat = String(parsed.chat || '').trim().slice(0, 180);
+  return { ai, clue: clueWord, number: clueNumber, confidence: Number.isFinite(conf) ? conf : 0.6, chat };
+}
+
+function chooseSpymasterClue(proposals) {
+  const ps = (proposals || []).filter(p => p && p.clue);
+  if (!ps.length) return null;
+
+  // Prefer higher confidence and reasonable multi-hit numbers
+  let best = null;
+  for (const p of ps) {
+    const n = Number.isFinite(+p.number) ? +p.number : 1;
+    const c = Number.isFinite(+p.confidence) ? +p.confidence : 0.6;
+    const score = c + (Math.min(4, Math.max(0, n)) * 0.08); // reward 2-4 gently
+    if (!best || score > best.score) best = { clue: p.clue, number: n, score };
+  }
+  return best ? { clue: best.clue, number: best.number } : null;
+}
+
+async function submitClueDirect(ai, game, clueWord, clueNumber) {
+  const team = ai.team;
+  const ref = db.collection('games').doc(game.id);
+
+  const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+  const clueEntry = {
+    team: game.currentTeam,
+    word: clueWord,
+    number: clueNumber,
+    results: [],
+    timestamp: new Date().toISOString(),
+  };
+
+  const seqField = _aiSeqField(team, 'spy');
+  let clueAccepted = false;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const current = snap.data();
+    if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
+
+    const spymasterKey = team === 'red' ? 'redSpymaster' : 'blueSpymaster';
+
+    tx.update(ref, {
+      [spymasterKey]: ai.name,
+      currentClue: { word: clueWord, number: clueNumber },
+      guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
+      currentPhase: 'operatives',
+      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
+      clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+      [seqField]: firebase.firestore.FieldValue.increment(1),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    clueAccepted = true;
+  });
+
+  if (clueAccepted && window.playSound) window.playSound('clueGiven');
+}
+
+async function runSpymasterCouncil(game, team) {
+  const spies = (getAISpymasters(team) || []).filter(a => a && a.mode === 'autonomous');
+  if (!spies.length) return;
+
+  const key = _turnKeyForCouncil(game, 'spy', team);
+
+  const proposals = [];
+  for (const ai of spies) {
+    const core = ensureAICore(ai);
+    if (!core) continue;
+    if (core.lastSuggestionKey === key) continue;
+    if (aiThinkingState[ai.id]) continue;
+
+    aiThinkingState[ai.id] = true;
+    try {
+      const prop = await aiSpymasterPropose(ai, game);
+      if (prop) {
+        proposals.push(prop);
+        if (prop.chat) await sendAIChatMessage(ai, game, prop.chat);
+      }
+      core.lastSuggestionKey = key;
+    } catch (_) {
+    } finally {
+      aiThinkingState[ai.id] = false;
+    }
+  }
+
+  const pick = chooseSpymasterClue(proposals);
+  if (!pick) return;
+
+  const executor = pickRotatingAI(game, team, 'spy', spies) || spies[0];
+  if (!executor) return;
+  if (aiThinkingState[executor.id]) return;
+
+  // Fresh snapshot before submit
+  let fresh = game;
+  try {
+    const g2 = await getGameSnapshot(game?.id);
+    if (g2 && g2.cards) fresh = g2;
+  } catch (_) {}
+
+  if (fresh.currentPhase !== 'spymaster' || fresh.currentTeam !== team) return;
+
+  await submitClueDirect(executor, fresh, pick.clue, pick.number);
+}
+
 
 
 
@@ -958,6 +1368,7 @@ ${mindContext}`;
     };
 
     const ref = db.collection('games').doc(game.id);
+    const seqField = _aiSeqField(team, 'spy');
     let clueAccepted = false;
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -971,6 +1382,7 @@ ${mindContext}`;
         currentPhase: 'operatives',
         log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
         clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+        [seqField]: firebase.firestore.FieldValue.increment(1),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
       clueAccepted = true;
@@ -985,9 +1397,6 @@ ${mindContext}`;
 }
 
 // ─── AI Operative: Guess Card ───────────────────────────────────────────────
-//
-// (No local AI card-marking overlays; operatives decide directly from the board.)
-window.getAICardMarksForGame = function() { return {}; };
 
 async function aiGuessCard(ai, game) {
   if (aiThinkingState[ai.id]) return;
@@ -1072,7 +1481,7 @@ async function aiGuessCard(ai, game) {
           // Keep team chat short and in-character (public), mind stays private.
           await sendAIChatMessage(ai, game, chat.slice(0, 180));
         }
-        const revealResult = await aiRevealCard(ai, game, candidate.index);
+        const revealResult = await aiRevealCard(ai, game, candidate.index, true);
         if (revealResult?.turnEnded) return 'turn_already_ended';
         return 'continue';
       }
@@ -1089,7 +1498,7 @@ async function aiGuessCard(ai, game) {
 }
 
 // Returns { turnEnded: bool } so the caller knows whether the turn already switched.
-async function aiRevealCard(ai, game, cardIndex) {
+async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
   const card = game.cards[cardIndex];
   if (!card || card.revealed) return { turnEnded: false };
 
@@ -1119,6 +1528,11 @@ async function aiRevealCard(ai, game, cardIndex) {
         cards: updatedCards,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
+
+      if (incrementSeq) {
+        const seqField = _aiSeqField(current.currentTeam, 'op');
+        updates[seqField] = firebase.firestore.FieldValue.increment(1);
+      }
 
       // Consume one guess (standard Codenames: number + 1 total guesses per clue).
       const _gr = Number.isFinite(+current.guessesRemaining) ? +current.guessesRemaining : 0;
@@ -1202,7 +1616,7 @@ async function aiRevealCard(ai, game, cardIndex) {
 
 // ─── AI End Turn Decision ───────────────────────────────────────────────────
 
-async function aiConsiderEndTurn(ai, game, forceEnd = false) {
+async function aiConsiderEndTurn(ai, game, forceEnd = false, incrementSeq = false) {
   if (ai.mode !== 'autonomous') return false;
 
   const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
@@ -1227,15 +1641,20 @@ async function aiConsiderEndTurn(ai, game, forceEnd = false) {
       // Only end the turn if it's still this team's operatives phase
       if (current.currentPhase !== 'operatives' || current.currentTeam !== game.currentTeam) return;
 
-      tx.update(ref, {
-        currentTeam: current.currentTeam === 'red' ? 'blue' : 'red',
-        currentPhase: 'spymaster',
-        currentClue: null,
-        guessesRemaining: 0,
-        log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
-      didEnd = true;
+      const updates = {
+  currentTeam: current.currentTeam === 'red' ? 'blue' : 'red',
+  currentPhase: 'spymaster',
+  currentClue: null,
+  guessesRemaining: 0,
+  log: firebase.firestore.FieldValue.arrayUnion(`${teamName} ended their turn.`),
+  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+};
+if (incrementSeq) {
+  const seqField = _aiSeqField(current.currentTeam, 'op');
+  updates[seqField] = firebase.firestore.FieldValue.increment(1);
+}
+tx.update(ref, updates);
+didEnd = true;
     });
 
     // Clear AI marks when the turn ends (do NOT touch human tags)
@@ -1536,25 +1955,28 @@ function startAIGameLoop() {
 
     // Spymaster phase
     if (game.currentPhase === 'spymaster') {
-      const aiSpy = getAISpymaster(currentTeam);
-      if (aiSpy && aiSpy.mode === 'autonomous' && !aiThinkingState[aiSpy.id]) {
-        await aiGiveClue(aiSpy, game);
+      const spies = (getAISpymasters(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
+      if (!spies.length) return;
+      if (spies.length === 1) {
+        const aiSpy = spies[0];
+        if (!aiThinkingState[aiSpy.id]) await aiGiveClue(aiSpy, game);
+      } else {
+        await runSpymasterCouncil(game, currentTeam);
       }
       return;
     }
 
     // Operatives phase
     if (game.currentPhase === 'operatives') {
-      const aiOps = (getAIOperatives(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
-      if (!aiOps.length) return;
-
-      // Let the first operative act (orderly). Others can still chat via the chat listener.
-      const actor = aiOps[0];
-      if (!actor || aiThinkingState[actor.id]) return;
-
-      const result = await aiGuessCard(actor, game);
-      if (result === 'end_turn') {
-        await aiConsiderEndTurn(actor, game, true);
+      const ops = (getAIOperatives(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
+      if (!ops.length) return;
+      if (ops.length === 1) {
+        const actor = ops[0];
+        if (aiThinkingState[actor.id]) return;
+        const result = await aiGuessCard(actor, game);
+        if (result === 'end_turn') await aiConsiderEndTurn(actor, game, true, true);
+      } else {
+        await runOperativeCouncil(game, currentTeam);
       }
       return;
     }
