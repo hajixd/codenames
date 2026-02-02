@@ -81,6 +81,10 @@ body.light-mode {
   --game-assassin: #2a2a2f;
   --game-assassin-bg: rgba(42, 42, 47, 0.82);
   --game-assassin-border: rgba(42, 42, 47, 0.45);
+
+  /* Fixups for truncated values in Style.txt */
+  --left-highlight: radial-gradient(ellipse at left center, rgba(42,240,255,0.18) 0%, rgba(42,240,255,0.10) 35%, rgba(42,240,255,0.0) 70%);
+  --right-highlight: radial-gradient(ellipse at right center, rgba(255,196,83,0.16) 0%, rgba(255,196,83,0.08) 35%, rgba(255,196,83,0.0) 70%);
 }
 
 .game-card .card-checkmark{
@@ -12037,45 +12041,173 @@ body.light-mode .mode-modal {
 
 /* --- OG Variables --- */
 body.og-mode {
-  --bg: #1B2838;
-  --surface: #1e3044;
-  --surface2: #233a50;
-  --card: #1e3044;
-  --border: #2a4560;
+  --fontSize: 18.56px;
+  --positive: 111 95.24% 24.71%;
+  --positive-foreground: 0 100% 100%;
+  --positive-lighter: 109.12 100% 40%;
+  --positive-border: 85 93% 61%;
+  --primary: 108 95% 36%;
+  --left-team-primary-color: #008ee0;
+  --right-team-primary-color: #ff5241;
+  --side1-team-primary-color: #5D9627;
+  --side2-team-primary-color: #007769;
+  --app: 18 100% 36%;
+  --app-lighter: 33 100% 46%;
+  --app-border: 33 91% 70%;
+  --bg-cn-gradient-1: #0FA3EF;
+  --bg-cn-gradient-2: #015580;
+  --bg-cn-duet-gradient-1: #94D234;
+  --bg-cn-duet-gradient-2: #009A58;
+  --bg-right-team-primary: #ff5241;
+  --bg-left-team-primary: #008ee0;
+  --left-highlight: radial-gradient(at center, rgba(42,240,255,1), rgba(42,240,255,0.6),rgba(2550,255,0,0.0),rgba(2550,255,0,0));
+  --right-highlight: radial-gradient(at center, rgba(255,196,83,1), rgba(255,196,83,0.6),rgba(2550,255,0,0.0),rgba(2550,255,0,0));
+  --bg-timer-blue: linear-gradient(180deg, #AEF4FF 0%, #9CF3FF 100%);
+  --bg-timer-red: linear-gradient(180deg, #FFD19D 0%, #FFB374 100%);
+  --blue-gradient: linear-gradient(to bottom, #008ee0, #52b7ff);
+  --red-gradient: linear-gradient(to bottom, #ff5241, #ff833d);
+  --green-gradient: linear-gradient(to bottom, hsla(108, 95%, 36%, 1), hsla(94, 73%, 48%, 1));
+  --green-gradient-light: linear-gradient(to bottom, hsla(99, 74%, 58%, 1), hsla(82, 86%, 66%, 1));
+  --side1-gradient: linear-gradient(to bottom, #94D234, #5D9627);
+  --side2-gradient: linear-gradient(to bottom, #0EA786, #007769);
+  --blue-red-gradient: linear-gradient(to bottom, #008ee0, #ff5241);
+  --side1-side2-gradient: linear-gradient(to bottom, #94D234, #007769);
+  --blue-shadow-a: #beffef;
+  --blue-shadow-b: #00b3ff;
+  --blue-shadow-c: #00b3ff;
+  --red-shadow-a: #ffe5be;
+  --red-shadow-b: #ff6b00;
+  --bg-null-layer1-1: rgba(0,0,0,1);
+  --bg-null-layer1-2: rgba(20,20,20,1);
+  --bg-null-layer1-3: rgba(40,40,40,1);
+  --bg-null-svg: rgba(0,0,0,0.2);
+  --bg-null-layer2-1: rgba(0,0,0,1);
+  --bg-null-layer2-2: rgba(0,0,0,0.2);
+  --bg-null-layer2-3: transparent;
+  --bg-home-layer1-1: rgb(65, 3, 24);
+  --bg-home-layer1-2: #790f32;
+  --bg-home-layer1-3: #981943;
+  --bg-home-svg: rgba(255,255,255,0.05);
+  --bg-home-layer2-1: transparent;
+  --bg-home-layer2-2: transparent;
+  --bg-home-layer2-3: transparent;
+  --bg-home-bottom-1: rgb(184,108,26);
+  --bg-home-bottom-2: rgba(178,105,27,0.5);
+  --bg-home-bottom-3: transparent;
+  --bg-red-layer1-1: #110707;
+  --bg-red-layer1-2: rgba(66,46,44,1);
+  --bg-red-layer1-3: rgba(85,59,53,1);
+  --bg-red-svg: rgba(0, 0, 0, 0.1);
+  --bg-red-layer2-1: transparent;
+  --bg-red-layer2-2: transparent;
+  --bg-red-layer2-3: transparent;
+  --bg-blue-layer1-1: rgba(4,3,7,1);
+  --bg-blue-layer1-2: #293543;
+  --bg-blue-layer1-3: #294054;
+  --bg-blue-svg: rgba(0, 0, 0, 0.1);
+  --bg-blue-layer2-1: transparent;
+  --bg-blue-layer2-2: transparent;
+  --bg-blue-layer2-3: transparent;
+  --border-cardcounter-red: #ff5241;
+  --border-cardcounter-blue: #008ee0;
+  --bg-warning: #ef4444;
+  --text-suggestion: #1BE1C6;
+  --text-suggestion-liked: #94D234;
+  --team-blue-400: #52b7ff;
+  --team-blue-500: #008ee0;
+  --team-blue-800: #193cb8;
+  --team-red-400: #ff5242;
+  --team-red-500: #fb2c36;
+  --team-red-800: #9f0712;
+  --logpanel-black-card: #000;
+  --logpanel-neutral-card: #af9973;
+  --guess-icon-bg: linear-gradient(to bottom, hsla(108, 95%, 36%, 1),hsla(94, 73%, 48%, 1);
+  --guess-icon-bg-light: linear-gradient(to bottom, hsla(99, 74%, 58%, 1),hsla(82, 86%, 66%, 1);
+  --neutral-cardBorder: #FFE8D4;
+  --neutral-cardBg: #FFD6B0;
+  --neutral-innerBorder: #AC8D77;
+  --neutral-innerBg: linear-gradient(to bottom, #FFDBBA, #FFDBBA 0%, #FFC48F 100%);
+  --neutral-darkWordBg: #967355;
+  --red-cardBorder: #FFD19D;
+  --red-cardBg: #FF9159;
+  --red-innerBorder: #B33E1D;
+  --red-innerBg: #F8543A;
+  --red-darkWordBg: #852D15;
+  --blue-cardBorder: #BAF5FF;
+  --blue-cardBg: #3DD1EE;
+  --blue-innerBorder: #2F75AA;
+  --blue-innerBg: #00A3D8;
+  --blue-darkWordBg: #17527F;
+  --black-cardBorder: #B6B5B5;
+  --black-cardBg: #8C8D8D;
+  --black-innerBorder: #2A2A2A;
+  --black-innerBg: #525252;
+  --black-darkWordBg: #2A2A2A;
+  --gold-cardBorder: #FEE9B7;
+  --gold-cardBg: #FDD878;
+  --gold-innerBorder: #B2670C;
+  --gold-innerBg: #FF9F2D;
+  --gold-darkWordBg: #B2670C;
+  --timertoken-cardBorder: #FFE8D4;
+  --timertoken-cardBg: #FFD6B0;
+  --timertoken-innerBorder: #AC8D77;
+  --particle-red-primary: #F8543A;
+  --particle-red-secondary: #FF9159;
+  --particle-blue-primary: #3DD1EE;
+  --particle-blue-secondary: #2F75AA;
+  --particle-neutral-primary: #FFD6B0;
+  --particle-neutral-secondary: #AC8D77;
+  --particle-black-primary: #000000;
+  --particle-black-secondary: #333333;
+  --avatar-neutral-nameBg: #444444;
+  --avatar-neutral-circleGradient: linear-gradient(to bottom, #C4C4C4, #6C6C6C);
+  --avatar-red-nameBg: #901800;
+  --avatar-red-circleGradient: linear-gradient(to bottom, #FFCC8B, #FF8D3B);
+  --avatar-blue-nameBg: #004F7B;
+  --avatar-blue-circleGradient: linear-gradient(to bottom, #ABEEFF, #51B6FE);
+
+  /* App token mappings (used by the custom UI code) */
+  --bg: var(--bg-blue-layer1-1);
+  --surface: rgba(255,255,255,0.06);
+  --surface2: rgba(255,255,255,0.08);
+  --card: rgba(0,0,0,0.25);
+  --border: rgba(255,255,255,0.14);
   --text: #ffffff;
-  --text-dim: #8ba4be;
-  --accent: #3B8BEB;
-  --green: #4CAF50;
-  --gold: #FFD54F;
-  --red: #C8553A;
-  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
-  --focus-ring: 0 0 0 3px rgba(59, 139, 235, 0.35);
-  --game-red: #C8553A;
-  --game-red-bg: rgba(200, 85, 58, 0.13);
-  --game-red-border: rgba(200, 85, 58, 0.38);
-  --game-blue: #3B8BEB;
-  --game-blue-bg: rgba(59, 139, 235, 0.13);
-  --game-blue-border: rgba(59, 139, 235, 0.38);
-  --game-neutral: #D4C5A9;
-  --game-neutral-bg: rgba(212, 197, 169, 0.14);
-  --game-neutral-border: rgba(212, 197, 169, 0.35);
-  --game-assassin: #3A3A3A;
-  --game-assassin-bg: rgba(58, 58, 58, 0.82);
-  --game-assassin-border: rgba(58, 58, 58, 0.45);
+  --text-dim: rgba(255,255,255,0.65);
+  --accent: var(--team-blue-500);
+  --green: #94D234;
+  --gold: var(--gold-cardBg);
+  --red: var(--bg-right-team-primary);
+
+  --game-red: var(--red-cardBg);
+  --game-red-bg: rgba(255, 82, 65, 0.18);
+  --game-red-border: rgba(255, 82, 65, 0.55);
+  --game-blue: var(--blue-cardBg);
+  --game-blue-bg: rgba(0, 142, 224, 0.18);
+  --game-blue-border: rgba(0, 142, 224, 0.55);
+  --game-neutral: var(--neutral-cardBg);
+  --game-neutral-bg: rgba(255, 214, 176, 0.22);
+  --game-neutral-border: rgba(255, 232, 212, 0.70);
+  --game-assassin: var(--black-cardBg);
+  --game-assassin-bg: rgba(0,0,0,0.85);
+  --game-assassin-border: rgba(182, 181, 181, 0.65);
 }
 
 /* --- OG Background --- */
 body.og-mode {
-  background-color: #1B2838;
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 3px,
-    rgba(255, 255, 255, 0.015) 3px,
-    rgba(255, 255, 255, 0.015) 4px
-  );
+  /* Dark striped backdrop + team highlights (matches codenames.game OG look) */
+  background-color: var(--bg-blue-layer1-1);
+  background-image:
+    var(--left-highlight),
+    var(--right-highlight),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255,255,255,0.035) 0px,
+      rgba(255,255,255,0.035) 2px,
+      rgba(0,0,0,0.0) 2px,
+      rgba(0,0,0,0.0) 26px
+    ),
+    linear-gradient(180deg, var(--bg-blue-layer1-3) 0%, var(--bg-blue-layer1-2) 55%, var(--bg-blue-layer1-1) 100%);
 }
 
 body.og-mode .game-container-expanded {
@@ -12165,11 +12297,12 @@ body.og-mode .og-phase-banner {
 }
 
 .og-phase-text {
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 32px;
+  font-weight: 900;
   color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 2px;
+  font-family: "Futura", "Trebuchet MS", system-ui, sans-serif;
 }
 
 /* --- OG Game Board --- */
@@ -12178,99 +12311,121 @@ body.og-mode .game-board {
   margin-bottom: 12px;
 }
 
-/* --- OG Game Cards: Base (unrevealed, operative view) --- */
+/* --- OG Game Cards (matches codenames.game OG card chrome) --- */
+body.og-mode .game-board {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* Base card (operative view / unrevealed) */
 body.og-mode .game-card {
-  background: #D4C5A9;
-  border: 2px solid #c4b494;
+  --card-outer-bg: var(--neutral-cardBg);
+  --card-outer-border: var(--neutral-cardBorder);
+  --card-inner-bg: var(--neutral-innerBg);
+  --card-inner-border: var(--neutral-innerBorder);
+  --card-word-color: #ffffff;
+
+  background: var(--card-outer-bg);
+  border: 2px solid var(--card-outer-border);
   border-radius: 10px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  padding: 6px;
   aspect-ratio: 1.5;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+
+body.og-mode .game-card::before{
+  content:"";
+  position:absolute;
+  inset: 6px;
+  border-radius: 7px;
+  background: var(--card-inner-bg);
+  border: 2px solid var(--card-inner-border);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.10);
+  z-index: 0;
 }
 
 body.og-mode .game-card .card-word {
-  color: #2c2416;
-  font-weight: 800;
+  position: relative;
+  z-index: 1;
+  color: var(--card-word-color);
+  font-weight: 900;
   text-transform: uppercase;
   font-size: clamp(10px, 1.3vw, 14px);
   letter-spacing: 0.6px;
+  line-height: 1.05;
+  text-align: center;
+  /* Futura-like look */
+  font-family: "Futura", "Trebuchet MS", system-ui, sans-serif;
 }
 
+/* Hover (unrevealed only) */
 body.og-mode .game-card:hover:not(.revealed):not(.disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  border-color: #b0a080;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  border-color: rgba(255,255,255,0.55);
 }
 
-/* --- OG Spymaster View: Solid color fills --- */
-body.og-mode .game-card.spymaster-view.card-red {
-  background: #C8553A;
-  border-color: #a8432c;
-}
-body.og-mode .game-card.spymaster-view.card-red .card-word {
-  color: #ffffff;
-}
-
-body.og-mode .game-card.spymaster-view.card-blue {
-  background: #3B8BEB;
-  border-color: #2a6fc0;
-}
-body.og-mode .game-card.spymaster-view.card-blue .card-word {
-  color: #ffffff;
+/* Spymaster + revealed: swap the card chrome to team colors */
+body.og-mode .game-card.spymaster-view.card-blue,
+body.og-mode .game-card.revealed.card-blue,
+body.og-mode .game-card.guess-animate.card-blue {
+  --card-outer-bg: var(--blue-cardBg);
+  --card-outer-border: var(--blue-cardBorder);
+  --card-inner-bg: var(--blue-innerBg);
+  --card-inner-border: var(--blue-innerBorder);
+  --card-word-color: #ffffff;
 }
 
-body.og-mode .game-card.spymaster-view.card-neutral {
-  background: #D4C5A9;
-  border-color: #c4b494;
-}
-body.og-mode .game-card.spymaster-view.card-neutral .card-word {
-  color: #2c2416;
-}
-
-body.og-mode .game-card.spymaster-view.card-assassin {
-  background: #3A3A3A;
-  border-color: #2a2a2a;
-}
-body.og-mode .game-card.spymaster-view.card-assassin .card-word {
-  color: #ffffff;
+body.og-mode .game-card.spymaster-view.card-red,
+body.og-mode .game-card.revealed.card-red,
+body.og-mode .game-card.guess-animate.card-red {
+  --card-outer-bg: var(--red-cardBg);
+  --card-outer-border: var(--red-cardBorder);
+  --card-inner-bg: var(--red-innerBg);
+  --card-inner-border: var(--red-innerBorder);
+  --card-word-color: #ffffff;
 }
 
-/* --- OG Revealed Cards --- */
-body.og-mode .game-card.revealed.card-red {
-  background: #C8553A;
-  border-color: #a8432c;
+body.og-mode .game-card.spymaster-view.card-neutral,
+body.og-mode .game-card.revealed.card-neutral,
+body.og-mode .game-card.guess-animate.card-neutral {
+  --card-outer-bg: var(--neutral-cardBg);
+  --card-outer-border: var(--neutral-cardBorder);
+  --card-inner-bg: var(--neutral-innerBg);
+  --card-inner-border: var(--neutral-innerBorder);
+  --card-word-color: #ffffff;
 }
 
-body.og-mode .game-card.revealed.card-blue {
-  background: #3B8BEB;
-  border-color: #2a6fc0;
+body.og-mode .game-card.spymaster-view.card-assassin,
+body.og-mode .game-card.revealed.card-assassin,
+body.og-mode .game-card.guess-animate.card-assassin {
+  --card-outer-bg: var(--black-cardBg);
+  --card-outer-border: var(--black-cardBorder);
+  --card-inner-bg: var(--black-innerBg);
+  --card-inner-border: var(--black-innerBorder);
+  --card-word-color: #ffffff;
 }
 
-body.og-mode .game-card.revealed.card-neutral {
-  background: #D4C5A9;
-  border-color: #c4b494;
-}
-body.og-mode .game-card.revealed.card-neutral .card-word {
-  color: #2c2416;
+/* Revealed cards should not lift on hover */
+body.og-mode .game-card.revealed:hover {
+  transform: none;
 }
 
-body.og-mode .game-card.revealed.card-assassin {
-  background: #3A3A3A;
-  border-color: #2a2a2a;
-}
-
-body.og-mode .game-card.revealed .card-word {
-  color: #ffffff;
-}
-
-/* --- OG Pending Selection --- */
+/* Pending selection highlight (gold outline like official UI) */
 body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
-  border-color: #FFD54F;
-  box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
+  border-color: var(--gold-cardBorder);
+  box-shadow:
+    0 0 0 2px rgba(253, 216, 120, 0.45),
+    0 3px 8px rgba(0, 0, 0, 0.35);
 }
 
+/* Checkmark confirm button (green circle) */
 body.og-mode .game-card .card-checkmark {
-  background: #4CAF50;
+  background: var(--green-gradient-light);
+  border: 1px solid var(--positive-border);
   border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(148, 210, 52, 0.35);
 }
 
 /* --- OG Clue Input --- */
@@ -12458,14 +12613,16 @@ body.og-mode .og-team-panel {
 }
 
 .og-team-blue {
-  background: linear-gradient(180deg, rgba(59, 139, 235, 0.12) 0%, rgba(59, 139, 235, 0.04) 100%);
-  border: 1px solid rgba(59, 139, 235, 0.25);
+  background: linear-gradient(180deg, rgba(0, 142, 224, 0.16) 0%, rgba(0, 142, 224, 0.05) 100%);
+  border: 1px solid rgba(0, 142, 224, 0.35);
 }
 
+
 .og-team-red {
-  background: linear-gradient(180deg, rgba(200, 85, 58, 0.12) 0%, rgba(200, 85, 58, 0.04) 100%);
-  border: 1px solid rgba(200, 85, 58, 0.25);
+  background: linear-gradient(180deg, rgba(255, 82, 65, 0.16) 0%, rgba(255, 82, 65, 0.05) 100%);
+  border: 1px solid rgba(255, 82, 65, 0.35);
 }
+
 
 /* --- OG Section Headers --- */
 .og-section-header {
@@ -12496,16 +12653,18 @@ body.og-mode .og-team-panel {
 }
 
 .og-illustration-blue {
-  background: linear-gradient(145deg, #1a3a5c 0%, #2563a8 50%, #1e4d7a 100%);
-  border: 1px solid rgba(59, 139, 235, 0.35);
-  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.2);
+  background: var(--blue-gradient);
+  border: 2px solid rgba(186, 245, 255, 0.65);
+  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.22);
 }
 
+
 .og-illustration-red {
-  background: linear-gradient(145deg, #4a2020 0%, #a84832 50%, #6b2d1e 100%);
-  border: 1px solid rgba(200, 85, 58, 0.35);
-  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.2);
+  background: var(--red-gradient);
+  border: 2px solid rgba(255, 209, 157, 0.65);
+  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, 0.22);
 }
+
 
 .og-illustration .og-player-slots {
   position: relative;
@@ -12565,14 +12724,16 @@ body.og-mode .og-team-panel {
 }
 
 .og-score-blue .og-score-number {
-  color: #3B8BEB;
-  text-shadow: 0 3px 16px rgba(59, 139, 235, 0.35);
+  color: var(--team-blue-500);
+  text-shadow: 0 3px 16px rgba(0, 179, 255, 0.35);
 }
 
+
 .og-score-red .og-score-number {
-  color: #C8553A;
-  text-shadow: 0 3px 16px rgba(200, 85, 58, 0.35);
+  color: var(--bg-right-team-primary);
+  text-shadow: 0 3px 16px rgba(255, 107, 0, 0.35);
 }
+
 
 /* --- OG Score Avatar --- */
 .og-score-avatar {
@@ -12583,16 +12744,18 @@ body.og-mode .og-team-panel {
 }
 
 .og-score-avatar-blue {
-  background: linear-gradient(135deg, #1a3a5c 0%, #3B8BEB 100%);
-  border: 2px solid rgba(59, 139, 235, 0.4);
-  box-shadow: 0 2px 8px rgba(59, 139, 235, 0.25);
+  background: var(--avatar-blue-circleGradient);
+  border: 2px solid rgba(186, 245, 255, 0.65);
+  box-shadow: 0 2px 8px rgba(0, 179, 255, 0.25);
 }
 
+
 .og-score-avatar-red {
-  background: linear-gradient(135deg, #4a2020 0%, #C8553A 100%);
-  border: 2px solid rgba(200, 85, 58, 0.4);
-  box-shadow: 0 2px 8px rgba(200, 85, 58, 0.25);
+  background: var(--avatar-red-circleGradient);
+  border: 2px solid rgba(255, 209, 157, 0.65);
+  box-shadow: 0 2px 8px rgba(255, 107, 0, 0.25);
 }
+
 
 .og-avatar-sm {
   width: 36px;
@@ -12696,13 +12859,13 @@ body.og-mode .og-game-log .game-log-entry {
   }
 
   .og-mobile-blue {
-    background: linear-gradient(180deg, rgba(59, 139, 235, 0.15) 0%, rgba(59, 139, 235, 0.05) 100%);
-    border: 1px solid rgba(59, 139, 235, 0.25);
+    background: linear-gradient(180deg, rgba(0, 142, 224, 0.18) 0%, rgba(0, 142, 224, 0.06) 100%);
+    border: 1px solid rgba(0, 142, 224, 0.35);
   }
 
   .og-mobile-red {
-    background: linear-gradient(180deg, rgba(200, 85, 58, 0.15) 0%, rgba(200, 85, 58, 0.05) 100%);
-    border: 1px solid rgba(200, 85, 58, 0.25);
+    background: linear-gradient(180deg, rgba(255, 82, 65, 0.18) 0%, rgba(255, 82, 65, 0.06) 100%);
+    border: 1px solid rgba(255, 82, 65, 0.35);
   }
 
   .og-mobile-red .og-section-header {
