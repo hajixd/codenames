@@ -4796,7 +4796,8 @@ button.player-tag.pill-action:disabled{
 }
 
 .game-card {
-  aspect-ratio: 1.85;
+  /* Slightly less wide: closer to square but still rectangular */
+  aspect-ratio: 1.65;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14822,15 +14823,18 @@ body.og-mode .game-card{
   /* Label geometry (tuned to match Codenames Online cards) */
   --labelInsetX: 10px;     /* left/right inset for the word strip */
   --labelInsetY: 10px;     /* bottom inset for the word strip */
-  --labelHeight: 32%;      /* height of the bottom word strip (tuned to match CNO) */
+  /* Slightly taller word strip so the divider sits a bit higher */
+  --labelHeight: 35%;      /* height of the bottom word strip */
 
   background: var(--cardBg);
   border: 2px solid var(--cardBorder);
-  border-radius: 14px;
+  /* Squarer corners (still softly rounded) */
+  border-radius: 10px;
   box-shadow: 0 8px 18px rgba(0,0,0,0.32);
   position: relative;
   overflow: hidden;
-  aspect-ratio: 1.85;
+  /* Less wide: closer to square but still rectangular */
+  aspect-ratio: 1.65;
   transform: translateZ(0);
 }
 
@@ -14855,7 +14859,7 @@ body.og-mode .game-card::before{
   content:"";
   position:absolute;
   inset: 8px;
-  border-radius: 9px;
+  border-radius: 6px;
   /* inner plate: lighter top band + flat/soft gradient */
   background:
     linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.00) 30%),
@@ -14912,7 +14916,7 @@ body.og-mode .game-card .card-word{
   /* Nudge text a bit lower in the strip */
   padding: 8px 12px 2px;
   /* Rectangular with slight rounding like CNO */
-  border-radius: 6px;
+  border-radius: 4px;
 
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
