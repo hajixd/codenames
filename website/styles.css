@@ -6257,7 +6257,9 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-dropdown{
   position: relative;
-  min-width: 220px;
+  /* Keep the control compact so it matches the other settings rows */
+  width: 168px;
+  min-width: 168px;
 }
 
 .settings-dropdown-trigger{
@@ -6266,7 +6268,7 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 9px 10px;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -6330,7 +6332,7 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
-  padding: 10px 10px;
+  padding: 9px 9px;
   border-radius: 10px;
   font-weight: 800;
   font-size: 13px;
@@ -9612,7 +9614,7 @@ body.tournament.has-team-color .input:focus {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .profile-stat-label {
@@ -10052,7 +10054,7 @@ body.tournament.has-team-color .input:focus {
   }
 
   .auth-loading-subtitle {
-    font-size: 13px;
+  font-size: 12px;
   }
 }
 
@@ -13259,7 +13261,8 @@ body.og-mode .game-card .card-word{
   font-weight: 900;
   font-family: Impact, "Arial Black", system-ui, sans-serif;
   text-transform: uppercase;
-  font-size: clamp(12px, 1.55vw, 18px);
+  /* Slightly smaller word label to better match Codenames Online */
+  font-size: clamp(10px, 1.35vw, 16px);
   letter-spacing: 0.6px;
 
   padding: 8px 12px;
@@ -13898,4 +13901,153 @@ body.og-mode .game-end-actions .btn:not(.primary) {
   font-size: 14px;
   font-weight: 600;
 }
+
+
+/* ==============================================
+   CODENAMES STYLES — GLOBAL UI HARMONY
+   Make Cozy / Codenames Online modes affect the full UI,
+   not just the game board.
+============================================== */
+
+/* Shared “Codenames” feel: rounder, slightly bolder, softer glow */
+body.cozy-mode .modal-content,
+body.og-mode .modal-content{
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+body.cozy-mode .modal-content{
+  background:
+    radial-gradient(900px 360px at 20% -18%, rgba(59,139,235,0.18) 0%, rgba(59,139,235,0.00) 60%),
+    radial-gradient(900px 360px at 80% -18%, rgba(200,85,58,0.14) 0%, rgba(200,85,58,0.00) 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: var(--shadow-lg);
+}
+
+body.og-mode .modal-content{
+  background:
+    radial-gradient(900px 420px at 22% -20%, rgba(0,142,224,0.18) 0%, rgba(0,142,224,0.00) 62%),
+    radial-gradient(900px 420px at 78% -20%, rgba(255,82,65,0.16) 0%, rgba(255,82,65,0.00) 62%),
+    linear-gradient(180deg, rgba(0,0,0,0.36) 0%, rgba(0,0,0,0.18) 100%);
+  border: 2px solid rgba(255,255,255,0.24);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.58);
+}
+
+/* Buttons */
+body.cozy-mode .btn{
+  border-radius: 16px;
+  font-weight: 800;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.18) 100%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.28);
+}
+
+body.cozy-mode .btn:hover{
+  filter: brightness(1.06);
+}
+
+body.cozy-mode .btn.primary{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.00) 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #ffffff 12%) 0%, var(--accent) 100%);
+  border-color: rgba(255,255,255,0.20);
+}
+
+body.og-mode .btn{
+  border-radius: 999px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  background: rgba(0,0,0,0.10);
+  border: 2px solid rgba(255,255,255,0.70);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.40);
+}
+
+body.og-mode .btn:hover{
+  background: rgba(255,255,255,0.14);
+}
+
+body.og-mode .btn.primary{
+  background: var(--green-gradient);
+  border-color: rgba(255,255,255,0.0);
+}
+
+body.og-mode .btn.danger{
+  background: var(--red-gradient);
+  border-color: rgba(255,255,255,0.0);
+}
+
+/* Inputs / dropdowns */
+body.cozy-mode .input,
+body.cozy-mode .settings-dropdown-trigger{
+  border-radius: 16px;
+  background: rgba(0,0,0,0.16);
+  border-color: rgba(255,255,255,0.14);
+}
+
+body.og-mode .input,
+body.og-mode .settings-dropdown-trigger{
+  border-radius: 999px;
+  background: rgba(0,0,0,0.10);
+  border: 2px solid rgba(255,255,255,0.70);
+  backdrop-filter: blur(6px);
+}
+
+body.og-mode .settings-dropdown[aria-open="true"] .settings-dropdown-trigger{
+  box-shadow: 0 0 0 4px rgba(0,142,224,0.25);
+}
+
+body.og-mode .settings-dropdown-menu{
+  border-radius: 18px;
+  border: 2px solid rgba(255,255,255,0.22);
+  background: rgba(0,0,0,0.38);
+  backdrop-filter: blur(10px);
+}
+
+body.og-mode .settings-dropdown-option:hover{
+  background: rgba(255,255,255,0.16);
+}
+
+body.cozy-mode .settings-dropdown-menu{
+  border-radius: 18px;
+  background: rgba(0,0,0,0.30);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+/* Settings row spacing: make controls feel less "stretched" */
+body.cozy-mode .settings-row,
+body.og-mode .settings-row{
+  border-radius: 18px;
+}
+
+/* Slider knob pop for Codenames modes */
+body.cozy-mode input[type="range"]::-webkit-slider-thumb,
+body.og-mode input[type="range"]::-webkit-slider-thumb{
+  box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+}
+
+/* Panels/cards across the app (lobby, dialogs, side panels) */
+body.cozy-mode .panel,
+body.cozy-mode .manage-card,
+body.cozy-mode .modal,
+body.cozy-mode .toast,
+body.cozy-mode .game-panel,
+body.cozy-mode .panel-box{
+  background: rgba(0,0,0,0.18);
+  border-color: rgba(255,255,255,0.14);
+}
+
+body.og-mode .panel,
+body.og-mode .manage-card,
+body.og-mode .modal,
+body.og-mode .toast,
+body.og-mode .game-panel,
+body.og-mode .panel-box{
+  background: rgba(0,0,0,0.22);
+  border-color: rgba(255,255,255,0.22);
+  backdrop-filter: blur(8px);
+}
+
 
