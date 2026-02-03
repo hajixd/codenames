@@ -14270,7 +14270,7 @@ body.cozy-mode .og-team-panel {
   flex: 0 0 auto;
   min-height: 0;
   /* Taller log for cozy / codenames-online feel */
-  max-height: 420px;
+  max-height: 560px;
 }
 
 .og-game-log {
@@ -15250,14 +15250,14 @@ body.og-mode .og-mobile-blue .og-section-header{
   flex: 0 0 auto;
   min-height: 0;
   /* Taller log for cozy / codenames-online feel */
-  max-height: 420px;
+  max-height: 560px;
 }
 
 .og-game-log {
   flex: 1;
   max-height: none;
-  min-height: 220px;
-  max-height: 360px;
+  min-height: 280px;
+  max-height: 480px;
   overflow-y: auto;
   font-size: 11px;
   line-height: 1.28;
@@ -15285,15 +15285,15 @@ body.og-mode .og-game-log .game-log-entry {
   flex: 0 0 auto;
   min-height: 0;
   /* Taller docked chat for cozy / codenames-online feel */
-  max-height: 420px;
+  max-height: 560px;
 }
 
 #og-chat-host {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 220px;
-  max-height: 360px;
+  min-height: 280px;
+  max-height: 480px;
 }
 
 /* Bring back the standard chat panel inside the OG host */

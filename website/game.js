@@ -4600,9 +4600,35 @@ function initOperativeChat() {
   let teamForChat = getMyTeamColor();
   const isSpectatorChat = !teamForChat && !!spectatorMode;
 
+  // Spymasters should not have access to operative team chat.
+  const isSpy = (typeof isCurrentUserSpymaster === 'function') ? !!isCurrentUserSpymaster() : false;
+
   // Spectators can toggle between RED/BLUE operative chats (read-only)
   if (isSpectatorChat) {
     teamForChat = spectatorChatTeam || 'red';
+  }
+
+  // If you're a spymaster (and not spectating), hide/disable chat completely.
+  if (isSpy && !isSpectatorChat) {
+    const panel = document.querySelector('.operative-chat-panel');
+    const container = document.getElementById('operative-chat-messages');
+    const input = document.getElementById('operative-chat-input');
+    const form = document.getElementById('operative-chat-form');
+    const toggleBtn = document.getElementById('spectator-chat-toggle');
+
+    if (toggleBtn) toggleBtn.style.display = 'none';
+    if (panel) panel.classList.add('spymaster-no-chat');
+    if (container) container.innerHTML = '<div class="chat-empty-state">Spymasters can\'t view operative chat.</div>';
+    if (input) {
+      input.disabled = true;
+      input.placeholder = 'Spymasters can\'t use team chat.';
+      input.value = '';
+    }
+    if (form) form.classList.add('spectator-readonly');
+    return;
+  } else {
+    const panel = document.querySelector('.operative-chat-panel');
+    if (panel) panel.classList.remove('spymaster-no-chat');
   }
 
   if (!teamForChat) return;
@@ -4680,6 +4706,11 @@ function formatTime(date) {
 async function handleOperativeChatSubmit(e) {
   e.preventDefault();
 
+  // Spymasters are not allowed to read or send operative chat.
+  try {
+    if (typeof isCurrentUserSpymaster === 'function' && isCurrentUserSpymaster()) return;
+  } catch (_) {}
+
   const input = document.getElementById('operative-chat-input');
   const text = input?.value?.trim();
   if (!text || !currentGame?.id) return;
@@ -4714,8 +4745,8 @@ function updateChatPrivacyBadge() {
 
   const isSpymaster = isCurrentUserSpymaster();
   if (isSpymaster) {
-    badge.textContent = 'All Team';
-    badge.classList.add('spymaster-visible');
+    badge.textContent = 'Operatives Only';
+    badge.classList.remove('spymaster-visible');
   } else {
     badge.textContent = 'Operatives Only';
     badge.classList.remove('spymaster-visible');
