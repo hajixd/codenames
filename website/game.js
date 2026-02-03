@@ -3981,6 +3981,84 @@ async function handleEndTurn() {
   }
 }
 
+async function handleLeaveGame() {
+  // Handles both "Leave Game" (participant) and "Stop Spectating" (spectator).
+  if (!currentGame) {
+    try { stopGameListener(); } catch (_) {}
+    try { window.returnToLaunchScreen?.(); } catch (_) { try { showGameLobby(); } catch (_) {} }
+    return;
+  }
+
+  const gameId = currentGame.id;
+  const odId = getUserId();
+  const userName = getUserName() || 'Someone';
+
+  const spectator = (typeof isSpectating === 'function') ? !!isSpectating() : false;
+  const isQuick = (currentGame.type === 'quick') || (gameId === QUICKPLAY_DOC_ID);
+
+  // Confirm leaving if you are an active participant (not a spectator) and the game is in progress.
+  const inProgress = !!(currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.winner == null && currentGame.currentPhase !== 'ended');
+  if (!spectator && inProgress) {
+    const ok = await showCustomConfirm({
+      title: 'Leave game?',
+      message: 'You can rejoin later, but your seat will be freed for others.',
+      okText: 'Leave',
+      cancelText: 'Stay'
+    });
+    if (!ok) return;
+  }
+
+  // Best-effort: remove you from the game doc if this is Quick Play, including spectators.
+  if (isQuick && odId) {
+    const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const g = snap.data() || {};
+        const nextRed = (g.redPlayers || []).filter(p => p.odId !== odId);
+        const nextBlue = (g.bluePlayers || []).filter(p => p.odId !== odId);
+        const nextSpec = (g.spectators || []).filter(p => p.odId !== odId);
+
+        // If this was an in-progress game, log the departure.
+        const logLine = spectator
+          ? `${userName} stopped spectating.`
+          : `${userName} left the game.`;
+
+        tx.update(ref, {
+          redPlayers: nextRed,
+          bluePlayers: nextBlue,
+          spectators: nextSpec,
+          log: firebase.firestore.FieldValue.arrayUnion(logLine),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+    } catch (e) {
+      console.warn('Leave quick play (best-effort) failed:', e);
+    }
+  }
+
+  // Local cleanup
+  try { cleanupAdvancedFeatures?.(); } catch (_) {}
+  try { window.cleanupAllAI && window.cleanupAllAI(); } catch (_) {}
+  try { window.stopAIGameLoop && window.stopAIGameLoop(); } catch (_) {}
+
+  try { stopGameListener(); } catch (_) {}
+
+  // Reset local lobby selections when leaving Quick Play so next join is clean.
+  if (isQuick) {
+    try {
+      selectedQuickTeam = null;
+      selectedQuickSeatRole = 'operative';
+      quickAutoJoinedSpectator = false;
+    } catch (_) {}
+  }
+
+  // Return to home/launch (do NOT sign out)
+  try { window.returnToLaunchScreen?.(); }
+  catch (_) { try { showGameLobby(); } catch (_) {} }
+}
+
 async function handleEndGame() {
   if (!currentGame) return;
 
