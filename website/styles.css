@@ -4860,7 +4860,7 @@ body.og-mode .game-card.flip-glow {
 }
 
 .game-card .card-word {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
@@ -5217,7 +5217,7 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
   }
 
   .game-card .card-word {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .game-teams-display {
@@ -14830,7 +14830,8 @@ body.og-mode .game-card{
   --labelHeight: 35%;      /* height of the bottom word strip */
 
   background: var(--cardBg);
-  border: 2px solid var(--cardBorder);
+  /* Thinner outer rim like the reference */
+  border: 1px solid var(--cardBorder);
   /* Squarer corners (still softly rounded) */
   border-radius: 10px;
   box-shadow: 0 8px 18px rgba(0,0,0,0.32);
@@ -14861,7 +14862,8 @@ body.og-mode .game-card .card-back{
 body.og-mode .game-card::before{
   content:"";
   position:absolute;
-  inset: 8px;
+  /* Thinner light outer layer */
+  inset: 6px;
   border-radius: 6px;
   /* inner plate: lighter top band + flat/soft gradient */
   background:
@@ -14878,8 +14880,8 @@ body.og-mode .game-card::before{
 body.og-mode .game-card::after{
   content:"";
   position:absolute;
-  left: 8px;
-  right: 8px;
+  left: 6px;
+  right: 6px;
   /* Divider line sits exactly at the top edge of the bottom word strip */
   bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
   height: 2px;
@@ -14910,7 +14912,7 @@ body.og-mode .game-card .card-word{
   font-weight: 400;
   text-transform: uppercase;
   /* Slightly smaller like CNO (JS will still auto-fit long words) */
-  font-size: clamp(11px, 1.45vw, 19px);
+  font-size: clamp(10px, 1.25vw, 17px);
   letter-spacing: 0.04em;
   line-height: 1.05;
   text-align: center;
