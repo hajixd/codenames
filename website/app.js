@@ -1276,25 +1276,30 @@ function initAuthOnlineButton() {
 }
 
 function initPasswordVisibilityToggles() {
-  const pairs = [
-    { inputId: 'launch-password-login', btnId: 'pw-toggle-login' },
-    { inputId: 'launch-password-create', btnId: 'pw-toggle-create' },
-    { inputId: 'password-dialog-input', btnId: 'password-dialog-toggle' },
+  // Passwords are intentionally always visible (no eye toggles).
+  const inputIds = [
+    'launch-password-login',
+    'launch-password-create',
+    'password-dialog-input',
+    'password-current-input',
+    'password-new-input',
+    'password-confirm-input',
+    'password-change-current',
+    'password-change-new',
+    'password-change-confirm',
   ];
-  for (const p of pairs) {
-    const input = document.getElementById(p.inputId);
-    const btn = document.getElementById(p.btnId);
-    if (!input || !btn) continue;
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const showing = input.type === 'text';
-      input.type = showing ? 'password' : 'text';
-      btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
-      btn.setAttribute('title', showing ? 'Show password' : 'Hide password');
-      playSound('click');
-      // Keep caret at end on iOS
-      try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
-    });
+
+  for (const id of inputIds) {
+    const input = document.getElementById(id);
+    if (!input) continue;
+    if (input.type === 'password') input.type = 'text';
+  }
+
+  // Hide any legacy toggle buttons if they exist.
+  const btnIds = ['pw-toggle-login', 'pw-toggle-create', 'password-dialog-toggle'];
+  for (const id of btnIds) {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = 'none';
   }
 }
 
@@ -9267,6 +9272,10 @@ function initPasswordDialog() {
   const cancelBtn = document.getElementById('password-dialog-cancel');
   const toggleBtn = document.getElementById('password-dialog-toggle');
 
+  // Passwords are always visible.
+  try { if (inputEl && inputEl.type === 'password') inputEl.type = 'text'; } catch (_) {}
+  try { if (toggleBtn) toggleBtn.style.display = 'none'; } catch (_) {}
+
   const confirm = () => {
     const val = String(inputEl?.value || '');
     hidePasswordDialog(val);
@@ -9286,38 +9295,37 @@ function initPasswordDialog() {
     }
   });
 
-  // Eye toggle
-  toggleBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (!inputEl) return;
-    const isPw = inputEl.type === 'password';
-    inputEl.type = isPw ? 'text' : 'password';
-    toggleBtn.setAttribute('aria-label', isPw ? 'Hide password' : 'Show password');
-    toggleBtn.setAttribute('title', isPw ? 'Hide password' : 'Show password');
-    try { inputEl.focus(); } catch (_) {}
-  });
+  // (Eye toggle removed)
 }
 
 /* =========================
    Password Visibility Toggles (Auth forms)
 ========================= */
 function initPasswordVisibilityToggles() {
-  const pairs = [
-    { inputId: 'launch-password-login', btnId: 'pw-toggle-login' },
-    { inputId: 'launch-password-create', btnId: 'pw-toggle-create' },
+  // Passwords are intentionally always visible (no eye toggles).
+  const inputIds = [
+    'launch-password-login',
+    'launch-password-create',
+    'password-dialog-input',
+    'password-current-input',
+    'password-new-input',
+    'password-confirm-input',
+    'password-change-current',
+    'password-change-new',
+    'password-change-confirm',
   ];
-  for (const p of pairs) {
-    const input = document.getElementById(p.inputId);
-    const btn = document.getElementById(p.btnId);
-    if (!input || !btn) continue;
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const isPw = input.type === 'password';
-      input.type = isPw ? 'text' : 'password';
-      btn.setAttribute('aria-label', isPw ? 'Hide password' : 'Show password');
-      btn.setAttribute('title', isPw ? 'Hide password' : 'Show password');
-      try { input.focus(); } catch (_) {}
-    });
+
+  for (const id of inputIds) {
+    const input = document.getElementById(id);
+    if (!input) continue;
+    if (input.type === 'password') input.type = 'text';
+  }
+
+  // Hide any legacy toggle buttons if they exist.
+  const btnIds = ['pw-toggle-login', 'pw-toggle-create', 'password-dialog-toggle'];
+  for (const id of btnIds) {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = 'none';
   }
 }
 

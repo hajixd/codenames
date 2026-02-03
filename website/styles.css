@@ -3764,18 +3764,20 @@ body.light-mode .auth-card{
   align-items: center;
 }
 
+/* Passwords are always visible now, so no extra right padding is needed. */
 .pw-field .auth-input{
   width: 100%;
-  padding-right: 44px;
+  padding-right: 13px;
 }
 
+/* Legacy eye toggle (kept for backwards compatibility, but hidden). */
 .pw-toggle{
+  display: none;
   position: absolute;
   right: 12px;
   width: 28px;
   height: 28px;
   border-radius: 10px;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border-soft);
