@@ -546,12 +546,12 @@
                       <div class="quick-team-status" id="quick-red-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster"><span class="quick-seat-label">Spymasters</span> <button class="ai-add-btn" id="ai-add-red-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); addAIAutonomous('red','spymaster')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-red-seat-spymaster" role="button" tabindex="0" aria-label="Join Red as Spymaster"><span class="quick-seat-label">Spymasters</span> <button class="ai-add-btn" id="ai-add-red-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); addAIWithModelPicker('red','spymaster')">+AI</button></div>
                           <div class="quick-team-list" id="quick-red-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative"><span class="quick-seat-label">Operatives</span> <button class="ai-add-btn" id="ai-add-red-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); addAIAutonomous('red','operative')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-red-seat-operative" role="button" tabindex="0" aria-label="Join Red as Operative"><span class="quick-seat-label">Operatives</span> <button class="ai-add-btn" id="ai-add-red-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); addAIWithModelPicker('red','operative')">+AI</button></div>
                           <div class="quick-team-list" id="quick-red-operative-list"></div>
                         </div>
                       </div>
@@ -575,12 +575,12 @@
                       <div class="quick-team-status" id="quick-blue-status"></div>
                       <div class="quick-role-lists">
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster"><span class="quick-seat-label">Spymasters</span> <button class="ai-add-btn" id="ai-add-blue-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); addAIAutonomous('blue','spymaster')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice spymaster" id="quick-blue-seat-spymaster" role="button" tabindex="0" aria-label="Join Blue as Spymaster"><span class="quick-seat-label">Spymasters</span> <button class="ai-add-btn" id="ai-add-blue-spymaster" type="button" title="Add AI Spymaster" onclick="event.stopPropagation(); addAIWithModelPicker('blue','spymaster')">+AI</button></div>
                           <div class="quick-team-list" id="quick-blue-spymaster-list"></div>
                         </div>
                         <div class="quick-role-divider" aria-hidden="true"></div>
                         <div class="quick-role-section">
-                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative"><span class="quick-seat-label">Operatives</span> <button class="ai-add-btn" id="ai-add-blue-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); addAIAutonomous('blue','operative')">+AI</button></div>
+                          <div class="quick-role-title quick-seat-choice operative" id="quick-blue-seat-operative" role="button" tabindex="0" aria-label="Join Blue as Operative"><span class="quick-seat-label">Operatives</span> <button class="ai-add-btn" id="ai-add-blue-operative" type="button" title="Add AI Operative" onclick="event.stopPropagation(); addAIWithModelPicker('blue','operative')">+AI</button></div>
                           <div class="quick-team-list" id="quick-blue-operative-list"></div>
                         </div>
                       </div>
@@ -1462,6 +1462,25 @@
     </div>
   </div>
 </aside>
+
+
+<!-- AI Model Picker Modal (shown when adding an AI) -->
+<div class="modal" id="ai-model-modal" aria-hidden="true" style="display:none;">
+  <div class="modal-backdrop" id="ai-model-backdrop"></div>
+  <div class="modal-card ai-model-modal-card" role="dialog" aria-modal="true" aria-label="Choose AI model">
+    <div class="modal-head">
+      <div class="modal-title" id="ai-model-title">Choose an AI model</div>
+      <button class="icon-btn" id="ai-model-close" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint" id="ai-model-subtitle" style="margin-top:0;">Pick a model for this AI seat.</div>
+      <div class="ai-model-options" id="ai-model-options" role="list"></div>
+      <div class="modal-actions" style="margin-top: 14px;">
+        <button class="btn" id="ai-model-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 
 

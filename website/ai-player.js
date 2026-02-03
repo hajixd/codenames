@@ -134,6 +134,7 @@ function extractAIPlayersFromGame(game) {
         statusColor: ready ? 'green' : 'none',
         ready,
         isAI: true,
+        model: String(p.aiModel || p.ai_model || p.model || AI_CONFIG.model),
         temperature: Number.isFinite(+p.aiTemperature) ? +p.aiTemperature : undefined,
         personality: (p.aiPersonality && typeof p.aiPersonality === 'object') ? p.aiPersonality : undefined,
       });
@@ -217,7 +218,7 @@ window.AI_CONFIG = AI_CONFIG;
 
 async function aiChatCompletion(messages, options = {}) {
   const body = {
-    model: AI_CONFIG.model,
+    model: options.model || AI_CONFIG.model,
     messages,
     temperature: options.temperature ?? 0.85,
     max_tokens: options.max_tokens ?? 512,
@@ -308,6 +309,7 @@ async function verifyAIReady(ai) {
       },
       { role: 'user', content: 'Ready check. Reply with JSON only.' }
     ], {
+      model: ai.model || AI_CONFIG.model,
       max_tokens: 80,
       temperature: 0,
       response_format: { type: 'json_object' }
@@ -708,6 +710,7 @@ ${JSON.stringify(vision)}
 RECENT MIND (for continuity):
 ${mindContext}`;
     aiChatCompletion([{ role: 'system', content: sys }, { role: 'user', content: user }], {
+      model: ai.model || AI_CONFIG.model,
       temperature: core.temperature,
       max_tokens: 180,
       response_format: { type: 'json_object' }
@@ -772,13 +775,14 @@ function countAIsOnTeam(team) {
   return aiPlayers.filter(a => a.team === team).length;
 }
 
-async function addAIPlayer(team, seatRole, mode) {
+async function addAIPlayer(team, seatRole, mode, opts = {}) {
   if (countAIsOnTeam(team) >= AI_CONFIG.maxAIsPerTeam) {
     alert(`Max ${AI_CONFIG.maxAIsPerTeam} AIs per team.`);
     return null;
   }
 
   const name = pickAIName();
+  const selectedModel = String(opts.model || AI_CONFIG.model);
   const ai = {
     id: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     odId: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -790,6 +794,7 @@ async function addAIPlayer(team, seatRole, mode) {
     statusColor: 'none', // 'none' → 'red'|'yellow'|'green'
     ready: false,
     isAI: true,
+    model: selectedModel,
     temperature: randomTemperature(),
     personality: randomPersonality(),
   };
@@ -862,6 +867,7 @@ async function addAIToFirestoreLobby(ai) {
         isAI: true,
         aiMode: ai.mode,
         aiId: ai.id,
+        aiModel: ai.model || AI_CONFIG.model,
         aiTemperature: ai.temperature,
         aiPersonality: ai.personality,
       });
@@ -1227,7 +1233,7 @@ async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDo
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
+      { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -1349,7 +1355,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -1510,7 +1516,7 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -1620,7 +1626,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+      { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -1888,7 +1894,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -1978,7 +1984,7 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -2092,7 +2098,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+      { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -2321,6 +2327,7 @@ ${mindContext}`;
       const raw = await aiChatCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
         {
+          model: ai.model || AI_CONFIG.model,
           temperature: core.temperature,
           max_tokens: 420,
           response_format: { type: 'json_object' },
@@ -2458,7 +2465,7 @@ async function aiGuessCard(ai, game) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const raw = await aiChatCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+        { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
       );
       try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
       if (!parsed) continue;
@@ -2709,7 +2716,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.25, (core.temperature * 1.05) + 0.15), max_tokens: 220, response_format: { type: 'json_object' } }
+      { model: ai.model || AI_CONFIG.model, temperature: Math.min(1.25, (core.temperature * 1.05) + 0.15), max_tokens: 220, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -2758,7 +2765,7 @@ async function generateAIReaction(ai, revealedCard, clue) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.0, core.temperature * 0.75), max_tokens: 160, response_format: { type: 'json_object' } }
+      { model: ai.model || AI_CONFIG.model, temperature: Math.min(1.0, core.temperature * 0.75), max_tokens: 160, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;

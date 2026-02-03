@@ -14269,7 +14269,8 @@ body.cozy-mode .og-team-panel {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 270px;
+  /* Taller log for cozy / codenames-online feel */
+  max-height: 420px;
 }
 
 .og-game-log {
@@ -14335,7 +14336,7 @@ body.cozy-mode .og-game-log .game-log-entry {
 }
 
 .og-game-log-mobile {
-  max-height: 120px;
+  max-height: 180px;
 }
 
 /* --- OG Mobile Overrides --- */
@@ -15248,14 +15249,15 @@ body.og-mode .og-mobile-blue .og-section-header{
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 270px;
+  /* Taller log for cozy / codenames-online feel */
+  max-height: 420px;
 }
 
 .og-game-log {
   flex: 1;
   max-height: none;
-  min-height: 130px;
-  max-height: 190px;
+  min-height: 220px;
+  max-height: 360px;
   overflow-y: auto;
   font-size: 11px;
   line-height: 1.28;
@@ -15282,15 +15284,16 @@ body.og-mode .og-game-log .game-log-entry {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 270px;
+  /* Taller docked chat for cozy / codenames-online feel */
+  max-height: 420px;
 }
 
 #og-chat-host {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 120px;
-  max-height: 210px;
+  min-height: 220px;
+  max-height: 360px;
 }
 
 /* Bring back the standard chat panel inside the OG host */
@@ -15797,6 +15800,70 @@ body.og-mode .panel-box{
   background: rgba(0,0,0,0.22);
   border-color: rgba(255,255,255,0.22);
   backdrop-filter: blur(8px);
+}
+
+/* ─── AI Model Picker (Add AI modal) ─────────────────────────────────────── */
+.ai-model-modal-card {
+  max-width: 560px;
+}
+
+.ai-model-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ai-model-option {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  cursor: pointer;
+}
+
+body.light-mode .ai-model-option {
+  background: rgba(0,0,0,0.03);
+}
+
+.ai-model-option:hover {
+  filter: brightness(1.08);
+}
+
+.ai-model-option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ai-model-option-title {
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.ai-model-option-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.25;
+  color: var(--text-dim);
+}
+
+.ai-model-option-tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.18);
+  color: var(--text);
 }
 
 
