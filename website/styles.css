@@ -3788,6 +3788,7 @@ button:disabled{
   /* Push the name entry lower + make it sleeker */
   margin-top: 30px;
   padding: 9px 10px;
+  min-height: 34px;
   border-radius: 12px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.10);
@@ -6249,26 +6250,87 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   min-width: 38px;
 }
 
-/* Style mode (radio group) */
+/* Style mode (segmented radio group) */
 .settings-style-row{
-  align-items: flex-start;
   cursor: default;
 }
+
+/* Compact, pill-like selector that matches the rest of the settings cards */
 .settings-style-options{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  background: var(--surface1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 220px;
 }
+
+/* Turn each label into a "button" */
 .settings-style-option{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
+  position: relative;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
+
+/* Hide native radios */
 .settings-style-option input{
-  accent-color: var(--accent);
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Visual pill */
+.settings-style-option span{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 9px 10px;
+  min-height: 34px;
+  border-radius: 11px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  line-height: 1.05;
+  transition: background .15s ease, border-color .15s ease, transform .08s ease, box-shadow .15s ease, color .15s ease;
+}
+
+.settings-style-option:hover span{
+  border-color: var(--border);
+  background: rgba(255,255,255,0.04);
+}
+
+.settings-style-option:active span{
+  transform: translateY(0.5px);
+}
+
+/* Selected state */
+.settings-style-option input:checked + span{
+  background: var(--accent);
+  border-color: rgba(255,255,255,0.14);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+}
+
+/* Keyboard focus */
+.settings-style-option input:focus-visible + span{
+  outline: 2px solid rgba(255,255,255,0.35);
+  outline-offset: 2px;
+}
+
+/* Small screens: stack to 1 column so labels don't wrap awkwardly */
+@media (max-width: 420px){
+  .settings-style-options{
+    grid-template-columns: 1fr;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 
@@ -10357,6 +10419,7 @@ body.qp-gate-open .app {
   justify-content: space-between;
   gap: 10px;
   padding: 9px 10px;
+  min-height: 34px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -11726,6 +11789,14 @@ body.light-mode .operative-chat-panel {
 /* --- Settings row action-button hover --- */
 body.light-mode .settings-row:hover {
   background: var(--surface);
+}
+
+/* --- Settings style selector (light mode hover) --- */
+body.light-mode .settings-style-option:hover span{
+  background: rgba(0,0,0,0.03);
+}
+body.light-mode .settings-style-option input:focus-visible + span{
+  outline-color: rgba(0,0,0,0.25);
 }
 
 /* --- Topbar timer --- */
