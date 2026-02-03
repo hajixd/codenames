@@ -5483,38 +5483,95 @@ function showClueAnimation(word, number, teamColor) {
   const existing = document.querySelector('.clue-announcement-overlay');
   if (existing) existing.remove();
 
+  const body = document.body;
+  const isLight = body.classList.contains('light-mode');
+  const isCozy = body.classList.contains('cozy-mode');
+  const isOg = body.classList.contains('og-mode');
+  // Dark mode is the default (no explicit class).
+  const isDark = !isLight && !isCozy && !isOg;
+
   const isRed = teamColor === 'red';
   const teamClass = isRed ? 'team-red' : 'team-blue';
 
   const overlay = document.createElement('div');
-  overlay.className = `clue-announcement-overlay ${teamClass}`;
-  overlay.innerHTML = `
-    <div class="clue-announcement-backdrop"></div>
-    <div class="clue-announcement-card ${teamClass}">
-      <div class="clue-announcement-glow ${teamClass}"></div>
-      <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
-      <div class="clue-announcement-word">${escapeHtml(String(word))}</div>
-      <div class="clue-announcement-divider ${teamClass}"></div>
-      <div class="clue-announcement-number-row">
-        <span class="clue-announcement-for">for</span>
-        <span class="clue-announcement-number ${teamClass}">${number != null ? number : '0'}</span>
+  overlay.className = `clue-announcement-overlay ${teamClass} ${isLight ? 'clue-variant-light' : isCozy ? 'clue-variant-cozy' : isOg ? 'clue-variant-og' : 'clue-variant-dark'}`;
+
+  const safeWord = escapeHtml(String(word));
+  const safeNum = escapeHtml(String(number != null ? number : '0'));
+
+  if (isDark) {
+    // Dark mode keeps the dramatic black card + blurred backdrop.
+    overlay.innerHTML = `
+      <div class="clue-announcement-backdrop"></div>
+      <div class="clue-announcement-card ${teamClass}">
+        <div class="clue-announcement-glow ${teamClass}"></div>
+        <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+        <div class="clue-announcement-word">${safeWord}</div>
+        <div class="clue-announcement-divider ${teamClass}"></div>
+        <div class="clue-announcement-number-row">
+          <span class="clue-announcement-for">for</span>
+          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  } else if (isLight) {
+    // Light mode: clean typography + drawn underline + badge (no box / no blur).
+    overlay.innerHTML = `
+      <div class="clue-light-container ${teamClass}">
+        <div class="clue-light-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
+        <div class="clue-light-word">${safeWord}</div>
+        <div class="clue-light-row">
+          <span class="clue-light-for">for</span>
+          <span class="clue-light-num">${safeNum}</span>
+        </div>
+        <div class="clue-light-underline ${teamClass}"></div>
+      </div>
+    `;
+  } else if (isCozy) {
+    // Cozy mode: hand-drawn scribble ring + warm bounce (no box / no blur).
+    overlay.innerHTML = `
+      <div class="clue-cozy-container ${teamClass}">
+        <svg class="clue-cozy-scribble" viewBox="0 0 220 220" aria-hidden="true">
+          <path class="clue-cozy-path" d="M110,14 C58,14 18,54 18,106 C18,166 58,206 114,206 C170,206 205,168 204,110 C203,52 164,14 110,14 Z" />
+          <path class="clue-cozy-path2" d="M110,24 C62,24 28,60 28,106 C28,158 62,196 114,196 C162,196 194,162 194,112 C194,62 158,24 110,24 Z" />
+        </svg>
+        <div class="clue-cozy-label">${isRed ? 'Red' : 'Blue'} spymaster</div>
+        <div class="clue-cozy-word">${safeWord}</div>
+        <div class="clue-cozy-pill">
+          <span class="clue-cozy-for">for</span>
+          <span class="clue-cozy-num">${safeNum}</span>
+        </div>
+      </div>
+    `;
+  } else {
+    // OG mode: neon scanline + glitch word + rotating emblem (no box / no blur).
+    overlay.innerHTML = `
+      <div class="clue-og-container ${teamClass}">
+        <div class="clue-og-scan" aria-hidden="true"></div>
+        <div class="clue-og-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
+        <div class="clue-og-word" data-text="${safeWord}">${safeWord}</div>
+        <div class="clue-og-meta">
+          <span class="clue-og-for">FOR</span>
+          <span class="clue-og-emblem" aria-hidden="true"></span>
+          <span class="clue-og-num">${safeNum}</span>
+        </div>
+      </div>
+    `;
+  }
 
   document.body.appendChild(overlay);
 
   // Dismiss on click
   overlay.addEventListener('click', () => {
     overlay.classList.add('clue-announcement-dismissing');
-    setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 500);
+    setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 650);
   });
 
-  // Auto-dismiss duration matches the style-specific animation length
+  // Auto-dismiss duration matches the style-specific animation length.
   let autoDismissMs = 5500; // dark mode default
-  if (document.body.classList.contains('light-mode')) autoDismissMs = 3200;
-  else if (document.body.classList.contains('cozy-mode')) autoDismissMs = 3500;
-  else if (document.body.classList.contains('og-mode')) autoDismissMs = 2800;
+  if (isLight) autoDismissMs = 2900;
+  else if (isCozy) autoDismissMs = 3600;
+  else if (isOg) autoDismissMs = 3200;
 
   setTimeout(() => {
     if (overlay.parentNode) {
@@ -5523,6 +5580,7 @@ function showClueAnimation(word, number, teamColor) {
     }
   }, autoDismissMs);
 }
+
 
 /* =========================
    Card Selection + Confirm (mobile-friendly)

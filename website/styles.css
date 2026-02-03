@@ -8060,6 +8060,424 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   }
 }
 
+
+/* =========================
+   Non-dark clue reveal variants
+   - Light / Cozy / OG modes avoid any card "box" and avoid blurred backdrops.
+   - Dark mode remains the only style with the black card + blur.
+========================= */
+
+/* Shared: keep overlay click-to-dismiss but visually transparent for non-dark variants */
+.clue-variant-light,
+.clue-variant-cozy,
+.clue-variant-og {
+  background: transparent;
+}
+
+/* ---------- LIGHT MODE: clean typography + underline draw + badge ---------- */
+.clue-variant-light.team-red { --clue-accent: #ef4444; --clue-accent-soft: rgba(239, 68, 68, 0.20); }
+.clue-variant-light.team-blue { --clue-accent: #3b82f6; --clue-accent-soft: rgba(59, 130, 246, 0.20); }
+
+.clue-variant-light .clue-light-container {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  transform: translate(-50%, 0);
+  text-align: center;
+  pointer-events: none;
+}
+
+.clue-variant-light .clue-light-label {
+  font-size: 12px;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  transform: translateY(-6px);
+  animation: clueLightLabel 2.9s ease forwards;
+}
+
+.clue-variant-light .clue-light-word {
+  font-size: clamp(40px, 6vw, 68px);
+  font-weight: 900;
+  letter-spacing: 10px;
+  text-transform: uppercase;
+  line-height: 1.0;
+  text-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  color: var(--text, #111);
+  animation: clueLightWord 2.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.clue-variant-light .clue-light-row {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  opacity: 0;
+  animation: clueLightRow 2.9s ease forwards;
+}
+
+.clue-variant-light .clue-light-for {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.clue-variant-light .clue-light-num {
+  font-size: 16px;
+  color: var(--clue-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 2px solid var(--clue-accent);
+  box-shadow: 0 10px 30px var(--clue-accent-soft);
+  transform: rotate(-14deg);
+  animation: clueLightBadge 2.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.clue-variant-light .clue-light-underline {
+  height: 3px;
+  width: min(560px, 86vw);
+  margin: 16px auto 0;
+  background: linear-gradient(90deg, transparent, var(--clue-accent), transparent);
+  transform: scaleX(0);
+  transform-origin: center;
+  opacity: 0;
+  filter: drop-shadow(0 12px 22px var(--clue-accent-soft));
+  animation: clueLightUnderline 2.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes clueLightLabel {
+  0% { opacity: 0; transform: translateY(10px); }
+  18% { opacity: 0.75; transform: translateY(0px); }
+  100% { opacity: 0.75; transform: translateY(0px); }
+}
+
+@keyframes clueLightWord {
+  0% { opacity: 0; transform: translateY(18px); letter-spacing: 26px; filter: blur(4px); }
+  20% { opacity: 1; filter: blur(0px); }
+  40% { transform: translateY(0px); letter-spacing: 10px; }
+  100% { opacity: 1; transform: translateY(0px); letter-spacing: 10px; }
+}
+
+@keyframes clueLightRow {
+  0% { opacity: 0; transform: translateY(10px); }
+  34% { opacity: 0; transform: translateY(10px); }
+  48% { opacity: 1; transform: translateY(0px); }
+  100% { opacity: 1; transform: translateY(0px); }
+}
+
+@keyframes clueLightBadge {
+  0% { transform: scale(0.6) rotate(-18deg); opacity: 0; }
+  42% { transform: scale(0.6) rotate(-18deg); opacity: 0; }
+  56% { transform: scale(1.18) rotate(-6deg); opacity: 1; }
+  72% { transform: scale(0.98) rotate(-10deg); }
+  100% { transform: scale(1) rotate(-10deg); opacity: 1; }
+}
+
+@keyframes clueLightUnderline {
+  0% { opacity: 0; transform: scaleX(0); }
+  44% { opacity: 0; transform: scaleX(0); }
+  62% { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 1; transform: scaleX(1); }
+}
+
+.clue-announcement-overlay.clue-announcement-dismissing.clue-variant-light .clue-light-container {
+  animation: clueLightDismiss 0.55s ease forwards;
+}
+
+@keyframes clueLightDismiss {
+  to { opacity: 0; transform: translate(-50%, -8px); }
+}
+
+/* ---------- COZY MODE: hand-drawn scribble ring + warm wobble ---------- */
+.clue-variant-cozy.team-red { --clue-accent: #d4734e; --clue-accent-soft: rgba(212, 115, 78, 0.24); }
+.clue-variant-cozy.team-blue { --clue-accent: #5aa3e8; --clue-accent-soft: rgba(90, 163, 232, 0.22); }
+
+.clue-variant-cozy .clue-cozy-container {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  animation: clueCozyFloatIn 3.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.clue-variant-cozy .clue-cozy-label {
+  font-size: 12px;
+  letter-spacing: 4px;
+  text-transform: lowercase;
+  opacity: 0.75;
+  margin-bottom: 6px;
+}
+
+.clue-variant-cozy .clue-cozy-word {
+  font-size: clamp(34px, 6vw, 58px);
+  font-weight: 900;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--text, #fff);
+  text-shadow: 0 8px 26px rgba(0,0,0,0.35);
+  animation: clueCozyWobble 1.25s ease-in-out 0.35s both;
+}
+
+.clue-variant-cozy .clue-cozy-pill {
+  margin: 14px auto 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  border: 2px dashed var(--clue-accent);
+  box-shadow: 0 16px 34px var(--clue-accent-soft);
+  color: var(--clue-accent);
+  text-transform: lowercase;
+  font-weight: 900;
+  opacity: 0;
+  animation: clueCozyBadge 3.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.clue-variant-cozy .clue-cozy-for {
+  font-size: 13px;
+  opacity: 0.85;
+  transform: rotate(-4deg);
+}
+
+.clue-variant-cozy .clue-cozy-num {
+  font-size: 22px;
+  transform: rotate(6deg);
+}
+
+.clue-variant-cozy .clue-cozy-scribble {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(280px, 78vw);
+  height: min(280px, 78vw);
+  transform: translate(-50%, -50%) rotate(-6deg);
+  pointer-events: none;
+  filter: drop-shadow(0 18px 34px rgba(0,0,0,0.25));
+}
+
+.clue-variant-cozy .clue-cozy-path,
+.clue-variant-cozy .clue-cozy-path2 {
+  fill: none;
+  stroke: var(--clue-accent);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+  stroke-dasharray: 800;
+  stroke-dashoffset: 800;
+  animation: clueCozyDraw 1.25s ease 0.12s forwards;
+}
+
+.clue-variant-cozy .clue-cozy-path2 {
+  opacity: 0.55;
+  stroke-width: 2.4;
+  animation-delay: 0.2s;
+}
+
+@keyframes clueCozyDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes clueCozyFloatIn {
+  0% { opacity: 0; transform: translate(-50%, -42%) scale(0.92) rotate(-2deg); }
+  14% { opacity: 1; transform: translate(-50%, -52%) scale(1.02) rotate(1deg); }
+  26% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+}
+
+@keyframes clueCozyWobble {
+  0% { transform: translateY(10px) rotate(-2deg); opacity: 0; }
+  45% { transform: translateY(-2px) rotate(1.4deg); opacity: 1; }
+  70% { transform: translateY(1px) rotate(-0.6deg); }
+  100% { transform: translateY(0px) rotate(0deg); opacity: 1; }
+}
+
+@keyframes clueCozyBadge {
+  0% { opacity: 0; transform: scale(0.6) rotate(-18deg); }
+  40% { opacity: 0; transform: scale(0.6) rotate(-18deg); }
+  58% { opacity: 1; transform: scale(1.12) rotate(6deg); }
+  74% { transform: scale(0.96) rotate(-3deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+.clue-announcement-overlay.clue-announcement-dismissing.clue-variant-cozy .clue-cozy-container {
+  animation: clueCozyDismiss 0.65s ease forwards;
+}
+@keyframes clueCozyDismiss {
+  to { opacity: 0; transform: translate(-50%, -58%) scale(0.92) rotate(2deg); }
+}
+
+/* ---------- OG MODE: scanline + glitch word + rotating emblem ---------- */
+.clue-variant-og.team-red { --clue-accent: #ff6b5a; --clue-accent-soft: rgba(255, 107, 90, 0.24); }
+.clue-variant-og.team-blue { --clue-accent: #40b4ff; --clue-accent-soft: rgba(64, 180, 255, 0.22); }
+
+.clue-variant-og .clue-og-container {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  animation: clueOgIn 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.clue-variant-og .clue-og-label {
+  font-size: 11px;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.clue-variant-og .clue-og-word {
+  position: relative;
+  font-size: clamp(38px, 6vw, 64px);
+  font-weight: 900;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+  color: #eaf2ff;
+  text-shadow:
+    0 0 24px var(--clue-accent-soft),
+    0 14px 40px rgba(0,0,0,0.35);
+  animation: clueOgWord 3.2s ease forwards;
+}
+
+.clue-variant-og .clue-og-word::before,
+.clue-variant-og .clue-og-word::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.clue-variant-og .clue-og-word::before {
+  color: var(--clue-accent);
+  transform: translateX(-2px);
+  mix-blend-mode: screen;
+  animation: clueOgGlitch1 1.15s ease 0.25s both;
+}
+
+.clue-variant-og .clue-og-word::after {
+  color: #7dd3fc;
+  transform: translateX(2px);
+  mix-blend-mode: screen;
+  animation: clueOgGlitch2 1.15s ease 0.3s both;
+}
+
+.clue-variant-og .clue-og-meta {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: clueOgMeta 3.2s ease forwards;
+}
+
+.clue-variant-og .clue-og-for {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.clue-variant-og .clue-og-num {
+  font-size: 20px;
+  color: var(--clue-accent);
+  text-shadow: 0 0 18px var(--clue-accent-soft);
+}
+
+.clue-variant-og .clue-og-emblem {
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--clue-accent);
+  border-radius: 999px;
+  box-shadow: 0 0 22px var(--clue-accent-soft);
+  clip-path: polygon(50% 0%, 86% 10%, 100% 50%, 86% 90%, 50% 100%, 14% 90%, 0% 50%, 14% 10%);
+  animation: clueOgSpin 1.4s linear 0.6s infinite;
+}
+
+.clue-variant-og .clue-og-scan {
+  position: absolute;
+  left: 50%;
+  top: -40px;
+  width: min(780px, 96vw);
+  height: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, var(--clue-accent), transparent);
+  opacity: 0;
+  filter: drop-shadow(0 10px 22px var(--clue-accent-soft));
+  animation: clueOgScan 1.45s ease 0.2s both;
+}
+
+@keyframes clueOgIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(1.18); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes clueOgWord {
+  0% { opacity: 0; transform: translateY(10px); filter: brightness(2.2); }
+  14% { opacity: 1; transform: translateY(0px); filter: brightness(1.2); }
+  100% { opacity: 1; transform: translateY(0px); filter: brightness(1); }
+}
+
+@keyframes clueOgMeta {
+  0% { opacity: 0; transform: translateY(10px); }
+  40% { opacity: 0; transform: translateY(10px); }
+  56% { opacity: 1; transform: translateY(0px); }
+  100% { opacity: 1; transform: translateY(0px); }
+}
+
+@keyframes clueOgScan {
+  0% { opacity: 0; transform: translateX(-50%) translateY(0px); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(210px); }
+}
+
+@keyframes clueOgSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes clueOgGlitch1 {
+  0% { opacity: 0; clip-path: inset(0 0 100% 0); }
+  20% { opacity: 0.9; clip-path: inset(10% 0 70% 0); }
+  35% { clip-path: inset(55% 0 20% 0); }
+  52% { clip-path: inset(25% 0 55% 0); }
+  70% { opacity: 0.6; clip-path: inset(65% 0 10% 0); }
+  100% { opacity: 0; clip-path: inset(0 0 100% 0); }
+}
+
+@keyframes clueOgGlitch2 {
+  0% { opacity: 0; clip-path: inset(0 0 100% 0); }
+  18% { opacity: 0.75; clip-path: inset(40% 0 40% 0); }
+  33% { clip-path: inset(12% 0 72% 0); }
+  50% { clip-path: inset(68% 0 12% 0); }
+  74% { opacity: 0.45; clip-path: inset(30% 0 50% 0); }
+  100% { opacity: 0; clip-path: inset(0 0 100% 0); }
+}
+
+.clue-announcement-overlay.clue-announcement-dismissing.clue-variant-og .clue-og-container {
+  animation: clueOgDismiss 0.65s ease forwards;
+}
+@keyframes clueOgDismiss {
+  to { opacity: 0; transform: translate(-50%, -54%) scale(0.96); }
+}
+
 /* =========================
    Cozy mode clue card visual overrides
    Warm parchment card, earth-tone accents
