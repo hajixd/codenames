@@ -14820,8 +14820,9 @@ body.og-mode .game-card{
   --wordColor: #ffffff;
 
   /* Label geometry (tuned to match Codenames Online cards) */
-  --labelInset: 12px;      /* distance from inner plate */
-  --labelHeight: 34%;      /* height of the bottom word strip */
+  --labelInsetX: 18px;     /* left/right inset for the word strip */
+  --labelInsetY: 12px;     /* bottom inset for the word strip */
+  --labelHeight: 32%;      /* height of the bottom word strip (tuned to match CNO) */
 
   background: var(--cardBg);
   border: 2px solid var(--cardBorder);
@@ -14872,8 +14873,8 @@ body.og-mode .game-card::after{
   position:absolute;
   left: 10px;
   right: 10px;
-  /* Divider line sits just above the bottom word strip */
-  bottom: calc(var(--labelInset) + var(--labelHeight) - 4px);
+  /* Divider line sits exactly at the top edge of the bottom word strip */
+  bottom: calc(var(--labelInsetY) + var(--labelHeight));
   height: 2px;
   background: var(--innerBorder);
   opacity: 0.45;
@@ -14886,9 +14887,9 @@ body.og-mode .game-card .card-word{
   z-index: 4;
 
   /* Bottom word strip (inset from the inner plate, like Codenames Online) */
-  left: var(--labelInset);
-  right: var(--labelInset);
-  bottom: var(--labelInset);
+  left: var(--labelInsetX);
+  right: var(--labelInsetX);
+  bottom: var(--labelInsetY);
   height: var(--labelHeight);
 
   display: flex;
@@ -14909,9 +14910,9 @@ body.og-mode .game-card .card-word{
   white-space: nowrap;
 
   /* Nudge text a bit lower in the strip */
-  padding: 7px 12px 1px;
-  /* More rectangular (less pill-like) */
-  border-radius: 4px;
+  padding: 8px 12px 2px;
+  /* Rectangular with slight rounding like CNO */
+  border-radius: 6px;
 
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
@@ -15679,7 +15680,8 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .game-card{
-    --labelInset: 9px;
+    --labelInsetX: 14px;
+    --labelInsetY: 9px;
     --labelHeight: 36%;
   }
 
