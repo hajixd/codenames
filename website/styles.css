@@ -14791,6 +14791,10 @@ body.og-mode .game-card .card-inner{
 body.og-mode .game-card .card-face,
 body.og-mode .game-card .card-back{
   z-index: 3;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 10px 10px 14px;
 }
 
 body.og-mode .game-card::before{
@@ -14809,24 +14813,39 @@ body.og-mode .game-card::before{
   z-index: 1;
 }
 
+/* Separator line across inner plate */
+body.og-mode .game-card::after{
+  content:"";
+  position:absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 42%;
+  height: 2px;
+  background: var(--innerBorder);
+  opacity: 0.45;
+  z-index: 2;
+  pointer-events: none;
+}
+
 body.og-mode .game-card .card-word{
   position: relative;
-  z-index: 2;
-  display: block;
-  width: 74%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 82%;
   max-width: 100%;
-  margin: 0 auto;
+  margin: 0;
 
   background: var(--wordBg);
   color: var(--wordColor);
   font-weight: 900;
   font-family: Impact, "Arial Black", system-ui, sans-serif;
   text-transform: uppercase;
-  /* Slightly smaller word label to better match Codenames Online */
-  font-size: clamp(9px, 1.15vw, 14px);
-  letter-spacing: 0.6px;
+  font-size: clamp(10px, 1.25vw, 15px);
+  letter-spacing: 0.8px;
 
-  padding: 7px 10px;
+  padding: clamp(8px, 1.5vw, 14px) 12px;
   border-radius: 8px;
 
   box-shadow:
@@ -15574,6 +15593,7 @@ body.cozy-mode .og-game-log .game-log-entry {
 
   body.og-mode .game-card .card-word {
     font-size: clamp(8px, 2.8vw, 13px);
+    padding: clamp(6px, 1.8vw, 10px) 8px;
   }
 
   body.og-mode .og-topbar {
