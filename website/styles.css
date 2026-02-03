@@ -4797,7 +4797,7 @@ button.player-tag.pill-action:disabled{
 
 .game-card {
   /* Slightly less wide: closer to square but still rectangular */
-  aspect-ratio: 1.65;
+  aspect-ratio: 1.6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14835,8 +14835,8 @@ body.og-mode .game-card{
   box-shadow: 0 8px 18px rgba(0,0,0,0.32);
   position: relative;
   overflow: hidden;
-  /* Less wide: closer to square but still rectangular */
-  aspect-ratio: 1.65;
+  /* Slightly taller: closer to square while keeping the CNO feel */
+  aspect-ratio: 1.6;
   transform: translateZ(0);
 }
 
