@@ -3643,112 +3643,170 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 }
 
 function renderGameLog() {
-  const popoverEl = document.getElementById('game-log-entries');
   const sidebarEl = document.getElementById('game-log-entries-sidebar');
-  if ((!popoverEl && !sidebarEl) || !currentGame?.log) return;
+  if (!sidebarEl || !currentGame?.log) return;
 
   const redName = String(currentGame.redTeamName || 'Red').trim();
   const blueName = String(currentGame.blueTeamName || 'Blue').trim();
 
-  const detectTeam = (entry) => {
-    if (!entry) return null;
-
-    // Common patterns:
-    // - "Alice (TeamName) guessed ..."
-    // - "TeamName Spymaster: ..."
-    // - "TeamName ended their turn."
-    if (redName && entry.includes(`(${redName})`)) return 'red';
-    if (blueName && entry.includes(`(${blueName})`)) return 'blue';
-
-    if (redName && entry.startsWith(redName)) return 'red';
-    if (blueName && entry.startsWith(blueName)) return 'blue';
-
-    if (/Red team/i.test(entry)) return 'red';
-    if (/Blue team/i.test(entry)) return 'blue';
-
+  const teamFromTeamName = (teamName) => {
+    const t = String(teamName || '').trim();
+    if (!t) return null;
+    if (redName && t === redName) return 'red';
+    if (blueName && t === blueName) return 'blue';
     return null;
   };
 
-  const detectType = (entry) => {
-    if (!entry) return 'neutral';
-    const s = String(entry);
-
-    if (/Spymaster:\s*/i.test(s)) return 'clue';
-    if (/ASSASSIN/i.test(s)) return 'assassin';
-    if (/\bCorrect!\b/i.test(s)) return 'correct';
-    if (/\bWrong!\b/i.test(s)) return 'wrong';
-    if (/\bNeutral\b/i.test(s)) return 'neutral';
-    if (/wins!/i.test(s) || /Game ended/i.test(s) || /ended the game/i.test(s) || /Game over/i.test(s)) return 'end';
-    if (/Game started/i.test(s) || /Starting game/i.test(s)) return 'start';
-
-    return 'neutral';
+  const firstLetter = (name) => {
+    const s = String(name || '').trim();
+    if (!s) return '?';
+    const n = s.replace(/^ai\s+/i, '').trim();
+    return (n[0] || '?').toUpperCase();
   };
-  const renderWithQuotes = (raw) => {
-    const str = String(raw || '');
-    const parts = str.split(/"([^"]+)"/g); // even = normal, odd = inside quotes
 
-    const wrapOutside = (segment) => {
-      let rawSeg = String(segment || '');
+  const rosterFor = (team) => (team === 'red' ? (currentGame.redPlayers || []) : (currentGame.bluePlayers || []));
 
-      // Team name placeholders (avoid double-escaping / partial matches)
-      const RED = '__LOG_RED_TEAM__';
-      const BLUE = '__LOG_BLUE_TEAM__';
-      if (redName) rawSeg = rawSeg.split(redName).join(RED);
-      if (blueName) rawSeg = rawSeg.split(blueName).join(BLUE);
+  const renderAvatar = (name, team, small = false) => {
+    const safe = escapeHtml(String(name || '').trim() || '—');
+    const initial = escapeHtml(firstLetter(name));
+    const cls = ['gamelog-avatar-wrap'];
+    if (small) cls.push('small');
+    if (team) cls.push('team-' + team);
+    return `
+      <div class="${cls.join(' ')}">
+        <div class="gamelog-avatar">${initial}</div>
+        <div class="gamelog-avatar-name">${safe}</div>
+      </div>
+    `;
+  };
 
-      // Common phrases
-      rawSeg = rawSeg.replace(/\bRed team\b/gi, RED);
-      rawSeg = rawSeg.replace(/\bBlue team\b/gi, BLUE);
+  const parseClue = (line) => {
+    const s = String(line || '');
+    const m = s.match(/Spymaster:\s*"([^"]+)"\s*for\s*(\d+)/i);
+    if (!m) return null;
 
-      // Escape after placeholders
-      let s = escapeHtml(rawSeg);
+    // Team is usually the prefix (team name) before "Spymaster".
+    let team = null;
+    if (redName && s.startsWith(redName)) team = 'red';
+    if (blueName && s.startsWith(blueName)) team = 'blue';
 
-      // Re-insert team spans
-      if (redName) s = s.split(RED).join(`<span class="log-team red">${escapeHtml(redName)}</span>`);
-      if (blueName) s = s.split(BLUE).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
+    const word = String(m[1] || '').trim().toUpperCase();
+    const num = String(m[2] || '').trim();
 
-      // Color only certain keywords (keep the rest readable)
-      s = s.replace(/\bSpymaster\b/g, '<span class="log-token role">Spymaster</span>');
-      s = s.replace(/\bOperatives?\b/g, (m) => `<span class="log-token role">${m}</span>`);
+    // Show the current spymaster (best-effort).
+    const spyRaw = team === 'red' ? currentGame.redSpymaster : (team === 'blue' ? currentGame.blueSpymaster : '');
+    const spy = displayNameFromRoster(spyRaw, rosterFor(team)) || spyRaw || (team === 'red' ? redName : (team === 'blue' ? blueName : ''));
 
-      s = s.replace(/\bguessed\b/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/\bended their turn\b/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/\bupdated rules\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame started!\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bStarting game\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame ended\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame over\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+    return { team, word, num, spy };
+  };
 
-      s = s.replace(/\bCorrect!\b/g, '<span class="log-token result-correct">Correct!</span>');
-      s = s.replace(/\bWrong!\b/g, '<span class="log-token result-wrong">Wrong!</span>');
-      s = s.replace(/\bNeutral\b/g, '<span class="log-token result-neutral">Neutral</span>');
-      s = s.replace(/\bASSASSIN\b/g, '<span class="log-token result-assassin">ASSASSIN</span>');
-      s = s.replace(/\bwins!\b/g, '<span class="log-token system">wins!</span>');
+  const parseGuess = (line) => {
+    const s = String(line || '');
+    const m = s.match(/^(.+?)\s*\((.+?)\)\s*guessed\s*"([^"]+)"\s*-\s*(.*)$/i);
+    if (!m) return null;
+    const by = String(m[1] || '').trim();
+    const teamName = String(m[2] || '').trim();
+    const word = String(m[3] || '').trim().toUpperCase();
+    const tail = String(m[4] || '').trim();
 
-      return s;
-    };
+    const team = teamFromTeamName(teamName);
 
-    return parts.map((p, i) => {
-      if (i % 2 === 1) return `<span class="log-quote">${escapeHtml(p)}</span>`;
-      return wrapOutside(p);
+    let type = 'neutral';
+    if (/ASSASSIN/i.test(tail)) {
+      type = 'assassin';
+    } else if (/\\bNeutral\\b/i.test(tail)) {
+      type = 'neutral';
+    } else if (/\\bCorrect!\\b/i.test(tail)) {
+      type = team || 'neutral';
+    } else if (/\\bWrong!\\b/i.test(tail)) {
+      // Wrong usually includes "(X's card)".
+      const mm = tail.match(/\((.+?)'s card\)/i);
+      if (mm) {
+        const cardTeamName = String(mm[1] || '').trim();
+        const cardTeam = teamFromTeamName(cardTeamName);
+        type = cardTeam || (team === 'red' ? 'blue' : (team === 'blue' ? 'red' : 'neutral'));
+      } else {
+        type = team === 'red' ? 'blue' : (team === 'blue' ? 'red' : 'neutral');
+      }
+    }
+
+    const displayBy = displayNameFromRoster(by, rosterFor(team));
+    return { by: displayBy || by, team, word, type };
+  };
+
+  const groups = [];
+  let current = null;
+
+  for (const entry of (currentGame.log || [])) {
+    const clue = parseClue(entry);
+    if (clue) {
+      if (current) groups.push(current);
+      current = { kind: 'turn', ...clue, guesses: [] };
+      continue;
+    }
+
+    const guess = parseGuess(entry);
+    if (guess) {
+      if (!current) {
+        current = { kind: 'turn', team: guess.team, word: '', num: '', spy: '', guesses: [] };
+      }
+      current.guesses.push(guess);
+      continue;
+    }
+
+    // End turn lines and other system messages.
+    if (/ended their turn\./i.test(String(entry || ''))) {
+      if (current) {
+        current.ended = escapeHtml(String(entry || '').trim());
+      } else {
+        groups.push({ kind: 'system', html: escapeHtml(String(entry || '').trim()) });
+      }
+      continue;
+    }
+
+    groups.push({ kind: 'system', html: escapeHtml(String(entry || '').trim()) });
+  }
+
+  if (current) groups.push(current);
+
+  const html = groups.map(g => {
+    if (g.kind === 'system') {
+      return `<div class="gamelog-system">${g.html}</div>`;
+    }
+
+    const teamCls = g.team ? ` team-${g.team}` : '';
+    const clueWord = escapeHtml(String(g.word || '').trim() || '');
+    const clueNum = escapeHtml(String(g.num || '').trim() || '');
+
+    const cluePill = `
+      <div class="gamelog-clue-pill ${g.team ? 'team-' + g.team : ''}">
+        <div class="gamelog-clue-word">${clueWord}</div>
+        ${clueNum ? `<div class="gamelog-clue-num">${clueNum}</div>` : ''}
+      </div>
+    `;
+
+    const guesses = (g.guesses || []).map(gu => {
+      return `
+        <div class="gamelog-guess-item">
+          ${renderAvatar(gu.by, gu.team, true)}
+          <div class="gamelog-word-pill type-${escapeHtml(gu.type)}">${escapeHtml(gu.word)}</div>
+        </div>
+      `;
     }).join('');
-  };
 
-  const html = currentGame.log.map(entry => {
-    const team = detectTeam(entry);
-    const type = detectType(entry);
-    const cls = ['log-entry', `type-${type}`];
-    if (team) cls.push(`team-${team}`);
-    return `<div class="${cls.join(' ')}">${renderWithQuotes(entry)}</div>`;
+    return `
+      <div class="gamelog-turn${teamCls}">
+        <div class="gamelog-clue-row">
+          ${renderAvatar(g.spy || (g.team === 'red' ? redName : (g.team === 'blue' ? blueName : '')), g.team, false)}
+          ${cluePill}
+        </div>
+        ${guesses ? `<div class="gamelog-guesses">${guesses}</div>` : ''}
+      </div>
+    `;
   }).join('');
 
-  if (popoverEl) popoverEl.innerHTML = html;
-  if (sidebarEl) sidebarEl.innerHTML = html;
-
-  // Auto-scroll to bottom (popover container + sidebar scroller)
-  const popover = document.getElementById('game-log');
-  if (popover) popover.scrollTop = popover.scrollHeight;
-  if (sidebarEl) sidebarEl.scrollTop = sidebarEl.scrollHeight;
+  sidebarEl.innerHTML = html;
+  sidebarEl.scrollTop = sidebarEl.scrollHeight;
 }
 
 function updateRoleButtons() {

@@ -784,9 +784,12 @@
                   <div class="og-section-header">SPYMASTERS</div>
                   <div class="og-player-slots og-player-slots-sm" id="og-mobile-blue-spymasters"></div>
                 </div>
-                <div class="og-mobile-log">
-                  <div class="og-section-header">GAME LOG</div>
-                  <div class="og-game-log og-game-log-mobile" id="og-mobile-game-log"></div>
+                <div class="og-mobile-log gamelog-shell">
+                  <div class="gamelog-header">
+                    <div class="gamelog-title">GAME LOG</div>
+                    <div class="gamelog-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg></div>
+                  </div>
+                  <div class="og-game-log og-game-log-mobile gamelog-entries" id="og-mobile-game-log"></div>
                 </div>
                 <div class="og-mobile-team og-mobile-red" id="og-mobile-red">
                   <div class="og-section-header">OPERATIVES</div>
@@ -814,11 +817,12 @@
                   </div>
 
                   <!-- Game Log (Desktop) -->
-                  <div class="sidebar-panel game-log-panel" id="desktop-game-log-panel">
-                    <div class="sidebar-panel-header">
-                      <span class="sidebar-panel-title">Game Log</span>
+                  <div class="sidebar-panel game-log-panel gamelog-shell" id="desktop-game-log-panel">
+                    <div class="gamelog-header">
+                      <div class="gamelog-title">GAME LOG</div>
+                      <div class="gamelog-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg></div>
                     </div>
-                    <div class="game-log-entries" id="game-log-entries-sidebar"></div>
+                    <div class="game-log-entries gamelog-entries" id="game-log-entries-sidebar"></div>
                   </div>
 
                   <!-- OG Mode: Blue Team Panel -->
@@ -969,11 +973,13 @@
                     </div>
                     <div class="og-section-header">SPYMASTERS</div>
                     <div class="og-player-slots" id="og-red-spymasters"></div>
-                    <div class="og-game-log-section">
-                      <div class="og-section-header">GAME LOG</div>
-                      <div class="og-game-log" id="og-game-log"></div>
+                    <div class="og-game-log-section gamelog-shell">
+                      <div class="gamelog-header">
+                        <div class="gamelog-title">GAME LOG</div>
+                        <div class="gamelog-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg></div>
+                      </div>
+                      <div class="og-game-log gamelog-entries" id="og-game-log"></div>
                     </div>
-                  </div>
 
                                   </div>
               </div>
