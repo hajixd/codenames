@@ -3734,6 +3734,9 @@ function renderGameLog() {
     return { by: displayBy || by, team, word, type };
   };
 
+  // We intentionally render ONLY gameplay signal (clues + guesses).
+  // System/status lines like "Lobby cleared" or "Game started" are ignored
+  // to match the compact Codenames Online-style log.
   const groups = [];
   let current = null;
 
@@ -3748,32 +3751,24 @@ function renderGameLog() {
     const guess = parseGuess(entry);
     if (guess) {
       if (!current) {
+        // If we somehow get guesses without an explicit clue line,
+        // keep accumulating but we still won't display an empty clue block.
         current = { kind: 'turn', team: guess.team, word: '', num: '', spy: '', guesses: [] };
       }
       current.guesses.push(guess);
       continue;
     }
 
-    // End turn lines and other system messages.
-    if (/ended their turn\./i.test(String(entry || ''))) {
-      if (current) {
-        current.ended = escapeHtml(String(entry || '').trim());
-      } else {
-        groups.push({ kind: 'system', html: escapeHtml(String(entry || '').trim()) });
-      }
-      continue;
-    }
-
-    groups.push({ kind: 'system', html: escapeHtml(String(entry || '').trim()) });
+    // Ignore all other lines (system/status chatter, end-turn notices, etc.).
   }
 
   if (current) groups.push(current);
 
-  const html = groups.map(g => {
-    if (g.kind === 'system') {
-      return `<div class="gamelog-system">${g.html}</div>`;
-    }
+  // Only keep turns that have a clue (or at least one guess tied to a clue).
+  // This prevents empty placeholder blocks.
+  const filtered = groups.filter(g => g && g.kind === 'turn' && (g.word || (g.guesses && g.guesses.length)));
 
+  const html = filtered.map(g => {
     const teamCls = g.team ? ` team-${g.team}` : '';
     const clueWord = escapeHtml(String(g.word || '').trim() || '');
     const clueNum = escapeHtml(String(g.num || '').trim() || '');
@@ -3781,7 +3776,7 @@ function renderGameLog() {
     const cluePill = `
       <div class="gamelog-clue-pill ${g.team ? 'team-' + g.team : ''}">
         <div class="gamelog-clue-word">${clueWord}</div>
-        ${clueNum ? `<div class="gamelog-clue-num">${clueNum}</div>` : ''}
+        ${clueNum ? `<div class="gamelog-clue-count ${g.team ? 'team-' + g.team : ''}">${clueNum}</div>` : ''}
       </div>
     `;
 
@@ -3793,6 +3788,9 @@ function renderGameLog() {
         </div>
       `;
     }).join('');
+
+    // If a clue word is missing, skip rendering (keeps the log clean).
+    if (!clueWord) return '';
 
     return `
       <div class="gamelog-turn${teamCls}">
