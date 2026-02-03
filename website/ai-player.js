@@ -409,31 +409,29 @@ async function verifyAIReady(ai) {
   try { if (typeof renderQuickLobby === 'function') renderQuickLobby(quickLobbyGame); } catch (_) {}
 
   try {
-    // Many TokenFactory models ignore response_format and may wrap JSON.
-    // Keep the readiness probe ultra-simple: return the literal word READY.
+    // Some models (esp. reasoning / thinking variants) may ignore strict
+    // “reply with READY” instructions and instead explain what they *would*
+    // do, which makes a strict textual readiness gate unreliable.
+    //
+    // We only need to know whether:
+    //  1) the API key is valid,
+    //  2) the base URL + model are routable,
+    //  3) the provider returns a valid response.
+    //
+    // So: if the request succeeds (HTTP 200 + parsable JSON), we treat the
+    // model as ready.
     const result = await aiChatCompletion([
-      {
-        role: 'system',
-        content: [
-          'Connectivity check.',
-          'Reply with exactly the single word READY and nothing else.',
-          'Do not include punctuation, quotes, markdown, or JSON.'
-        ].join('\n'),
-      },
-      { role: 'user', content: 'Ready check.' }
+      { role: 'system', content: 'Connectivity check. Reply with any short text.' },
+      { role: 'user', content: 'ping' }
     ], {
       model: ai.model || AI_CONFIG.model,
-      max_tokens: 12,
+      max_tokens: 24,
       temperature: 0,
     });
 
     const txt = String(result || '').trim();
-    if (/^READY\b/i.test(txt) || /\bREADY\b/i.test(txt)) {
-      ai.statusColor = 'green';
-    } else {
-      ai.statusColor = 'yellow';
-      console.warn(`AI ${ai.name} ready check returned not-ready:`, txt);
-    }
+    ai.statusColor = txt.length ? 'green' : 'yellow';
+    if (!txt.length) console.warn(`AI ${ai.name} ready check returned empty response.`);
   } catch (err) {
     ai.statusColor = 'red';
     console.error(`AI ${ai.name} ready check failed:`, err);
