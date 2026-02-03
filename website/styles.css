@@ -7176,139 +7176,286 @@ body.tournament.has-team-color .btn.primary:hover {
   animation: cardReveal 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Card guess animation - dramatic expand, glow, settle */
-@keyframes cardGuessExpand {
+/* =========================
+   DARK MODE - Card Guess: Cinematic zoom + 3D flip + shadow burst
+========================= */
+@keyframes cardGuessDark {
   0% {
-    transform: translate(0px, 0px) scale(1);
+    transform: translate(0,0) scale(1) perspective(800px) rotateY(0deg);
+    filter: brightness(1);
+    box-shadow: none;
+  }
+  8% {
+    transform: translate(0,0) scale(0.9) perspective(800px) rotateY(0deg);
+    filter: brightness(0.9);
+  }
+  22% {
+    transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.8) perspective(800px) rotateY(0deg);
+    filter: brightness(1.3);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(255,255,255,0.1);
+  }
+  42% {
+    transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.8) perspective(800px) rotateY(90deg);
+    filter: brightness(1.6);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 100px rgba(255,255,255,0.2);
+  }
+  58% {
+    transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.8) perspective(800px) rotateY(180deg);
+    filter: brightness(1.2);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+  }
+  75% {
+    transform: translate(calc(var(--guess-tx,0px)*0.2), calc(var(--guess-ty,0px)*0.2)) scale(1.15) perspective(800px) rotateY(180deg);
+    filter: brightness(1.05);
+  }
+  90% {
+    transform: translate(0,0) scale(1.03) perspective(800px) rotateY(180deg);
     filter: brightness(1);
   }
-  10% {
-    transform: translate(0px, 0px) scale(0.82);
-    filter: brightness(1.06);
-  }
-  26% {
-    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2);
-    filter: brightness(1.55);
-    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 80px rgba(255, 255, 255, 0.16);
-  }
-  /* Hold big for a beat */
-  56% {
-    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2);
-    filter: brightness(1.45);
-    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 80px rgba(255, 255, 255, 0.16);
-  }
-  /* Dramatic flip while still large */
-  66% {
-    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2) rotateY(102deg);
-    filter: brightness(1.55);
-  }
-  74% {
-    transform: translate(var(--guess-tx, 0px), var(--guess-ty, 0px)) scale(2.2) rotateY(102deg);
-    filter: brightness(1.2);
-  }
-  86% {
-    transform: translate(calc(var(--guess-tx, 0px) * 0.35), calc(var(--guess-ty, 0px) * 0.35)) scale(1.35) rotateY(0deg);
-    filter: brightness(1.12);
-    box-shadow: 0 18px 58px rgba(0, 0, 0, 0.6);
-  }
-  94% {
-    transform: translate(0px, 0px) scale(1.08);
-    filter: brightness(1.06);
-  }
   100% {
-    transform: translate(0px, 0px) scale(1);
+    transform: translate(0,0) scale(1) perspective(800px) rotateY(180deg);
     filter: brightness(1);
     box-shadow: none;
   }
 }
 
 /* =========================
-   Style-specific guess animations
-   (Dark mode keeps the existing dramatic expand.)
+   LIGHT MODE - Card Guess: Gentle float + soft paper-peel with airy dissolve
 ========================= */
-
 @keyframes cardGuessLight {
-  0% { transform: translate(0,0) scale(1); filter: brightness(1); }
-  18% { transform: translate(0,-6px) scale(1.06); filter: brightness(1.08); box-shadow: 0 18px 50px rgba(0,0,0,0.18); }
-  42% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.55); filter: brightness(1.22); box-shadow: 0 26px 70px rgba(0,0,0,0.22); }
-  68% { transform: translate(calc(var(--guess-tx,0px) * 0.35), calc(var(--guess-ty,0px) * 0.35)) scale(1.18); filter: brightness(1.12); }
-  100% { transform: translate(0,0) scale(1); filter: brightness(1); box-shadow: none; }
+  0% {
+    transform: translate(0,0) scale(1) rotateZ(0deg);
+    filter: brightness(1) blur(0px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    opacity: 1;
+  }
+  15% {
+    transform: translate(0,-18px) scale(1.06) rotateZ(-0.5deg);
+    filter: brightness(1.05) blur(0px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.12);
+  }
+  30% {
+    transform: translate(0,-28px) scale(1.1) rotateZ(0.3deg);
+    filter: brightness(1.08);
+    box-shadow: 0 32px 60px rgba(0,0,0,0.15);
+  }
+  50% {
+    transform: translate(0,-28px) scale(1.1) rotateZ(0deg);
+    filter: brightness(1.12) blur(1px);
+    box-shadow: 0 32px 60px rgba(0,0,0,0.15);
+    opacity: 0.85;
+  }
+  65% {
+    filter: brightness(1.2) blur(2px);
+    opacity: 0.6;
+  }
+  80% {
+    transform: translate(0,-8px) scale(1.02) rotateZ(0deg);
+    filter: brightness(1) blur(0px);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0,0) scale(1) rotateZ(0deg);
+    filter: brightness(1) blur(0px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    opacity: 1;
+  }
 }
 
+/* =========================
+   COZY MODE - Card Guess: Tabletop pickup + wobble slam (like slapping a card down)
+========================= */
 @keyframes cardGuessCozy {
-  0% { transform: translate(0,0) rotate(0deg) scale(1); filter: brightness(1); }
-  14% { transform: translate(0,-5px) rotate(-0.8deg) scale(1.03); }
-  30% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) rotate(1.2deg) scale(1.7); filter: brightness(1.18); box-shadow: 0 26px 70px rgba(0,0,0,0.35); }
-  44% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) rotate(-1.1deg) scale(1.7); }
-  62% { transform: translate(calc(var(--guess-tx,0px) * 0.30), calc(var(--guess-ty,0px) * 0.30)) rotate(0.6deg) scale(1.22); }
-  100% { transform: translate(0,0) rotate(0deg) scale(1); filter: brightness(1); box-shadow: none; }
+  0% {
+    transform: translate(0,0) scale(1) rotate(0deg);
+    filter: brightness(1);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+  }
+  10% {
+    transform: translate(0,-12px) scale(1.15) rotate(-2.5deg);
+    filter: brightness(1.1);
+    box-shadow: 0 24px 50px rgba(0,0,0,0.5);
+  }
+  22% {
+    transform: translate(0,-30px) scale(1.25) rotate(3deg);
+    filter: brightness(1.15);
+    box-shadow: 0 40px 70px rgba(0,0,0,0.55);
+  }
+  38% {
+    transform: translate(0,-30px) scale(1.25) rotate(-1.5deg);
+    filter: brightness(1.2);
+  }
+  52% {
+    transform: translate(0,4px) scale(1.02) rotate(1.8deg);
+    filter: brightness(1.25);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+  60% {
+    transform: translate(0,0) scale(0.97) rotate(-0.8deg);
+    filter: brightness(1.1);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  }
+  72% {
+    transform: translate(0,-2px) scale(1.01) rotate(0.3deg);
+    filter: brightness(1.05);
+  }
+  100% {
+    transform: translate(0,0) scale(1) rotate(0deg);
+    filter: brightness(1);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+  }
 }
 
+/* =========================
+   CODENAMES ONLINE - Card Guess: Digital snap + electric flash
+========================= */
 @keyframes cardGuessOnline {
-  0% { transform: translate(0,0) scale(1); filter: brightness(1); }
-  20% { transform: translate(0,-4px) scale(1.04); filter: brightness(1.06); }
-  46% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.35); filter: brightness(1.12); box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
-  72% { transform: translate(calc(var(--guess-tx,0px) * 0.25), calc(var(--guess-ty,0px) * 0.25)) scale(1.12); filter: brightness(1.06); }
-  100% { transform: translate(0,0) scale(1); filter: brightness(1); box-shadow: none; }
+  0% {
+    transform: translate(0,0) scale(1);
+    filter: brightness(1);
+    box-shadow: none;
+    opacity: 1;
+  }
+  5% {
+    transform: translate(0,0) scale(0.96);
+    filter: brightness(2);
+    box-shadow: 0 0 40px rgba(255,255,255,0.4);
+    opacity: 0.7;
+  }
+  12% {
+    transform: translate(0,0) scale(1.08);
+    filter: brightness(1.5);
+    box-shadow: 0 0 30px rgba(255,255,255,0.2);
+    opacity: 1;
+  }
+  25% {
+    transform: translate(0,0) scale(1.02);
+    filter: brightness(1.1);
+    box-shadow: 0 0 15px rgba(255,255,255,0.1);
+  }
+  50% {
+    transform: translate(0,0) scale(1);
+    filter: brightness(1.3);
+    box-shadow: none;
+  }
+  60% {
+    filter: brightness(1);
+  }
+  100% {
+    transform: translate(0,0) scale(1);
+    filter: brightness(1);
+    box-shadow: none;
+    opacity: 1;
+  }
 }
 
-/* Override guess animation per style (keep Dark as default) */
-body.light-mode .game-card.guess-animate,
-body.light-mode .game-card.guess-animate.card-red,
-body.light-mode .game-card.guess-animate.card-blue,
-body.light-mode .game-card.guess-animate.card-neutral,
-body.light-mode .game-card.guess-animate.card-assassin {
-  animation-duration: 2.6s !important;
-  animation-name: cardGuessLight !important;
-}
-
-body.cozy-mode .game-card.guess-animate,
-body.cozy-mode .game-card.guess-animate.card-red,
-body.cozy-mode .game-card.guess-animate.card-blue,
-body.cozy-mode .game-card.guess-animate.card-neutral,
-body.cozy-mode .game-card.guess-animate.card-assassin {
-  animation-duration: 3.0s !important;
-  animation-name: cardGuessCozy !important;
-}
-
-body.og-mode .game-card.guess-animate,
-body.og-mode .game-card.guess-animate.card-red,
-body.og-mode .game-card.guess-animate.card-blue,
-body.og-mode .game-card.guess-animate.card-neutral,
-body.og-mode .game-card.guess-animate.card-assassin {
-  /* Online mode already flips the inner card; keep the outer motion clean. */
-  animation-duration: 2.2s !important;
-  animation-name: cardGuessOnline !important;
-}
-
-/* Team-colored glow on reveal */
-@keyframes cardRevealGlowRed {
+/* =========================
+   Dark mode glow overlays
+========================= */
+@keyframes cardRevealGlowRedDark {
   0%, 100% { box-shadow: none; }
-  30% { box-shadow: 0 0 30px rgba(220, 38, 38, 0.6), 0 0 60px rgba(220, 38, 38, 0.3); }
-  70% { box-shadow: 0 0 20px rgba(220, 38, 38, 0.4), 0 0 40px rgba(220, 38, 38, 0.15); }
+  25% { box-shadow: 0 0 35px rgba(220, 38, 38, 0.7), 0 0 70px rgba(220, 38, 38, 0.3); }
+  50% { box-shadow: 0 0 50px rgba(220, 38, 38, 0.5), 0 0 90px rgba(220, 38, 38, 0.2); }
+  75% { box-shadow: 0 0 20px rgba(220, 38, 38, 0.3); }
 }
-
-@keyframes cardRevealGlowBlue {
+@keyframes cardRevealGlowBlueDark {
   0%, 100% { box-shadow: none; }
-  30% { box-shadow: 0 0 30px rgba(37, 99, 235, 0.6), 0 0 60px rgba(37, 99, 235, 0.3); }
-  70% { box-shadow: 0 0 20px rgba(37, 99, 235, 0.4), 0 0 40px rgba(37, 99, 235, 0.15); }
+  25% { box-shadow: 0 0 35px rgba(37, 99, 235, 0.7), 0 0 70px rgba(37, 99, 235, 0.3); }
+  50% { box-shadow: 0 0 50px rgba(37, 99, 235, 0.5), 0 0 90px rgba(37, 99, 235, 0.2); }
+  75% { box-shadow: 0 0 20px rgba(37, 99, 235, 0.3); }
 }
-
-@keyframes cardRevealGlowNeutral {
+@keyframes cardRevealGlowNeutralDark {
   0%, 100% { box-shadow: none; }
-  30% { box-shadow: 0 0 30px rgba(161, 161, 170, 0.5), 0 0 60px rgba(161, 161, 170, 0.2); }
-  70% { box-shadow: 0 0 15px rgba(161, 161, 170, 0.3); }
+  30% { box-shadow: 0 0 25px rgba(161,161,170,0.5), 0 0 50px rgba(161,161,170,0.2); }
+  70% { box-shadow: 0 0 12px rgba(161,161,170,0.25); }
 }
-
-@keyframes cardRevealGlowAssassin {
+@keyframes cardRevealGlowAssassinDark {
   0%, 100% { box-shadow: none; }
-  20% { box-shadow: 0 0 40px rgba(220, 38, 38, 0.8), 0 0 80px rgba(0, 0, 0, 0.6); }
-  50% { box-shadow: 0 0 60px rgba(220, 38, 38, 0.5), 0 0 100px rgba(0, 0, 0, 0.8); }
-  80% { box-shadow: 0 0 30px rgba(220, 38, 38, 0.3); }
+  20% { box-shadow: 0 0 50px rgba(220,38,38,0.9), 0 0 100px rgba(0,0,0,0.7); }
+  50% { box-shadow: 0 0 70px rgba(220,38,38,0.5), 0 0 120px rgba(0,0,0,0.9); }
+  80% { box-shadow: 0 0 25px rgba(220,38,38,0.25); }
 }
 
+/* =========================
+   Light mode glow overlays
+========================= */
+@keyframes cardRevealGlowRedLight {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  40% { box-shadow: 0 8px 30px rgba(201,60,43,0.25), 0 0 20px rgba(201,60,43,0.15); }
+  70% { box-shadow: 0 4px 15px rgba(201,60,43,0.12); }
+}
+@keyframes cardRevealGlowBlueLight {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  40% { box-shadow: 0 8px 30px rgba(26,127,181,0.25), 0 0 20px rgba(26,127,181,0.15); }
+  70% { box-shadow: 0 4px 15px rgba(26,127,181,0.12); }
+}
+@keyframes cardRevealGlowNeutralLight {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  40% { box-shadow: 0 8px 25px rgba(120,120,120,0.2); }
+}
+@keyframes cardRevealGlowAssassinLight {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  30% { box-shadow: 0 8px 40px rgba(0,0,0,0.35), 0 0 20px rgba(220,38,38,0.2); }
+  60% { box-shadow: 0 6px 25px rgba(0,0,0,0.2); }
+}
+
+/* =========================
+   Cozy mode glow overlays (warm, amber-tinted)
+========================= */
+@keyframes cardRevealGlowRedCozy {
+  0%, 100% { box-shadow: 0 3px 8px rgba(0,0,0,0.35); }
+  35% { box-shadow: 0 8px 35px rgba(200,85,58,0.45), 0 0 25px rgba(200,85,58,0.2); }
+  70% { box-shadow: 0 4px 18px rgba(200,85,58,0.2); }
+}
+@keyframes cardRevealGlowBlueCozy {
+  0%, 100% { box-shadow: 0 3px 8px rgba(0,0,0,0.35); }
+  35% { box-shadow: 0 8px 35px rgba(59,139,235,0.4), 0 0 25px rgba(59,139,235,0.2); }
+  70% { box-shadow: 0 4px 18px rgba(59,139,235,0.2); }
+}
+@keyframes cardRevealGlowNeutralCozy {
+  0%, 100% { box-shadow: 0 3px 8px rgba(0,0,0,0.35); }
+  35% { box-shadow: 0 8px 25px rgba(212,197,169,0.4); }
+}
+@keyframes cardRevealGlowAssassinCozy {
+  0%, 100% { box-shadow: 0 3px 8px rgba(0,0,0,0.35); }
+  25% { box-shadow: 0 8px 40px rgba(58,58,58,0.7), 0 0 30px rgba(200,85,58,0.3); }
+  55% { box-shadow: 0 6px 25px rgba(58,58,58,0.5); }
+}
+
+/* =========================
+   Codenames Online mode glow overlays (electric, vivid)
+========================= */
+@keyframes cardRevealGlowRedOnline {
+  0% { box-shadow: none; }
+  8% { box-shadow: 0 0 50px rgba(255,82,65,0.7), 0 0 15px rgba(255,255,255,0.3); }
+  30% { box-shadow: 0 0 25px rgba(255,82,65,0.4); }
+  100% { box-shadow: none; }
+}
+@keyframes cardRevealGlowBlueOnline {
+  0% { box-shadow: none; }
+  8% { box-shadow: 0 0 50px rgba(0,142,224,0.7), 0 0 15px rgba(255,255,255,0.3); }
+  30% { box-shadow: 0 0 25px rgba(0,142,224,0.4); }
+  100% { box-shadow: none; }
+}
+@keyframes cardRevealGlowNeutralOnline {
+  0% { box-shadow: none; }
+  8% { box-shadow: 0 0 40px rgba(175,153,115,0.6), 0 0 10px rgba(255,255,255,0.2); }
+  30% { box-shadow: 0 0 18px rgba(175,153,115,0.3); }
+  100% { box-shadow: none; }
+}
+@keyframes cardRevealGlowAssassinOnline {
+  0% { box-shadow: none; }
+  8% { box-shadow: 0 0 60px rgba(255,50,30,0.8), 0 0 20px rgba(255,255,255,0.4); }
+  25% { box-shadow: 0 0 40px rgba(0,0,0,0.8), 0 0 80px rgba(255,50,30,0.3); }
+  60% { box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+  100% { box-shadow: none; }
+}
+
+/* =========================
+   Base guess-animate (Dark mode default)
+========================= */
 .game-card.guess-animate {
-  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: cardGuessDark 3.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
   z-index: 50;
   position: relative;
   transform-origin: var(--guess-ox, 50%) var(--guess-oy, 50%);
@@ -7318,23 +7465,89 @@ body.og-mode .game-card.guess-animate.card-assassin {
 }
 
 .game-card.guess-animate.card-red {
-  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowRed 8.8s ease forwards;
+  animation: cardGuessDark 3.2s cubic-bezier(0.25, 1, 0.5, 1) forwards,
+             cardRevealGlowRedDark 3.2s ease forwards;
 }
-
 .game-card.guess-animate.card-blue {
-  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowBlue 8.8s ease forwards;
+  animation: cardGuessDark 3.2s cubic-bezier(0.25, 1, 0.5, 1) forwards,
+             cardRevealGlowBlueDark 3.2s ease forwards;
 }
-
 .game-card.guess-animate.card-neutral {
-  animation: cardGuessExpand 8.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowNeutral 8.8s ease forwards;
+  animation: cardGuessDark 3.2s cubic-bezier(0.25, 1, 0.5, 1) forwards,
+             cardRevealGlowNeutralDark 3.2s ease forwards;
+}
+.game-card.guess-animate.card-assassin {
+  animation: cardGuessDark 3.5s cubic-bezier(0.25, 1, 0.5, 1) forwards,
+             cardRevealGlowAssassinDark 3.5s ease forwards;
 }
 
-.game-card.guess-animate.card-assassin {
-  animation: cardGuessExpand 9.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-             cardRevealGlowAssassin 9.4s ease forwards;
+/* =========================
+   Light mode overrides
+========================= */
+body.light-mode .game-card.guess-animate {
+  animation: cardGuessLight 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+}
+body.light-mode .game-card.guess-animate.card-red {
+  animation: cardGuessLight 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+             cardRevealGlowRedLight 2.4s ease forwards !important;
+}
+body.light-mode .game-card.guess-animate.card-blue {
+  animation: cardGuessLight 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+             cardRevealGlowBlueLight 2.4s ease forwards !important;
+}
+body.light-mode .game-card.guess-animate.card-neutral {
+  animation: cardGuessLight 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+             cardRevealGlowNeutralLight 2.4s ease forwards !important;
+}
+body.light-mode .game-card.guess-animate.card-assassin {
+  animation: cardGuessLight 2.8s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+             cardRevealGlowAssassinLight 2.8s ease forwards !important;
+}
+
+/* =========================
+   Cozy mode overrides
+========================= */
+body.cozy-mode .game-card.guess-animate {
+  animation: cardGuessCozy 2.0s cubic-bezier(0.34, 1.2, 0.64, 1) forwards !important;
+}
+body.cozy-mode .game-card.guess-animate.card-red {
+  animation: cardGuessCozy 2.0s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
+             cardRevealGlowRedCozy 2.0s ease forwards !important;
+}
+body.cozy-mode .game-card.guess-animate.card-blue {
+  animation: cardGuessCozy 2.0s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
+             cardRevealGlowBlueCozy 2.0s ease forwards !important;
+}
+body.cozy-mode .game-card.guess-animate.card-neutral {
+  animation: cardGuessCozy 2.0s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
+             cardRevealGlowNeutralCozy 2.0s ease forwards !important;
+}
+body.cozy-mode .game-card.guess-animate.card-assassin {
+  animation: cardGuessCozy 2.4s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
+             cardRevealGlowAssassinCozy 2.4s ease forwards !important;
+}
+
+/* =========================
+   Codenames Online mode overrides
+========================= */
+body.og-mode .game-card.guess-animate {
+  animation: cardGuessOnline 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+body.og-mode .game-card.guess-animate.card-red {
+  animation: cardGuessOnline 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             cardRevealGlowRedOnline 1.2s ease forwards !important;
+}
+body.og-mode .game-card.guess-animate.card-blue {
+  animation: cardGuessOnline 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             cardRevealGlowBlueOnline 1.2s ease forwards !important;
+}
+body.og-mode .game-card.guess-animate.card-neutral {
+  animation: cardGuessOnline 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             cardRevealGlowNeutralOnline 1.2s ease forwards !important;
+}
+body.og-mode .game-card.guess-animate.card-assassin {
+  animation: cardGuessOnline 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             cardRevealGlowAssassinOnline 1.5s ease forwards !important;
 }
 
 /* Card pulse animation for hints */
@@ -7446,29 +7659,73 @@ body.og-mode .game-card.guess-animate.card-assassin {
 }
 
 @keyframes clueBackdropCozy {
-  0% { opacity: 0; }
-  18% { opacity: 1; }
-  100% { opacity: 1; }
+  0% { opacity: 0; backdrop-filter: blur(0px); }
+  12% { opacity: 0.7; }
+  30% { opacity: 1; backdrop-filter: blur(4px); }
+  100% { opacity: 1; backdrop-filter: blur(4px); }
 }
 
 @keyframes clueCardCozy {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85) rotate(-1.2deg) translateY(18px); }
-  22% { opacity: 1; transform: translate(-50%, -50%) scale(1.03) rotate(0.8deg) translateY(-4px); }
-  42% { transform: translate(-50%, -50%) scale(1) rotate(0deg) translateY(0px); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg) translateY(0px); }
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -20%) scale(0.3) rotate(-8deg);
+    filter: blur(6px);
+  }
+  10% {
+    opacity: 0.6;
+    transform: translate(-50%, -55%) scale(0.7) rotate(4deg);
+    filter: blur(2px);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(-50%, -48%) scale(1.08) rotate(-1.5deg);
+    filter: blur(0px);
+  }
+  32% {
+    transform: translate(-50%, -51%) scale(1.02) rotate(0.8deg);
+  }
+  44% {
+    transform: translate(-50%, -50%) scale(0.98) rotate(-0.3deg);
+  }
+  55% {
+    transform: translate(-50%, -50%) scale(1.01) rotate(0.1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    filter: blur(0px);
+  }
 }
 
 @keyframes clueBackdropOnline {
   0% { opacity: 0; }
-  12% { opacity: 1; }
+  6% { opacity: 1; }
   100% { opacity: 1; }
 }
 
 @keyframes clueCardOnline {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.75) rotateX(20deg); }
-  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.02) rotateX(0deg); }
-  40% { transform: translate(-50%, -50%) scale(0.98) rotateX(0deg); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotateX(0deg); }
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.5) rotateX(0deg);
+    filter: brightness(3) blur(12px);
+  }
+  8% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.92) rotateX(0deg);
+    filter: brightness(1.4) blur(0px);
+  }
+  16% {
+    transform: translate(-50%, -50%) scale(1.05) rotateX(0deg);
+    filter: brightness(1);
+  }
+  24% {
+    transform: translate(-50%, -50%) scale(0.99) rotateX(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotateX(0deg);
+    filter: brightness(1) blur(0px);
+  }
 }
 
 body.light-mode .clue-announcement-backdrop { animation: clueBackdropLight 2.8s ease forwards !important; }
@@ -7506,48 +7763,51 @@ body.og-mode .clue-announcement-card { animation: clueCardOnline 2.4s cubic-bezi
 }
 
 @keyframes clueWordRevealCozy {
-  0% { opacity: 0; transform: translateY(18px) rotate(-1.4deg); letter-spacing: 8px; }
-  25% { opacity: 1; }
-  40% { transform: translateY(-2px) rotate(0.8deg); letter-spacing: 3px; }
-  60% { transform: translateY(0px) rotate(0deg); }
-  100% { opacity: 1; transform: translateY(0px) rotate(0deg); letter-spacing: 3px; }
+  0% { opacity: 0; transform: translateY(30px) scale(0.6) rotate(-3deg); filter: blur(4px); letter-spacing: 14px; }
+  20% { opacity: 0.5; transform: translateY(8px) scale(0.9) rotate(1.5deg); filter: blur(1px); }
+  38% { opacity: 1; transform: translateY(-3px) scale(1.04) rotate(-0.5deg); filter: blur(0px); letter-spacing: 4px; }
+  52% { transform: translateY(1px) scale(0.99) rotate(0.2deg); }
+  100% { opacity: 1; transform: translateY(0px) scale(1) rotate(0deg); letter-spacing: 3px; }
 }
 
 @keyframes clueNumberPopCozy {
-  0% { opacity: 0; transform: scale(0.3) rotate(-8deg); }
-  40% { opacity: 0; transform: scale(0.3) rotate(-8deg); }
-  60% { opacity: 1; transform: scale(1.25) rotate(4deg); }
-  78% { transform: scale(0.96) rotate(-2deg); }
+  0% { opacity: 0; transform: scale(0) rotate(-15deg); }
+  35% { opacity: 0; transform: scale(0) rotate(-15deg); }
+  50% { opacity: 1; transform: scale(1.6) rotate(6deg); }
+  62% { transform: scale(0.85) rotate(-3deg); }
+  74% { transform: scale(1.12) rotate(1.5deg); }
+  86% { transform: scale(0.97) rotate(-0.5deg); }
   100% { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 
 @keyframes clueDividerGrowCozy {
-  0% { width: 0; opacity: 0; transform: rotate(-1deg); }
-  45% { opacity: 0; }
-  70% { width: 82%; opacity: 1; transform: rotate(0deg); }
-  100% { width: 82%; opacity: 1; transform: rotate(0deg); }
+  0% { width: 0; opacity: 0; transform: scaleY(3) rotate(-2deg); }
+  40% { opacity: 0; width: 0; }
+  58% { width: 90%; opacity: 1; transform: scaleY(1.3) rotate(0.5deg); }
+  72% { width: 78%; transform: scaleY(1) rotate(0deg); }
+  100% { width: 82%; opacity: 1; transform: scaleY(1) rotate(0deg); }
 }
 
 @keyframes clueWordRevealOnline {
-  0% { opacity: 0; transform: translateY(10px) scale(0.96); letter-spacing: 7px; }
-  18% { opacity: 1; }
-  38% { transform: translateY(-1px) scale(1.02); letter-spacing: 2px; }
-  62% { transform: translateY(0px) scale(1); }
-  100% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 2px; }
+  0% { opacity: 0; transform: translateX(-20px) scale(1.1); letter-spacing: 0px; filter: brightness(2.5); }
+  10% { opacity: 1; transform: translateX(3px) scale(1); filter: brightness(1.6); }
+  20% { transform: translateX(0px) scale(1); letter-spacing: 2px; filter: brightness(1); }
+  100% { opacity: 1; transform: translateX(0px) scale(1); letter-spacing: 2px; filter: brightness(1); }
 }
 
 @keyframes clueNumberPopOnline {
-  0% { opacity: 0; transform: scale(0.55); }
-  32% { opacity: 0; transform: scale(0.55); }
-  52% { opacity: 1; transform: scale(1.15); }
-  72% { transform: scale(0.98); }
-  100% { opacity: 1; transform: scale(1); }
+  0% { opacity: 0; transform: scale(0); }
+  25% { opacity: 0; transform: scale(0); }
+  32% { opacity: 1; transform: scale(1.08); filter: brightness(2); }
+  42% { transform: scale(1); filter: brightness(1); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
 }
 
 @keyframes clueDividerGrowOnline {
   0% { width: 0; opacity: 0; }
-  35% { opacity: 0; }
-  62% { width: 76%; opacity: 1; }
+  20% { opacity: 0; width: 0; }
+  28% { width: 80%; opacity: 1; }
+  36% { width: 74%; }
   100% { width: 76%; opacity: 1; }
 }
 
@@ -13377,13 +13637,13 @@ body.cozy-mode .og-team-panel {
 }
 
 .og-score-blue .og-score-number {
-  color: #3B8BEB;
-  text-shadow: 0 3px 16px rgba(59, 139, 235, 0.35);
+  color: #1a5fa8;
+  text-shadow: 0 2px 10px rgba(26, 95, 168, 0.3);
 }
 
 .og-score-red .og-score-number {
-  color: #C8553A;
-  text-shadow: 0 3px 16px rgba(200, 85, 58, 0.35);
+  color: #943d28;
+  text-shadow: 0 2px 10px rgba(148, 61, 40, 0.3);
 }
 
 /* --- OG Score Avatar --- */
@@ -13421,13 +13681,13 @@ body.cozy-mode .og-team-panel {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 210px;
+  max-height: 270px;
 }
 
 .og-game-log {
   flex: 1;
   max-height: none;
-  min-height: 240px;
+  min-height: 280px;
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.35;
@@ -14348,21 +14608,21 @@ body.og-mode .og-mobile-blue .og-section-header{
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: #ffffff;
-  text-shadow: 0 6px 18px rgba(0,0,0,0.45);
-  -webkit-text-stroke-width: 6px;
-  -webkit-text-stroke-color: rgba(0,0,0,0.35);
   paint-order: stroke fill;
 }
 
 .og-score-blue .og-score-number {
-  -webkit-text-stroke-color: rgba(0, 142, 224, 0.95);
-  text-shadow: 0 6px 18px rgba(0,0,0,0.45), 0 3px 18px rgba(0,142,224,0.25);
+  color: #d4efff;
+  -webkit-text-stroke-width: 4px;
+  -webkit-text-stroke-color: rgba(0, 90, 160, 0.8);
+  text-shadow: 0 3px 12px rgba(0,0,0,0.5), 0 2px 8px rgba(0,100,180,0.3);
 }
 
 .og-score-red .og-score-number {
-  -webkit-text-stroke-color: rgba(255, 82, 65, 0.95);
-  text-shadow: 0 6px 18px rgba(0,0,0,0.45), 0 3px 18px rgba(255,82,65,0.22);
+  color: #ffe0d4;
+  -webkit-text-stroke-width: 4px;
+  -webkit-text-stroke-color: rgba(180, 50, 30, 0.8);
+  text-shadow: 0 3px 12px rgba(0,0,0,0.5), 0 2px 8px rgba(180,50,30,0.3);
 }
 
 /* --- OG Score Avatar --- */
@@ -14400,15 +14660,14 @@ body.og-mode .og-mobile-blue .og-section-header{
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 210px;
+  max-height: 270px;
 }
 
 .og-game-log {
   flex: 1;
   max-height: none;
-  /* Smaller, less dominant log in OG/Cozy so the board stays the star */
-  min-height: 96px;
-  max-height: 136px;
+  min-height: 130px;
+  max-height: 190px;
   overflow-y: auto;
   font-size: 11px;
   line-height: 1.28;
@@ -14435,16 +14694,15 @@ body.og-mode .og-game-log .game-log-entry {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 210px;
+  max-height: 270px;
 }
 
 #og-chat-host {
   display: flex;
   flex-direction: column;
   flex: 1;
-  /* Keep the docked chat compact so it doesn't dominate the OG side panel */
-  min-height: 88px;
-  max-height: 140px;
+  min-height: 120px;
+  max-height: 210px;
 }
 
 /* Bring back the standard chat panel inside the OG host */

@@ -6844,6 +6844,7 @@ function getAudioContext() {
 }
 
 // Sound definitions using Web Audio synthesis
+// Base sounds (used by Dark mode)
 const SOUNDS = {
   click: { type: 'click', freq: 800, duration: 0.05 },
   toggle: { type: 'toggle', freq: 600, duration: 0.08 },
@@ -6874,18 +6875,128 @@ const SOUNDS = {
   endTurn: { type: 'endTurn', freq: 350, duration: 0.12 },
 };
 
+// Light mode: airy, high-pitched, soft bell-like tones
+const SOUNDS_LIGHT = {
+  click: { type: 'click', freq: 1400, duration: 0.035, wave: 'sine' },
+  toggle: { type: 'toggle', freq: 1100, duration: 0.06, wave: 'sine' },
+  success: { type: 'success', freqs: [784, 988, 1175], duration: 0.12 },
+  error: { type: 'error', freq: 280, duration: 0.18 },
+  hover: { type: 'hover', freq: 1800, duration: 0.02 },
+  tabSwitch: { type: 'click', freq: 1500, duration: 0.03, wave: 'sine' },
+  modalOpen: { type: 'lightSwoosh', freq: 600, duration: 0.12 },
+  modalClose: { type: 'lightSwoosh', freq: 500, duration: 0.08 },
+  message: { type: 'lightBell', freq: 1320, duration: 0.12 },
+  notification: { type: 'notification', freqs: [988, 1175], duration: 0.1 },
+  cardReveal: { type: 'lightReveal', freq: 660, duration: 0.18 },
+  cardCorrect: { type: 'success', freqs: [784, 988, 1319], duration: 0.16 },
+  cardWrong: { type: 'lightError', freq: 260, duration: 0.22 },
+  cardAssassin: { type: 'lightAssassin', freq: 140, duration: 0.4 },
+  turnStart: { type: 'turn', freq: 880, duration: 0.12 },
+  clueGiven: { type: 'clue', freqs: [660, 784, 988], duration: 0.16 },
+  gameStart: { type: 'fanfare', freqs: [784, 988, 1175, 1568], duration: 0.25 },
+  gameWin: { type: 'victory', freqs: [784, 988, 1175, 1568, 1976], duration: 0.35 },
+  gameLose: { type: 'lightDefeat', freqs: [523, 440, 349], duration: 0.4 },
+  timerTick: { type: 'tick', freq: 1400, duration: 0.015 },
+  timerWarning: { type: 'warning', freq: 1100, duration: 0.08 },
+  buttonHover: { type: 'hover', freq: 1600, duration: 0.02 },
+  ready: { type: 'ready', freqs: [660, 784], duration: 0.12 },
+  join: { type: 'join', freq: 784, duration: 0.1 },
+  leave: { type: 'leave', freq: 494, duration: 0.12 },
+  invite: { type: 'notification', freqs: [1175, 1480], duration: 0.12 },
+  endTurn: { type: 'lightSwoosh', freq: 500, duration: 0.1 },
+};
+
+// Cozy mode: warm, deep, woody/organic, board-game feel
+const SOUNDS_COZY = {
+  click: { type: 'cozyClick', freq: 400, duration: 0.06 },
+  toggle: { type: 'cozyClick', freq: 340, duration: 0.08 },
+  success: { type: 'cozyArpeggio', freqs: [330, 415, 494], duration: 0.22 },
+  error: { type: 'cozyThud', freq: 120, duration: 0.25 },
+  hover: { type: 'hover', freq: 600, duration: 0.04 },
+  tabSwitch: { type: 'cozyClick', freq: 440, duration: 0.05 },
+  modalOpen: { type: 'cozyWhoosh', freq: 220, duration: 0.18 },
+  modalClose: { type: 'cozyWhoosh', freq: 180, duration: 0.12 },
+  message: { type: 'cozyKnock', freq: 500, duration: 0.1 },
+  notification: { type: 'cozyArpeggio', freqs: [415, 494], duration: 0.14 },
+  cardReveal: { type: 'cozyFlip', freq: 280, duration: 0.22 },
+  cardCorrect: { type: 'cozyArpeggio', freqs: [330, 415, 523], duration: 0.24 },
+  cardWrong: { type: 'cozyThud', freq: 100, duration: 0.35 },
+  cardAssassin: { type: 'cozyDoom', freq: 65, duration: 0.6 },
+  turnStart: { type: 'cozyKnock', freq: 440, duration: 0.14 },
+  clueGiven: { type: 'cozyArpeggio', freqs: [294, 370, 440], duration: 0.24 },
+  gameStart: { type: 'cozyFanfare', freqs: [330, 415, 494, 659], duration: 0.35 },
+  gameWin: { type: 'cozyFanfare', freqs: [330, 415, 494, 659, 831], duration: 0.45 },
+  gameLose: { type: 'cozyDefeat', freqs: [262, 220, 175], duration: 0.55 },
+  timerTick: { type: 'cozyClick', freq: 550, duration: 0.025 },
+  timerWarning: { type: 'cozyKnock', freq: 600, duration: 0.1 },
+  buttonHover: { type: 'hover', freq: 550, duration: 0.03 },
+  ready: { type: 'cozyArpeggio', freqs: [294, 370], duration: 0.16 },
+  join: { type: 'cozyKnock', freq: 370, duration: 0.12 },
+  leave: { type: 'cozyWhoosh', freq: 200, duration: 0.15 },
+  invite: { type: 'cozyArpeggio', freqs: [494, 622], duration: 0.16 },
+  endTurn: { type: 'cozyThud', freq: 200, duration: 0.14 },
+};
+
+// Codenames Online mode: sharp, digital, arcade-like bleeps
+const SOUNDS_ONLINE = {
+  click: { type: 'onlineBleep', freq: 1000, duration: 0.03 },
+  toggle: { type: 'onlineBleep', freq: 800, duration: 0.04 },
+  success: { type: 'onlineChime', freqs: [698, 880, 1047], duration: 0.12 },
+  error: { type: 'onlineBuzz', freq: 160, duration: 0.18 },
+  hover: { type: 'onlineBleep', freq: 1600, duration: 0.015 },
+  tabSwitch: { type: 'onlineBleep', freq: 1200, duration: 0.025 },
+  modalOpen: { type: 'onlineZap', freq: 500, duration: 0.1 },
+  modalClose: { type: 'onlineZap', freq: 380, duration: 0.07 },
+  message: { type: 'onlinePing', freq: 1047, duration: 0.08 },
+  notification: { type: 'onlineChime', freqs: [880, 1047], duration: 0.1 },
+  cardReveal: { type: 'onlineSnap', freq: 520, duration: 0.14 },
+  cardCorrect: { type: 'onlineChime', freqs: [698, 880, 1175], duration: 0.14 },
+  cardWrong: { type: 'onlineBuzz', freq: 140, duration: 0.22 },
+  cardAssassin: { type: 'onlineAlarm', freq: 80, duration: 0.45 },
+  turnStart: { type: 'onlinePing', freq: 880, duration: 0.1 },
+  clueGiven: { type: 'onlineChime', freqs: [587, 698, 880], duration: 0.14 },
+  gameStart: { type: 'onlineFanfare', freqs: [698, 880, 1047, 1397], duration: 0.22 },
+  gameWin: { type: 'onlineFanfare', freqs: [698, 880, 1047, 1397, 1760], duration: 0.3 },
+  gameLose: { type: 'onlineDefeat', freqs: [349, 294, 233], duration: 0.4 },
+  timerTick: { type: 'onlineBleep', freq: 1200, duration: 0.012 },
+  timerWarning: { type: 'onlineAlarm', freq: 1000, duration: 0.08 },
+  buttonHover: { type: 'onlineBleep', freq: 1400, duration: 0.012 },
+  ready: { type: 'onlineChime', freqs: [587, 698], duration: 0.1 },
+  join: { type: 'onlinePing', freq: 698, duration: 0.08 },
+  leave: { type: 'onlineZap', freq: 300, duration: 0.1 },
+  invite: { type: 'onlineChime', freqs: [1047, 1319], duration: 0.1 },
+  endTurn: { type: 'onlineZap', freq: 420, duration: 0.08 },
+};
+
+function getActiveStyleMode() {
+  if (document.body.classList.contains('light-mode')) return 'light';
+  if (document.body.classList.contains('cozy-mode')) return 'cozy';
+  if (document.body.classList.contains('og-mode')) return 'online';
+  return 'dark';
+}
+
+function getSoundForStyle(soundName) {
+  const mode = getActiveStyleMode();
+  switch (mode) {
+    case 'light': return SOUNDS_LIGHT[soundName] || SOUNDS[soundName];
+    case 'cozy': return SOUNDS_COZY[soundName] || SOUNDS[soundName];
+    case 'online': return SOUNDS_ONLINE[soundName] || SOUNDS[soundName];
+    default: return SOUNDS[soundName];
+  }
+}
+
 function playSound(soundName) {
   if (!settingsSounds) return;
 
   const ctx = getAudioContext();
   if (!ctx) return;
 
-  const sound = SOUNDS[soundName];
+  const sound = getSoundForStyle(soundName);
   if (!sound) return;
 
   const volume = settingsVolume / 100;
   const masterGain = ctx.createGain();
-  masterGain.gain.value = volume * 0.3; // Base volume adjustment
+  masterGain.gain.value = volume * 0.3;
   masterGain.connect(ctx.destination);
 
   const now = ctx.currentTime;
@@ -6895,7 +7006,7 @@ function playSound(soundName) {
     case 'hover':
     case 'toggle':
     case 'tick':
-      playSingleTone(ctx, masterGain, sound.freq, sound.duration, now, 'sine');
+      playSingleTone(ctx, masterGain, sound.freq, sound.duration, now, sound.wave || 'sine');
       break;
 
     case 'success':
@@ -6946,6 +7057,84 @@ function playSound(soundName) {
 
     case 'defeat':
       playDefeatSound(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+
+    // --- Light mode types ---
+    case 'lightSwoosh':
+      playLightSwoosh(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'lightBell':
+      playLightBell(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'lightReveal':
+      playLightReveal(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'lightError':
+      playLightError(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'lightAssassin':
+      playLightAssassin(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'lightDefeat':
+      playLightDefeat(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+
+    // --- Cozy mode types ---
+    case 'cozyClick':
+      playCozyClick(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'cozyArpeggio':
+      playCozyArpeggio(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+    case 'cozyThud':
+      playCozyThud(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'cozyWhoosh':
+      playCozyWhoosh(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'cozyKnock':
+      playCozyKnock(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'cozyFlip':
+      playCozyFlip(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'cozyDoom':
+      playCozyDoom(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'cozyFanfare':
+      playCozyFanfare(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+    case 'cozyDefeat':
+      playCozyDefeat(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+
+    // --- Online mode types ---
+    case 'onlineBleep':
+      playOnlineBleep(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'onlineChime':
+      playOnlineChime(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+    case 'onlineBuzz':
+      playOnlineBuzz(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'onlineZap':
+      playOnlineZap(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'onlinePing':
+      playOnlinePing(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'onlineSnap':
+      playOnlineSnap(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'onlineAlarm':
+      playOnlineAlarm(ctx, masterGain, sound.freq, sound.duration, now);
+      break;
+    case 'onlineFanfare':
+      playOnlineFanfare(ctx, masterGain, sound.freqs, sound.duration, now);
+      break;
+    case 'onlineDefeat':
+      playOnlineDefeat(ctx, masterGain, sound.freqs, sound.duration, now);
       break;
 
     default:
@@ -7179,6 +7368,486 @@ function playDefeatSound(ctx, destination, freqs, noteDuration, startTime) {
 
     osc.start(noteStart);
     osc.stop(noteStart + noteDuration);
+  });
+}
+
+// ========================================
+// LIGHT MODE synthesis functions
+// Airy, soft, bell-like
+// ========================================
+
+function playLightSwoosh(ctx, destination, freq, duration, startTime) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq * 0.7, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 1.5, startTime + duration);
+  filter.type = 'bandpass';
+  filter.frequency.value = freq * 2;
+  filter.Q.value = 2;
+  gain.gain.setValueAtTime(0.15, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playLightBell(ctx, destination, freq, duration, startTime) {
+  // Two detuned sines for a shimmer bell
+  [0, 7].forEach(detune => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.detune.value = detune;
+    gain.gain.setValueAtTime(0.25, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  });
+}
+
+function playLightReveal(ctx, destination, freq, duration, startTime) {
+  // Rising sine with gentle harmonic
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq * 0.9, startTime);
+  osc.frequency.linearRampToValueAtTime(freq * 1.3, startTime + duration * 0.6);
+  osc.frequency.linearRampToValueAtTime(freq * 1.1, startTime + duration);
+  gain.gain.setValueAtTime(0.3, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playLightError(ctx, destination, freq, duration, startTime) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq * 1.2, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.6, startTime + duration);
+  gain.gain.setValueAtTime(0.2, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playLightAssassin(ctx, destination, freq, duration, startTime) {
+  // Low hum that fades with a high overtone
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(freq, startTime);
+  osc1.frequency.exponentialRampToValueAtTime(freq * 0.5, startTime + duration);
+  gain1.gain.setValueAtTime(0.3, startTime);
+  gain1.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc1.connect(gain1);
+  gain1.connect(destination);
+  osc1.start(startTime);
+  osc1.stop(startTime + duration);
+
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.value = freq * 6;
+  gain2.gain.setValueAtTime(0.08, startTime);
+  gain2.gain.exponentialRampToValueAtTime(0.01, startTime + duration * 0.4);
+  osc2.connect(gain2);
+  gain2.connect(destination);
+  osc2.start(startTime);
+  osc2.stop(startTime + duration * 0.4);
+}
+
+function playLightDefeat(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.7;
+    gain.gain.setValueAtTime(0.2, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration);
+  });
+}
+
+// ========================================
+// COZY MODE synthesis functions
+// Warm, woody, tactile, board-game feel
+// ========================================
+
+function playCozyClick(ctx, destination, freq, duration, startTime) {
+  // Short triangle burst with subtle body (like tapping wood)
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq * 1.5, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.6, startTime + duration);
+  filter.type = 'lowpass';
+  filter.frequency.value = freq * 3;
+  filter.Q.value = 1.5;
+  gain.gain.setValueAtTime(0.45, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playCozyArpeggio(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.45;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.35, noteStart + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration);
+  });
+}
+
+function playCozyThud(ctx, destination, freq, duration, startTime) {
+  // Deep thud - triangle wave dropping fast, like something heavy landing
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq * 2, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.3, startTime + duration * 0.3);
+  gain.gain.setValueAtTime(0.5, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playCozyWhoosh(ctx, destination, freq, duration, startTime) {
+  // Filtered noise sweep (like shuffling cards)
+  const bufferSize = Math.floor(ctx.sampleRate * duration);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * 0.5;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(freq, startTime);
+  filter.frequency.exponentialRampToValueAtTime(freq * 3, startTime + duration);
+  filter.Q.value = 0.8;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.2, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(destination);
+  noise.start(startTime);
+}
+
+function playCozyKnock(ctx, destination, freq, duration, startTime) {
+  // Double tap like knocking on wood
+  [0, 0.06].forEach(offset => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq * 1.2, startTime + offset);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.5, startTime + offset + duration * 0.5);
+    const ns = startTime + offset;
+    gain.gain.setValueAtTime(0.4, ns);
+    gain.gain.exponentialRampToValueAtTime(0.01, ns + duration * 0.5);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(ns);
+    osc.stop(ns + duration * 0.5);
+  });
+}
+
+function playCozyFlip(ctx, destination, freq, duration, startTime) {
+  // Card flip: quick noise burst + triangle tone (paper sound)
+  const bufferSize = Math.floor(ctx.sampleRate * duration * 0.3);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const nFilter = ctx.createBiquadFilter();
+  nFilter.type = 'highpass';
+  nFilter.frequency.value = 800;
+  const nGain = ctx.createGain();
+  nGain.gain.setValueAtTime(0.2, startTime);
+  nGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration * 0.3);
+  noise.connect(nFilter);
+  nFilter.connect(nGain);
+  nGain.connect(destination);
+  noise.start(startTime);
+
+  // Body tone
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq * 1.4, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.8, startTime + duration);
+  gain.gain.setValueAtTime(0.3, startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime + 0.02);
+  osc.stop(startTime + duration);
+}
+
+function playCozyDoom(ctx, destination, freq, duration, startTime) {
+  // Deep ominous rumble with resonance (assassin)
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'triangle';
+  osc1.frequency.setValueAtTime(freq * 1.5, startTime);
+  osc1.frequency.exponentialRampToValueAtTime(freq * 0.2, startTime + duration);
+  gain1.gain.setValueAtTime(0.45, startTime);
+  gain1.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc1.connect(gain1);
+  gain1.connect(destination);
+  osc1.start(startTime);
+  osc1.stop(startTime + duration);
+
+  // Resonant body
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  osc2.type = 'sawtooth';
+  osc2.frequency.setValueAtTime(freq * 0.5, startTime);
+  osc2.frequency.exponentialRampToValueAtTime(freq * 0.15, startTime + duration);
+  filter.type = 'lowpass';
+  filter.frequency.value = 180;
+  filter.Q.value = 4;
+  gain2.gain.setValueAtTime(0.25, startTime);
+  gain2.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc2.connect(filter);
+  filter.connect(gain2);
+  gain2.connect(destination);
+  osc2.start(startTime);
+  osc2.stop(startTime + duration);
+}
+
+function playCozyFanfare(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.35;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.3, noteStart + 0.04);
+    gain.gain.setValueAtTime(0.3, noteStart + noteDuration * 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration * 1.4);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration * 1.4);
+  });
+}
+
+function playCozyDefeat(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.55;
+    gain.gain.setValueAtTime(0.3, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration);
+  });
+}
+
+// ========================================
+// CODENAMES ONLINE synthesis functions
+// Sharp, digital, arcade-like
+// ========================================
+
+function playOnlineBleep(ctx, destination, freq, duration, startTime) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.18, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playOnlineChime(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.35;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.2, noteStart + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration * 0.8);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration * 0.8);
+  });
+}
+
+function playOnlineBuzz(ctx, destination, freq, duration, startTime) {
+  // Harsh square wave descending
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(freq * 1.5, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.4, startTime + duration);
+  gain.gain.setValueAtTime(0.2, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playOnlineZap(ctx, destination, freq, duration, startTime) {
+  // Quick frequency sweep (zap/laser)
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq * 3, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, startTime + duration);
+  gain.gain.setValueAtTime(0.15, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playOnlinePing(ctx, destination, freq, duration, startTime) {
+  // Clean digital ping
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.22, startTime);
+  gain.gain.setValueAtTime(0.22, startTime + duration * 0.15);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playOnlineSnap(ctx, destination, freq, duration, startTime) {
+  // Sharp attack + quick ring (digital card snap)
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'square';
+  osc1.frequency.setValueAtTime(freq * 4, startTime);
+  osc1.frequency.exponentialRampToValueAtTime(freq, startTime + 0.02);
+  gain1.gain.setValueAtTime(0.3, startTime);
+  gain1.gain.exponentialRampToValueAtTime(0.01, startTime + 0.04);
+  osc1.connect(gain1);
+  gain1.connect(destination);
+  osc1.start(startTime);
+  osc1.stop(startTime + 0.04);
+
+  // Body
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(freq * 1.2, startTime + 0.015);
+  osc2.frequency.exponentialRampToValueAtTime(freq * 0.8, startTime + duration);
+  gain2.gain.setValueAtTime(0.25, startTime + 0.015);
+  gain2.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc2.connect(gain2);
+  gain2.connect(destination);
+  osc2.start(startTime + 0.015);
+  osc2.stop(startTime + duration);
+}
+
+function playOnlineAlarm(ctx, destination, freq, duration, startTime) {
+  // Pulsing square wave alarm
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const lfo = ctx.createOscillator();
+  const lfoGain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(freq, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, startTime + duration);
+  lfo.type = 'square';
+  lfo.frequency.value = 12;
+  lfoGain.gain.value = 0.15;
+  lfo.connect(lfoGain);
+  lfoGain.connect(gain.gain);
+  gain.gain.setValueAtTime(0.2, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(startTime);
+  lfo.start(startTime);
+  osc.stop(startTime + duration);
+  lfo.stop(startTime + duration);
+}
+
+function playOnlineFanfare(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.28;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.2, noteStart + 0.008);
+    gain.gain.setValueAtTime(0.2, noteStart + noteDuration * 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration);
+  });
+}
+
+function playOnlineDefeat(ctx, destination, freqs, noteDuration, startTime) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const noteStart = startTime + i * noteDuration * 0.5;
+    gain.gain.setValueAtTime(0.18, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.01, noteStart + noteDuration * 0.8);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + noteDuration * 0.8);
   });
 }
 

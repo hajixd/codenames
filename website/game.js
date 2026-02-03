@@ -2999,8 +2999,8 @@ function startGameListener(gameId, options = {}) {
               cardEl.classList.remove('guess-animate');
             };
             cardEl.addEventListener('animationend', cleanup, { once: true });
-            // Fallback cleanup for longer animations
-            setTimeout(cleanup, 9000);
+            // Fallback cleanup
+            setTimeout(cleanup, 4000);
           }
         });
       });
