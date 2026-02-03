@@ -851,6 +851,14 @@
                     </div>
                     <div class="og-section-header">SPYMASTERS</div>
                     <div class="og-player-slots" id="og-blue-spymasters"></div>
+
+                  <!-- OG Mode: Chat docked bottom-left (mounted via JS) -->
+                  <div class="og-chat-section" id="og-chat-section">
+                    <div class="og-section-header">CHAT</div>
+                    <!-- We'll move the existing .operative-chat-panel into here when OG mode is active.
+                         This avoids duplicating IDs and keeps chat logic unchanged. -->
+                    <div id="og-chat-host"></div>
+                  </div>
                   </div>
                 </div>
 

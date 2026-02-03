@@ -3250,11 +3250,44 @@ function renderAdvancedFeatures() {
   renderOgPanels();
 }
 
+function dockChatIntoOgPanels(isOgMode) {
+  const host = document.getElementById('og-chat-host');
+  const chatPanel = document.querySelector('.operative-chat-panel');
+  if (!chatPanel) return;
+
+  // Only dock on desktop; on mobile, keep the standard sidebar chat available.
+  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+
+  if (isOgMode && host && !isMobile) {
+    if (!ogChatOriginalParent) {
+      ogChatOriginalParent = chatPanel.parentElement;
+      ogChatOriginalNextSibling = chatPanel.nextElementSibling;
+    }
+    if (chatPanel.parentElement !== host) {
+      host.appendChild(chatPanel);
+    }
+    chatPanel.classList.add('og-docked-chat');
+  } else {
+    // Restore if we previously moved it.
+    if (host && chatPanel.parentElement === host && ogChatOriginalParent) {
+      if (ogChatOriginalNextSibling && ogChatOriginalParent.contains(ogChatOriginalNextSibling)) {
+        ogChatOriginalParent.insertBefore(chatPanel, ogChatOriginalNextSibling);
+      } else {
+        ogChatOriginalParent.appendChild(chatPanel);
+      }
+    }
+    chatPanel.classList.remove('og-docked-chat');
+  }
+}
+
 function renderOgPanels() {
   const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
   const ogPanelBlue = document.getElementById('og-panel-blue');
   const ogPanelRed = document.getElementById('og-panel-red');
   const ogMobilePanels = document.getElementById('og-mobile-panels');
+
+  // Dock the standard chat panel into the OG left panel on desktop.
+  dockChatIntoOgPanels(isOgMode);
 
   if (!ogPanelBlue || !ogPanelRed) return;
 
@@ -3340,6 +3373,38 @@ function renderOgPanels() {
   if (countEl) {
     const total = (currentGame.bluePlayers?.length || 0) + (currentGame.redPlayers?.length || 0);
     countEl.textContent = total;
+  }
+}
+
+function dockChatIntoOgPanels(isOgMode) {
+  const chatPanel = document.querySelector('.operative-chat-panel');
+  const host = document.getElementById('og-chat-host');
+
+  if (!chatPanel) return;
+
+  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+
+  // Save original location once
+  if (!ogChatOriginalParent) {
+    ogChatOriginalParent = chatPanel.parentElement;
+    ogChatOriginalNextSibling = chatPanel.nextElementSibling;
+  }
+
+  if (isOgMode && !isMobile && host) {
+    if (chatPanel.parentElement !== host) {
+      host.appendChild(chatPanel);
+    }
+    chatPanel.classList.add('og-docked-chat');
+  } else {
+    // Restore to original container when leaving OG panels, or on mobile
+    if (ogChatOriginalParent && chatPanel.parentElement !== ogChatOriginalParent) {
+      if (ogChatOriginalNextSibling && ogChatOriginalParent.contains(ogChatOriginalNextSibling)) {
+        ogChatOriginalParent.insertBefore(chatPanel, ogChatOriginalNextSibling);
+      } else {
+        ogChatOriginalParent.appendChild(chatPanel);
+      }
+    }
+    chatPanel.classList.remove('og-docked-chat');
   }
 }
 
@@ -4178,6 +4243,11 @@ let _processingClue = false; // Guard against concurrent giveClue calls
 let operativeChatUnsub = null;
 let operativeChatTeamViewing = null; // 'red' | 'blue'
 let spectatorChatTeam = 'red';
+
+// When Cozy/Online (OG-style) panels are active, we dock the existing chat panel
+// into the left OG panel so it sits bottom-left parallel to the Game Log.
+let ogChatOriginalParent = null;
+let ogChatOriginalNextSibling = null;
 let gameTimerInterval = null;
 let gameTimerEnd = null;
 

@@ -12694,9 +12694,16 @@ body.cozy-mode .game-header-expanded {
 }
 
 body.cozy-mode .clue-history-panel,
-body.cozy-mode .game-log-panel,
-body.cozy-mode .operative-chat-panel {
+body.cozy-mode .game-log-panel {
   display: none !important;
+}
+
+/* On desktop, Cozy uses the OG side panels, so we hide the standard chat panel.
+   On mobile we keep the standard chat available via the mobile sidebar toggle. */
+@media (min-width: 769px) {
+  body.cozy-mode .operative-chat-panel {
+    display: none !important;
+  }
 }
 
 /* --- OG Top Bar --- */
@@ -13138,11 +13145,12 @@ body.cozy-mode .og-team-panel {
   color: #ffffff;
   padding: 6px 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.20);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .og-player-slot.og-empty {
-  color: #5a7a96;
+  color: rgba(255,255,255,0.65);
   font-style: italic;
   font-weight: 400;
 }
@@ -13211,14 +13219,21 @@ body.cozy-mode .og-team-panel {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 10px;
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .og-game-log {
-  max-height: 160px;
+  flex: 1;
+  max-height: none;
+  min-height: 240px;
   overflow-y: auto;
-  font-size: 12px;
-  color: var(--text-dim);
-  padding: 4px 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.86);
+  padding: 6px 0;
 }
 
 /* --- OG Tag Legend --- */
@@ -13462,21 +13477,23 @@ body.og-mode {
   --logpanel-neutral-card: #af9973;
   --guess-icon-bg: linear-gradient(to bottom, hsla(108, 95%, 36%, 1),hsla(94, 73%, 48%, 1));
   --guess-icon-bg-light: linear-gradient(to bottom, hsla(99, 74%, 58%, 1),hsla(82, 86%, 66%, 1));
-  --neutral-cardBorder: #FFE8D4;
-  --neutral-cardBg: #FFD6B0;
+  /* Card palette: slightly deeper/more muted than the raw CNO colors.
+     This keeps the board readable for longer sessions and improves contrast. */
+  --neutral-cardBorder: #F2DEC8;
+  --neutral-cardBg: #F0C9A3;
   --neutral-innerBorder: #AC8D77;
-  --neutral-innerBg: linear-gradient(to bottom, #FFDBBA, #FFDBBA 0%, #FFC48F 100%);
-  --neutral-darkWordBg: #967355;
-  --red-cardBorder: #FFD19D;
-  --red-cardBg: #FF9159;
-  --red-innerBorder: #B33E1D;
-  --red-innerBg: #F8543A;
-  --red-darkWordBg: #852D15;
-  --blue-cardBorder: #BAF5FF;
-  --blue-cardBg: #3DD1EE;
-  --blue-innerBorder: #2F75AA;
-  --blue-innerBg: #00A3D8;
-  --blue-darkWordBg: #17527F;
+  --neutral-innerBg: linear-gradient(to bottom, #F5D3B4, #F5D3B4 0%, #EFB987 100%);
+  --neutral-darkWordBg: #7C5F46;
+  --red-cardBorder: #F2C5A5;
+  --red-cardBg: #E87449;
+  --red-innerBorder: #8F2F1C;
+  --red-innerBg: #D44A34;
+  --red-darkWordBg: #5B2016;
+  --blue-cardBorder: #BEE7F0;
+  --blue-cardBg: #2FA9D1;
+  --blue-innerBorder: #1F5A86;
+  --blue-innerBg: #0B87B8;
+  --blue-darkWordBg: #123B5B;
   --black-cardBorder: #B6B5B5;
   --black-cardBg: #8C8D8D;
   --black-innerBorder: #2A2A2A;
@@ -13594,9 +13611,16 @@ body.og-mode .game-header-expanded {
 }
 
 body.og-mode .clue-history-panel,
-body.og-mode .game-log-panel,
-body.og-mode .operative-chat-panel {
+body.og-mode .game-log-panel {
   display: none !important;
+}
+
+/* On desktop, Codenames Online uses the OG side panels, so we hide the standard chat panel.
+   On mobile we keep the standard chat available via the mobile sidebar toggle. */
+@media (min-width: 769px) {
+  body.og-mode .operative-chat-panel {
+    display: none !important;
+  }
 }
 
 /* --- OG Top Bar --- */
@@ -14001,16 +14025,18 @@ body.og-mode .og-team-panel {
 }
 
 .og-team-blue {
+  /* Slightly deeper blues to keep text readable on large screens */
   background:
-    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.00) 55%),
-    linear-gradient(to bottom, rgba(0,142,224,0.92), rgba(52,160,240,0.70));
+    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.00) 55%),
+    linear-gradient(to bottom, rgba(10,108,168,0.92), rgba(35,142,205,0.72));
   border-color: rgba(255,255,255,0.24);
 }
 
 .og-team-red {
+  /* Slightly deeper reds/oranges to keep text readable on large screens */
   background:
-    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.00) 55%),
-    linear-gradient(to bottom, rgba(255,82,65,0.90), rgba(255,120,55,0.68));
+    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.00) 55%),
+    linear-gradient(to bottom, rgba(190,58,44,0.90), rgba(214,104,60,0.70));
   border-color: rgba(255,255,255,0.24);
 }
 
@@ -14092,11 +14118,12 @@ body.og-mode .og-mobile-blue .og-section-header{
   color: #ffffff;
   padding: 6px 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.20);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .og-player-slot.og-empty {
-  color: #5a7a96;
+  color: rgba(255,255,255,0.65);
   font-style: italic;
   font-weight: 400;
 }
@@ -14170,14 +14197,116 @@ body.og-mode .og-mobile-blue .og-section-header{
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 10px;
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .og-game-log {
-  max-height: 160px;
+  flex: 1;
+  max-height: none;
+  min-height: 240px;
   overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.88);
+  padding: 6px 0;
+}
+
+/* OG log entries: give each entry its own readable chip */
+body.cozy-mode .og-game-log .game-log-entry,
+body.og-mode .og-game-log .game-log-entry {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.10);
+  margin: 6px 0;
+}
+
+/* --- OG Docked Chat (bottom-left) --- */
+.og-chat-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#og-chat-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 240px;
+}
+
+/* Bring back the standard chat panel inside the OG host */
+body.cozy-mode #og-chat-host .operative-chat-panel,
+body.og-mode #og-chat-host .operative-chat-panel {
+  display: flex !important;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-header,
+body.og-mode #og-chat-host .operative-chat-panel .sidebar-panel-header {
+  padding: 4px 0 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  margin-bottom: 8px;
+}
+
+body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-title,
+body.og-mode #og-chat-host .operative-chat-panel .sidebar-panel-title {
   font-size: 12px;
-  color: var(--text-dim);
-  padding: 4px 0;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+body.cozy-mode #og-chat-host .operative-chat-messages,
+body.og-mode #og-chat-host .operative-chat-messages {
+  flex: 1;
+  min-height: 0;
+  background: rgba(0,0,0,0.12);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+body.cozy-mode #og-chat-host .chat-message,
+body.og-mode #og-chat-host .chat-message {
+  background: rgba(0,0,0,0.16);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+body.cozy-mode #og-chat-host .operative-chat-form,
+body.og-mode #og-chat-host .operative-chat-form {
+  margin-top: 10px;
+  background: rgba(0,0,0,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  padding: 6px;
+}
+
+body.cozy-mode #og-chat-host .operative-chat-form .chat-input,
+body.og-mode #og-chat-host .operative-chat-form .chat-input {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-weight: 600;
+}
+
+body.cozy-mode #og-chat-host .operative-chat-form .chat-send-btn,
+body.og-mode #og-chat-host .operative-chat-form .chat-send-btn {
+  border-radius: 999px;
+  padding: 10px 12px;
 }
 
 /* --- OG Tag Legend --- */
@@ -14205,9 +14334,15 @@ body.og-mode .role-btn-compact:hover {
 }
 
 /* --- OG Sidebar Panel Header (for game log) --- */
-body.og-mode .og-game-log .game-log-entry {
-  padding: 3px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+body.og-mode .og-game-log .game-log-entry,
+body.cozy-mode .og-game-log .game-log-entry {
+  padding: 8px 10px;
+  margin: 6px 0;
+  border-bottom: none;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 /* --- OG Mobile Panels --- */
