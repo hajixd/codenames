@@ -5743,36 +5743,29 @@ window.AI_MODEL_PRESETS = window.AI_MODEL_PRESETS || [
     key: 'instructions',
     title: 'Following instructions',
     tag: 'Reliable',
-    model: 'Meta/Llama-3.3-70B-Instruct',
-    subtitle: 'Meta/Llama-3.3-70B-Instruct'
+    model: 'meta-llama/Llama-3.3-70B-Instruct',
+    subtitle: 'meta-llama/Llama-3.3-70B-Instruct'
   },
   {
     key: 'reasoning',
     title: 'Best reasoning',
     tag: 'Reasoning',
-    model: 'DeepSeek-R1-0528',
-    subtitle: 'DeepSeek-R1-0528 (base)'
+    model: 'deepseek-ai/DeepSeek-R1-0528-fast',
+    subtitle: 'deepseek-ai/DeepSeek-R1-0528-fast'
   },
   {
     key: 'fastest',
     title: 'Fastest outputs',
     tag: 'Fast',
-    model: 'Meta/Llama-3.1-8B-Instruct-fast',
-    subtitle: 'Meta/Llama-3.1-8B-Instruct-fast (small + fast flavor)'
+    model: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
+    subtitle: 'meta-llama/Meta-Llama-3.1-8B-Instruct'
   },
   {
-    key: 'smartest',
-    title: 'Smartest (overall capability)',
-    tag: 'Power',
-    model: 'Meta/Llama-3.1-405B-Instruct',
-    subtitle: 'Meta/Llama-3.1-405B-Instruct (base)'
-  },
-  {
-    key: 'most_params',
-    title: 'Most parameters',
-    tag: 'Huge',
-    model: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
-    subtitle: 'Qwen/Qwen3-Coder-480B-A35B-Instruct (base)'
+    key: 'thinking',
+    title: 'Thinking model',
+    tag: 'Think',
+    model: 'Qwen/Qwen3-Next-80B-A3B-Thinking',
+    subtitle: 'Qwen/Qwen3-Next-80B-A3B-Thinking'
   }
 ];
 

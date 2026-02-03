@@ -15,6 +15,41 @@ const AI_CONFIG = {
   maxAIsPerTeam: 4,
 };
 
+// Nebius Token Factory has multiple regional endpoints. Some models are hosted
+// on the US endpoint (e.g. certain DeepSeek variants).
+const NEBIUS_BASE_URL_DEFAULT = 'https://api.tokenfactory.nebius.com/v1';
+const NEBIUS_BASE_URL_US = 'https://api.tokenfactory.us-central1.nebius.com/v1';
+
+// Backwards-compatible mapping for older UI-friendly model IDs.
+function normalizeModelId(modelId) {
+  const raw = String(modelId || '').trim();
+  if (!raw) return raw;
+
+  const map = {
+    'Meta/Llama-3.3-70B-Instruct': 'meta-llama/Llama-3.3-70B-Instruct',
+    'DeepSeek-R1-0528': 'deepseek-ai/DeepSeek-R1-0528-fast',
+    'Meta/Llama-3.1-8B-Instruct-fast': 'meta-llama/Meta-Llama-3.1-8B-Instruct',
+    'Meta/Llama-3.1-405B-Instruct': 'Qwen/Qwen3-Next-80B-A3B-Thinking',
+    'Qwen/Qwen3-Coder-480B-A35B-Instruct': 'Qwen/Qwen3-Next-80B-A3B-Thinking',
+  };
+
+  return map[raw] || raw;
+}
+
+function resolveNebiusBaseURLForModel(modelId) {
+  const m = normalizeModelId(modelId);
+  if (!m) return AI_CONFIG.baseURL || NEBIUS_BASE_URL_DEFAULT;
+  // DeepSeek models in this project are expected on the US endpoint.
+  if (m.toLowerCase().startsWith('deepseek-ai/')) return NEBIUS_BASE_URL_US;
+  return AI_CONFIG.baseURL || NEBIUS_BASE_URL_DEFAULT;
+}
+
+function joinURL(base, path) {
+  const b = String(base || '').replace(/\/+$/, '');
+  const p = String(path || '').replace(/^\/+/, '');
+  return `${b}/${p}`;
+}
+
 // No artificial human-like delays. AIs act as soon as they can.
 
 // AI name pools - human-sounding names
@@ -218,7 +253,7 @@ window.AI_CONFIG = AI_CONFIG;
 
 async function aiChatCompletion(messages, options = {}) {
   const body = {
-    model: options.model || AI_CONFIG.model,
+    model: normalizeModelId(options.model || AI_CONFIG.model),
     messages,
     temperature: options.temperature ?? 0.85,
     max_tokens: options.max_tokens ?? 512,
@@ -228,7 +263,11 @@ async function aiChatCompletion(messages, options = {}) {
     body.response_format = options.response_format;
   }
 
-  const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
+  const baseURL = options.baseURL || resolveNebiusBaseURLForModel(body.model);
+  const url = joinURL(baseURL, '/chat/completions');
+
+  // IMPORTANT: OpenAI-compatible endpoint is `/chat/completions` (plural).
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
