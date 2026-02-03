@@ -3447,10 +3447,10 @@ function renderBoard(isSpymaster) {
         <div class="card-inner">
           <div class="card-face card-front">
             <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
-            <span class="card-word">${word}</span>
+            <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
           <div class="card-face card-back">
-            <span class="card-word">${word}</span>
+            <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
         </div>
       </div>
@@ -3469,13 +3469,17 @@ function renderBoard(isSpymaster) {
 
 // --- Card word fitting (prevents overflow and reduces eye strain) ---
 function fitAllCardWords() {
-  const els = document.querySelectorAll('.game-card .card-word');
-  els.forEach(el => {
-    // Reset any previous inline sizing so we start from CSS defaults
-    el.style.fontSize = '';
-    el.style.letterSpacing = '';
+  const containers = document.querySelectorAll('.game-card .card-word');
+  containers.forEach(container => {
+    const textEl = container.querySelector('.word-text') || container;
 
-    const cs = getComputedStyle(el);
+    // Reset any previous inline sizing so we start from CSS defaults
+    textEl.style.fontSize = '';
+    textEl.style.letterSpacing = '';
+    textEl.style.transform = '';
+    textEl.style.transformOrigin = '';
+
+    const cs = getComputedStyle(textEl);
     const baseSize = parseFloat(cs.fontSize) || 14;
     const baseLS = parseFloat(cs.letterSpacing) || 0;
 
@@ -3483,14 +3487,34 @@ function fitAllCardWords() {
     const minSize = 10;
     let guard = 0;
 
-    // Reduce until both width + height fit (handles compact mode and long words)
-    while (guard < 40 && size > minSize && (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight)) {
+    // Use the container as the constraint box (this is the visible label strip)
+    const boxW = container.clientWidth;
+    const boxH = container.clientHeight;
+    if (!boxW || !boxH) return;
+
+    const overflows = () => (textEl.scrollWidth > boxW || textEl.scrollHeight > boxH);
+
+    // First pass: reduce font-size until it fits
+    while (guard < 48 && size > minSize && overflows()) {
       size -= 1;
-      el.style.fontSize = size + 'px';
-      // Slightly reduce tracking as we shrink
-      const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.9);
-      if (!Number.isNaN(scaledLS)) el.style.letterSpacing = scaledLS + 'px';
+      textEl.style.fontSize = size + 'px';
+      // Reduce tracking a bit as we shrink (helps long words feel less cramped)
+      const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.85);
+      if (!Number.isNaN(scaledLS)) textEl.style.letterSpacing = scaledLS + 'px';
       guard++;
+    }
+
+    // Second pass: if we still overflow (very long words), compress horizontally a touch.
+    // This keeps the label box geometry consistent without clipping.
+    if (overflows()) {
+      // Ensure measurements update before we compute the ratio
+      const sw = textEl.scrollWidth || 1;
+      const ratio = Math.max(0.78, Math.min(1, boxW / sw));
+      textEl.style.transformOrigin = 'center';
+      textEl.style.transform = `scaleX(${ratio})`;
+      // Slightly reduce tracking to avoid "smeared" look when scaled
+      const tighterLS = Math.max(0, (parseFloat(getComputedStyle(textEl).letterSpacing) || 0) * 0.85);
+      textEl.style.letterSpacing = tighterLS + 'px';
     }
   });
 }
@@ -3505,6 +3529,15 @@ function scheduleFitCardWords() {
 }
 
 window.addEventListener('resize', scheduleFitCardWords);
+
+// Fonts can load after the board renders, changing text metrics.
+// Re-fit once fonts are ready to prevent overflow (especially in OG mode).
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    setTimeout(scheduleFitCardWords, 0);
+    setTimeout(scheduleFitCardWords, 120);
+  }).catch(() => {});
+}
 
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const currentClueEl = document.getElementById('current-clue');
