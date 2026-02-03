@@ -14820,8 +14820,10 @@ body.og-mode .game-card{
   --wordBg: var(--neutral-darkWordBg);
   --wordColor: #ffffff;
 
-  /* Label geometry (tuned to match Codenames Online cards) */
-  --labelInsetX: 4px;     /* left/right inset for the word strip */
+  /* Label geometry (tuned to match Codenames Online cards)
+     Keep the word strip fully inside the inner plate:
+     inner plate inset is 8px, so 10px gives a clean ~2px margin. */
+  --labelInsetX: 10px;     /* left/right inset for the word strip */
   --labelInsetY: 10px;     /* bottom inset for the word strip */
   /* Slightly taller word strip so the divider sits a bit higher */
   --labelHeight: 35%;      /* height of the bottom word strip */
@@ -15684,8 +15686,9 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .game-card{
-    --labelInsetX: 4px;
-    --labelInsetY: 8px;
+    /* Match desktop geometry: keep word strip fully inside the inner plate */
+    --labelInsetX: 10px;
+    --labelInsetY: 10px;
     --labelHeight: 36%;
   }
 
