@@ -44,6 +44,7 @@ const LS_SETTINGS_SOUNDS = 'ct_sounds_v1';
 const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
 const LS_SETTINGS_OG_MODE = 'ct_og_mode_v1';
+const LS_SETTINGS_STYLE_MODE = 'ct_style_mode_v1';
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -6242,9 +6243,7 @@ async function requestLogout() {
 let settingsAnimations = true;
 let settingsSounds = true;
 let settingsVolume = 70;
-let settingsTheme = 'dark'; // 'dark' | 'light'
-let settingsOgMode = false;
-
+let settingsStyleMode = 'dark'; // 'dark' | 'light' | 'cozy' | 'online'
 // Audio context for sound effects
 let audioCtx = null;
 
@@ -6253,6 +6252,7 @@ function initSettings() {
   const savedAnimations = safeLSGet(LS_SETTINGS_ANIMATIONS);
   const savedSounds = safeLSGet(LS_SETTINGS_SOUNDS);
   const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
+  const savedStyleMode = safeLSGet(LS_SETTINGS_STYLE_MODE);
   const savedTheme = safeLSGet(LS_SETTINGS_THEME);
   const savedOgMode = safeLSGet(LS_SETTINGS_OG_MODE);
 
@@ -6260,13 +6260,23 @@ function initSettings() {
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
 
-  settingsTheme = (savedTheme === 'light') ? 'light' : 'dark';
-  settingsOgMode = savedOgMode === 'true';
+  settingsStyleMode = normalizeStyleMode(savedStyleMode);
+
+  // Backwards-compatible migration from older keys, if needed
+  if (!savedStyleMode) {
+    const legacyOg = savedOgMode === 'true';
+    const legacyTheme = (savedTheme === 'light') ? 'light' : 'dark';
+    settingsStyleMode = legacyOg ? 'cozy' : legacyTheme;
+    safeLSSet(LS_SETTINGS_STYLE_MODE, settingsStyleMode);
+  }
+
+  // Keep legacy keys consistent for older installs
+  syncLegacyStyleKeys();
 
   // Apply initial state
-  applyThemeSetting();
+  applyStyleModeSetting();
   applyAnimationsSetting();
-  applyOgModeSetting();
+  applyStyleModeSetting();
 
   // Get UI elements
   const gearBtn = document.getElementById('settings-gear-btn');
@@ -6274,8 +6284,7 @@ function initSettings() {
   const backdrop = document.getElementById('settings-modal-backdrop');
   const closeBtn = document.getElementById('settings-modal-close');
   const animToggle = document.getElementById('settings-animations-toggle');
-  const themeToggle = document.getElementById('settings-theme-toggle');
-  const ogModeToggle = document.getElementById('settings-og-mode-toggle');
+  const styleRadios = Array.from(document.querySelectorAll('input[name="settings-style"]'));
   const soundToggle = document.getElementById('settings-sounds-toggle');
   const volumeSlider = document.getElementById('settings-volume-slider');
   const volumeValue = document.getElementById('settings-volume-value');
@@ -6285,8 +6294,9 @@ function initSettings() {
 
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
-  if (themeToggle) themeToggle.checked = (settingsTheme === 'light');
-  if (ogModeToggle) ogModeToggle.checked = settingsOgMode;
+  if (styleRadios.length) {
+    styleRadios.forEach(r => { r.checked = (r.value === settingsStyleMode); });
+  }
   if (soundToggle) soundToggle.checked = settingsSounds;
   if (volumeSlider) volumeSlider.value = settingsVolume;
   if (volumeValue) volumeValue.textContent = settingsVolume + '%';
@@ -6481,24 +6491,25 @@ function initSettings() {
     playSound('toggle');
   });
 
-// Theme toggle (Light mode)
-themeToggle?.addEventListener('change', () => {
-  settingsTheme = themeToggle.checked ? 'light' : 'dark';
-  safeLSSet(LS_SETTINGS_THEME, settingsTheme);
-  applyThemeSetting();
-  playSound('toggle');
-});
+  // Style mode (mutually exclusive)
+  if (styleRadios.length) {
+    styleRadios.forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (!radio.checked) return;
+        const next = normalizeStyleMode(radio.value);
+        settingsStyleMode = next;
+        safeLSSet(LS_SETTINGS_STYLE_MODE, settingsStyleMode);
+        syncLegacyStyleKeys();
+        applyStyleModeSetting();
+        playSound('toggle');
 
-// OG Codenames mode toggle
-ogModeToggle?.addEventListener('change', () => {
-  settingsOgMode = ogModeToggle.checked;
-  safeLSSet(LS_SETTINGS_OG_MODE, settingsOgMode ? 'true' : 'false');
-  applyOgModeSetting();
-  playSound('toggle');
-});
+        // Keep UI in sync if the user clicks a label quickly
+        styleRadios.forEach(r => { r.checked = (r.value === settingsStyleMode); });
+      });
+    });
+  }
 
-
-  // Sounds toggle
+// Sounds toggle
   soundToggle?.addEventListener('change', () => {
     settingsSounds = soundToggle.checked;
     safeLSSet(LS_SETTINGS_SOUNDS, settingsSounds ? 'true' : 'false');
@@ -6637,32 +6648,61 @@ function closeSettingsModal() {
   }, 200);
 }
 
-function applyThemeSetting() {
-  const isLight = settingsTheme === 'light' && !settingsOgMode;
-  document.body.classList.toggle('light-mode', isLight);
+function normalizeStyleMode(mode) {
+  if (mode === 'dark' || mode === 'light' || mode === 'cozy' || mode === 'online') return mode;
+  return 'dark';
+}
+
+function legacyThemeFromStyleMode(mode) {
+  return mode === 'light' ? 'light' : 'dark';
+}
+
+function legacyOgFromStyleMode(mode) {
+  return mode === 'cozy' || mode === 'online';
+}
+
+function applyStyleModeSetting() {
+  // Clear all style classes first to ensure only one mode is active
+  document.body.classList.remove('light-mode', 'cozy-mode', 'og-mode');
+
+  const mode = normalizeStyleMode(settingsStyleMode);
+
+  if (mode === 'light') document.body.classList.add('light-mode');
+  if (mode === 'cozy') document.body.classList.add('cozy-mode');
+  if (mode === 'online') document.body.classList.add('og-mode');
+
   // Update browser theme color if present
   try {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isLight ? '#dfe6ee' : settingsOgMode ? '#1B2838' : '#09090b');
+    if (meta) {
+      const color =
+        mode === 'light' ? '#dfe6ee' :
+        (mode === 'cozy' || mode === 'online') ? '#1B2838' :
+        '#09090b';
+      meta.setAttribute('content', color);
+    }
   } catch (_) {}
-}
 
-function applyOgModeSetting() {
-  document.body.classList.toggle('og-mode', settingsOgMode);
-  if (settingsOgMode) {
-    document.body.classList.remove('light-mode');
-  } else {
-    applyThemeSetting();
-  }
-  // Update clue input placeholder for OG mode
+  // Update clue input placeholder for OG-style modes
   const clueInput = document.getElementById('clue-input');
   if (clueInput) {
-    clueInput.placeholder = settingsOgMode ? 'YOUR CLUE' : 'Enter your clue...';
+    const isOgStyle = (mode === 'cozy' || mode === 'online');
+    clueInput.placeholder = isOgStyle ? 'YOUR CLUE' : 'Enter your clue...';
   }
+
   // Re-render OG panels if game is active
   if (typeof renderOgPanels === 'function') {
     try { renderOgPanels(); } catch (_) { /* ignore if game not initialized */ }
   }
+}
+
+function syncLegacyStyleKeys() {
+  // Keep old keys in sync so existing installs and older code paths don't get confused.
+  // (Safe even if those keys are no longer used elsewhere.)
+  try {
+    safeLSSet(LS_SETTINGS_THEME, legacyThemeFromStyleMode(settingsStyleMode));
+    safeLSSet(LS_SETTINGS_OG_MODE, legacyOgFromStyleMode(settingsStyleMode) ? 'true' : 'false');
+  } catch (_) {}
 }
 
 function applyAnimationsSetting() {
