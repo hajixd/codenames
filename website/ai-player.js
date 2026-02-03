@@ -30,8 +30,6 @@ let aiIntervals = {}; // keyed by ai id → interval handle for game loop
 let aiChatTimers = {}; // keyed by ai id → timeout for delayed chat
 let aiLastChatSeenMs = {}; // keyed by ai id → last seen team-chat timestamp
 let aiLastChatReplyMs = {}; // keyed by ai id → last time we replied
-let aiLastSentChatNorm = {}; // keyed by ai id -> normalized last sent message
-let aiLastSentChatAtMs = {}; // keyed by ai id -> timestamp of last sent chat
 let aiNextId = 1;
 
 // ─── Multi-client AI hosting (one "controller" runs the AI loop) ─────────────
@@ -935,15 +933,6 @@ function sanitizeChatText(text, vision, maxLen = 180) {
     s = s.replace(/\b\d{1,2}\s*=\s*/g, '');
 
     s = s.replace(/\s{2,}/g, ' ').trim();
-    // De-robotify common LLM filler that sounds unnatural in chat
-    s = s.replace(/\bdiscuss (?:our |the )?next steps\b/gi, 'reassess after');
-    s = s.replace(/\bbased on the outcome\b/gi, 'then reassess');
-    s = s.replace(/\bkeeping ([A-Z][A-Z0-9 ]{1,20}) in mind as potential next options\b/gi, 'then consider $1');
-    s = s.replace(/^Let's start with\b/i, 'I like');
-    s = s.replace(/\bas our first guess\b/gi, 'first');
-    s = s.replace(/\bwe can reassess after the result\b/gi, 'then reassess');
-    s = s.replace(/\bmost directly related to\b/gi, 'closest to');
-    s = s.replace(/\s{2,}/g, ' ').trim();
     if (!s) return '';
     return s.slice(0, maxLen);
   } catch (_) {
@@ -1108,8 +1097,6 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- If you propose ending the turn, say why and ask teammates if they're good to end (team agreement is strongly recommended).`,
     `- Read TEAM CHAT below and respond to what others said. If a teammate suggested a plan/word, it's strongly recommended to acknowledge it (by name or paraphrase) before proposing your own.`,
     `- Your chat should feel like a quick back-and-forth; don't speak into a void.`,
-    `- If TEAM CHAT is non-empty, your chat MUST respond to the most recent teammate message (agree/disagree/answer).`,
-    `- Avoid stiff filler like "discuss next steps" / "based on the outcome" / "keeping X in mind".`,
     `- Think first, then speak: write your MIND before your chat message.`,
   ].join('\n');
 
@@ -1259,8 +1246,6 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
     ``,
     `You are inside your private MIND. The only way you think is by writing.`,
     `Task: write a brief wrap-up message to teammates that reflects the discussion and the final plan.`,
-    `Hard chat rules: keep it conversational (agree/disagree) and avoid boilerplate like "next steps".`,
-    `Do not repeat earlier messages verbatim.`,
     `This is a FOLLOW-UP message; it's okay if you already spoke earlier this turn.`,
     `Return JSON only: {"mind":"2-6 lines first-person", "chat":"1-2 natural sentences"}`,
     `Guidance (strongly recommended):`,
@@ -1337,10 +1322,6 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `You are inside your private MIND. The only way you think is by writing.`,
       `Task: optionally add another short teammate message to coordinate. You may also revise YOUR suggested action.`,
       `This is a live conversation: if a teammate said something new, react to it.`,
-      `Hard chat rules (when chat is non-empty):`,
-      `- Respond to the latest teammate message (agree/disagree/answer).`,
-      `- No boilerplate like "discuss next steps" / "based on the outcome".`,
-      `- Do not repeat someone else's sentence verbatim.`,
       `Return JSON only:`,
       `{"mind":"2-8 lines first-person", "chat":"(optional) 1-2 natural sentences", "action":"guess|end_turn|no_change", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`, 
       `Guidance (strongly recommended):`,
@@ -2231,11 +2212,10 @@ async function aiGuessCard(ai, game) {
       const idx = Number(parsed.index);
       const candidate = unrevealed.find(c => c.index === idx);
       if (candidate) {
-        let chat = String(parsed.chat || '').trim();
-        chat = sanitizeChatText(chat, vision, 180);
+        const chat = String(parsed.chat || '').trim();
         if (chat) {
           // Keep team chat short and in-character (public), mind stays private.
-          await sendAIChatMessage(ai, game, chat);
+          await sendAIChatMessage(ai, game, chat.slice(0, 180));
         }
         const revealResult = await aiRevealCard(ai, game, candidate.index, true);
         if (revealResult?.turnEnded) return 'turn_already_ended';
@@ -2445,12 +2425,11 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `PERSONALITY (follow strictly): ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       ``,
-      `Write like a real human teammate in a group chat: 1–2 natural sentences.`, 
-      `If LAST TEAM MESSAGE is provided, reply to it (agree/disagree/answer) and move the convo forward.`, 
-      `Avoid filler like "discuss next steps", "based on the outcome", or "keeping X in mind".`, 
-      `Do NOT repeat another message verbatim. If you're just agreeing, keep it short (e.g., "Agree with Casey—LAP first.").`, 
-      `Never refer to card indices, coordinates, or numbers. Use board WORDS only.`, 
-      `If you mention a board word, it MUST be from the unrevealed list provided. Do not invent board words.`, 
+      `Write like a real human teammate: 1–2 natural sentences (not robotic fragments).`,
+      `Keep it <=160 chars, but avoid one-word replies like "Nice!" unless it actually ended the game.`,
+      `Never refer to card indices, coordinates, or numbers. Do not write things like "13 = WORD".`,
+      `If you mention a board word, it MUST be from the unrevealed list provided, and you must use the WORD itself (not an index).`,
+      `Do not invent board words.`,
       `Return JSON only: {"mind":"(private inner monologue)", "msg":"(public chat message)"}`,
     ].join('\n');
 
@@ -2532,43 +2511,23 @@ async function generateAIReaction(ai, revealedCard, clue) {
 
 
 async function sendAIChatMessage(ai, game, text) {
-  if (!text || !game?.id || !ai?.id) return;
+  if (!text || !game?.id) return;
+
+  const teamColor = ai.team;
 
   try {
-    let msg = String(text || '').trim();
-    if (!msg) return;
-
-    // Local de-dup + anti-spam guard (prevents double-sends / retries from feeling broken)
-    const now = Date.now();
-    const norm = msg.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-
-    const lastAt = Number(aiLastSentChatAtMs[ai.id] || 0);
-    const lastNorm = String(aiLastSentChatNorm[ai.id] || '');
-
-    // Don't spam multiple messages in a burst; councils already handle pacing.
-    if (now - lastAt < 1200) return;
-
-    // Don't send the exact same thing twice.
-    if (norm && norm === lastNorm && (now - lastAt) < 180000) return;
-
-    aiLastSentChatAtMs[ai.id] = now;
-    aiLastSentChatNorm[ai.id] = norm || '';
-
-    const teamColor = ai.team;
-
     await db.collection('games').doc(game.id)
       .collection(`${teamColor}Chat`)
       .add({
         senderId: ai.odId,
         senderName: `AI ${ai.name}`,
-        text: msg,
+        text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
   } catch (e) {
     console.error(`AI ${ai.name} send chat error:`, e);
   }
 }
-
 
 // Lightweight conversational replies (texting vibes) so the AI can react to humans/other AIs.
 async function maybeAIRespondToTeamChat(ai, game) {
