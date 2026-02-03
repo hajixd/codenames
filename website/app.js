@@ -7203,7 +7203,8 @@ function initGlobalSoundEffects() {
   // All buttons
   document.querySelectorAll('.btn').forEach(btn => {
     btn.addEventListener('click', () => playSound('click'));
-    addRippleEffect(btn);
+    // Removed: ripple effect (it reads like a weird "expand" animation in multiple styles)
+    // addRippleEffect(btn);
   });
 
   // Mode cards

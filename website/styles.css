@@ -7480,6 +7480,92 @@ body.cozy-mode .clue-announcement-card { animation: clueCardCozy 3.1s cubic-bezi
 body.og-mode .clue-announcement-backdrop { animation: clueBackdropOnline 2.4s ease forwards !important; }
 body.og-mode .clue-announcement-card { animation: clueCardOnline 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
 
+/* Style-specific inner clue animations (word/number/divider)
+   Dark mode keeps the existing dramatic animations. */
+
+@keyframes clueWordRevealLight {
+  0% { opacity: 0; transform: translateY(14px); filter: blur(3px); letter-spacing: 6px; }
+  35% { opacity: 1; filter: blur(0px); }
+  55% { transform: translateY(0); letter-spacing: 2px; }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0px); letter-spacing: 2px; }
+}
+
+@keyframes clueNumberPopLight {
+  0% { opacity: 0; transform: scale(0.65); filter: blur(2px); }
+  35% { opacity: 0; transform: scale(0.65); }
+  55% { opacity: 1; transform: scale(1.18); filter: blur(0px); }
+  72% { transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes clueDividerGrowLight {
+  0% { width: 0; opacity: 0; transform: translateY(2px); }
+  40% { opacity: 0; }
+  70% { width: 78%; opacity: 1; transform: translateY(0); }
+  100% { width: 78%; opacity: 1; }
+}
+
+@keyframes clueWordRevealCozy {
+  0% { opacity: 0; transform: translateY(18px) rotate(-1.4deg); letter-spacing: 8px; }
+  25% { opacity: 1; }
+  40% { transform: translateY(-2px) rotate(0.8deg); letter-spacing: 3px; }
+  60% { transform: translateY(0px) rotate(0deg); }
+  100% { opacity: 1; transform: translateY(0px) rotate(0deg); letter-spacing: 3px; }
+}
+
+@keyframes clueNumberPopCozy {
+  0% { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+  40% { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+  60% { opacity: 1; transform: scale(1.25) rotate(4deg); }
+  78% { transform: scale(0.96) rotate(-2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes clueDividerGrowCozy {
+  0% { width: 0; opacity: 0; transform: rotate(-1deg); }
+  45% { opacity: 0; }
+  70% { width: 82%; opacity: 1; transform: rotate(0deg); }
+  100% { width: 82%; opacity: 1; transform: rotate(0deg); }
+}
+
+@keyframes clueWordRevealOnline {
+  0% { opacity: 0; transform: translateY(10px) scale(0.96); letter-spacing: 7px; }
+  18% { opacity: 1; }
+  38% { transform: translateY(-1px) scale(1.02); letter-spacing: 2px; }
+  62% { transform: translateY(0px) scale(1); }
+  100% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 2px; }
+}
+
+@keyframes clueNumberPopOnline {
+  0% { opacity: 0; transform: scale(0.55); }
+  32% { opacity: 0; transform: scale(0.55); }
+  52% { opacity: 1; transform: scale(1.15); }
+  72% { transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes clueDividerGrowOnline {
+  0% { width: 0; opacity: 0; }
+  35% { opacity: 0; }
+  62% { width: 76%; opacity: 1; }
+  100% { width: 76%; opacity: 1; }
+}
+
+body.light-mode .clue-announcement-word { animation-name: clueWordRevealLight !important; }
+body.light-mode .clue-announcement-number,
+body.light-mode .clue-announcement-for { animation-name: clueNumberPopLight !important; }
+body.light-mode .clue-announcement-divider { animation-name: clueDividerGrowLight !important; }
+
+body.cozy-mode .clue-announcement-word { animation-name: clueWordRevealCozy !important; }
+body.cozy-mode .clue-announcement-number,
+body.cozy-mode .clue-announcement-for { animation-name: clueNumberPopCozy !important; }
+body.cozy-mode .clue-announcement-divider { animation-name: clueDividerGrowCozy !important; }
+
+body.og-mode .clue-announcement-word { animation-name: clueWordRevealOnline !important; }
+body.og-mode .clue-announcement-number,
+body.og-mode .clue-announcement-for { animation-name: clueNumberPopOnline !important; }
+body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline !important; }
+
 .clue-announcement-overlay {
   position: fixed;
   top: 0;
@@ -13329,12 +13415,13 @@ body.cozy-mode .og-team-panel {
 /* --- OG Game Log in right panel --- */
 .og-game-log-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 10px;
+  padding-top: 8px;
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
+  max-height: 210px;
 }
 
 .og-game-log {
@@ -14307,22 +14394,24 @@ body.og-mode .og-mobile-blue .og-section-header{
 /* --- OG Game Log in right panel --- */
 .og-game-log-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 10px;
+  padding-top: 8px;
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
+  max-height: 210px;
 }
 
 .og-game-log {
   flex: 1;
   max-height: none;
   /* Smaller, less dominant log in OG/Cozy so the board stays the star */
-  min-height: 170px;
+  min-height: 96px;
+  max-height: 136px;
   overflow-y: auto;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.28;
   color: rgba(255,255,255,0.88);
   padding: 4px 0;
 }
@@ -14340,19 +14429,22 @@ body.og-mode .og-game-log .game-log-entry {
 /* --- OG Docked Chat (bottom-left) --- */
 .og-chat-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 10px;
+  padding-top: 8px;
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
+  max-height: 210px;
 }
 
 #og-chat-host {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 170px;
+  /* Keep the docked chat compact so it doesn't dominate the OG side panel */
+  min-height: 88px;
+  max-height: 140px;
 }
 
 /* Bring back the standard chat panel inside the OG host */
@@ -14370,17 +14462,37 @@ body.og-mode #og-chat-host .operative-chat-panel {
 
 body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-header,
 body.og-mode #og-chat-host .operative-chat-panel .sidebar-panel-header {
-  padding: 4px 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 4px;
   border-bottom: 1px solid rgba(255,255,255,0.10);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  flex-wrap: nowrap;
 }
 
 body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-title,
 body.og-mode #og-chat-host .operative-chat-panel .sidebar-panel-title {
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  /* The OG panel already has a big "CHAT" section header; keep the inner header minimal. */
+  display: none;
+}
+
+/* Make the spectator toggle + privacy badge compact and non-dominant */
+body.cozy-mode #og-chat-host #spectator-chat-toggle,
+body.og-mode #og-chat-host #spectator-chat-toggle {
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+body.cozy-mode #og-chat-host .chat-privacy-badge,
+body.og-mode #og-chat-host .chat-privacy-badge {
+  font-size: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
 }
 
 body.cozy-mode #og-chat-host .operative-chat-messages,
@@ -14389,14 +14501,49 @@ body.og-mode #og-chat-host .operative-chat-messages {
   min-height: 0;
   background: rgba(0,0,0,0.12);
   border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  padding: 4px;
+}
+
+/* Make the docked chat feel native to each style */
+body.cozy-mode #og-chat-host .operative-chat-messages {
+  background: rgba(34, 24, 16, 0.14);
+  border-color: rgba(255, 232, 200, 0.18);
+}
+
+body.og-mode #og-chat-host .operative-chat-messages {
+  background: rgba(13, 22, 32, 0.20);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.cozy-mode #og-chat-host .chat-message,
+body.og-mode #og-chat-host .chat-message {
+  padding: 6px 8px;
   border-radius: 12px;
-  padding: 6px;
+}
+
+body.cozy-mode #og-chat-host .chat-text,
+body.og-mode #og-chat-host .chat-text {
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 body.cozy-mode #og-chat-host .chat-message,
 body.og-mode #og-chat-host .chat-message {
   background: rgba(0,0,0,0.16);
   border: 1px solid rgba(255,255,255,0.08);
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+body.cozy-mode #og-chat-host .chat-message {
+  background: rgba(44, 30, 18, 0.22);
+  border-color: rgba(255, 232, 200, 0.14);
+}
+
+body.og-mode #og-chat-host .chat-message {
+  background: rgba(0, 0, 0, 0.16);
+  border-color: rgba(255, 255, 255, 0.10);
 }
 
 body.cozy-mode #og-chat-host .operative-chat-form,
@@ -14405,7 +14552,17 @@ body.og-mode #og-chat-host .operative-chat-form {
   background: rgba(0,0,0,0.10);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 999px;
-  padding: 4px;
+  padding: 3px;
+}
+
+body.cozy-mode #og-chat-host .operative-chat-form {
+  background: rgba(48, 34, 20, 0.18);
+  border-color: rgba(255, 232, 200, 0.16);
+}
+
+body.og-mode #og-chat-host .operative-chat-form {
+  background: rgba(13, 22, 32, 0.26);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 body.cozy-mode #og-chat-host .operative-chat-form .chat-input,
@@ -14419,7 +14576,7 @@ body.og-mode #og-chat-host .operative-chat-form .chat-input {
 body.cozy-mode #og-chat-host .operative-chat-form .chat-send-btn,
 body.og-mode #og-chat-host .operative-chat-form .chat-send-btn {
   border-radius: 999px;
-  padding: 8px 10px;
+  padding: 7px 9px;
 }
 
 /* --- OG Tag Legend --- */
