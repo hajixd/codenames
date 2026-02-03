@@ -3457,11 +3457,54 @@ function renderBoard(isSpymaster) {
     `;
   }).join('');
 
+  // Fit words into their label boxes
+  scheduleFitCardWords();
+
   // Re-render tags and votes after board re-renders
   setTimeout(() => {
     renderCardTags();
   }, 10);
 }
+
+
+// --- Card word fitting (prevents overflow and reduces eye strain) ---
+function fitAllCardWords() {
+  const els = document.querySelectorAll('.game-card .card-word');
+  els.forEach(el => {
+    // Reset any previous inline sizing so we start from CSS defaults
+    el.style.fontSize = '';
+    el.style.letterSpacing = '';
+
+    const cs = getComputedStyle(el);
+    const baseSize = parseFloat(cs.fontSize) || 14;
+    const baseLS = parseFloat(cs.letterSpacing) || 0;
+
+    let size = baseSize;
+    const minSize = 10;
+    let guard = 0;
+
+    // Reduce until both width + height fit (handles compact mode and long words)
+    while (guard < 40 && size > minSize && (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight)) {
+      size -= 1;
+      el.style.fontSize = size + 'px';
+      // Slightly reduce tracking as we shrink
+      const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.9);
+      if (!Number.isNaN(scaledLS)) el.style.letterSpacing = scaledLS + 'px';
+      guard++;
+    }
+  });
+}
+
+let _fitWordsRaf = null;
+function scheduleFitCardWords() {
+  if (_fitWordsRaf) cancelAnimationFrame(_fitWordsRaf);
+  _fitWordsRaf = requestAnimationFrame(() => {
+    _fitWordsRaf = null;
+    fitAllCardWords();
+  });
+}
+
+window.addEventListener('resize', scheduleFitCardWords);
 
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const currentClueEl = document.getElementById('current-clue');

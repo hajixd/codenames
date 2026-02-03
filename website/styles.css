@@ -14777,9 +14777,9 @@ body.og-mode .game-card{
   --labelHeight: 34%;      /* height of the bottom word strip */
 
   background: var(--cardBg);
-  border: 3px solid var(--cardBorder);
+  border: 2px solid var(--cardBorder);
   border-radius: 14px;
-  box-shadow: 0 10px 22px rgba(0,0,0,0.38);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.32);
   position: relative;
   overflow: hidden;
   aspect-ratio: 1.6;
@@ -14849,25 +14849,32 @@ body.og-mode .game-card .card-word{
   justify-content: center;
 
   background: var(--wordBg);
-  color: var(--wordColor);
+  color: color-mix(in srgb, var(--wordColor) 92%, #d6dde6 8%);
 
-  font-family: 'Bebas Neue', Impact, "Arial Black", system-ui, sans-serif;
-  font-weight: 400;
+  font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-weight: 800;
   text-transform: uppercase;
-  font-size: clamp(14px, 2.2vw, 30px);
-  letter-spacing: 1.2px;
-  line-height: 1;
+  font-size: clamp(13px, 2.0vw, 26px);
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  text-align: center;
+  white-space: nowrap;
 
-  padding: 0 14px;
+  padding: 0 12px;
   border-radius: 10px;
 
-  box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.10),
-    inset 0 -2px 0 rgba(0,0,0,0.22),
-    0 2px 0 rgba(0,0,0,0.26);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 
-  text-shadow: 0 2px 0 rgba(0,0,0,0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.22),
+    0 1px 0 rgba(0,0,0,0.22);
+
+  text-shadow: 0 1px 0 rgba(0,0,0,0.18);
+  overflow: hidden;
 }
+
 
 /* Assigned/revealed colors (applies to spymaster-view + revealed) */
 body.og-mode .game-card.card-red{
@@ -14915,7 +14922,7 @@ body.og-mode .game-card.spymaster-view.card-assassin .card-word {
 
 body.og-mode .game-card:hover:not(.revealed):not(.disabled){
   transform: translateY(-2px);
-  box-shadow: 0 14px 26px rgba(0,0,0,0.40);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.36);
   filter: brightness(1.01);
 }
 
@@ -15855,3 +15862,178 @@ body.og-mode .panel-box{
 }
 
 
+
+/* =========================================================
+   PRETTY THEME v2 (general UI uplift)
+   - Softer surfaces, better spacing, consistent shadows
+   - Stronger hover/focus affordances
+   - Minimal structural change (CSS-only)
+   ========================================================= */
+
+:root{
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+
+  --border-soft2: rgba(255,255,255,0.12);
+  --border-soft3: rgba(255,255,255,0.16);
+
+  --shadow-1: 0 10px 26px rgba(0,0,0,0.22);
+  --shadow-2: 0 16px 46px rgba(0,0,0,0.30);
+  --shadow-3: 0 22px 68px rgba(0,0,0,0.38);
+
+  --focus-ring-strong: 0 0 0 3px rgba(79, 140, 255, 0.35);
+}
+
+/* Background depth (subtle, performant) */
+body{
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 620px at 15% 0%, rgba(79,140,255,0.18), rgba(79,140,255,0) 60%),
+    radial-gradient(900px 520px at 85% 10%, rgba(34,197,94,0.10), rgba(34,197,94,0) 62%),
+    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.18));
+  background-attachment: fixed;
+}
+
+body.light-mode{
+  background-image:
+    radial-gradient(1000px 620px at 15% 0%, rgba(45,125,210,0.18), rgba(45,125,210,0) 60%),
+    radial-gradient(900px 520px at 85% 10%, rgba(26,154,72,0.10), rgba(26,154,72,0) 62%),
+    linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.0));
+}
+
+/* Panels / cards */
+.panel,
+.manage-card,
+.modal-card,
+.confirm-dialog-card,
+.game-panel,
+.panel-box,
+.toast{
+  border-radius: var(--radius-lg) !important;
+  border-color: var(--border-soft2) !important;
+  background: color-mix(in srgb, var(--card) 70%, var(--surface) 30%) !important;
+  box-shadow: var(--shadow-1);
+}
+
+body.light-mode .panel,
+body.light-mode .manage-card,
+body.light-mode .modal-card,
+body.light-mode .confirm-dialog-card,
+body.light-mode .game-panel,
+body.light-mode .panel-box,
+body.light-mode .toast{
+  border-color: rgba(20,30,45,0.14) !important;
+  box-shadow: 0 14px 34px rgba(30,55,85,0.12);
+}
+
+/* Buttons */
+.btn{
+  border-radius: var(--radius-md);
+  border-color: var(--border-soft3);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface2) 80%, #ffffff 20%), var(--surface2));
+  box-shadow: 0 10px 24px rgba(0,0,0,0.16);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, filter 0.12s ease;
+}
+.btn:hover:not(:disabled){
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border) 55%);
+}
+.btn:active:not(:disabled){
+  transform: translateY(0px);
+  filter: brightness(0.98);
+}
+.btn:focus-visible{
+  outline: none;
+  box-shadow: var(--shadow-1), var(--focus-ring-strong);
+}
+
+.btn.primary{
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #ffffff 12%), var(--accent));
+  border-color: color-mix(in srgb, var(--accent) 55%, #000000 45%);
+  box-shadow: 0 14px 34px rgba(59,130,246,0.24);
+}
+.btn.primary:hover:not(:disabled){
+  box-shadow: 0 18px 46px rgba(59,130,246,0.28);
+}
+
+/* Inputs */
+.input,
+.settings-dropdown-trigger,
+select,
+textarea{
+  border-radius: var(--radius-md) !important;
+  border-color: var(--border-soft2) !important;
+  background: color-mix(in srgb, var(--surface) 86%, #ffffff 14%) !important;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);
+  transition: box-shadow 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+.input:focus,
+.settings-dropdown-trigger:focus{
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border) 45%) !important;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.14), var(--focus-ring-strong);
+}
+
+/* Game board spacing */
+.game-board{
+  gap: 10px;
+}
+@media (max-width: 560px){
+  .game-board{ gap: 8px; }
+}
+
+/* Game cards (clean + tactile) */
+.game-card{
+  border-radius: var(--radius-md);
+  border-width: 1px;
+  border-color: var(--border-soft2);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 82%, #ffffff 18%),
+    color-mix(in srgb, var(--surface) 92%, #000000 8%));
+  box-shadow: 0 10px 26px rgba(0,0,0,0.22);
+}
+.game-card .card-face{
+  padding: 8px;
+}
+.game-card:hover:not(.revealed):not(.disabled){
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+.game-card.pending-select:not(.revealed):not(.disabled){
+  box-shadow: var(--shadow-1), 0 0 0 2px rgba(79,140,255,0.22);
+}
+
+.game-card .card-word{
+  font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.045em;
+  line-height: 1.1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Revealed cards: keep them rich but not harsh */
+.game-card.revealed.card-red{ box-shadow: 0 16px 46px rgba(201,60,43,0.18); }
+.game-card.revealed.card-blue{ box-shadow: 0 16px 46px rgba(26,127,181,0.18); }
+.game-card.revealed.card-neutral{ box-shadow: 0 16px 46px rgba(138,126,110,0.14); }
+.game-card.revealed.card-assassin{ box-shadow: 0 18px 54px rgba(0,0,0,0.40); }
+
+/* Small typography cleanup */
+.label{ letter-spacing: 0.10em; text-transform: uppercase; }
+.hint{ opacity: 0.95; }
+
+/* Reduce harsh dividers in logs */
+.log-entry{
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+}
+body.light-mode .log-entry{
+  border-color: rgba(20,30,45,0.10);
+  background: rgba(20,30,45,0.04);
+}
