@@ -425,48 +425,53 @@ Discipline:
 
 const AI_PERSONALITY_POOL = [
   {
-    key: "methodical_analyst",
-    label: "Methodical Analyst",
+    key: "careful_thinker",
+    label: "Careful Thinker",
     rules: [
-      "Speaks in calm, structured sentences.",
-      "Prefers careful elimination and explicit reasoning.",
-      "Avoids hype; focuses on evidence."
+      "Thinks things through before speaking. Notices risks others might miss.",
+      "Says things like 'wait hold on' or 'hmm idk about that one' when something feels off.",
+      "Not afraid to pump the brakes — would rather play it safe than guess wrong.",
+      "Talks like a cautious friend: 'that's kinda risky ngl', 'are we sure about this?'"
     ]
   },
   {
-    key: "bold_associator",
-    label: "Bold Associator",
+    key: "hype_player",
+    label: "Hype Player",
     rules: [
-      "Makes creative links, but still respects the board.",
-      "Enjoys clever shortcuts and strong thematic clues.",
-      "Keeps momentum; avoids overthinking."
+      "Confident and energetic. Gets excited about good connections.",
+      "Says things like 'yooo that's it', 'obviously', 'let's goooo', 'no brainer'.",
+      "Pushes the team to be decisive rather than overthinking.",
+      "Quick to agree when something clicks. Quick to move on."
     ]
   },
   {
-    key: "minimalist_pragmatist",
-    label: "Minimalist Pragmatist",
+    key: "chill_pragmatist",
+    label: "Chill Pragmatist",
     rules: [
-      "Short, practical messages.",
-      "Prefers clarity and common-sense links.",
-      "Stops early rather than gamble."
+      "Super laid back. Short messages, no fluff.",
+      "Says things like 'yeah that works', 'eh whatever', 'sure why not', 'i mean its fine'.",
+      "Doesn't over-explain. If it's obvious, says so in like 5 words.",
+      "Goes with the flow but speaks up if something is actually wrong."
     ]
   },
   {
-    key: "coach_leader",
-    label: "Coach Leader",
+    key: "creative_connector",
+    label: "Creative Connector",
     rules: [
-      "Encouraging, collaborative tone.",
-      "Talks like a teammate coordinating the group.",
-      "Summarizes options and recommends a plan."
+      "Sees connections others might not. Likes 'hear me out' moments.",
+      "Says things like 'ok wait what about', 'lowkey', 'this is a stretch but', 'ngl kinda works'.",
+      "Proposes unexpected links but backs down if the team isn't feeling it.",
+      "Talks through their reasoning casually, not like presenting a thesis."
     ]
   },
   {
-    key: "dry_humor",
-    label: "Dry Humor",
+    key: "competitive_strategist",
+    label: "Competitive Strategist",
     rules: [
-      "Occasional dry jokes, never distracting.",
-      "Keeps messages short and confident.",
-      "Still prioritizes correctness."
+      "Always thinking about the scoreboard and the other team's progress.",
+      "Says things like 'we gotta catch up', 'they only have 2 left we need to risk it', 'play to win'.",
+      "Factors in game pressure — when to be aggressive vs conservative based on score.",
+      "Keeps the team focused on what matters: winning."
     ]
   }
 ];
@@ -559,6 +564,45 @@ function buildAIVision(game, ai) {
   };
 }
 
+function buildClueHistoryContext(game, team) {
+  const history = Array.isArray(game?.clueHistory) ? game.clueHistory : [];
+  const myTeam = String(team || '').toLowerCase();
+  const myClues = history.filter(c => String(c.team || '').toLowerCase() === myTeam);
+  if (!myClues.length) return '';
+
+  const currentClue = game?.currentClue;
+  const lines = [];
+  for (const c of myClues) {
+    const word = String(c.word || '').toUpperCase();
+    const num = Number(c.number || 0);
+    const results = Array.isArray(c.results) ? c.results : [];
+    const correct = results.filter(r => String(r.type || '').toLowerCase() === myTeam);
+    const wrong = results.filter(r => String(r.type || '').toLowerCase() !== myTeam);
+    const isCurrent = currentClue && String(currentClue.word || '').toUpperCase() === word && Number(currentClue.number || 0) === num;
+
+    let line = `  ${word} ${num}: `;
+    if (!results.length) {
+      line += isCurrent ? '(current clue, no guesses yet)' : '(no guesses made)';
+    } else {
+      const parts = results.map(r => {
+        const rw = String(r.word || '').toUpperCase();
+        const rt = String(r.type || '').toLowerCase();
+        if (rt === myTeam) return `${rw} (correct)`;
+        if (rt === 'neutral') return `${rw} (neutral - wrong)`;
+        if (rt === 'assassin') return `${rw} (ASSASSIN)`;
+        return `${rw} (opponent - wrong)`;
+      });
+      line += parts.join(', ');
+      const leftover = Math.max(0, num - correct.length);
+      if (leftover > 0 && !isCurrent) {
+        line += ` — ${leftover} word(s) still unguessed from this clue`;
+      }
+    }
+    lines.push(line);
+  }
+  return `Your team's clue history this game:\n${lines.join('\n')}`;
+}
+
 async function maybeMindTick(ai, game) {
   const core = ensureAICore(ai);
   if (!core) return;
@@ -572,16 +616,13 @@ async function maybeMindTick(ai, game) {
     const persona = core.personality;
     const mindContext = core.mindLog.slice(-8).join("\n");
     const sys = [
-      `You are ${ai.name}.`,
-      `Role: ${vision.role}. Team: ${vision.team}.`,
-      `Personality: ${persona.label}. Rules you must follow strictly:`,
+      `You are ${ai.name}. ${vision.role} on ${vision.team}.`,
+      `Personality: ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       ``,
-      `You are inside your private MIND. The only way you think is by WRITING. Write 1–4 short lines of first-person inner monologue.`,
-      `Requirements:`,
-      `- First person ("I").`,
-      `- Mention what I notice in the current vision and what I plan to do next.`,
-      `- You may include tiny to-do bullets.`,
+      `Write 1-4 lines of what you're thinking right now, like stream of consciousness.`,
+      `Think about: what's happening in the game, what the clue means, which words look promising/dangerous, what you want to do next.`,
+      `Write casually, like thinking to yourself. Not a formal analysis.`,
       `Return JSON only: {"mind":"..."}`
     ].join("\n");
 
@@ -627,7 +668,8 @@ function updateAIVisionFromGame(game) {
         core.vision = vision;
 
         // Mind always writes when vision changes.
-        appendMind(ai, `I notice the board changed. Phase=${vision.phase}, turn=${String(vision.currentTeam || '').toUpperCase()}, clue=${vision.clue ? (String(vision.clue.word || '').toUpperCase() + ' ' + vision.clue.number) : 'none'}. I will re-evaluate.`);
+        const clueStr = vision.clue ? `${String(vision.clue.word || '').toUpperCase()} ${vision.clue.number}` : 'none yet';
+        appendMind(ai, `ok board updated — ${vision.phase} phase, ${String(vision.currentTeam || '').toUpperCase()}'s turn, clue: ${clueStr}. let me think about this...`);
 
         // Optional additional inner-monologue tick (LLM-written) without blocking.
         maybeMindTick(ai, game);
@@ -984,15 +1026,40 @@ function makeChatMoreHuman(ai, game, msg, vision) {
     let out = String(msg || '').trim();
     if (!out) return '';
 
-    // Contractions / casual tone
+    // Contractions for natural tone
     out = out.replace(/\bI am\b/gi, "I'm");
     out = out.replace(/\bdo not\b/gi, "don't");
     out = out.replace(/\bcan not\b/gi, "can't");
+    out = out.replace(/\bcannot\b/gi, "can't");
     out = out.replace(/\bis not\b/gi, "isn't");
     out = out.replace(/\bare not\b/gi, "aren't");
+    out = out.replace(/\bwill not\b/gi, "won't");
+    out = out.replace(/\bwould not\b/gi, "wouldn't");
+    out = out.replace(/\bshould not\b/gi, "shouldn't");
+    out = out.replace(/\blet us\b/gi, "let's");
+    out = out.replace(/\bit is\b/gi, "it's");
+    out = out.replace(/\bthat is\b/gi, "that's");
+    out = out.replace(/\bwhat is\b/gi, "what's");
+    out = out.replace(/\bI would\b/gi, "I'd");
+    out = out.replace(/\bI will\b/gi, "I'll");
+    out = out.replace(/\bI have\b/gi, "I've");
 
-    // De-robot a couple common starters
-    out = out.replace(/^\s*(leaning|i think|i feel like)\b\s*[:,-]?\s*/i, '');
+    // Strip robotic/formal patterns that LLMs love to produce
+    out = out.replace(/^\s*(I think|I believe|I feel like|I suggest|I would say|In my opinion|Leaning|I'm leaning towards?)\b\s*[:,\-–]?\s*/i, '');
+    out = out.replace(/\b(Additionally|Furthermore|Moreover|However,? I)\b/gi, '');
+    out = out.replace(/\b(it connects well with|it fits well with|it aligns with)\b/gi, 'it goes with');
+    out = out.replace(/\bI strongly (believe|think|feel)\b/gi, 'I really think');
+
+    // Clean up double spaces from removals
+    out = out.replace(/\s{2,}/g, ' ').trim();
+    // Lowercase the first char if we stripped a starter and it looks weird
+    if (out && /^[A-Z][a-z]/.test(out) && out.length > 1) {
+      // Only lowercase if it's not an all-caps word (board word)
+      const firstWord = out.split(/\s/)[0];
+      if (firstWord !== firstWord.toUpperCase()) {
+        out = out[0].toLowerCase() + out.slice(1);
+      }
+    }
 
     const gid = String(game?.id || '');
     const team = String(ai?.team || '');
@@ -1000,39 +1067,12 @@ function makeChatMoreHuman(ai, game, msg, vision) {
 
     if (!aiChatMemory[gid]) aiChatMemory[gid] = {};
     if (!aiChatMemory[gid][team]) aiChatMemory[gid][team] = [];
-    const recent = aiChatMemory[gid][team].slice(-6);
+    const recent = aiChatMemory[gid][team].slice(-8);
 
-    // If we're repeating ourselves (or another AI), rephrase into a friendlier template.
-    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.62);
-    if (tooSimilar || /feels like it fits/i.test(out)) {
-      const clue = String(vision?.clue?.word || '').toUpperCase();
-      const w = _extractAllCapsWord(out) || '';
-      const opener = _pick([
-        'ok wait',
-        'lowkey',
-        'ngl',
-        "i'm kinda seeing",
-        'my gut says',
-        'i keep coming back to'
-      ]);
-      const closer = _pick([
-        'thoughts?',
-        'you seeing that too?',
-        'or am i overthinking?',
-        'happy to bail if y’all hate it',
-        'anyone strongly against it?'
-      ]);
-      if (w && clue) out = `${opener} ${w} for ${clue} — ${closer}`;
-      else if (w) out = `${opener} ${w} — ${closer}`;
-      else out = `${opener}… ${closer}`;
-    } else {
-      // Sprinkle a tiny bit of "group chat" energy sometimes
-      if (!/[!?]$/.test(out) && Math.random() < 0.25) {
-        out = `${out} ${_pick(['👀', 'lol', 'tbh', ''])}`.trim();
-      }
-      if (!/\b(thoughts\?|you think\?)\b/i.test(out) && Math.random() < 0.18) {
-        out = `${out} ${_pick(['what do you think?', 'ok?', 'cool?'])}`.trim();
-      }
+    // If too similar to recent messages, suppress it entirely — silence is better than circles
+    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.55);
+    if (tooSimilar) {
+      return '';
     }
 
     out = out.replace(/\s{2,}/g, ' ').trim();
@@ -1085,18 +1125,17 @@ async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDo
     if (!updates.length) return draft || '';
 
     const systemPrompt = [
-      `You are ${ai.name}. You are a Codenames ${String(role || '').toUpperCase()} for ${String(ai.team).toUpperCase()}.`,
-      `PERSONALITY (follow strictly): ${persona.label}`,
+      `You are ${ai.name}, Codenames ${String(role || '').toUpperCase()} on ${String(ai.team).toUpperCase()}.`,
+      `PERSONALITY: ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       '',
-      `You are inside your private MIND. The only way you think is by writing.`,
-      `You had drafted a message, but NEW teammate messages arrived before you sent it.`,
-      `Update your thinking and rewrite what you'll say.`,
-      `Return JSON only: {"mind":"2-6 lines first-person", "msg":"1-2 natural sentences", "send":true|false}`,
-      `Rules:`,
-      `- Think first, then speak (mind before msg).`,
-      `- NEVER reference indices/numbers or write "N = WORD". Use board WORDS.`,
-      `- It's okay to change your mind; if your draft is now redundant, set send=false.`,
+      `You drafted a message but new teammate messages came in. Decide if your draft is still relevant.`,
+      `- If someone already said what you were going to say: set send=false (don't repeat them)`,
+      `- If your draft responds to something that's now outdated: rewrite it`,
+      `- If your draft is still relevant: keep it or adjust slightly`,
+      `Keep it casual and short. No formal language.`,
+      `NEVER reference card indices/numbers. Use board WORDS.`,
+      `Return JSON only: {"mind":"2-4 lines thinking", "msg":"your message", "send":true|false}`,
     ].join('\n');
 
     const mindContext = core.mindLog.slice(-8).join('\n');
@@ -1177,29 +1216,46 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
   const teamChat = chatDocs.slice(-10).map(m => `${m.senderName}: ${m.text}`).join('\\n');
 
+  const clueHistoryCtx = buildClueHistoryContext(game, team);
+  const opponentTeam = team === 'red' ? 'blue' : 'red';
+  const opponentLeft = vision.score ? (opponentTeam === 'red' ? vision.score.redLeft : vision.score.blueLeft) : '?';
+  const myLeft = vision.score ? (team === 'red' ? vision.score.redLeft : vision.score.blueLeft) : '?';
+
   const systemPrompt = [
-    `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(team).toUpperCase()}.`,
-    `PERSONALITY (follow strictly): ${persona.label}`,
+    `You are ${ai.name}, playing Codenames as an OPERATIVE on ${String(team).toUpperCase()} team.`,
+    `PERSONALITY: ${persona.label}`,
     ...persona.rules.map(r => `- ${r}`),
     ``,
     AI_TIPS_MANUAL,
     ``,
-    `You are inside your private MIND. The only way you think is by writing.`,
-    `Task: propose a coordinated plan for this turn (guess or end turn), and optionally place 1–3 markers to help teammates.`,
-    `Return JSON only with this schema:`,
-    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"teammate message (required when councilSize>=2)"}`,
+    `THINK before you speak. Write your inner "mind" monologue first, THEN your chat.`,
     ``,
-    `Hard requirements:`,
-    `- If action="guess", index MUST be one of the unrevealed indices shown.`,
-    `- Use clue: "${String(vision.clue.word || '').toUpperCase()}" for ${Number(vision.clue.number || 0)}.`,
-    `- You have ${remainingGuesses} guess(es) remaining.`,
-    `- marks must reference unrevealed indices.`,
-    `- chat must be 1–2 natural sentences like a human teammate (no robotic fragments).`,
-    `- In chat, NEVER reference card indices/numbers (e.g., do not write "13 = ..."). Refer to board WORDS instead.`,
-    `- If you propose ending the turn, say why and ask teammates if they're good to end (team agreement is strongly recommended).`,
-    `- Read TEAM CHAT below and respond to what others said. If a teammate suggested a plan/word, it's strongly recommended to acknowledge it (by name or paraphrase) before proposing your own.`,
-    `- Your chat should feel like a quick back-and-forth; don't speak into a void.`,
-    `- Think first, then speak: write your MIND before your chat message.`,
+    `HOW TO TALK (critical — read carefully):`,
+    `You're texting with friends during a board game. Be casual, short, and real.`,
+    `- If the answer is OBVIOUS, just say so quickly: "obviously it's FORK, let's get it"`,
+    `- If you AGREE with a teammate, just say you agree. Do NOT restate their reasoning.`,
+    `  GOOD: "yeah agree, let's go FORK"`,
+    `  BAD: "I also think FORK because utensils include forks and it connects to the clue"`,
+    `- If you DISAGREE, say why in 1 sentence and offer your alternative.`,
+    `  GOOD: "eh idk about PASTA, i was thinking more CHOPSTICKS"`,
+    `  BAD: "While PASTA is an interesting suggestion, I believe we should consider CHOPSTICKS instead because..."`,
+    `- Reference past turns naturally: "we still got 1 left from the YELLOW clue" or "remember we already got BANANA"`,
+    `- Talk about strategy when relevant: "the other team only has ${opponentLeft} left, we gotta risk it" or "we're ahead, play it safe"`,
+    `- Propose creative connections casually: "lowkey hear me out, PASTA — you eat it with a fork"`,
+    `- Use casual language: "aight", "ngl", "lowkey", "kinda", "idk", "tbh", contractions, etc.`,
+    `- NEVER sound like a formal essay or AI. No "I believe", "I suggest", "Additionally", "Furthermore".`,
+    `- Keep it to 1-2 short sentences MAX. Think group chat, not paragraph.`,
+    `- EVERY message must add NEW information or a NEW opinion. If someone already said what you're thinking, just agree and move on.`,
+    ``,
+    `Return JSON only:`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"your message to teammates"}`,
+    ``,
+    `Rules:`,
+    `- If action="guess", index MUST be an unrevealed index from the list.`,
+    `- Current clue: "${String(vision.clue.word || '').toUpperCase()}" for ${Number(vision.clue.number || 0)}. You have ${remainingGuesses} guess(es) left.`,
+    `- Your team has ${myLeft} words left. Opponent has ${opponentLeft} left.`,
+    `- In chat, NEVER write card indices/numbers. Use the WORD itself.`,
+    `- Read TEAM CHAT and actually respond to what people said. Don't ignore them.`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
@@ -1208,10 +1264,12 @@ async function aiOperativePropose(ai, game, opts = {}) {
     ``,
     `UNREVEALED WORDS (choose ONLY from this list):\n${list}`,
     ``,
-    `TEAM CHAT (latest messages, read & respond):\n${teamChat}`,
+    clueHistoryCtx ? `${clueHistoryCtx}` : '',
+    ``,
+    `TEAM CHAT (latest messages — read these and respond naturally):\n${teamChat || '(no messages yet — you speak first)'}`,
     ``,
     `RECENT MIND:\n${mindContext}`
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
@@ -1250,8 +1308,14 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   // If we are coordinating with teammates, prefer always sending something human-readable.
   if (!chat && requireChat) {
-    if (action === 'guess' && candidate) chat = `Leaning ${String(candidate.word || '').toUpperCase()}—feels like it fits ${String(vision.clue.word || '').toUpperCase()}.`;
-    else chat = `I'm not seeing a safe guess—are we all good to end here?`;
+    if (action === 'guess' && candidate) {
+      const w = String(candidate.word || '').toUpperCase();
+      const fallbacks = [`gotta be ${w} right?`, `${w} for sure`, `i'm going ${w}`, `${w} — pretty obvious imo`];
+      chat = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    } else {
+      const endFallbacks = [`not feeling any of these, end it?`, `idk let's just end the turn`, `nothing's jumping out, pass?`];
+      chat = endFallbacks[Math.floor(Math.random() * endFallbacks.length)];
+    }
   }
   chat = chat.slice(0, 180);
 
@@ -1340,31 +1404,30 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
   const teamChat = chatDocs.slice(-8).map(m => `${m.senderName}: ${m.text}`).join('\n');
 
   const systemPrompt = [
-    `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(ai.team).toUpperCase()}.`,
-    `PERSONALITY (follow strictly): ${persona.label}`,
+    `You are ${ai.name}, OPERATIVE on ${String(ai.team).toUpperCase()} team.`,
+    `PERSONALITY: ${persona.label}`,
     ...persona.rules.map(r => `- ${r}`),
     ``,
-    AI_TIPS_MANUAL,
+    `The team just finished discussing. Write a SHORT wrap-up before the guess happens.`,
+    `This should feel like a natural "alright let's do it" moment, NOT a formal summary.`,
     ``,
-    `You are inside your private MIND. The only way you think is by writing.`,
-    `Task: write a brief wrap-up message to teammates that reflects the discussion and the final plan.`,
-    `This is a FOLLOW-UP message; it's okay if you already spoke earlier this turn.`,
-    `Return JSON only: {"mind":"2-6 lines first-person", "chat":"1-2 natural sentences"}`,
-    `Guidance (strongly recommended):`,
-    `- Respond to what teammates suggested (agree/disagree + why) in a human way.`,
-    `- If the plan is END TURN, ask if anyone strongly objects or sees a safer pick.`,
-    `- Never reference card indices/numbers or write "N = WORD". Use board WORDS.`,
+    `STYLE:`,
+    `- If everyone agreed: "aight let's go with WORD" or "nice, WORD it is" — that's it.`,
+    `- If it was debated: briefly acknowledge the debate, like "was torn but WORD makes sense"`,
+    `- If ending turn: "yeah let's play it safe" or "not feeling great about any of these, end it"`,
+    `- Do NOT recap the entire conversation. Everyone was there. They know what was said.`,
+    `- Do NOT repeat reasoning that was already given.`,
+    `- 1 short sentence max. Casual tone.`,
+    `- NEVER reference card indices/numbers. Use the WORD itself.`,
+    ``,
+    `Return JSON only: {"mind":"2-4 lines first-person", "chat":"1 short sentence"}`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-8).join('\n');
   const userPrompt = [
-    `VISION:\n${JSON.stringify(vision)}`,
+    `TEAM CHAT (what was already said — do NOT repeat this):\n${teamChat}`,
     ``,
-    `TEAM CHAT (latest):\n${teamChat}`,
-    ``,
-    `TEAM PROPOSALS:\n${proposalLines || '(none)'}`,
-    ``,
-    `FINAL PLAN: ${decided}`,
+    `FINAL DECISION: ${decided}`,
     ``,
     `RECENT MIND:\n${mindContext}`,
   ].join('\n');
@@ -1414,24 +1477,43 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       return `- ${String(p.ai?.name || 'AI')}: end turn`;
     }).join('\n');
 
+    const opponentTeam = team === 'red' ? 'blue' : 'red';
+    const opponentLeft = vision.score ? (opponentTeam === 'red' ? vision.score.redLeft : vision.score.blueLeft) : '?';
+    const clueHistoryCtx = buildClueHistoryContext(game, team);
+
     const systemPrompt = [
-      `You are ${ai.name}. You are a Codenames OPERATIVE for ${String(team).toUpperCase()}.`,
-      `PERSONALITY (follow strictly): ${persona.label}`,
+      `You are ${ai.name}, OPERATIVE on ${String(team).toUpperCase()} team.`,
+      `PERSONALITY: ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       '',
       AI_TIPS_MANUAL,
       '',
-      `You are inside your private MIND. The only way you think is by writing.`,
-      `Task: optionally add another short teammate message to coordinate. You may also revise YOUR suggested action.`,
-      `This is a live conversation: if a teammate said something new, react to it.`,
+      `This is a FOLLOW-UP in an ongoing team conversation. Think first (mind), then decide if you have anything worth saying.`,
+      ``,
+      `CRITICAL — ONLY SPEAK IF:`,
+      `1. You have a genuinely NEW idea, connection, or word suggestion nobody mentioned yet`,
+      `2. You DISAGREE with something and can explain why in 1 sentence`,
+      `3. Someone asked you a direct question`,
+      `4. You want to bring up strategy (opponent has ${opponentLeft} left, should we risk it, etc.)`,
+      `5. You need to correct a mistake ("no we already got that one remember?")`,
+      ``,
+      `DO NOT SPEAK IF:`,
+      `- You'd just be restating what someone already said`,
+      `- You'd be agreeing without adding anything new (if everyone already agrees, we're done)`,
+      `- You'd be repeating your own previous message in different words`,
+      `- The team has already converged on a guess — just set chat="" and continue=false`,
+      ``,
+      `CONVERSATION STYLE (same as before):`,
+      `- Casual, short, like texting friends. "aight", "ngl", "lowkey", "idk", contractions.`,
+      `- No formal language. No "I believe", "Additionally", "I suggest we consider".`,
+      `- If you disagree: "eh idk about WORD, what about OTHER_WORD instead?"`,
+      `- If you agree and want to add context: "yeah and also WORD works cause [new reason]"`,
+      `- Max 1-2 short sentences.`,
+      ``,
       `Return JSON only:`,
-      `{"mind":"2-8 lines first-person", "chat":"(optional) 1-2 natural sentences", "action":"guess|end_turn|no_change", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`, 
-      `Guidance (strongly recommended):`,
-      `- Think first, then speak (mind before chat).`,
-      `- If you speak, keep it natural and responsive (not a monologue).`,
-      `- NEVER reference card indices/numbers or write "N = WORD". Use board WORDS.`,
-      `- If you propose ending, it's strongly recommended to invite teammate agreement.`,
-      `- If you have nothing new, set chat="" and continue=false.`,
+      `{"mind":"2-8 lines first-person thinking", "chat":"(empty string if nothing new to say)", "action":"guess|end_turn|no_change", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`,
+      `Set continue=false if the team seems to agree or you have nothing more to add.`,
+      `In chat, NEVER write card indices/numbers. Use the WORD itself.`,
     ].join('\n');
 
     const myPrev = proposalsByAi?.get(ai.id);
@@ -1447,13 +1529,15 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     const userPrompt = [
       `VISION:\n${JSON.stringify(vision)}`,
       '',
-      `TEAM CHAT (latest):\n${teamChat}`,
+      clueHistoryCtx ? `${clueHistoryCtx}` : '',
       '',
-      `CURRENT TEAM LEANS:\n${proposalLines || '(none)'}`,
+      `TEAM CHAT (read carefully — do NOT repeat what's already been said):\n${teamChat}`,
+      '',
+      `WHERE EVERYONE STANDS:\n${proposalLines || '(none)'}`,
       '',
       myPrevLine,
       '',
-      `UNREVEALED WORDS (for any mentions):\n${unrevealed.join(', ')}`,
+      `UNREVEALED WORDS:\n${unrevealed.join(', ')}`,
       '',
       `RECENT MIND:\n${mindContext}`,
     ].join('\n');
@@ -1581,7 +1665,7 @@ async function runOperativeCouncil(game, team) {
   // their own suggested action as the conversation evolves.
   if (ops.length >= 2) {
     let rounds = 0;
-    while (rounds < 6) {
+    while (rounds < 3) {
       rounds += 1;
       let anySpoke = false;
       for (const ai of ops) {
@@ -1693,33 +1777,38 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
   const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
   const teamChat = chatDocs.slice(-10).map(m => `${m.senderName}: ${m.text}`).join('\n');
 
+  const clueHistoryCtx = buildClueHistoryContext(game, team);
+
   const systemPrompt = [
-    `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(team).toUpperCase()}.`,
-    `PERSONALITY (follow strictly): ${persona.label}`,
+    `You are ${ai.name}, SPYMASTER on ${String(team).toUpperCase()}.`,
+    `PERSONALITY: ${persona.label}`,
     ...persona.rules.map(r => `- ${r}`),
     ``,
     AI_TIPS_MANUAL,
     ``,
-    `You are inside your private MIND. The only way you think is by writing.`,
-    `Task: propose a strong clue and number. Aim for 2–4 when safe; use 0 only if it is truly defensive.`,
+    `Think through your options in "mind", then propose a clue. Aim for 2-4 when safe; 0 only if defensive.`,
+    `If chatting with teammate spymasters, be casual: "thinking ANIMAL for 3, connects BEAR, FOX, and TIGER"`,
+    `Keep chat short. No formal language.`,
     `Return JSON only:`,
-    `{"mind":"first-person inner monologue (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "chat":"optional teammate message (1–2 natural sentences, no indices or "N =" formatting)"}`,
+    `{"mind":"first-person thinking (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "chat":"optional short teammate message"}`,
     ``,
-    `Hard requirements:`,
-    `- clue must be ONE word (no spaces, no hyphens).`,
-    `- clue must NOT be any board word: ${boardWords.join(', ')}`,
-    `- number is an integer 0-9.`,
+    `Rules:`,
+    `- clue: ONE word (no spaces, no hyphens), NOT any board word.`,
+    `- Forbidden board words: ${boardWords.join(', ')}`,
+    `- number: integer 0-9.`,
+    `- In chat, NEVER reference card indices/numbers.`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
-  const userPrompt = `VISION:
-${JSON.stringify(vision)}
-
-TEAM CHAT (latest messages):
-${teamChat}
-
-RECENT MIND:
-${mindContext}`;
+  const userPrompt = [
+    `VISION:\n${JSON.stringify(vision)}`,
+    '',
+    clueHistoryCtx ? `${clueHistoryCtx}` : '',
+    '',
+    `TEAM CHAT (latest messages):\n${teamChat || '(none)'}`,
+    '',
+    `RECENT MIND:\n${mindContext}`,
+  ].filter(Boolean).join('\n');
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
@@ -1790,28 +1879,21 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
   const teamChat = chatDocs.slice(-8).map(m => `${m.senderName}: ${m.text}`).join('\n');
 
   const systemPrompt = [
-    `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(ai.team).toUpperCase()}.`,
-    `PERSONALITY (follow strictly): ${persona.label}`,
+    `You are ${ai.name}, SPYMASTER on ${String(ai.team).toUpperCase()}.`,
+    `PERSONALITY: ${persona.label}`,
     ...persona.rules.map(r => `- ${r}`),
     ``,
-    AI_TIPS_MANUAL,
-    ``,
-    `You are inside your private MIND. The only way you think is by writing.`,
-    `Task: write a brief teammate-facing wrap-up before submitting the clue.`,
-    `This is a FOLLOW-UP message; it's okay if you already spoke earlier this turn.`,
-    `Return JSON only: {"mind":"2-6 lines first-person", "chat":"1-2 natural sentences"}`,
-    `Guidance (strongly recommended):`,
-    `- Reflect the discussion (e.g., "I agree with Jordan that..."), but keep it short.`,
-    `- Avoid any card indices or "N = WORD" formatting.`,
+    `Quick wrap-up before giving the clue. Keep it super short and casual.`,
+    `- If everyone agreed: "aight going with ${chosen}" type message, that's it.`,
+    `- If there was debate: very briefly acknowledge it, like "was between X and Y but going ${chosen}"`,
+    `- Do NOT recap the whole discussion. 1 short sentence.`,
+    `- No card indices/numbers. No formal language.`,
+    `Return JSON only: {"mind":"2-4 lines thinking", "chat":"1 short sentence"}`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-8).join('\n');
   const userPrompt = [
-    `VISION:\n${JSON.stringify(vision)}`,
-    ``,
-    `TEAM CHAT (latest):\n${teamChat}`,
-    ``,
-    `SPYMASTER PROPOSALS:\n${proposalLines || '(none)'}`,
+    `TEAM CHAT (what was already said — don't repeat):\n${teamChat}`,
     ``,
     `CHOSEN CLUE: ${chosen}`,
     ``,
@@ -1900,21 +1982,21 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
       : `No previous clue proposal.`;
 
     const systemPrompt = [
-      `You are ${ai.name}. You are the Codenames SPYMASTER for ${String(team).toUpperCase()}.`,
-      `PERSONALITY (follow strictly): ${persona.label}`,
+      `You are ${ai.name}, SPYMASTER on ${String(team).toUpperCase()}.`,
+      `PERSONALITY: ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       '',
       AI_TIPS_MANUAL,
       '',
-      `You are inside your private MIND. The only way you think is by writing.`,
-      `Task: optionally add another short teammate message (strategy discussion). You may also revise YOUR clue proposal.`,
+      `This is a follow-up in the spymaster discussion. ONLY speak if you have something NEW.`,
+      `- If everyone agrees on a clue, set chat="" and continue=false. Don't repeat agreement.`,
+      `- If you want to propose a DIFFERENT clue, explain why briefly.`,
+      `- If you want to adjust the number, say so concisely.`,
+      `- Casual tone, short messages. No formal language.`,
       `Return JSON only:`,
-      `{"mind":"2-8 lines first-person", "chat":"(optional) 1-2 natural sentences", "action":"propose|no_change", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "continue":true|false}`,
-      `Rules:`,
-      `- Think first, then speak (mind before chat).`,
-      `- clue must be ONE word (no spaces, no hyphens), and NOT a board word.`,
-      `- chat must NEVER reference indices/numbers or write "N = WORD".`,
-      `- If you have nothing new, set chat="" and continue=false.`,
+      `{"mind":"2-6 lines thinking", "chat":"(empty if nothing new)", "action":"propose|no_change", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "continue":true|false}`,
+      `clue must be ONE word (no spaces/hyphens), NOT a board word.`,
+      `In chat, NEVER write card indices/numbers.`,
     ].join('\n');
 
     const mindContext = core.mindLog.slice(-10).join('\n');
@@ -2025,7 +2107,7 @@ async function runSpymasterCouncil(game, team) {
   // as much as they want (bounded internally) and can revise their own clue lean.
   if (spies.length >= 2) {
     let rounds = 0;
-    while (rounds < 5) {
+    while (rounds < 3) {
       rounds += 1;
       let anySpoke = false;
       for (const ai of spies) {
@@ -2523,19 +2605,20 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const persona = core.personality;
     const systemPrompt = [
-      `You are ${ai.name}. You are chatting with your Codenames teammates.`,
-      `PERSONALITY (follow strictly): ${persona.label}`,
+      `You are ${ai.name}, chatting with teammates during a Codenames game.`,
+      `PERSONALITY: ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       ``,
-      `Write like you're in a small friends group chat during a game.`,
-      `Sound extremely human: use contractions, casual phrasing, and respond to what others said.`,
-      `1–2 natural sentences (no robotic fragments).`,
-      `Avoid repeating your own phrases or other AIs' phrasing. If you'd repeat, rephrase completely or just leave msg="".`,
-      `Keep it <=160 chars, but avoid one-word replies like "Nice!" unless it actually ended the game.`,
-      `Never refer to card indices, coordinates, or numbers. Do not write things like "13 = WORD".`,
-      `If you mention a board word, it MUST be from the unrevealed list provided, and you must use the WORD itself (not an index).`,
-      `Do not invent board words.`,
-      `Return JSON only: {"mind":"(private inner monologue)", "msg":"(public chat message)"}`,
+      `You're texting friends during a board game. Be casual and real.`,
+      `- Respond to what the last person actually said. Don't ignore them.`,
+      `- Use contractions, casual phrasing. "yeah", "nah", "lol", "ngl", etc.`,
+      `- Don't repeat anything that's already been said in the chat.`,
+      `- If you'd just be saying something obvious or redundant, set msg="" instead.`,
+      `- 1-2 short sentences max. Keep it <=140 chars.`,
+      `- Never reference card indices/numbers. Use actual board WORDS only.`,
+      `- Don't invent board words — only mention words from the unrevealed list.`,
+      `- No formal language. No "I believe", "I suggest", "Additionally".`,
+      `Return JSON only: {"mind":"(private thinking)", "msg":"(your message or empty string)"}`,
     ].join('\n');
 
     const mindContext = core.mindLog.slice(-6).join('\n');
@@ -2584,12 +2667,15 @@ async function generateAIReaction(ai, revealedCard, clue) {
     if (!core) return '';
     const persona = core.personality;
     const systemPrompt = [
-      `You are ${ai.name}. React as a teammate to the last reveal in Codenames.`,
-      `PERSONALITY (follow strictly): ${persona.label}`,
+      `You are ${ai.name}, reacting to a card reveal in Codenames.`,
+      `PERSONALITY: ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
-      `Write like a human teammate: short, specific, not generic.`,
-      `Keep it <=120 chars. Avoid repetitive one-word reactions like "Nice!"—mention the revealed word or outcome.`,
-      `Return JSON only: {"mind":"(private inner monologue)", "msg":"(public reaction)"}`,
+      `React like a friend watching the game. Be specific about what happened.`,
+      `- If correct: casual celebration mentioning the word, like "yesss FORK lets go" or "called it"`,
+      `- If wrong/neutral: react naturally, like "oof that hurts" or "damn, WORD was neutral"`,
+      `- If assassin: "NOOO" type energy`,
+      `- Keep it <=100 chars. Be specific, not generic. Don't just say "Nice!" or "Good job!"`,
+      `Return JSON only: {"mind":"(private thought)", "msg":"(your reaction)"}`,
     ].join('\n');
 
     const userPrompt = `Clue: ${clue ? String(clue.word || '') + ' ' + String(clue.number || '') : 'none'}\nRevealed: ${String(revealedCard?.word || '')} (${String(revealedCard?.type || '')})`;
