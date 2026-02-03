@@ -14576,7 +14576,8 @@ body.og-mode {
   --neutral-cardBg: #F0C9A3;
   --neutral-innerBorder: #AC8D77;
   --neutral-innerBg: linear-gradient(to bottom, #F5D3B4, #F5D3B4 0%, #EFB987 100%);
-  --neutral-darkWordBg: #7C5F46;
+  /* Word strip (unrevealed/neutral) — darker, closer to black like CNO */
+  --neutral-darkWordBg: #1a1a1a;
   --red-cardBorder: #F2C5A5;
   --red-cardBg: #E87449;
   --red-innerBorder: #8F2F1C;
@@ -14884,10 +14885,10 @@ body.og-mode .game-card .card-word{
   position: absolute;
   z-index: 4;
 
-  /* Bottom word strip */
-  left: calc(8px + var(--labelInset));
-  right: calc(8px + var(--labelInset));
-  bottom: calc(8px + var(--labelInset));
+  /* Bottom word strip (flush to the inner plate edges) */
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
   height: var(--labelHeight);
 
   display: flex;
@@ -14900,14 +14901,17 @@ body.og-mode .game-card .card-word{
   font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   font-weight: 800;
   text-transform: uppercase;
-  font-size: clamp(13px, 2.0vw, 26px);
+  /* Slightly smaller like CNO (JS will still auto-fit long words) */
+  font-size: clamp(12px, 1.7vw, 22px);
   letter-spacing: 0.06em;
   line-height: 1.05;
   text-align: center;
   white-space: nowrap;
 
-  padding: 0 12px;
-  border-radius: 10px;
+  /* Nudge text a bit lower in the strip */
+  padding: 6px 12px 2px;
+  /* More rectangular (less pill-like) */
+  border-radius: 6px;
 
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
@@ -15680,8 +15684,9 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .game-card .card-word {
-    font-size: clamp(12px, 4.2vw, 18px);
-    padding: 0 10px;
+    font-size: clamp(11px, 4.0vw, 16px);
+    padding: 5px 10px 2px;
+    border-radius: 6px;
   }
 
   body.og-mode .og-topbar {
