@@ -3,7 +3,8 @@
     "allow": [
       "Bash(grep:*)",
       "Bash(node -c:*)",
-      "WebFetch(domain:docs.tokenfactory.nebius.com)"
+      "WebFetch(domain:docs.tokenfactory.nebius.com)",
+      "Bash(python3:*)"
     ]
   }
 }
