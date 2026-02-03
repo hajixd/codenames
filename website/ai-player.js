@@ -2670,17 +2670,8 @@ function startAIGameLoop() {
     const amController = await maybeHeartbeatAIController(gameId, game);
     if (!amController) return;
     if (!game || game.winner) {
-      // Game ended, send reactions
-      if (game?.winner && game.winner !== 'ended') {
-        for (const ai of aiPlayers) {
-          if (!aiThinkingState[ai.id]) {
-            aiThinkingState[ai.id] = true;
-            const msg = game.winner === ai.team ? 'gg' : 'gg wp';
-            await sendAIChatMessage(ai, game, msg);
-            aiThinkingState[ai.id] = false;
-          }
-        }
-      }
+      // Stop autonomous actions once the game is decided.
+      stopAIGameLoop();
       return;
     }
 

@@ -8353,14 +8353,21 @@ setUserName = async function(name, opts) {
   }
 };
 
-// Show the auth loading screen with optional custom message
-function showAuthLoadingScreen(message = 'Loading') {
-  const screen = document.getElementById('auth-loading-screen');
-  const desktopMsg = document.getElementById('auth-loading-message-desktop');
-  const mobileMsg = document.getElementById('auth-loading-message-mobile');
+// Show the auth loading screen with optional custom message.
+// Uses a simple ref-count so the loader stays up across overlapping async tasks
+// (prevents "flash" transitions where a page appears briefly then re-loads).
+let _authLoadingCount = 0;
+let _authLoadingLastMessage = 'Loading';
 
-  if (desktopMsg) desktopMsg.textContent = message;
-  if (mobileMsg) mobileMsg.textContent = message;
+function showAuthLoadingScreen(message = 'Loading') {
+  _authLoadingCount = Math.max(0, (_authLoadingCount | 0) + 1);
+  if (message) _authLoadingLastMessage = String(message);
+  const screen = document.getElementById('auth-loading-screen');
+  const desktopMsgs = document.querySelectorAll('[data-auth-loading-message="desktop"]');
+  const mobileMsgs = document.querySelectorAll('[data-auth-loading-message="mobile"]');
+
+  desktopMsgs.forEach(el => { try { el.textContent = _authLoadingLastMessage; } catch (_) {} });
+  mobileMsgs.forEach(el => { try { el.textContent = _authLoadingLastMessage; } catch (_) {} });
 
   if (screen) {
     screen.style.display = 'flex';
@@ -8370,6 +8377,8 @@ function showAuthLoadingScreen(message = 'Loading') {
 
 // Hide the auth loading screen with a fade transition
 function hideAuthLoadingScreen() {
+  _authLoadingCount = Math.max(0, (_authLoadingCount | 0) - 1);
+  if (_authLoadingCount > 0) return;
   const screen = document.getElementById('auth-loading-screen');
   if (screen) {
     screen.classList.add('hidden');

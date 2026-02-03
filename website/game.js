@@ -1230,15 +1230,17 @@ async function startQuickLobbyListener() {
     // If the game has zero players, end/reset it.
     checkAndEndEmptyQuickPlayGame(quickLobbyGame);
 
-    // If a Quick Play game is in-progress, jump into it if you're a participant.
+    // If a Quick Play game is in-progress, jump into it if you're in the lobby
+    // (including spectators).
     if (quickLobbyGame.currentPhase && quickLobbyGame.currentPhase !== 'waiting' && quickLobbyGame.winner == null) {
       const odId = getUserId();
       const inRed = (quickLobbyGame.redPlayers || []).some(p => p.odId === odId);
       const inBlue = (quickLobbyGame.bluePlayers || []).some(p => p.odId === odId);
-      if (inRed || inBlue) {
-        spectatorMode = false;
-        spectatingGameId = null;
-        startGameListener(quickLobbyGame.id, { spectator: false });
+      const inSpec = (quickLobbyGame.spectators || []).some(p => p.odId === odId);
+      if (inRed || inBlue || inSpec) {
+        spectatorMode = !!inSpec && !(inRed || inBlue);
+        spectatingGameId = spectatorMode ? quickLobbyGame.id : null;
+        startGameListener(quickLobbyGame.id, { spectator: spectatorMode });
         return;
       }
     }
@@ -2967,6 +2969,29 @@ function startGameListener(gameId, options = {}) {
             } catch (_) {}
 
             cardEl.classList.add('guess-animate');
+
+            // Codenames Online: add a satisfying flip when a card is revealed.
+            // We drive this in JS so only newly revealed cards flip (no mass flip on initial render).
+            if (document.body.classList.contains('og-mode')) {
+              const inner = cardEl.querySelector('.card-inner');
+              if (inner) {
+                try {
+                  inner.style.transition = 'transform 720ms cubic-bezier(0.22, 0.9, 0.24, 1)';
+                  inner.style.transform = 'rotateY(0deg)';
+                  // Force a layout so the browser commits the start transform.
+                  void inner.offsetWidth;
+                  requestAnimationFrame(() => {
+                    inner.style.transform = 'rotateY(180deg)';
+                    cardEl.classList.add('flip-glow');
+                  });
+                  inner.addEventListener('transitionend', () => {
+                    inner.style.transition = '';
+                    inner.style.transform = '';
+                    cardEl.classList.remove('flip-glow');
+                  }, { once: true });
+                } catch (_) {}
+              }
+            }
             let cleaned = false;
             const cleanup = () => {
               if (cleaned) return;
@@ -3173,6 +3198,8 @@ function renderGame() {
   // Check for game end
   if (currentGame.winner) {
     showGameEndOverlay();
+    // Stop AI actions once the game is decided.
+    try { window.stopAIGameLoop && window.stopAIGameLoop(); } catch (_) {}
   }
 
   // Render advanced features
@@ -3349,10 +3376,18 @@ function renderBoard(isSpymaster) {
     // Card tap selects (shows checkmark). Confirmation requires tapping the checkmark.
     const clickHandler = canClick ? `onclick="handleCardSelect(${i})"` : '';
 
+    const word = escapeHtml(card.word);
     return `
       <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
-        <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
-        <span class="card-word">${escapeHtml(card.word)}</span>
+        <div class="card-inner">
+          <div class="card-face card-front">
+            <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
+            <span class="card-word">${word}</span>
+          </div>
+          <div class="card-face card-back">
+            <span class="card-word">${word}</span>
+          </div>
+        </div>
       </div>
     `;
   }).join('');
@@ -3941,24 +3976,21 @@ function showGameEndOverlay() {
   overlay.className = 'game-end-overlay';
 
   if (isRedBlueWin) {
-    const myTeamColor = getMyTeamColor();
-    const isWinner = currentGame.winner === myTeamColor;
-    const winnerName = truncateTeamNameGame(currentGame.winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
+    const winnerName = truncateTeamNameGame(currentGame.winner === 'red' ? (currentGame.redTeamName || 'Red') : (currentGame.blueTeamName || 'Blue'));
 
-    // Play win or lose sound
+    // Play a single result sound (if available)
     if (window.playSound) {
       setTimeout(() => {
-        window.playSound(isWinner ? 'gameWin' : 'gameLose');
-      }, 300);
+        window.playSound('gameWin');
+      }, 250);
     }
 
     overlay.innerHTML = `
       <div class="game-end-card">
-        <div class="game-end-title ${isWinner ? 'win' : 'lose'}">${isWinner ? 'Victory!' : 'Defeat'}</div>
-        <div class="game-end-subtitle">${escapeHtml(winnerName)} wins the game!</div>
+        <div class="game-end-title win">${escapeHtml(winnerName)} won!</div>
+        <div class="game-end-subtitle">Thanks for playing.</div>
         <div class="game-end-actions">
-          <button class="btn primary" onclick="handleRematch()">Rematch</button>
-          <button class="btn" onclick="handleLeaveGame()">Leave Game</button>
+          <button class="btn primary" onclick="handleBackToHomepageAfterGame()">Back to Homepage</button>
         </div>
       </div>
     `;
@@ -3975,7 +4007,7 @@ function showGameEndOverlay() {
         <div class="game-end-title">Game ended</div>
         <div class="game-end-subtitle">${subtitle}</div>
         <div class="game-end-actions">
-          <button class="btn primary" onclick="handleLeaveGame()">Back to Lobby</button>
+          <button class="btn primary" onclick="handleBackToHomepageAfterGame()">Back to Homepage</button>
         </div>
       </div>
     `;
@@ -3984,29 +4016,47 @@ function showGameEndOverlay() {
   document.body.appendChild(overlay);
 }
 
-async function handleRematch() {
-  if (!currentGame) return;
-
+async function handleBackToHomepageAfterGame() {
   // Remove overlay
   const overlay = document.querySelector('.game-end-overlay');
   if (overlay) overlay.remove();
 
-  // Create new game with same teams but swapped colors
-  await createGame(
-    currentGame.blueTeamId,
-    currentGame.blueTeamName,
-    currentGame.redTeamId,
-    currentGame.redTeamName
-  );
-}
+  // Stop any running AI loops/timers
+  try { window.cleanupAllAI && window.cleanupAllAI(); } catch (_) {}
+  try { window.stopAIGameLoop && window.stopAIGameLoop(); } catch (_) {}
 
-async function handleLeaveGame() {
-  // Remove overlay
-  const overlay = document.querySelector('.game-end-overlay');
-  if (overlay) overlay.remove();
+  const wasQuick = (currentGame?.type === 'quick') || (currentGame?.id === QUICKPLAY_DOC_ID);
 
   stopGameListener();
-  showGameLobby();
+
+  // Clear the Quick Play lobby completely (new, empty waiting game)
+  if (wasQuick) {
+    try {
+      const uiSettings = readQuickSettingsFromUI();
+      const newGameData = await buildQuickPlayGameData(uiSettings);
+      await db.collection('games').doc(QUICKPLAY_DOC_ID).set({
+        ...newGameData,
+        log: ['Previous game finished. Lobby cleared.']
+      });
+      await clearOperativeChats(QUICKPLAY_DOC_ID);
+    } catch (e) {
+      console.warn('Failed to clear Quick Play lobby (best-effort):', e);
+    }
+  }
+
+  // Reset local lobby selections so the next join starts clean.
+  try {
+    selectedQuickTeam = null;
+    selectedQuickSeatRole = 'operative';
+    quickAutoJoinedSpectator = false;
+  } catch (_) {}
+
+  // Back to the main/home UI
+  try {
+    currentPlayMode = 'select';
+  } catch (_) {}
+  try { window.returnToLaunchScreen?.(); }
+  catch (_) { showGameLobby(); }
 }
 
 function isSpectating() {
