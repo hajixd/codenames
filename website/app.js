@@ -1907,8 +1907,11 @@ function initAuthGate() {
       const isBoot = !bootAuthResolvedOnce;
       if (isBoot) {
         bootAuthResolvedOnce = true;
-        // Ensure the loading screen stays up while we decide where to land.
-        try { showAuthLoadingScreen('Loading'); } catch (_) {}
+        // Loader is already shown during init(). Don't increment again or it can get stuck.
+        try {
+          if (typeof setAuthLoadingMessage === 'function') setAuthLoadingMessage('Loading');
+          else if (typeof showAuthLoadingScreen === 'function' && (_authLoadingCount | 0) === 0) showAuthLoadingScreen('Loading');
+        } catch (_) {}
       }
       // Refresh admin claims best-effort.
       try { await refreshAdminClaims(); } catch (_) {}
@@ -8358,6 +8361,22 @@ setUserName = async function(name, opts) {
 // (prevents "flash" transitions where a page appears briefly then re-loads).
 let _authLoadingCount = 0;
 let _authLoadingLastMessage = 'Loading';
+
+// Update the loader message without incrementing the ref-count.
+// Used during boot because the loader is already shown from init(), and calling
+// showAuthLoadingScreen() again would double-increment and keep the loader up forever.
+function setAuthLoadingMessage(message = 'Loading') {
+  if (message) _authLoadingLastMessage = String(message);
+  const desktopMsgs = document.querySelectorAll('[data-auth-loading-message="desktop"]');
+  const mobileMsgs = document.querySelectorAll('[data-auth-loading-message="mobile"]');
+  desktopMsgs.forEach(el => { try { el.textContent = _authLoadingLastMessage; } catch (_) {} });
+  mobileMsgs.forEach(el => { try { el.textContent = _authLoadingLastMessage; } catch (_) {} });
+  const screen = document.getElementById('auth-loading-screen');
+  if (screen) {
+    screen.style.display = 'flex';
+    screen.classList.remove('hidden');
+  }
+}
 
 function showAuthLoadingScreen(message = 'Loading') {
   _authLoadingCount = Math.max(0, (_authLoadingCount | 0) + 1);
