@@ -15,113 +15,6 @@ const AI_CONFIG = {
   maxAIsPerTeam: 4,
 };
 
-// Nebius Token Factory has multiple regional endpoints. Some models are hosted
-// on the US endpoint (e.g. certain DeepSeek variants).
-const NEBIUS_BASE_URL_DEFAULT = 'https://api.tokenfactory.nebius.com/v1';
-const NEBIUS_BASE_URL_US = 'https://api.tokenfactory.us-central1.nebius.com/v1';
-
-// Backwards-compatible mapping for older UI-friendly model IDs.
-function normalizeModelId(modelId) {
-  const raw = String(modelId || '').trim();
-  if (!raw) return raw;
-
-  const map = {
-    'Meta/Llama-3.3-70B-Instruct': 'meta-llama/Llama-3.3-70B-Instruct',
-    'DeepSeek-R1-0528': 'deepseek-ai/DeepSeek-R1-0528-fast',
-    'Meta/Llama-3.1-8B-Instruct-fast': 'meta-llama/Meta-Llama-3.1-8B-Instruct',
-    'Meta/Llama-3.1-405B-Instruct': 'Qwen/Qwen3-Next-80B-A3B-Thinking',
-    'Qwen/Qwen3-Coder-480B-A35B-Instruct': 'Qwen/Qwen3-Next-80B-A3B-Thinking',
-  };
-
-  return map[raw] || raw;
-}
-
-function resolveNebiusBaseURLForModel(modelId) {
-  const m = normalizeModelId(modelId);
-  if (!m) return AI_CONFIG.baseURL || NEBIUS_BASE_URL_DEFAULT;
-  // DeepSeek models in this project are expected on the US endpoint.
-  if (m.toLowerCase().startsWith('deepseek-ai/')) return NEBIUS_BASE_URL_US;
-  return AI_CONFIG.baseURL || NEBIUS_BASE_URL_DEFAULT;
-}
-
-function joinURL(base, path) {
-  const b = String(base || '').replace(/\/+$/, '');
-  const p = String(path || '').replace(/^\/+/, '');
-  return `${b}/${p}`;
-}
-
-// ─── JSON Helpers (models sometimes add text / truncate) ───────────────────
-
-function _stripCodeFences(s) {
-  const t = String(s || '').trim();
-  const m = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return m ? String(m[1] || '').trim() : t;
-}
-
-function _pickJsonSlice(t) {
-  const s = String(t || '');
-  const aObj = s.indexOf('{');
-  const bObj = s.lastIndexOf('}');
-  const aArr = s.indexOf('[');
-  const bArr = s.lastIndexOf(']');
-
-  const objOk = aObj >= 0 && bObj > aObj;
-  const arrOk = aArr >= 0 && bArr > aArr;
-
-  if (objOk && arrOk) {
-    // Prefer the earliest well-formed slice (usually the intended payload).
-    return (aObj <= aArr) ? s.slice(aObj, bObj + 1) : s.slice(aArr, bArr + 1);
-  }
-  if (objOk) return s.slice(aObj, bObj + 1);
-  if (arrOk) return s.slice(aArr, bArr + 1);
-  return null;
-}
-
-function _autoCloseJson(s) {
-  let out = String(s || '').trim();
-  if (!out) return out;
-
-  // Remove trailing junk after the last brace/bracket.
-  const lastObj = out.lastIndexOf('}');
-  const lastArr = out.lastIndexOf(']');
-  const last = Math.max(lastObj, lastArr);
-  if (last >= 0 && last < out.length - 1) out = out.slice(0, last + 1);
-
-  const oc = (out.match(/\{/g) || []).length;
-  const cc = (out.match(/\}/g) || []).length;
-  const osq = (out.match(/\[/g) || []).length;
-  const csq = (out.match(/\]/g) || []).length;
-
-  if (cc < oc) out += '}'.repeat(Math.min(50, oc - cc));
-  if (csq < osq) out += ']'.repeat(Math.min(50, osq - csq));
-
-  // Common truncation: trailing comma
-  out = out.replace(/,\s*([}\]])/g, '$1');
-  return out;
-}
-
-function parseJsonLoose(raw) {
-  if (raw == null) return null;
-  const t0 = _stripCodeFences(raw);
-  const t = String(t0 || '').trim();
-  if (!t) return null;
-
-  // 1) Straight parse
-  try { return JSON.parse(t); } catch (_) {}
-
-  // 2) Slice out the most likely JSON block
-  const slice = _pickJsonSlice(t);
-  if (slice) {
-    try { return JSON.parse(slice); } catch (_) {
-      try { return JSON.parse(_autoCloseJson(slice)); } catch (_) {}
-    }
-  }
-
-  // 3) Last resort: try autoclosing the full string
-  try { return JSON.parse(_autoCloseJson(t)); } catch (_) {}
-  return null;
-}
-
 // No artificial human-like delays. AIs act as soon as they can.
 
 // AI name pools - human-sounding names
@@ -241,7 +134,6 @@ function extractAIPlayersFromGame(game) {
         statusColor: ready ? 'green' : 'none',
         ready,
         isAI: true,
-        model: String(p.aiModel || p.ai_model || p.model || AI_CONFIG.model),
         temperature: Number.isFinite(+p.aiTemperature) ? +p.aiTemperature : undefined,
         personality: (p.aiPersonality && typeof p.aiPersonality === 'object') ? p.aiPersonality : undefined,
       });
@@ -325,22 +217,17 @@ window.AI_CONFIG = AI_CONFIG;
 
 async function aiChatCompletion(messages, options = {}) {
   const body = {
-    model: normalizeModelId(options.model || AI_CONFIG.model),
+    model: AI_CONFIG.model,
     messages,
     temperature: options.temperature ?? 0.85,
-    // Some providers/models truncate early; a higher default reduces partial JSON.
-    max_tokens: options.max_tokens ?? 900,
+    max_tokens: options.max_tokens ?? 512,
   };
 
   if (options.response_format) {
     body.response_format = options.response_format;
   }
 
-  const baseURL = options.baseURL || resolveNebiusBaseURLForModel(body.model);
-  const url = joinURL(baseURL, '/chat/completions');
-
-  // IMPORTANT: OpenAI-compatible endpoint is `/chat/completions` (plural).
-  const resp = await fetch(url, {
+  const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -409,29 +296,43 @@ async function verifyAIReady(ai) {
   try { if (typeof renderQuickLobby === 'function') renderQuickLobby(quickLobbyGame); } catch (_) {}
 
   try {
-    // Some models (esp. reasoning / thinking variants) may ignore strict
-    // “reply with READY” instructions and instead explain what they *would*
-    // do, which makes a strict textual readiness gate unreliable.
-    //
-    // We only need to know whether:
-    //  1) the API key is valid,
-    //  2) the base URL + model are routable,
-    //  3) the provider returns a valid response.
-    //
-    // So: if the request succeeds (HTTP 200 + parsable JSON), we treat the
-    // model as ready.
     const result = await aiChatCompletion([
-      { role: 'system', content: 'Connectivity check. Reply with any short text.' },
-      { role: 'user', content: 'ping' }
+      {
+        role: 'system',
+        content: [
+          'You are performing a connectivity + JSON compliance check.',
+          'Return ONLY valid JSON (no markdown, no extra text).',
+          'Schema: {"ready": true, "message": "optional short string"}',
+          'Set ready=true if you can comply.'
+        ].join('\n'),
+      },
+      { role: 'user', content: 'Ready check. Reply with JSON only.' }
     ], {
-      model: ai.model || AI_CONFIG.model,
-      max_tokens: 24,
+      max_tokens: 80,
       temperature: 0,
+      response_format: { type: 'json_object' }
     });
 
-    const txt = String(result || '').trim();
-    ai.statusColor = txt.length ? 'green' : 'yellow';
-    if (!txt.length) console.warn(`AI ${ai.name} ready check returned empty response.`);
+    // Parse strict JSON; if a model ever wraps it, try a best-effort extraction
+    let parsed = null;
+    try {
+      parsed = JSON.parse(String(result || '').trim());
+    } catch (e) {
+      const s = String(result || '');
+      const a = s.indexOf('{');
+      const b = s.lastIndexOf('}');
+      if (a >= 0 && b > a) {
+        try { parsed = JSON.parse(s.slice(a, b + 1)); } catch (_) {}
+      }
+      if (!parsed) throw new Error('Could not parse ready check JSON');
+    }
+
+    if (parsed && parsed.ready === true) {
+      ai.statusColor = 'green';
+    } else {
+      ai.statusColor = 'yellow';
+      console.warn(`AI ${ai.name} ready check returned not-ready:`, parsed);
+    }
   } catch (err) {
     ai.statusColor = 'red';
     console.error(`AI ${ai.name} ready check failed:`, err);
@@ -807,11 +708,12 @@ ${JSON.stringify(vision)}
 RECENT MIND (for continuity):
 ${mindContext}`;
     aiChatCompletion([{ role: 'system', content: sys }, { role: 'user', content: user }], {
-      model: ai.model || AI_CONFIG.model,
       temperature: core.temperature,
-      max_tokens: 220,
+      max_tokens: 180,
+      response_format: { type: 'json_object' }
     }).then((raw) => {
-      const parsed = parseJsonLoose(raw);
+      let parsed = null;
+      try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
       const m = parsed ? String(parsed.mind || '').trim() : '';
       if (m) appendMind(ai, m);
     }).catch(()=>{});
@@ -870,14 +772,13 @@ function countAIsOnTeam(team) {
   return aiPlayers.filter(a => a.team === team).length;
 }
 
-async function addAIPlayer(team, seatRole, mode, opts = {}) {
+async function addAIPlayer(team, seatRole, mode) {
   if (countAIsOnTeam(team) >= AI_CONFIG.maxAIsPerTeam) {
     alert(`Max ${AI_CONFIG.maxAIsPerTeam} AIs per team.`);
     return null;
   }
 
   const name = pickAIName();
-  const selectedModel = String(opts.model || AI_CONFIG.model);
   const ai = {
     id: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     odId: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -889,7 +790,6 @@ async function addAIPlayer(team, seatRole, mode, opts = {}) {
     statusColor: 'none', // 'none' → 'red'|'yellow'|'green'
     ready: false,
     isAI: true,
-    model: selectedModel,
     temperature: randomTemperature(),
     personality: randomPersonality(),
   };
@@ -962,7 +862,6 @@ async function addAIToFirestoreLobby(ai) {
         isAI: true,
         aiMode: ai.mode,
         aiId: ai.id,
-        aiModel: ai.model || AI_CONFIG.model,
         aiTemperature: ai.temperature,
         aiPersonality: ai.personality,
       });
@@ -1328,7 +1227,7 @@ async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDo
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
+      { temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -1450,7 +1349,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -1611,7 +1510,7 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -1721,7 +1620,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -1989,7 +1888,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -2079,7 +1978,7 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -2193,7 +2092,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -2422,13 +2321,14 @@ ${mindContext}`;
       const raw = await aiChatCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
         {
-          model: ai.model || AI_CONFIG.model,
           temperature: core.temperature,
-          max_tokens: 700,
+          max_tokens: 420,
+          response_format: { type: 'json_object' },
         }
       );
 
-      const parsed = parseJsonLoose(raw);
+      let parsed = null;
+      try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
       if (!parsed) continue;
 
       mind = String(parsed.mind || '').trim();
@@ -2558,9 +2458,9 @@ async function aiGuessCard(ai, game) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const raw = await aiChatCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { model: ai.model || AI_CONFIG.model, temperature: core.temperature, max_tokens: 700 }
+        { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
       );
-      parsed = parseJsonLoose(raw);
+      try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
       if (!parsed) continue;
 
       const mind = String(parsed.mind || '').trim();
@@ -2809,7 +2709,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { model: ai.model || AI_CONFIG.model, temperature: Math.min(1.25, (core.temperature * 1.05) + 0.15), max_tokens: 220, response_format: { type: 'json_object' } }
+      { temperature: Math.min(1.25, (core.temperature * 1.05) + 0.15), max_tokens: 220, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -2858,7 +2758,7 @@ async function generateAIReaction(ai, revealedCard, clue) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { model: ai.model || AI_CONFIG.model, temperature: Math.min(1.0, core.temperature * 0.75), max_tokens: 160, response_format: { type: 'json_object' } }
+      { temperature: Math.min(1.0, core.temperature * 0.75), max_tokens: 160, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;

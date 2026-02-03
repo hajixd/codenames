@@ -4600,35 +4600,9 @@ function initOperativeChat() {
   let teamForChat = getMyTeamColor();
   const isSpectatorChat = !teamForChat && !!spectatorMode;
 
-  // Spymasters should not have access to operative team chat.
-  const isSpy = (typeof isCurrentUserSpymaster === 'function') ? !!isCurrentUserSpymaster() : false;
-
   // Spectators can toggle between RED/BLUE operative chats (read-only)
   if (isSpectatorChat) {
     teamForChat = spectatorChatTeam || 'red';
-  }
-
-  // If you're a spymaster (and not spectating), hide/disable chat completely.
-  if (isSpy && !isSpectatorChat) {
-    const panel = document.querySelector('.operative-chat-panel');
-    const container = document.getElementById('operative-chat-messages');
-    const input = document.getElementById('operative-chat-input');
-    const form = document.getElementById('operative-chat-form');
-    const toggleBtn = document.getElementById('spectator-chat-toggle');
-
-    if (toggleBtn) toggleBtn.style.display = 'none';
-    if (panel) panel.classList.add('spymaster-no-chat');
-    if (container) container.innerHTML = '<div class="chat-empty-state">Spymasters can\'t view operative chat.</div>';
-    if (input) {
-      input.disabled = true;
-      input.placeholder = 'Spymasters can\'t use team chat.';
-      input.value = '';
-    }
-    if (form) form.classList.add('spectator-readonly');
-    return;
-  } else {
-    const panel = document.querySelector('.operative-chat-panel');
-    if (panel) panel.classList.remove('spymaster-no-chat');
   }
 
   if (!teamForChat) return;
@@ -4706,11 +4680,6 @@ function formatTime(date) {
 async function handleOperativeChatSubmit(e) {
   e.preventDefault();
 
-  // Spymasters are not allowed to read or send operative chat.
-  try {
-    if (typeof isCurrentUserSpymaster === 'function' && isCurrentUserSpymaster()) return;
-  } catch (_) {}
-
   const input = document.getElementById('operative-chat-input');
   const text = input?.value?.trim();
   if (!text || !currentGame?.id) return;
@@ -4745,8 +4714,8 @@ function updateChatPrivacyBadge() {
 
   const isSpymaster = isCurrentUserSpymaster();
   if (isSpymaster) {
-    badge.textContent = 'Operatives Only';
-    badge.classList.remove('spymaster-visible');
+    badge.textContent = 'All Team';
+    badge.classList.add('spymaster-visible');
   } else {
     badge.textContent = 'Operatives Only';
     badge.classList.remove('spymaster-visible');
@@ -5767,164 +5736,8 @@ if (originalLeaveQuickGame) {
    - Game loop hooks
 ========================= */
 
-// ─── AI Model Presets (used by the +AI picker) ─────────────────────────────
-// NOTE: Nebius Token Factory supports a Fast flavor by appending `-fast` to the model name.
-window.AI_MODEL_PRESETS = window.AI_MODEL_PRESETS || [
-  {
-    key: 'instructions',
-    title: 'Following instructions',
-    tag: 'Reliable',
-    model: 'meta-llama/Llama-3.3-70B-Instruct',
-    subtitle: 'meta-llama/Llama-3.3-70B-Instruct'
-  },
-  {
-    key: 'reasoning',
-    title: 'Best reasoning',
-    tag: 'Reasoning',
-    model: 'deepseek-ai/DeepSeek-R1-0528-fast',
-    subtitle: 'deepseek-ai/DeepSeek-R1-0528-fast'
-  },
-  {
-    key: 'fastest',
-    title: 'Fastest outputs',
-    tag: 'Fast',
-    model: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
-    subtitle: 'meta-llama/Meta-Llama-3.1-8B-Instruct'
-  },
-  {
-    key: 'thinking',
-    title: 'Thinking model',
-    tag: 'Think',
-    model: 'Qwen/Qwen3-Next-80B-A3B-Thinking',
-    subtitle: 'Qwen/Qwen3-Next-80B-A3B-Thinking'
-  }
-];
-
-// ─── +AI model picker modal ───────────────────────────────────────────────
-let _aiModelPickerResolver = null;
-
-function openAIModelPicker(team, seatRole) {
-  return new Promise((resolve) => {
-    const modal = document.getElementById('ai-model-modal');
-    const backdrop = document.getElementById('ai-model-backdrop');
-    const closeBtn = document.getElementById('ai-model-close');
-    const cancelBtn = document.getElementById('ai-model-cancel');
-    const subtitle = document.getElementById('ai-model-subtitle');
-    const optionsHost = document.getElementById('ai-model-options');
-
-    if (!modal || !backdrop || !optionsHost) {
-      // If modal is missing, fall back to the default model.
-      resolve(null);
-      return;
-    }
-
-    // Only one picker at a time.
-    if (_aiModelPickerResolver) {
-      try { _aiModelPickerResolver(null); } catch (_) {}
-      _aiModelPickerResolver = null;
-    }
-
-    _aiModelPickerResolver = resolve;
-
-    // Helpful context copy.
-    if (subtitle) {
-      const t = (team === 'red' || team === 'blue') ? team.toUpperCase() : 'TEAM';
-      const r = (seatRole === 'spymaster') ? 'Spymaster' : 'Operative';
-      subtitle.textContent = `Pick a model for ${t} ${r}.`;
-    }
-
-    // Render options.
-    optionsHost.innerHTML = '';
-    (window.AI_MODEL_PRESETS || []).forEach((opt) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'ai-model-option';
-      btn.setAttribute('role', 'listitem');
-
-      const left = document.createElement('div');
-      const title = document.createElement('div');
-      title.className = 'ai-model-option-title';
-      title.textContent = opt.title;
-      const sub = document.createElement('div');
-      sub.className = 'ai-model-option-sub';
-      sub.textContent = opt.subtitle || opt.model;
-      left.appendChild(title);
-      left.appendChild(sub);
-
-      const tag = document.createElement('div');
-      tag.className = 'ai-model-option-tag';
-      tag.textContent = opt.tag || 'Model';
-
-      btn.appendChild(left);
-      btn.appendChild(tag);
-
-      btn.addEventListener('click', () => {
-        closeAIModelPicker();
-        resolve({ model: opt.model, presetKey: opt.key });
-      });
-
-      optionsHost.appendChild(btn);
-    });
-
-    const onCancel = () => {
-      closeAIModelPicker();
-      resolve(null);
-    };
-
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCancel();
-      }
-    };
-
-    // One-time listeners for this invocation.
-    const cleanup = () => {
-      try { backdrop.removeEventListener('click', onCancel); } catch (_) {}
-      try { closeBtn && closeBtn.removeEventListener('click', onCancel); } catch (_) {}
-      try { cancelBtn && cancelBtn.removeEventListener('click', onCancel); } catch (_) {}
-      try { document.removeEventListener('keydown', onKey); } catch (_) {}
-    };
-
-    const wrappedCancel = () => { cleanup(); onCancel(); };
-
-    try { backdrop.addEventListener('click', wrappedCancel, { once: true }); } catch (_) {}
-    try { closeBtn && closeBtn.addEventListener('click', wrappedCancel, { once: true }); } catch (_) {}
-    try { cancelBtn && cancelBtn.addEventListener('click', wrappedCancel, { once: true }); } catch (_) {}
-    document.addEventListener('keydown', onKey);
-
-    // Show modal
-    modal.style.display = 'flex';
-    void modal.offsetWidth; // reflow
-    modal.classList.add('modal-open');
-    modal.setAttribute('aria-hidden', 'false');
-
-    // Ensure cleanup runs when we resolve through a selection path.
-    const originalResolve = resolve;
-    resolve = (val) => { cleanup(); originalResolve(val); };
-  });
-}
-
-function closeAIModelPicker() {
-  const modal = document.getElementById('ai-model-modal');
-  if (!modal) return;
-  modal.classList.remove('modal-open');
-  setTimeout(() => {
-    if (!modal.classList.contains('modal-open')) modal.style.display = 'none';
-  }, 200);
-  modal.setAttribute('aria-hidden', 'true');
-  _aiModelPickerResolver = null;
-}
-
-// Public helper for the +AI buttons in the lobby
-window.addAIWithModelPicker = async function(team, seatRole) {
-  const choice = await openAIModelPicker(team, seatRole);
-  if (!choice || !choice.model) return;
-  return addAIAutonomous(team, seatRole, choice.model);
-};
-
-// ─── +AI: add an Autonomous AI directly (now uses model picker) ───────────
-async function addAIAutonomous(team, seatRole, modelOverride) {
+// ─── +AI: add an Autonomous AI directly (no mode popup) ────────────────────
+async function addAIAutonomous(team, seatRole) {
   try {
     const statusEl = document.getElementById('quick-lobby-status');
 
@@ -5935,19 +5748,8 @@ async function addAIAutonomous(team, seatRole, modelOverride) {
       return;
     }
 
-    // If called directly (legacy), ask for model now.
-    let selectedModel = modelOverride;
-    if (!selectedModel) {
-      const choice = await openAIModelPicker(team, seatRole);
-      if (!choice || !choice.model) {
-        if (statusEl) statusEl.textContent = '';
-        return;
-      }
-      selectedModel = choice.model;
-    }
-
     if (statusEl) statusEl.textContent = 'Adding AI…';
-    const ai = await addAIPlayer(team, seatRole, 'autonomous', { model: selectedModel });
+    const ai = await addAIPlayer(team, seatRole, 'autonomous');
     if (!ai) {
       if (statusEl) statusEl.textContent = 'Failed to add AI.';
       return;
