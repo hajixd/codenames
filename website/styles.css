@@ -13711,6 +13711,17 @@ body.og-mode .game-card{
   transform: translateZ(0);
 }
 
+/* Ensure OG flip-wrapper content sits above the decorative ::before plate.
+   Without this, the card-face/back (and therefore the word label) can render
+   behind the inner plate and look "blank". */
+body.og-mode .game-card .card-inner{
+  z-index: 3;
+}
+body.og-mode .game-card .card-face,
+body.og-mode .game-card .card-back{
+  z-index: 3;
+}
+
 body.og-mode .game-card::before{
   content:"";
   position:absolute;
@@ -14015,12 +14026,20 @@ body.og-mode .og-team-panel {
 }
 
 body.og-mode .og-team-blue .og-section-header {
-  color: rgba(82, 183, 255, 0.92);
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.45);
 }
 
 .og-team-red .og-section-header,
 .og-mobile-red .og-section-header {
-  color: rgba(255, 82, 65, 0.88);
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+
+/* Mobile blue header should also stay readable on the bright gradient */
+body.og-mode .og-mobile-blue .og-section-header{
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.45);
 }
 
 /* --- OG Illustration Boxes --- */
