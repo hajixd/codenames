@@ -14883,6 +14883,20 @@ body.og-mode .game-card.card-assassin{
   --wordBg: var(--black-darkWordBg);
 }
 
+/* Override base spymaster-view / revealed styles which directly set
+   background & border-color with higher specificity (0-3-0) than the
+   og-mode .game-card rule (0-2-1). These selectors at 0-3-1 restore
+   the layered card palette. */
+body.og-mode .game-card.spymaster-view,
+body.og-mode .game-card.revealed {
+  background: var(--cardBg);
+  border-color: var(--cardBorder);
+}
+
+body.og-mode .game-card.spymaster-view.card-assassin .card-word {
+  color: var(--wordColor);
+}
+
 body.og-mode .game-card:hover:not(.revealed):not(.disabled){
   transform: translateY(-2px);
   box-shadow: 0 14px 26px rgba(0,0,0,0.40);
