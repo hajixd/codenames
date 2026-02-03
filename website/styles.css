@@ -14873,7 +14873,7 @@ body.og-mode .game-card::after{
   left: 10px;
   right: 10px;
   /* Divider line sits just above the bottom word strip */
-  bottom: calc(var(--labelHeight) + var(--labelInset) + 10px);
+  bottom: calc(var(--labelInset) + var(--labelHeight) - 4px);
   height: 2px;
   background: var(--innerBorder);
   opacity: 0.45;
@@ -14885,10 +14885,10 @@ body.og-mode .game-card .card-word{
   position: absolute;
   z-index: 4;
 
-  /* Bottom word strip (flush to the inner plate edges) */
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
+  /* Bottom word strip (inset from the inner plate, like Codenames Online) */
+  left: var(--labelInset);
+  right: var(--labelInset);
+  bottom: var(--labelInset);
   height: var(--labelHeight);
 
   display: flex;
@@ -14909,9 +14909,9 @@ body.og-mode .game-card .card-word{
   white-space: nowrap;
 
   /* Nudge text a bit lower in the strip */
-  padding: 6px 12px 2px;
+  padding: 7px 12px 1px;
   /* More rectangular (less pill-like) */
-  border-radius: 6px;
+  border-radius: 4px;
 
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
