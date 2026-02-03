@@ -3224,7 +3224,7 @@ function renderAdvancedFeatures() {
 }
 
 function renderOgPanels() {
-  const isOgMode = document.body.classList.contains('og-mode');
+  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
   const ogPanelBlue = document.getElementById('og-panel-blue');
   const ogPanelRed = document.getElementById('og-panel-red');
   const ogMobilePanels = document.getElementById('og-mobile-panels');
@@ -3379,7 +3379,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const ogBanner = document.getElementById('og-phase-banner');
   const ogText = document.getElementById('og-phase-text');
   if (ogBanner && ogText) {
-    const isOgMode = document.body.classList.contains('og-mode');
+    const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
     ogBanner.style.display = isOgMode ? 'block' : 'none';
     if (isOgMode) {
       if (currentGame.winner) {

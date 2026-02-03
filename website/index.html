@@ -1169,21 +1169,27 @@
                 </div>
               </label>
 
-<label class="settings-row">
-  <span class="settings-row-label">Light mode</span>
-  <div class="toggle-switch">
-    <input type="checkbox" id="settings-theme-toggle" />
-    <span class="toggle-slider"></span>
+<div class="settings-row settings-style-row">
+  <span class="settings-row-label">Style</span>
+  <div class="settings-style-options" role="radiogroup" aria-label="Style">
+    <label class="settings-style-option">
+      <input type="radio" name="settings-style" id="settings-style-dark" value="dark" />
+      <span>Dark Mode</span>
+    </label>
+    <label class="settings-style-option">
+      <input type="radio" name="settings-style" id="settings-style-light" value="light" />
+      <span>Light Mode</span>
+    </label>
+    <label class="settings-style-option">
+      <input type="radio" name="settings-style" id="settings-style-cozy" value="cozy" />
+      <span>Cozy Mode</span>
+    </label>
+    <label class="settings-style-option">
+      <input type="radio" name="settings-style" id="settings-style-online" value="online" />
+      <span>Codenames Online</span>
+    </label>
   </div>
-</label>
-
-<label class="settings-row">
-  <span class="settings-row-label">OG Codenames</span>
-  <div class="toggle-switch">
-    <input type="checkbox" id="settings-og-mode-toggle" />
-    <span class="toggle-slider"></span>
-  </div>
-</label>
+</div></label>
 
               <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>
