@@ -8647,6 +8647,58 @@ body.og-mode .clue-announcement-number.team-blue {
   text-shadow: 0 0 25px rgba(0, 142, 224, 0.5) !important;
 }
 
+/* Extra legibility for OG clue variant (the in-game board is bright, so we go darker). */
+.clue-variant-og .clue-announcement-backdrop.clue-og-backdrop{
+  background:
+    radial-gradient(1200px 760px at 50% 45%, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.94) 72%),
+    rgba(0,0,0,0.88) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+.clue-variant-og .clue-announcement-card.clue-og-card{
+  overflow: hidden;
+}
+
+/* Subtle scanline sheen across the OG clue card */
+.clue-variant-og .clue-announcement-card.clue-og-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.00) 40%),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.06) 0px,
+      rgba(255,255,255,0.06) 1px,
+      rgba(0,0,0,0.00) 1px,
+      rgba(0,0,0,0.00) 6px
+    );
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+}
+
+/* Reposition the scanline bar so it animates within the clue card */
+.clue-variant-og .clue-announcement-card.clue-og-card .clue-og-scan{
+  top: 10px;
+  left: 50%;
+  width: min(560px, 92vw);
+  height: 3px;
+  transform: translateX(-50%);
+  animation-duration: 1.1s;
+}
+
+/* Make the clue word itself more readable (less tracking + stronger outline). */
+.clue-variant-og .clue-announcement-word.clue-og-word{
+  letter-spacing: 2px !important;
+  font-size: clamp(26px, 5.2vw, 46px) !important;
+  border-radius: 14px !important;
+  text-shadow:
+    0 2px 26px rgba(0,0,0,0.80),
+    0 0 2px rgba(0,0,0,0.70);
+}
+
 /* Input focus animations */
 .input {
   transition: border-color var(--anim-duration) var(--anim-ease),
@@ -14818,7 +14870,8 @@ body.og-mode .game-card{
 
   /* Label geometry (tuned to match Codenames Online cards) */
   --labelInset: 12px;      /* distance from inner plate */
-  --labelHeight: 34%;      /* height of the bottom word strip */
+  /* Slightly shorter strip like Codenames Online (also helps long words fit). */
+  --labelHeight: 28%;      /* height of the bottom word strip */
 
   background: var(--cardBg);
   border: 2px solid var(--cardBorder);
@@ -14898,14 +14951,16 @@ body.og-mode .game-card .card-word{
   font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   font-weight: 800;
   text-transform: uppercase;
-  font-size: clamp(13px, 2.0vw, 26px);
-  letter-spacing: 0.06em;
+  /* Smaller baseline type + less tracking for better readability */
+  font-size: clamp(11px, 1.55vw, 20px);
+  letter-spacing: 0.035em;
   line-height: 1.05;
   text-align: center;
   white-space: nowrap;
 
-  padding: 0 12px;
-  border-radius: 10px;
+  /* Push text a touch lower + give long words a bit more room */
+  padding: 3px 10px 0;
+  border-radius: 6px;
 
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
@@ -14917,6 +14972,13 @@ body.og-mode .game-card .card-word{
 
   text-shadow: 0 1px 0 rgba(0,0,0,0.18);
   overflow: hidden;
+}
+
+/* Keep the inner word wrapper predictable (JS sizing targets this element) */
+body.og-mode .game-card .card-word .word-text{
+  display: block;
+  width: 100%;
+  white-space: nowrap;
 }
 
 
@@ -15674,12 +15736,13 @@ body.cozy-mode .og-game-log .game-log-entry {
 
   body.og-mode .game-card{
     --labelInset: 9px;
-    --labelHeight: 36%;
+    --labelHeight: 30%;
   }
 
   body.og-mode .game-card .card-word {
-    font-size: clamp(12px, 4.2vw, 18px);
-    padding: 0 10px;
+    font-size: clamp(10px, 4.0vw, 16px);
+    padding: 2px 9px 0;
+    border-radius: 6px;
   }
 
   body.og-mode .og-topbar {

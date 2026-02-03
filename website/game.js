@@ -3484,23 +3484,28 @@ function fitAllCardWords() {
     const baseLS = parseFloat(cs.letterSpacing) || 0;
 
     let size = baseSize;
-    const minSize = 10;
+    const minSize = 9;
     let guard = 0;
 
-    // Use the container as the constraint box (this is the visible label strip)
-    const boxW = container.clientWidth;
-    const boxH = container.clientHeight;
+    // Use the container as the constraint box (visible label strip), but
+    // subtract padding so long words don't "fit" only to get clipped.
+    const ccs = getComputedStyle(container);
+    const padX = (parseFloat(ccs.paddingLeft) || 0) + (parseFloat(ccs.paddingRight) || 0);
+    const padY = (parseFloat(ccs.paddingTop) || 0) + (parseFloat(ccs.paddingBottom) || 0);
+    const boxW = Math.max(0, container.clientWidth - padX);
+    const boxH = Math.max(0, container.clientHeight - padY);
     if (!boxW || !boxH) return;
 
     const overflows = () => (textEl.scrollWidth > boxW || textEl.scrollHeight > boxH);
 
     // First pass: reduce font-size until it fits
-    while (guard < 48 && size > minSize && overflows()) {
+    while (guard < 56 && size > minSize && overflows()) {
       size -= 1;
       textEl.style.fontSize = size + 'px';
-      // Reduce tracking a bit as we shrink (helps long words feel less cramped)
-      const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.85);
-      if (!Number.isNaN(scaledLS)) textEl.style.letterSpacing = scaledLS + 'px';
+      // Reduce tracking as we shrink (long words need tighter tracking). Allow a small negative.
+      const scaledLS = (baseLS * (size / baseSize) * 0.75) - 0.2;
+      const clampedLS = Math.max(-0.6, Math.min(baseLS, scaledLS));
+      if (!Number.isNaN(clampedLS)) textEl.style.letterSpacing = clampedLS + 'px';
       guard++;
     }
 
@@ -3509,12 +3514,12 @@ function fitAllCardWords() {
     if (overflows()) {
       // Ensure measurements update before we compute the ratio
       const sw = textEl.scrollWidth || 1;
-      const ratio = Math.max(0.78, Math.min(1, boxW / sw));
+      const ratio = Math.max(0.70, Math.min(1, boxW / sw));
       textEl.style.transformOrigin = 'center';
       textEl.style.transform = `scaleX(${ratio})`;
       // Slightly reduce tracking to avoid "smeared" look when scaled
-      const tighterLS = Math.max(0, (parseFloat(getComputedStyle(textEl).letterSpacing) || 0) * 0.85);
-      textEl.style.letterSpacing = tighterLS + 'px';
+      const curLS = parseFloat(getComputedStyle(textEl).letterSpacing) || 0;
+      textEl.style.letterSpacing = Math.max(-0.8, curLS * 0.7) + 'px';
     }
   });
 }
@@ -5620,17 +5625,20 @@ function showClueAnimation(word, number, teamColor) {
       </div>
     `;
   } else {
-    // OG mode: neon scanline + glitch word + rotating emblem (no box / no blur).
+    // OG mode (Codenames Online): give it a strong dark backdrop + crisp card so the clue is always readable.
+    // We keep a subtle scanline feel, but prioritize legibility.
     overlay.innerHTML = `
-      <div class="clue-og-container ${teamClass}">
-        <div class="clue-og-scan" aria-hidden="true"></div>
-        <div class="clue-og-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
-        <div class="clue-og-word" data-text="${safeWord}">${safeWord}</div>
-        <div class="clue-og-meta">
-          <span class="clue-og-for">FOR</span>
-          <span class="clue-og-emblem" aria-hidden="true"></span>
-          <span class="clue-og-num">${safeNum}</span>
+      <div class="clue-announcement-backdrop clue-og-backdrop"></div>
+      <div class="clue-announcement-card ${teamClass} clue-og-card">
+        <div class="clue-announcement-glow ${teamClass}"></div>
+        <div class="clue-announcement-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
+        <div class="clue-announcement-word clue-og-word" data-text="${safeWord}">${safeWord}</div>
+        <div class="clue-announcement-divider ${teamClass}"></div>
+        <div class="clue-announcement-number-row">
+          <span class="clue-announcement-for">for</span>
+          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
         </div>
+        <div class="clue-og-scan" aria-hidden="true"></div>
       </div>
     `;
   }
@@ -5647,7 +5655,7 @@ function showClueAnimation(word, number, teamColor) {
   let autoDismissMs = 5500; // dark mode default
   if (isLight) autoDismissMs = 2900;
   else if (isCozy) autoDismissMs = 3600;
-  else if (isOg) autoDismissMs = 3200;
+  else if (isOg) autoDismissMs = 4200;
 
   setTimeout(() => {
     if (overlay.parentNode) {
