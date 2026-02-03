@@ -7222,6 +7222,65 @@ body.tournament.has-team-color .btn.primary:hover {
   }
 }
 
+/* =========================
+   Style-specific guess animations
+   (Dark mode keeps the existing dramatic expand.)
+========================= */
+
+@keyframes cardGuessLight {
+  0% { transform: translate(0,0) scale(1); filter: brightness(1); }
+  18% { transform: translate(0,-6px) scale(1.06); filter: brightness(1.08); box-shadow: 0 18px 50px rgba(0,0,0,0.18); }
+  42% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.55); filter: brightness(1.22); box-shadow: 0 26px 70px rgba(0,0,0,0.22); }
+  68% { transform: translate(calc(var(--guess-tx,0px) * 0.35), calc(var(--guess-ty,0px) * 0.35)) scale(1.18); filter: brightness(1.12); }
+  100% { transform: translate(0,0) scale(1); filter: brightness(1); box-shadow: none; }
+}
+
+@keyframes cardGuessCozy {
+  0% { transform: translate(0,0) rotate(0deg) scale(1); filter: brightness(1); }
+  14% { transform: translate(0,-5px) rotate(-0.8deg) scale(1.03); }
+  30% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) rotate(1.2deg) scale(1.7); filter: brightness(1.18); box-shadow: 0 26px 70px rgba(0,0,0,0.35); }
+  44% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) rotate(-1.1deg) scale(1.7); }
+  62% { transform: translate(calc(var(--guess-tx,0px) * 0.30), calc(var(--guess-ty,0px) * 0.30)) rotate(0.6deg) scale(1.22); }
+  100% { transform: translate(0,0) rotate(0deg) scale(1); filter: brightness(1); box-shadow: none; }
+}
+
+@keyframes cardGuessOnline {
+  0% { transform: translate(0,0) scale(1); filter: brightness(1); }
+  20% { transform: translate(0,-4px) scale(1.04); filter: brightness(1.06); }
+  46% { transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.35); filter: brightness(1.12); box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  72% { transform: translate(calc(var(--guess-tx,0px) * 0.25), calc(var(--guess-ty,0px) * 0.25)) scale(1.12); filter: brightness(1.06); }
+  100% { transform: translate(0,0) scale(1); filter: brightness(1); box-shadow: none; }
+}
+
+/* Override guess animation per style (keep Dark as default) */
+body.light-mode .game-card.guess-animate,
+body.light-mode .game-card.guess-animate.card-red,
+body.light-mode .game-card.guess-animate.card-blue,
+body.light-mode .game-card.guess-animate.card-neutral,
+body.light-mode .game-card.guess-animate.card-assassin {
+  animation-duration: 2.6s !important;
+  animation-name: cardGuessLight !important;
+}
+
+body.cozy-mode .game-card.guess-animate,
+body.cozy-mode .game-card.guess-animate.card-red,
+body.cozy-mode .game-card.guess-animate.card-blue,
+body.cozy-mode .game-card.guess-animate.card-neutral,
+body.cozy-mode .game-card.guess-animate.card-assassin {
+  animation-duration: 3.0s !important;
+  animation-name: cardGuessCozy !important;
+}
+
+body.og-mode .game-card.guess-animate,
+body.og-mode .game-card.guess-animate.card-red,
+body.og-mode .game-card.guess-animate.card-blue,
+body.og-mode .game-card.guess-animate.card-neutral,
+body.og-mode .game-card.guess-animate.card-assassin {
+  /* Online mode already flips the inner card; keep the outer motion clean. */
+  animation-duration: 2.2s !important;
+  animation-name: cardGuessOnline !important;
+}
+
 /* Team-colored glow on reveal */
 @keyframes cardRevealGlowRed {
   0%, 100% { box-shadow: none; }
@@ -7367,6 +7426,59 @@ body.tournament.has-team-color .btn.primary:hover {
   0% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* =========================
+   Style-specific clue reveal animations
+   (Dark mode keeps the existing dramatic slam.)
+========================= */
+
+@keyframes clueBackdropLight {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes clueCardLight {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.92) translateY(26px); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.02) translateY(-6px); }
+  35% { transform: translate(-50%, -50%) scale(1) translateY(0px); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) translateY(0px); }
+}
+
+@keyframes clueBackdropCozy {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes clueCardCozy {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85) rotate(-1.2deg) translateY(18px); }
+  22% { opacity: 1; transform: translate(-50%, -50%) scale(1.03) rotate(0.8deg) translateY(-4px); }
+  42% { transform: translate(-50%, -50%) scale(1) rotate(0deg) translateY(0px); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg) translateY(0px); }
+}
+
+@keyframes clueBackdropOnline {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes clueCardOnline {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.75) rotateX(20deg); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1.02) rotateX(0deg); }
+  40% { transform: translate(-50%, -50%) scale(0.98) rotateX(0deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotateX(0deg); }
+}
+
+body.light-mode .clue-announcement-backdrop { animation: clueBackdropLight 2.8s ease forwards !important; }
+body.light-mode .clue-announcement-card { animation: clueCardLight 2.8s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
+
+body.cozy-mode .clue-announcement-backdrop { animation: clueBackdropCozy 3.1s ease forwards !important; }
+body.cozy-mode .clue-announcement-card { animation: clueCardCozy 3.1s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
+
+body.og-mode .clue-announcement-backdrop { animation: clueBackdropOnline 2.4s ease forwards !important; }
+body.og-mode .clue-announcement-card { animation: clueCardOnline 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; }
 
 .clue-announcement-overlay {
   position: fixed;
@@ -14206,22 +14318,23 @@ body.og-mode .og-mobile-blue .og-section-header{
 .og-game-log {
   flex: 1;
   max-height: none;
-  min-height: 240px;
+  /* Smaller, less dominant log in OG/Cozy so the board stays the star */
+  min-height: 170px;
   overflow-y: auto;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
   color: rgba(255,255,255,0.88);
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 /* OG log entries: give each entry its own readable chip */
 body.cozy-mode .og-game-log .game-log-entry,
 body.og-mode .og-game-log .game-log-entry {
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 12px;
   background: rgba(0,0,0,0.18);
   border: 1px solid rgba(255,255,255,0.10);
-  margin: 6px 0;
+  margin: 4px 0;
 }
 
 /* --- OG Docked Chat (bottom-left) --- */
@@ -14239,7 +14352,7 @@ body.og-mode .og-game-log .game-log-entry {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 240px;
+  min-height: 170px;
 }
 
 /* Bring back the standard chat panel inside the OG host */
@@ -14276,8 +14389,8 @@ body.og-mode #og-chat-host .operative-chat-messages {
   min-height: 0;
   background: rgba(0,0,0,0.12);
   border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 14px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 6px;
 }
 
 body.cozy-mode #og-chat-host .chat-message,
@@ -14288,11 +14401,11 @@ body.og-mode #og-chat-host .chat-message {
 
 body.cozy-mode #og-chat-host .operative-chat-form,
 body.og-mode #og-chat-host .operative-chat-form {
-  margin-top: 10px;
+  margin-top: 6px;
   background: rgba(0,0,0,0.10);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 999px;
-  padding: 6px;
+  padding: 4px;
 }
 
 body.cozy-mode #og-chat-host .operative-chat-form .chat-input,
@@ -14306,7 +14419,7 @@ body.og-mode #og-chat-host .operative-chat-form .chat-input {
 body.cozy-mode #og-chat-host .operative-chat-form .chat-send-btn,
 body.og-mode #og-chat-host .operative-chat-form .chat-send-btn {
   border-radius: 999px;
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
 /* --- OG Tag Legend --- */

@@ -940,6 +940,108 @@ function sanitizeChatText(text, vision, maxLen = 180) {
   }
 }
 
+// ─── Human-sounding chat post-processing (anti-repetition) ──────────────────
+
+// Memory of recent AI chat so we can avoid repeated phrasing across AIs.
+// Structure: { [gameId]: { [team]: ["msg", ...] } }
+const aiChatMemory = {};
+
+function _normTokens(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+function _jaccard(a, b) {
+  try {
+    const A = new Set(_normTokens(a));
+    const B = new Set(_normTokens(b));
+    if (!A.size || !B.size) return 0;
+    let inter = 0;
+    for (const t of A) if (B.has(t)) inter++;
+    const union = A.size + B.size - inter;
+    return union ? inter / union : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function _pick(arr) {
+  const a = Array.isArray(arr) ? arr : [];
+  return a.length ? a[Math.floor(Math.random() * a.length)] : '';
+}
+
+function _extractAllCapsWord(msg) {
+  const m = String(msg || '').match(/\b[A-Z]{3,}\b/);
+  return m ? m[0] : '';
+}
+
+function makeChatMoreHuman(ai, game, msg, vision) {
+  try {
+    let out = String(msg || '').trim();
+    if (!out) return '';
+
+    // Contractions / casual tone
+    out = out.replace(/\bI am\b/gi, "I'm");
+    out = out.replace(/\bdo not\b/gi, "don't");
+    out = out.replace(/\bcan not\b/gi, "can't");
+    out = out.replace(/\bis not\b/gi, "isn't");
+    out = out.replace(/\bare not\b/gi, "aren't");
+
+    // De-robot a couple common starters
+    out = out.replace(/^\s*(leaning|i think|i feel like)\b\s*[:,-]?\s*/i, '');
+
+    const gid = String(game?.id || '');
+    const team = String(ai?.team || '');
+    if (!gid || !team) return out;
+
+    if (!aiChatMemory[gid]) aiChatMemory[gid] = {};
+    if (!aiChatMemory[gid][team]) aiChatMemory[gid][team] = [];
+    const recent = aiChatMemory[gid][team].slice(-6);
+
+    // If we're repeating ourselves (or another AI), rephrase into a friendlier template.
+    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.62);
+    if (tooSimilar || /feels like it fits/i.test(out)) {
+      const clue = String(vision?.clue?.word || '').toUpperCase();
+      const w = _extractAllCapsWord(out) || '';
+      const opener = _pick([
+        'ok wait',
+        'lowkey',
+        'ngl',
+        "i'm kinda seeing",
+        'my gut says',
+        'i keep coming back to'
+      ]);
+      const closer = _pick([
+        'thoughts?',
+        'you seeing that too?',
+        'or am i overthinking?',
+        'happy to bail if y’all hate it',
+        'anyone strongly against it?'
+      ]);
+      if (w && clue) out = `${opener} ${w} for ${clue} — ${closer}`;
+      else if (w) out = `${opener} ${w} — ${closer}`;
+      else out = `${opener}… ${closer}`;
+    } else {
+      // Sprinkle a tiny bit of "group chat" energy sometimes
+      if (!/[!?]$/.test(out) && Math.random() < 0.25) {
+        out = `${out} ${_pick(['👀', 'lol', 'tbh', ''])}`.trim();
+      }
+      if (!/\b(thoughts\?|you think\?)\b/i.test(out) && Math.random() < 0.18) {
+        out = `${out} ${_pick(['what do you think?', 'ok?', 'cool?'])}`.trim();
+      }
+    }
+
+    out = out.replace(/\s{2,}/g, ' ').trim();
+    return out.slice(0, 180);
+  } catch (_) {
+    return String(msg || '').trim().slice(0, 180);
+  }
+}
+
 // ─── Chat state helpers (live refresh before sending) ───────────────────────
 
 function _chatSignature(chatDocs, take = 10) {
@@ -2425,7 +2527,10 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `PERSONALITY (follow strictly): ${persona.label}`,
       ...persona.rules.map(r => `- ${r}`),
       ``,
-      `Write like a real human teammate: 1–2 natural sentences (not robotic fragments).`,
+      `Write like you're in a small friends group chat during a game.`,
+      `Sound extremely human: use contractions, casual phrasing, and respond to what others said.`,
+      `1–2 natural sentences (no robotic fragments).`,
+      `Avoid repeating your own phrases or other AIs' phrasing. If you'd repeat, rephrase completely or just leave msg="".`,
       `Keep it <=160 chars, but avoid one-word replies like "Nice!" unless it actually ended the game.`,
       `Never refer to card indices, coordinates, or numbers. Do not write things like "13 = WORD".`,
       `If you mention a board word, it MUST be from the unrevealed list provided, and you must use the WORD itself (not an index).`,
@@ -2445,7 +2550,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.0, core.temperature * 0.85), max_tokens: 220, response_format: { type: 'json_object' } }
+      { temperature: Math.min(1.25, (core.temperature * 1.05) + 0.15), max_tokens: 220, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -2515,6 +2620,14 @@ async function sendAIChatMessage(ai, game, text) {
 
   const teamColor = ai.team;
 
+  // Make messages feel like real friends (and avoid repetition across AIs)
+  try {
+    const vision = buildAIVision(game, ai);
+    const human = makeChatMoreHuman(ai, game, text, vision);
+    text = (human || '').trim();
+  } catch (_) {}
+  if (!text) return;
+
   try {
     await db.collection('games').doc(game.id)
       .collection(`${teamColor}Chat`)
@@ -2524,6 +2637,16 @@ async function sendAIChatMessage(ai, game, text) {
         text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
+
+    // Remember the last few messages so we can de-dup future replies.
+    try {
+      const gid = String(game.id);
+      const t = String(teamColor);
+      if (!aiChatMemory[gid]) aiChatMemory[gid] = {};
+      if (!aiChatMemory[gid][t]) aiChatMemory[gid][t] = [];
+      aiChatMemory[gid][t].push(String(text));
+      if (aiChatMemory[gid][t].length > 18) aiChatMemory[gid][t] = aiChatMemory[gid][t].slice(-12);
+    } catch (_) {}
   } catch (e) {
     console.error(`AI ${ai.name} send chat error:`, e);
   }
