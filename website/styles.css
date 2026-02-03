@@ -12097,9 +12097,9 @@ body.og-mode {
   --bg-red-layer2-1: transparent;
   --bg-red-layer2-2: transparent;
   --bg-red-layer2-3: transparent;
-  --bg-blue-layer1-1: rgba(4,3,7,1);
-  --bg-blue-layer1-2: #293543;
-  --bg-blue-layer1-3: #294054;
+  --bg-blue-layer1-1: #0d1a0f;
+  --bg-blue-layer1-2: #2a4030;
+  --bg-blue-layer1-3: #365842;
   --bg-blue-svg: rgba(0, 0, 0, 0.1);
   --bg-blue-layer2-1: transparent;
   --bg-blue-layer2-2: transparent;
@@ -12219,12 +12219,16 @@ body.og-mode::before{
 }
 /* --- OG Background --- */
 body.og-mode {
-  /* OG background: dark blue/grey gradient + corner team glows (matches screenshots) */
+  /* OG background: dark olive/sage green gradient (matches official Codenames Online) */
   background:
-    radial-gradient(1200px 700px at 50% -12%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.00) 58%),
-    radial-gradient(1100px 700px at 15% -12%, rgba(0,142,224,0.26) 0%, rgba(0,142,224,0.00) 62%),
-    radial-gradient(1100px 700px at 85% -12%, rgba(255,82,65,0.22) 0%, rgba(255,82,65,0.00) 62%),
+    radial-gradient(1200px 700px at 50% -12%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.00) 58%),
+    radial-gradient(1100px 700px at 15% -12%, rgba(0,142,224,0.12) 0%, rgba(0,142,224,0.00) 62%),
+    radial-gradient(1100px 700px at 85% -12%, rgba(255,82,65,0.10) 0%, rgba(255,82,65,0.00) 62%),
     linear-gradient(180deg, var(--bg-blue-layer1-1) 0%, var(--bg-blue-layer1-2) 55%, var(--bg-blue-layer1-3) 100%);
+}
+
+body.og-mode .panel-game {
+  background: transparent;
 }
 
 body.og-mode .game-container-expanded {
@@ -12633,16 +12637,16 @@ body.og-mode .og-team-panel {
 
 .og-team-blue {
   background:
-    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.00) 55%),
-    linear-gradient(to bottom, rgba(0,142,224,0.74), rgba(82,183,255,0.40));
-  border-color: rgba(255,255,255,0.20);
+    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.00) 55%),
+    linear-gradient(to bottom, rgba(0,142,224,0.92), rgba(52,160,240,0.70));
+  border-color: rgba(255,255,255,0.24);
 }
 
 .og-team-red {
   background:
-    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.00) 55%),
-    linear-gradient(to bottom, rgba(255,82,65,0.72), rgba(255,131,61,0.40));
-  border-color: rgba(255,255,255,0.20);
+    radial-gradient(900px 520px at 40% -20%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.00) 55%),
+    linear-gradient(to bottom, rgba(255,82,65,0.90), rgba(255,120,55,0.68));
+  border-color: rgba(255,255,255,0.24);
 }
 
 /* --- OG Section Headers --- */
@@ -12662,7 +12666,7 @@ body.og-mode .og-team-blue .og-section-header {
 
 .og-team-red .og-section-header,
 .og-mobile-red .og-section-header {
-  color: rgba(255, 82, 65, 0.75);
+  color: rgba(255, 82, 65, 0.88);
 }
 
 /* --- OG Illustration Boxes --- */
@@ -12886,18 +12890,18 @@ body.og-mode .og-game-log .game-log-entry {
 
   .og-mobile-blue {
     background:
-      linear-gradient(to bottom, rgba(0,142,224,0.62), rgba(82,183,255,0.38));
-    border: 2px solid rgba(255,255,255,0.20);
+      linear-gradient(to bottom, rgba(0,142,224,0.88), rgba(52,160,240,0.65));
+    border: 2px solid rgba(255,255,255,0.24);
   }
 
   .og-mobile-red {
     background:
-      linear-gradient(to bottom, rgba(255,82,65,0.62), rgba(255,131,61,0.38));
-    border: 2px solid rgba(255,255,255,0.20);
+      linear-gradient(to bottom, rgba(255,82,65,0.86), rgba(255,120,55,0.62));
+    border: 2px solid rgba(255,255,255,0.24);
   }
 
   .og-mobile-red .og-section-header {
-    color: rgba(255, 82, 65, 0.75);
+    color: rgba(255, 82, 65, 0.88);
   }
 
   .og-mobile-log {
@@ -12959,3 +12963,66 @@ body.og-mode .og-game-log .game-log-entry {
 }
 
 body.og-mode .app{ position: relative; z-index: 1; }
+
+/* --- OG Game-End Overlay --- */
+body.og-mode .game-end-overlay {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+body.og-mode .game-end-card {
+  background: rgba(0, 0, 0, 0.70);
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 18px;
+  max-width: 440px;
+  padding: 36px 40px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.60);
+}
+
+body.og-mode .game-end-title {
+  font-size: 34px;
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  font-weight: 900;
+}
+
+body.og-mode .game-end-title.win {
+  color: #ffffff;
+  text-shadow: 0 4px 18px rgba(0,0,0,0.55);
+}
+
+body.og-mode .game-end-title.lose {
+  color: #ff6b5a;
+  text-shadow: 0 4px 18px rgba(0,0,0,0.55);
+}
+
+body.og-mode .game-end-subtitle {
+  color: rgba(255,255,255,0.75);
+  font-size: 17px;
+}
+
+body.og-mode .game-end-actions .btn.primary {
+  background: var(--green-gradient);
+  border: none;
+  border-radius: 28px;
+  padding: 14px 36px;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(148, 210, 52, 0.30);
+}
+
+body.og-mode .game-end-actions .btn.primary:hover {
+  filter: brightness(1.08);
+}
+
+body.og-mode .game-end-actions .btn:not(.primary) {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  border-radius: 28px;
+  padding: 12px 28px;
+  font-size: 14px;
+  font-weight: 600;
+}
