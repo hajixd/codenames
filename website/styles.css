@@ -4848,10 +4848,207 @@ body.og-mode .game-card.flip-glow {
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.08) inset;
 }
 
+/* ------------------------------------------------------------------
+   OG (Codenames Online) card look
+   Rebuild the whole neutral/unrevealed card to visually match the
+   classic "online" tiles (bordered plate + inner panel + divider +
+   label strip).
+------------------------------------------------------------------ */
+
+
+
+body.og-mode .game-card:not(.revealed) {
+  /* Outer plate */
+  --og-inset: clamp(8px, 7%, 12px);
+  --og-strip-x: clamp(10px, 9%, 16px);
+  --og-strip-bottom: clamp(8px, 7%, 12px);
+  --og-topline: 22%;
+  --og-midline: 56%;
+
+  background: #f1a172; /* outer peach frame */
+  border: none;
+  border-radius: 18px;
+  box-shadow:
+    0 10px 26px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 -2px 0 rgba(0,0,0,0.18);
+}
+
+/* Inner orange panel */
+body.og-mode .game-card:not(.revealed)::before {
+  content: "";
+  position: absolute;
+  inset: var(--og-inset);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #e96a4b, #e35a41);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.22),
+    inset 0 -2px 0 rgba(0,0,0,0.14);
+  pointer-events: none;
+}
+
+/* Divider lines (top + middle) on the inner panel */
+body.og-mode .game-card:not(.revealed)::after {
+  content: "";
+  position: absolute;
+  inset: var(--og-inset);
+  border-radius: 14px;
+  background:
+    linear-gradient(#7b331e, #7b331e) 0 var(--og-topline) / 100% 2px no-repeat,
+    linear-gradient(#7b331e, #7b331e) 0 var(--og-midline) / 100% 2px no-repeat;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* Layout for both faces */
+body.og-mode .game-card:not(.revealed) .card-face {
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+/* Bottom label strip */
+body.og-mode .game-card:not(.revealed) .card-face::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--og-inset) + var(--og-strip-x));
+  right: calc(var(--og-inset) + var(--og-strip-x));
+  top: calc(var(--og-inset) + var(--og-midline));
+  bottom: calc(var(--og-inset) + var(--og-strip-bottom));
+  border-radius: 6px;
+  background: linear-gradient(180deg, #823521, #6f2b18);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -2px 0 rgba(0,0,0,0.22);
+  pointer-events: none;
+}
+
+/* Word sits inside the label strip box (so the fitter uses correct bounds) */
+body.og-mode .game-card:not(.revealed) .card-word {
+  position: absolute;
+  left: calc(var(--og-inset) + var(--og-strip-x));
+  right: calc(var(--og-inset) + var(--og-strip-x));
+  top: calc(var(--og-inset) + var(--og-midline));
+  bottom: calc(var(--og-inset) + var(--og-strip-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 2px; /* nudge text slightly lower */
+  color: rgba(255,255,255,0.96);
+  font-weight: 900;
+  font-size: clamp(12px, 1.25vw, 16px);
+  letter-spacing: 0.6px;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.22);
+}
+
+/* Keep the checkmark above our rebuilt layers */
+body.og-mode .game-card:not(.revealed) .card-checkmark {
+  z-index: 5;
+}
+
+/* Revealed cards in OG mode keep the same plate geometry (only inner fill changes) */
+body.og-mode .game-card.revealed {
+  --og-inset: clamp(8px, 7%, 12px);
+  --og-strip-x: clamp(10px, 9%, 16px);
+  --og-strip-bottom: clamp(8px, 7%, 12px);
+  --og-topline: 22%;
+  --og-midline: 56%;
+
+  background: #f1a172;
+  border: none;
+  border-radius: 18px;
+  box-shadow:
+    0 10px 26px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 -2px 0 rgba(0,0,0,0.18);
+}
+
+body.og-mode .game-card.revealed::before {
+  content: "";
+  position: absolute;
+  inset: var(--og-inset);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #e96a4b, #e35a41);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.22),
+    inset 0 -2px 0 rgba(0,0,0,0.14);
+  pointer-events: none;
+}
+
+/* Per-team inner fills */
+body.og-mode .game-card.revealed.card-blue::before {
+  background: linear-gradient(180deg, #4b79b3, #3c659d);
+}
+body.og-mode .game-card.revealed.card-neutral::before {
+  background: linear-gradient(180deg, #e0caa9, #d5ba97);
+}
+body.og-mode .game-card.revealed.card-assassin::before {
+  background: linear-gradient(180deg, #2b2b2b, #141414);
+}
+
+body.og-mode .game-card.revealed::after {
+  content: "";
+  position: absolute;
+  inset: var(--og-inset);
+  border-radius: 14px;
+  background:
+    linear-gradient(#7b331e, #7b331e) 0 var(--og-topline) / 100% 2px no-repeat,
+    linear-gradient(#7b331e, #7b331e) 0 var(--og-midline) / 100% 2px no-repeat;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+body.og-mode .game-card.revealed .card-face {
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+body.og-mode .game-card.revealed .card-face::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--og-inset) + var(--og-strip-x));
+  right: calc(var(--og-inset) + var(--og-strip-x));
+  top: calc(var(--og-inset) + var(--og-midline));
+  bottom: calc(var(--og-inset) + var(--og-strip-bottom));
+  border-radius: 6px;
+  background: linear-gradient(180deg, #823521, #6f2b18);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -2px 0 rgba(0,0,0,0.22);
+  pointer-events: none;
+}
+
+body.og-mode .game-card.revealed .card-word {
+  position: absolute;
+  left: calc(var(--og-inset) + var(--og-strip-x));
+  right: calc(var(--og-inset) + var(--og-strip-x));
+  top: calc(var(--og-inset) + var(--og-midline));
+  bottom: calc(var(--og-inset) + var(--og-strip-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 2px;
+  color: rgba(255,255,255,0.96);
+  font-weight: 900;
+  font-size: clamp(12px, 1.25vw, 16px);
+  letter-spacing: 0.6px;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.22);
+}
+
 .game-card:hover:not(.revealed):not(.disabled) {
   border-color: var(--accent);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Keep OG cards visually consistent on hover (do not swap to the generic hover shadow) */
+body.og-mode .game-card:hover:not(.revealed):not(.disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 30px rgba(0,0,0,0.50),
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 -2px 0 rgba(0,0,0,0.18);
 }
 
 .game-card.disabled {
