@@ -3000,7 +3000,7 @@ function startGameListener(gameId, options = {}) {
             };
             cardEl.addEventListener('animationend', cleanup, { once: true });
             // Fallback cleanup
-            setTimeout(cleanup, 4000);
+            setTimeout(cleanup, 5000);
           }
         });
       });
@@ -5510,13 +5510,18 @@ function showClueAnimation(word, number, teamColor) {
     setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 500);
   });
 
-  // Remove after full animation (much longer now)
+  // Auto-dismiss duration matches the style-specific animation length
+  let autoDismissMs = 5500; // dark mode default
+  if (document.body.classList.contains('light-mode')) autoDismissMs = 3200;
+  else if (document.body.classList.contains('cozy-mode')) autoDismissMs = 3500;
+  else if (document.body.classList.contains('og-mode')) autoDismissMs = 2800;
+
   setTimeout(() => {
     if (overlay.parentNode) {
       overlay.classList.add('clue-announcement-dismissing');
       setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 800);
     }
-  }, 5500);
+  }, autoDismissMs);
 }
 
 /* =========================
