@@ -1171,23 +1171,19 @@
 
 <div class="settings-row settings-style-row">
   <span class="settings-row-label">Style</span>
-  <div class="settings-style-options" role="radiogroup" aria-label="Style">
-    <label class="settings-style-option">
-      <input type="radio" name="settings-style" id="settings-style-dark" value="dark" />
-      <span>Dark Mode</span>
-    </label>
-    <label class="settings-style-option">
-      <input type="radio" name="settings-style" id="settings-style-light" value="light" />
-      <span>Light Mode</span>
-    </label>
-    <label class="settings-style-option">
-      <input type="radio" name="settings-style" id="settings-style-cozy" value="cozy" />
-      <span>Cozy Mode</span>
-    </label>
-    <label class="settings-style-option">
-      <input type="radio" name="settings-style" id="settings-style-online" value="online" />
-      <span>Codenames Online</span>
-    </label>
+
+  <div class="settings-dropdown" id="settings-style-dropdown">
+    <button class="settings-dropdown-trigger" id="settings-style-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <span class="settings-dropdown-value" id="settings-style-value">Dark Mode</span>
+      <span class="settings-dropdown-chevron" aria-hidden="true">▾</span>
+    </button>
+
+    <div class="settings-dropdown-menu" id="settings-style-menu" role="listbox" tabindex="-1" aria-label="Style" hidden>
+      <button class="settings-dropdown-option" type="button" role="option" data-value="dark">Dark Mode</button>
+      <button class="settings-dropdown-option" type="button" role="option" data-value="light">Light Mode</button>
+      <button class="settings-dropdown-option" type="button" role="option" data-value="cozy">Cozy Mode</button>
+      <button class="settings-dropdown-option" type="button" role="option" data-value="online">Codenames Online</button>
+    </div>
   </div>
 </div>
 

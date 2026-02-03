@@ -6250,87 +6250,127 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   min-width: 38px;
 }
 
-/* Style mode (segmented radio group) */
+/* Style mode (custom dropdown) */
 .settings-style-row{
   cursor: default;
 }
 
-/* Compact, pill-like selector that matches the rest of the settings cards */
-.settings-style-options{
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding: 6px;
-  background: var(--surface1);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+.settings-dropdown{
+  position: relative;
   min-width: 220px;
 }
 
-/* Turn each label into a "button" */
-.settings-style-option{
-  position: relative;
-  margin: 0;
-  cursor: pointer;
-  user-select: none;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-
-/* Hide native radios */
-.settings-style-option input{
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* Visual pill */
-.settings-style-option span{
+.settings-dropdown-trigger{
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 9px 10px;
-  min-height: 34px;
-  border-radius: 11px;
-  background: transparent;
-  border: 1px solid transparent;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text);
-  line-height: 1.05;
-  transition: background .15s ease, border-color .15s ease, transform .08s ease, box-shadow .15s ease, color .15s ease;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.15px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .08s ease, box-shadow .15s ease;
 }
 
-.settings-style-option:hover span{
-  border-color: var(--border);
-  background: rgba(255,255,255,0.04);
+.settings-dropdown-trigger:hover{
+  background: var(--surface2);
 }
 
-.settings-style-option:active span{
+.settings-dropdown-trigger:active{
   transform: translateY(0.5px);
 }
 
-/* Selected state */
-.settings-style-option input:checked + span{
-  background: var(--accent);
-  border-color: rgba(255,255,255,0.14);
-  color: #fff;
-  box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+.settings-dropdown-trigger:focus-visible{
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
-/* Keyboard focus */
-.settings-style-option input:focus-visible + span{
-  outline: 2px solid rgba(255,255,255,0.35);
-  outline-offset: 2px;
+.settings-dropdown-value{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Small screens: stack to 1 column so labels don't wrap awkwardly */
+.settings-dropdown-chevron{
+  color: var(--text-dim);
+  font-size: 12px;
+  transform: translateY(-0.5px);
+}
+
+.settings-dropdown[aria-open="true"] .settings-dropdown-trigger{
+  border-color: rgba(59,130,246,0.55);
+  box-shadow: var(--focus-ring);
+}
+
+.settings-dropdown-menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: var(--shadow-md);
+  z-index: 9999;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.settings-dropdown-option{
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  padding: 10px 10px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transition: background .15s ease, border-color .15s ease;
+}
+
+.settings-dropdown-option:hover{
+  background: rgba(255,255,255,0.06);
+}
+
+.settings-dropdown-option:focus-visible{
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.settings-dropdown-option[aria-selected="true"]{
+  background: rgba(59,130,246,0.18);
+  border-color: rgba(59,130,246,0.35);
+}
+
+.settings-dropdown-option[aria-selected="true"]::after{
+  content: "✓";
+  color: var(--accent);
+  font-weight: 900;
+}
+
+/* Small screens: dropdown should fill available width */
 @media (max-width: 420px){
-  .settings-style-options{
-    grid-template-columns: 1fr;
+  .settings-dropdown{
     min-width: 0;
     width: 100%;
   }
+}
+
 }
 
 
@@ -11791,14 +11831,16 @@ body.light-mode .settings-row:hover {
   background: var(--surface);
 }
 
-/* --- Settings style selector (light mode hover) --- */
-body.light-mode .settings-style-option:hover span{
-  background: rgba(0,0,0,0.03);
-}
-body.light-mode .settings-style-option input:focus-visible + span{
-  outline-color: rgba(0,0,0,0.25);
-}
 
+
+/* --- Settings style dropdown (light mode) --- */
+body.light-mode .settings-dropdown-option:hover{
+  background: rgba(0,0,0,0.04);
+}
+body.light-mode .settings-dropdown-option[aria-selected="true"]{
+  background: rgba(45,125,210,0.12);
+  border-color: rgba(45,125,210,0.28);
+}
 /* --- Topbar timer --- */
 body.light-mode .topbar-timer {
   color: var(--text-dim);

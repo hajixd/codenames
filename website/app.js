@@ -6284,7 +6284,11 @@ function initSettings() {
   const backdrop = document.getElementById('settings-modal-backdrop');
   const closeBtn = document.getElementById('settings-modal-close');
   const animToggle = document.getElementById('settings-animations-toggle');
-  const styleRadios = Array.from(document.querySelectorAll('input[name="settings-style"]'));
+  const styleDropdown = document.getElementById('settings-style-dropdown');
+  const styleTrigger = document.getElementById('settings-style-trigger');
+  const styleValueEl = document.getElementById('settings-style-value');
+  const styleMenu = document.getElementById('settings-style-menu');
+  const styleOptions = Array.from(document.querySelectorAll('#settings-style-menu .settings-dropdown-option'));
   const soundToggle = document.getElementById('settings-sounds-toggle');
   const volumeSlider = document.getElementById('settings-volume-slider');
   const volumeValue = document.getElementById('settings-volume-value');
@@ -6294,9 +6298,38 @@ function initSettings() {
 
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
-  if (styleRadios.length) {
-    styleRadios.forEach(r => { r.checked = (r.value === settingsStyleMode); });
-  }
+  const STYLE_MODE_LABELS = { dark: 'Dark Mode', light: 'Light Mode', cozy: 'Cozy Mode', online: 'Codenames Online' };
+  const updateStyleDropdownUI = () => {
+    const mode = normalizeStyleMode(settingsStyleMode);
+    if (styleValueEl) styleValueEl.textContent = STYLE_MODE_LABELS[mode] || 'Dark Mode';
+    styleOptions.forEach(opt => {
+      const v = (opt?.dataset?.value || '').toLowerCase();
+      opt.setAttribute('aria-selected', (v === mode) ? 'true' : 'false');
+    });
+  };
+
+  const isStyleMenuOpen = () => !!(styleMenu && !styleMenu.hasAttribute('hidden'));
+  const openStyleMenu = () => {
+    if (!styleMenu || !styleTrigger || !styleDropdown) return;
+    styleMenu.removeAttribute('hidden');
+    styleTrigger.setAttribute('aria-expanded', 'true');
+    styleDropdown.setAttribute('aria-open', 'true');
+    // Focus the currently selected option for keyboard users
+    const selected = styleOptions.find(o => o.getAttribute('aria-selected') === 'true');
+    (selected || styleOptions[0])?.focus?.();
+  };
+  const closeStyleMenu = () => {
+    if (!styleMenu || !styleTrigger || !styleDropdown) return;
+    styleMenu.setAttribute('hidden', '');
+    styleTrigger.setAttribute('aria-expanded', 'false');
+    styleDropdown.removeAttribute('aria-open');
+  };
+  const toggleStyleMenu = () => {
+    if (isStyleMenuOpen()) closeStyleMenu();
+    else openStyleMenu();
+  };
+
+  updateStyleDropdownUI();
   if (soundToggle) soundToggle.checked = settingsSounds;
   if (volumeSlider) volumeSlider.value = settingsVolume;
   if (volumeValue) volumeValue.textContent = settingsVolume + '%';
@@ -6476,10 +6509,12 @@ function initSettings() {
   // Close modal
   closeBtn?.addEventListener('click', () => {
     playSound('click');
+    try { closeStyleMenu && closeStyleMenu(); } catch (_) {}
     closeSettingsModal();
   });
   backdrop?.addEventListener('click', () => {
     playSound('click');
+    try { closeStyleMenu && closeStyleMenu(); } catch (_) {}
     closeSettingsModal();
   });
 
@@ -6491,21 +6526,87 @@ function initSettings() {
     playSound('toggle');
   });
 
-  // Style mode (mutually exclusive)
-  if (styleRadios.length) {
-    styleRadios.forEach(radio => {
-      radio.addEventListener('change', () => {
-        if (!radio.checked) return;
-        const next = normalizeStyleMode(radio.value);
+  // Style mode (custom dropdown)
+  if (styleTrigger && styleMenu) {
+    styleTrigger.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggleStyleMenu();
+      playSound('click');
+    });
+
+    styleTrigger.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!isStyleMenuOpen()) openStyleMenu();
+      } else if (e.key === 'Escape') {
+        if (isStyleMenuOpen()) {
+          e.preventDefault();
+          closeStyleMenu();
+        }
+      }
+    });
+
+    styleOptions.forEach((opt) => {
+      opt.addEventListener('click', () => {
+        const next = normalizeStyleMode((opt.dataset.value || '').toLowerCase());
         settingsStyleMode = next;
         safeLSSet(LS_SETTINGS_STYLE_MODE, settingsStyleMode);
         syncLegacyStyleKeys();
         applyStyleModeSetting();
+        updateStyleDropdownUI();
+        closeStyleMenu();
+        // Return focus to trigger for a nice modal feel
+        try { styleTrigger.focus(); } catch (_) {}
         playSound('toggle');
-
-        // Keep UI in sync if the user clicks a label quickly
-        styleRadios.forEach(r => { r.checked = (r.value === settingsStyleMode); });
       });
+    });
+
+    // Keyboard navigation inside the menu
+    styleMenu.addEventListener('keydown', (e) => {
+      const opts = styleOptions;
+      const currentIdx = Math.max(0, opts.findIndex(o => o === document.activeElement));
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeStyleMenu();
+        try { styleTrigger.focus(); } catch (_) {}
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (opts[currentIdx + 1] || opts[0])?.focus?.();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        (opts[currentIdx - 1] || opts[opts.length - 1])?.focus?.();
+        return;
+      }
+      if (e.key === 'Home') {
+        e.preventDefault();
+        opts[0]?.focus?.();
+        return;
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        opts[opts.length - 1]?.focus?.();
+        return;
+      }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const el = document.activeElement;
+        if (el && el.classList && el.classList.contains('settings-dropdown-option')) {
+          el.click();
+        }
+      }
+    });
+
+    // Click outside closes the dropdown
+    document.addEventListener('click', (e) => {
+      if (!isStyleMenuOpen()) return;
+      const t = e.target;
+      if (styleDropdown && t && !styleDropdown.contains(t)) {
+        closeStyleMenu();
+      }
     });
   }
 
@@ -6534,6 +6635,7 @@ function initSettings() {
   const settingsChangeNameBtn = document.getElementById('settings-change-name-btn');
   settingsChangeNameBtn?.addEventListener('click', () => {
     playSound('click');
+    try { closeStyleMenu && closeStyleMenu(); } catch (_) {}
     closeSettingsModal();
     openNameChangeModal();
   });
@@ -6542,6 +6644,7 @@ function initSettings() {
   const settingsChangePasswordBtn = document.getElementById('settings-change-password-btn');
   settingsChangePasswordBtn?.addEventListener('click', () => {
     playSound('click');
+    try { closeStyleMenu && closeStyleMenu(); } catch (_) {}
     closeSettingsModal();
     openPasswordChangeModal();
   });
@@ -6602,6 +6705,13 @@ function initSettings() {
   // Keyboard escape to close
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && modal.classList.contains('modal-open')) {
+      try {
+        if (typeof isStyleMenuOpen === 'function' && isStyleMenuOpen()) {
+          closeStyleMenu();
+          try { styleTrigger && styleTrigger.focus(); } catch (_) {}
+          return;
+        }
+      } catch (_) {}
       closeSettingsModal();
     }
   });
