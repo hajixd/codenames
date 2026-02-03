@@ -5039,6 +5039,7 @@ body.og-mode .game-card.flip-glow {
 /* Colored game log entries (background + text) */
 .log-entry {
   position: relative;
+  contain: paint;
   padding: 5px 8px 5px 10px;
   border-bottom: none;
   border-radius: 6px;
@@ -5427,8 +5428,9 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 
 .game-container-compact .game-card {
   aspect-ratio: unset;
-  height: 100dvh;
-  height: 100vh; /* fallback */
+  height: 100%;
+  min-height: 0;
+/* fallback */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5611,7 +5613,8 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 .game-log-panel .game-log-entries {
   flex: 1;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  contain: content;
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -5655,6 +5658,8 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 .game-log-popover .game-log-entries {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  contain: content;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;

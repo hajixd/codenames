@@ -528,6 +528,53 @@ window.getAIMindLog = function(aiId) {
   try { return (aiCore && aiCore[String(aiId)] && aiCore[String(aiId)].mindLog) ? aiCore[String(aiId)].mindLog.slice() : []; } catch (_) { return []; }
 };
 
+// Compute a compact, always-correct clue "stack" for a team.
+// Each clue has an intended count (number) and a list of guesses recorded in clueHistory.
+// We treat "remainingTargets" as: number - (correct guesses made under that clue).
+function computeClueStack(game, team) {
+  try {
+    const myTeam = String(team || '').toLowerCase();
+    const history = Array.isArray(game?.clueHistory) ? game.clueHistory : [];
+    const items = [];
+
+    for (const c of history) {
+      if (!c) continue;
+      if (String(c.team || '').toLowerCase() !== myTeam) continue;
+      const word = String(c.word || '').trim().toUpperCase();
+      if (!word) continue;
+      const number = Number(c.number || 0);
+      const results = Array.isArray(c.results) ? c.results : [];
+      const correct = results.filter(r => String(r.type || '').toLowerCase() === myTeam).length;
+      const totalGuesses = results.length;
+      const remainingTargets = Math.max(0, Number.isFinite(number) ? (number - correct) : 0);
+
+      items.push({
+        word,
+        number: Number.isFinite(number) ? number : 0,
+        correct,
+        totalGuesses,
+        remainingTargets,
+        ts: c.timestamp || null,
+      });
+    }
+
+    // Newest first
+    items.sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts));
+
+    // Keep the current clue + unresolved older clues (cap size to keep prompts small).
+    const current = game?.currentClue ? String(game.currentClue.word || '').trim().toUpperCase() : '';
+    const out = [];
+    for (const it of items) {
+      const isCurrent = current && it.word === current;
+      if (isCurrent || it.remainingTargets > 0) out.push(it);
+      if (out.length >= 6) break;
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+}
+
 // Build what an AI can "see" on screen, based on its role.
 function buildAIVision(game, ai) {
   const role = (ai?.seatRole === 'spymaster') ? 'spymaster' : 'operative';
@@ -536,6 +583,11 @@ function buildAIVision(game, ai) {
   const currentTeam = String(game?.currentTeam || '');
   const clue = game?.currentClue ? { word: String(game.currentClue.word || ''), number: Number(game.currentClue.number || 0) } : null;
   const guessesRemaining = Number.isFinite(+game?.guessesRemaining) ? +game.guessesRemaining : null;
+
+  const ui = {
+    redTeamName: String(game?.redTeamName || 'Red Team'),
+    blueTeamName: String(game?.blueTeamName || 'Blue Team'),
+  };
 
   const cards = Array.isArray(game?.cards) ? game.cards.map((c, i) => {
     const revealed = !!c.revealed;
@@ -550,17 +602,39 @@ function buildAIVision(game, ai) {
     blueLeft: cards.filter(c => (c.type || c.revealedType) === 'blue' && !c.revealed).length,
   };
 
-  const log = Array.isArray(game?.log) ? game.log.slice(-25) : [];
+  // Filter the public game log so the AI doesn't fixate on (or discuss) the opponent spymaster clue.
+  // Operatives already see the board; we only need enough log context to stay grounded.
+  const rawLog = Array.isArray(game?.log) ? game.log.slice(-30) : [];
+  const oppTeamName = team === 'red' ? ui.blueTeamName : ui.redTeamName;
+  const log = rawLog.filter(line => {
+    const s = String(line || '');
+    // Remove opponent clue lines like: "<Opp Team> Spymaster: "CITY" for 2"
+    if (/\bSpymaster\s*:\s*"/i.test(s) && s.startsWith(oppTeamName)) return false;
+    return true;
+  }).slice(-25);
+
+  // Clue bookkeeping: how many intended words remain "unfulfilled" for each of your team's past clues.
+  // This is NOT about "guesses remaining this turn"—it's about the clue number vs how many correct words were actually found.
+  const clueStack = computeClueStack(game, team);
+
+  // Turn-level guesses used (for the current clue only, if it's your turn).
+  let guessesUsedThisTurn = null;
+  try {
+    if (clue && currentTeam === team) {
+      const totalAllowed = (Number(clue.number || 0) === 0) ? 0 : (Number(clue.number || 0) + 1);
+      const gr = Number.isFinite(+guessesRemaining) ? +guessesRemaining : totalAllowed;
+      guessesUsedThisTurn = Math.max(0, totalAllowed - Math.max(0, gr));
+    }
+  } catch (_) {}
 
   return {
-    role, team, phase, currentTeam, clue, guessesRemaining,
+    role, team, phase, currentTeam,
+    clue, guessesRemaining, guessesUsedThisTurn,
+    clueStack,
     score,
     cards,
     log,
-    ui: {
-      redTeamName: String(game?.redTeamName || 'Red Team'),
-      blueTeamName: String(game?.blueTeamName || 'Blue Team'),
-    }
+    ui
   };
 }
 
@@ -577,12 +651,13 @@ function buildClueHistoryContext(game, team) {
     const num = Number(c.number || 0);
     const results = Array.isArray(c.results) ? c.results : [];
     const correct = results.filter(r => String(r.type || '').toLowerCase() === myTeam);
-    const wrong = results.filter(r => String(r.type || '').toLowerCase() !== myTeam);
     const isCurrent = currentClue && String(currentClue.word || '').toUpperCase() === word && Number(currentClue.number || 0) === num;
 
+    const remainingTargets = Math.max(0, num - correct.length);
     let line = `  ${word} ${num}: `;
+
     if (!results.length) {
-      line += isCurrent ? '(current clue, no guesses yet)' : '(no guesses made)';
+      line += isCurrent ? `(current clue — 0 guesses so far, ${remainingTargets} target(s) remaining)` : `(0 guesses, ${remainingTargets} target(s) remaining)`;
     } else {
       const parts = results.map(r => {
         const rw = String(r.word || '').toUpperCase();
@@ -593,13 +668,14 @@ function buildClueHistoryContext(game, team) {
         return `${rw} (opponent - wrong)`;
       });
       line += parts.join(', ');
-      const leftover = Math.max(0, num - correct.length);
-      if (leftover > 0 && !isCurrent) {
-        line += ` — ${leftover} word(s) still unguessed from this clue`;
-      }
+      line += ` — ${remainingTargets} target(s) remaining`;
+      if (isCurrent) line += ` (current clue)`;
     }
+
     lines.push(line);
   }
+
+  // Show newest last for readability (like a running log)
   return `Your team's clue history this game:\n${lines.join('\n')}`;
 }
 
@@ -1067,10 +1143,10 @@ function makeChatMoreHuman(ai, game, msg, vision) {
 
     if (!aiChatMemory[gid]) aiChatMemory[gid] = {};
     if (!aiChatMemory[gid][team]) aiChatMemory[gid][team] = [];
-    const recent = aiChatMemory[gid][team].slice(-8);
+    const recent = aiChatMemory[gid][team].slice(-14);
 
     // If too similar to recent messages, suppress it entirely — silence is better than circles
-    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.55);
+    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.38);
     if (tooSimilar) {
       return '';
     }
@@ -2713,6 +2789,19 @@ async function sendAIChatMessage(ai, game, text) {
     text = (human || '').trim();
   } catch (_) {}
   if (!text) return;
+
+  // Extra: avoid the *same AI* paraphrasing itself over and over.
+  try {
+    const core = ensureAICore(ai);
+    const prev = (core && Array.isArray(core.recentChat)) ? core.recentChat : [];
+    const selfTooSimilar = prev.slice(-6).some(r => _jaccard(r, text) > 0.34);
+    if (selfTooSimilar) return;
+    if (core) {
+      if (!Array.isArray(core.recentChat)) core.recentChat = [];
+      core.recentChat.push(String(text));
+      if (core.recentChat.length > 20) core.recentChat = core.recentChat.slice(-12);
+    }
+  } catch (_) {}
 
   try {
     await db.collection('games').doc(game.id)
