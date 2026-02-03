@@ -4796,7 +4796,7 @@ button.player-tag.pill-action:disabled{
 }
 
 .game-card {
-  aspect-ratio: 1.4;
+  aspect-ratio: 1.85;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4859,7 +4859,7 @@ body.og-mode .game-card.flip-glow {
 }
 
 .game-card .card-word {
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
@@ -13889,7 +13889,7 @@ body.cozy-mode .game-card {
   border: 2px solid #c4b494;
   border-radius: 10px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  aspect-ratio: 1.5;
+  aspect-ratio: 1.75;
 }
 
 body.cozy-mode .game-card .card-word {
@@ -14572,22 +14572,22 @@ body.og-mode {
   --guess-icon-bg-light: linear-gradient(to bottom, hsla(99, 74%, 58%, 1),hsla(82, 86%, 66%, 1));
   /* Card palette: slightly deeper/more muted than the raw CNO colors.
      This keeps the board readable for longer sessions and improves contrast. */
-  --neutral-cardBorder: #F2DEC8;
-  --neutral-cardBg: #F0C9A3;
-  --neutral-innerBorder: #AC8D77;
-  --neutral-innerBg: linear-gradient(to bottom, #F5D3B4, #F5D3B4 0%, #EFB987 100%);
+  --neutral-cardBorder: #D7B693;
+  --neutral-cardBg: #F9D7B5;
+  --neutral-innerBorder: #BBA38C;
+  --neutral-innerBg: #F9DBBB;
   /* Word strip (unrevealed/neutral) — darker, closer to black like CNO */
-  --neutral-darkWordBg: #1a1a1a;
-  --red-cardBorder: #F2C5A5;
-  --red-cardBg: #E87449;
-  --red-innerBorder: #8F2F1C;
-  --red-innerBg: #D44A34;
-  --red-darkWordBg: #5B2016;
-  --blue-cardBorder: #BEE7F0;
-  --blue-cardBg: #2FA9D1;
-  --blue-innerBorder: #1F5A86;
-  --blue-innerBg: #0B87B8;
-  --blue-darkWordBg: #123B5B;
+  --neutral-darkWordBg: #917459;
+  --red-cardBorder: #D68052;
+  --red-cardBg: #F19665;
+  --red-innerBorder: #A54532;
+  --red-innerBg: #E66046;
+  --red-darkWordBg: #7B331E;
+  --blue-cardBorder: #49AFCB;
+  --blue-cardBg: #6BCFEB;
+  --blue-innerBorder: #327497;
+  --blue-innerBg: #46A2D3;
+  --blue-darkWordBg: #28527C;
   --black-cardBorder: #B6B5B5;
   --black-cardBg: #8C8D8D;
   --black-innerBorder: #2A2A2A;
@@ -14820,8 +14820,8 @@ body.og-mode .game-card{
   --wordColor: #ffffff;
 
   /* Label geometry (tuned to match Codenames Online cards) */
-  --labelInsetX: 18px;     /* left/right inset for the word strip */
-  --labelInsetY: 12px;     /* bottom inset for the word strip */
+  --labelInsetX: 10px;     /* left/right inset for the word strip */
+  --labelInsetY: 10px;     /* bottom inset for the word strip */
   --labelHeight: 32%;      /* height of the bottom word strip (tuned to match CNO) */
 
   background: var(--cardBg);
@@ -14830,7 +14830,7 @@ body.og-mode .game-card{
   box-shadow: 0 8px 18px rgba(0,0,0,0.32);
   position: relative;
   overflow: hidden;
-  aspect-ratio: 1.6;
+  aspect-ratio: 1.85;
   transform: translateZ(0);
 }
 
@@ -14871,8 +14871,8 @@ body.og-mode .game-card::before{
 body.og-mode .game-card::after{
   content:"";
   position:absolute;
-  left: 10px;
-  right: 10px;
+  left: 8px;
+  right: 8px;
   /* Divider line sits exactly at the top edge of the bottom word strip */
   bottom: calc(var(--labelInsetY) + var(--labelHeight));
   height: 2px;
@@ -14903,7 +14903,7 @@ body.og-mode .game-card .card-word{
   font-weight: 800;
   text-transform: uppercase;
   /* Slightly smaller like CNO (JS will still auto-fit long words) */
-  font-size: clamp(12px, 1.7vw, 22px);
+  font-size: clamp(11px, 1.45vw, 19px);
   letter-spacing: 0.06em;
   line-height: 1.05;
   text-align: center;
@@ -15680,13 +15680,13 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .game-card{
-    --labelInsetX: 14px;
-    --labelInsetY: 9px;
+    --labelInsetX: 10px;
+    --labelInsetY: 8px;
     --labelHeight: 36%;
   }
 
   body.og-mode .game-card .card-word {
-    font-size: clamp(11px, 4.0vw, 16px);
+    font-size: clamp(10px, 3.6vw, 15px);
     padding: 5px 10px 2px;
     border-radius: 6px;
   }
