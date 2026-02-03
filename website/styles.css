@@ -153,7 +153,7 @@ html, body {
 }
 
 body {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
@@ -14821,7 +14821,7 @@ body.og-mode .game-card{
   --wordColor: #ffffff;
 
   /* Label geometry (tuned to match Codenames Online cards) */
-  --labelInsetX: 10px;     /* left/right inset for the word strip */
+  --labelInsetX: 4px;     /* left/right inset for the word strip */
   --labelInsetY: 10px;     /* bottom inset for the word strip */
   /* Slightly taller word strip so the divider sits a bit higher */
   --labelHeight: 35%;      /* height of the bottom word strip */
@@ -14878,7 +14878,7 @@ body.og-mode .game-card::after{
   left: 8px;
   right: 8px;
   /* Divider line sits exactly at the top edge of the bottom word strip */
-  bottom: calc(var(--labelInsetY) + var(--labelHeight));
+  bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
   height: 2px;
   background: var(--innerBorder);
   opacity: 0.45;
@@ -14903,20 +14903,20 @@ body.og-mode .game-card .card-word{
   background: var(--wordBg);
   color: color-mix(in srgb, var(--wordColor) 92%, #d6dde6 8%);
 
-  font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  font-weight: 800;
+  font-family: 'Russo One', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-weight: 400;
   text-transform: uppercase;
   /* Slightly smaller like CNO (JS will still auto-fit long words) */
   font-size: clamp(11px, 1.45vw, 19px);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   line-height: 1.05;
   text-align: center;
   white-space: nowrap;
 
   /* Nudge text a bit lower in the strip */
   padding: 8px 12px 2px;
-  /* Rectangular with slight rounding like CNO */
-  border-radius: 4px;
+  /* Rectangular with very slight rounding like CNO */
+  border-radius: 2px;
 
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
@@ -15684,7 +15684,7 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .game-card{
-    --labelInsetX: 10px;
+    --labelInsetX: 4px;
     --labelInsetY: 8px;
     --labelHeight: 36%;
   }
@@ -15692,7 +15692,7 @@ body.cozy-mode .og-game-log .game-log-entry {
   body.og-mode .game-card .card-word {
     font-size: clamp(10px, 3.6vw, 15px);
     padding: 5px 10px 2px;
-    border-radius: 6px;
+    border-radius: 2px;
   }
 
   body.og-mode .og-topbar {
@@ -16064,7 +16064,7 @@ textarea{
 }
 
 .game-card .card-word{
-  font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-family: 'Russo One', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.045em;
