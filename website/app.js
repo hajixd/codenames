@@ -3681,48 +3681,63 @@ function renderBrackets(teams) {
     return `<div class="br-slot ${t ? 'is-team' : 'is-tbd'}" ${data} ${accent} role="button" tabindex="0" aria-label="${t ? 'Open team' : 'TBD'}">${seed}<span class="br-slot-name">${name}</span>${meta}${mine}</div>`;
   };
 
-  // Pairings: 1v4 + 2v3 on each side.
-  const leftM1 = { a: leftSeeds[0], b: leftSeeds[3], seedA: 1, seedB: 4 };
-  const leftM2 = { a: leftSeeds[1], b: leftSeeds[2], seedA: 2, seedB: 3 };
-  const rightM1 = { a: rightSeeds[0], b: rightSeeds[3], seedA: 5, seedB: 8 };
-  const rightM2 = { a: rightSeeds[1], b: rightSeeds[2], seedA: 6, seedB: 7 };
+  // Pairings: 1v4 + 2v3 (left) and 5v8 + 6v7 (right).
+  // NOTE: We intentionally do not display semifinals. Winners from each side advance to Finals (visual-only).
+  const leftM1 = { id: 'L1', label: 'Left Match 1', a: leftSeeds[0], b: leftSeeds[3], seedA: 1, seedB: 4 };
+  const leftM2 = { id: 'L2', label: 'Left Match 2', a: leftSeeds[1], b: leftSeeds[2], seedA: 2, seedB: 3 };
+  const rightM1 = { id: 'R1', label: 'Right Match 1', a: rightSeeds[0], b: rightSeeds[3], seedA: 5, seedB: 8 };
+  const rightM2 = { id: 'R2', label: 'Right Match 2', a: rightSeeds[1], b: rightSeeds[2], seedA: 6, seedB: 7 };
 
-  const winnerSlot = (label) => `<div class="br-slot is-tbd br-winner" role="button" tabindex="0" aria-label="TBD"><span class="br-slot-seed">${esc(label)}</span><span class="br-slot-name">TBD</span><span class="br-slot-meta">—</span></div>`;
+  const matchHtml = (m) => {
+    const aName = m.a ? truncateTeamName(m.a.teamName || 'Unnamed', 26) : 'TBD';
+    const bName = m.b ? truncateTeamName(m.b.teamName || 'Unnamed', 26) : 'TBD';
+    const aId = m.a ? String(m.a.id || '') : '';
+    const bId = m.b ? String(m.b.id || '') : '';
+    return `
+      <div class="br-match" data-match="${esc(m.id)}" data-match-a="${esc(aId)}" data-match-b="${esc(bId)}" data-match-a-name="${esc(aName)}" data-match-b-name="${esc(bName)}" role="button" tabindex="0" aria-label="Open matchup">
+        <div class="br-match-top">
+          <span class="br-match-title">${esc(m.label)}</span>
+          <span class="br-match-bo3">BO3</span>
+        </div>
+        <div class="br-match-slots">
+          ${slotHtml(m.a, m.seedA, 'a')}
+          ${slotHtml(m.b, m.seedB, 'b')}
+        </div>
+      </div>
+    `;
+  };
+
+  const finalsHtml = () => {
+    return `
+      <div class="br-final" data-match="F" data-match-a-name="TBD" data-match-b-name="TBD" role="button" tabindex="0" aria-label="Open finals matchup">
+        <div class="br-match-top">
+          <span class="br-match-title">Finals</span>
+          <span class="br-match-bo3">BO3</span>
+        </div>
+        <div class="br-match-slots">
+          <div class="br-slot is-tbd br-winner" role="button" tabindex="0" aria-label="TBD"><span class="br-slot-seed">L</span><span class="br-slot-name">TBD</span><span class="br-slot-meta">—</span></div>
+          <div class="br-slot is-tbd br-winner" role="button" tabindex="0" aria-label="TBD"><span class="br-slot-seed">R</span><span class="br-slot-name">TBD</span><span class="br-slot-meta">—</span></div>
+        </div>
+      </div>
+    `;
+  };
 
   board.innerHTML = `
-    <div class="bracket-sides">
+    <div class="bracket-sides bo3">
       <div class="bracket-side left" aria-label="Left bracket">
         <div class="bracket-side-title">Left</div>
-        <div class="bracket-round">
-          <div class="br-round-title">Quarterfinals</div>
-          <div class="br-match">${slotHtml(leftM1.a, leftM1.seedA, 'a')}${slotHtml(leftM1.b, leftM1.seedB, 'b')}</div>
-          <div class="br-match">${slotHtml(leftM2.a, leftM2.seedA, 'a')}${slotHtml(leftM2.b, leftM2.seedB, 'b')}</div>
-        </div>
-        <div class="bracket-round">
-          <div class="br-round-title">Semifinal</div>
-          <div class="br-match">${winnerSlot('W1')}${winnerSlot('W2')}</div>
-        </div>
+        ${matchHtml(leftM1)}
+        ${matchHtml(leftM2)}
       </div>
 
       <div class="bracket-center" aria-label="Finals">
-        <div class="bracket-side-title">Final</div>
-        <div class="bracket-round">
-          <div class="br-round-title">Championship</div>
-          <div class="br-match is-final">${winnerSlot('L')}${winnerSlot('R')}</div>
-        </div>
+        ${finalsHtml()}
       </div>
 
       <div class="bracket-side right" aria-label="Right bracket">
         <div class="bracket-side-title">Right</div>
-        <div class="bracket-round">
-          <div class="br-round-title">Quarterfinals</div>
-          <div class="br-match">${slotHtml(rightM1.a, rightM1.seedA, 'a')}${slotHtml(rightM1.b, rightM1.seedB, 'b')}</div>
-          <div class="br-match">${slotHtml(rightM2.a, rightM2.seedA, 'a')}${slotHtml(rightM2.b, rightM2.seedB, 'b')}</div>
-        </div>
-        <div class="bracket-round">
-          <div class="br-round-title">Semifinal</div>
-          <div class="br-match">${winnerSlot('W3')}${winnerSlot('W4')}</div>
-        </div>
+        ${matchHtml(rightM1)}
+        ${matchHtml(rightM2)}
       </div>
     </div>
   `;
@@ -3733,6 +3748,20 @@ function renderBrackets(teams) {
       const tid = el.getAttribute('data-team');
       if (tid) openTeamModal(tid);
     };
+    el.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+  });
+
+  // Matchup mini popup
+  board.querySelectorAll('[data-match]')?.forEach(el => {
+    const open = () => {
+      const aName = el.getAttribute('data-match-a-name') || 'TBD';
+      const bName = el.getAttribute('data-match-b-name') || 'TBD';
+      const matchId = el.getAttribute('data-match') || '';
+      showBracketMatchPopup({ matchId, aName, bName });
+    };
     el.addEventListener('click', open);
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
@@ -3742,10 +3771,65 @@ function renderBrackets(teams) {
 
 function initBracketsUI() {
   // No controls — bracket is always rendered from the current team list.
-  const back = document.getElementById('brackets-back');
-  back?.addEventListener('click', () => {
-    try { switchToPanel('panel-home'); } catch (_) { activatePanel('panel-home'); }
-  });
+}
+
+// Small info popup for a bracket matchup.
+let _bracketsPopupEl = null;
+function showBracketMatchPopup({ matchId, aName, bName }) {
+  try {
+    if (!_bracketsPopupEl) {
+      _bracketsPopupEl = document.createElement('div');
+      _bracketsPopupEl.className = 'br-match-popup';
+      _bracketsPopupEl.style.display = 'none';
+      document.body.appendChild(_bracketsPopupEl);
+    }
+
+    const title = `${String(aName || 'TBD')} vs ${String(bName || 'TBD')}`;
+    _bracketsPopupEl.innerHTML = `
+      <div class="br-pop-card" role="dialog" aria-label="Matchup info">
+        <div class="br-pop-top">
+          <div class="br-pop-title">${esc(title)}</div>
+          <button class="icon-btn small" type="button" data-br-pop-close aria-label="Close">✕</button>
+        </div>
+        <div class="br-pop-sub">Best of 3</div>
+        <div class="br-pop-meta">Match: <span class="mono">${esc(matchId || '')}</span></div>
+      </div>
+    `;
+
+    const close = () => {
+      if (_bracketsPopupEl) _bracketsPopupEl.style.display = 'none';
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+
+    const onDoc = (e) => {
+      if (!_bracketsPopupEl) return;
+      if (!_bracketsPopupEl.contains(e.target)) close();
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') close();
+    };
+
+    _bracketsPopupEl.querySelector('[data-br-pop-close]')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      close();
+    });
+
+    // Centered mini popup
+    _bracketsPopupEl.style.display = 'flex';
+    _bracketsPopupEl.style.alignItems = 'center';
+    _bracketsPopupEl.style.justifyContent = 'center';
+    _bracketsPopupEl.style.position = 'fixed';
+    _bracketsPopupEl.style.inset = '0';
+    _bracketsPopupEl.style.zIndex = '9999';
+
+    setTimeout(() => {
+      document.addEventListener('mousedown', onDoc);
+      document.addEventListener('keydown', onKey);
+    }, 0);
+  } catch (_) {
+    // no-op
+  }
 }
 
 /* =========================
@@ -10626,10 +10710,7 @@ function initPracticePage() {
   const panel = document.getElementById('panel-practice');
   if (!panel) return;
 
-  // Back button (Practice is its own page; hide primary tabs).
-  document.getElementById('practice-back')?.addEventListener('click', () => {
-    try { switchToPanel('panel-home'); } catch (_) { activatePanel('panel-home'); }
-  });
+  // Practice is its own page; primary tabs are hidden elsewhere.
 
   const roleBtns = Array.from(panel.querySelectorAll('[data-practice-role]'));
   const sizeBtns = Array.from(panel.querySelectorAll('[data-practice-size]'));

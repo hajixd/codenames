@@ -18270,6 +18270,168 @@ body.og-mode .br-round{
   border: 1px solid var(--border-soft);
 }
 
+/* New Brackets layout (no semifinals): 4 matchups (2 left, 2 right) -> Finals center */
+.panel-brackets .bracket-sides.bo3{
+  grid-template-columns: 1fr minmax(240px, 0.9fr) 1fr;
+  gap: 18px;
+}
+
+.panel-brackets .bracket-side,
+.panel-brackets .bracket-center{
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle connector hints into the center (keeps it readable, no heavy filters). */
+.panel-brackets .bracket-center::before,
+.panel-brackets .bracket-center::after{
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 2px;
+  background: var(--border-soft);
+  opacity: 0.85;
+}
+.panel-brackets .bracket-center::before{ left: -22px; }
+.panel-brackets .bracket-center::after{ right: -22px; }
+
+.panel-brackets .br-match,
+.panel-brackets .br-final{
+  cursor: pointer;
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.panel-brackets .br-match:hover,
+.panel-brackets .br-final:hover{
+  transform: translateY(-1px);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-brackets .br-match-top{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-brackets .br-match-title{
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panel-brackets .br-match-bo3{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-glass);
+  color: var(--text);
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+}
+
+body.light-mode .panel-brackets .br-match-bo3{ background: var(--card); }
+
+.panel-brackets .br-match-slots{
+  display: grid;
+  gap: 8px;
+}
+
+.panel-brackets .br-final{
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-soft);
+}
+
+body.light-mode .panel-brackets .br-final{ background: var(--surface); }
+
+/* Style flavor: make Brackets feel unique per theme (no GPU-heavy blur). */
+body.og-mode .panel-brackets .bracket-side,
+body.og-mode .panel-brackets .bracket-center{
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)), var(--surface-glass);
+  border-color: rgba(255,255,255,0.18);
+}
+body.og-mode .panel-brackets .bracket-side::after,
+body.og-mode .panel-brackets .bracket-center::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04) 6px, rgba(255,255,255,0.00) 6px, rgba(255,255,255,0.00) 12px);
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+body.cozy-mode .panel-brackets .bracket-side,
+body.cozy-mode .panel-brackets .bracket-center{
+  border-style: dashed;
+  border-color: rgba(255,255,255,0.18);
+}
+body.cozy-mode .panel-brackets .br-match{
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.00));
+}
+
+body.light-mode .panel-brackets .bracket-side,
+body.light-mode .panel-brackets .bracket-center{
+  box-shadow: 0 10px 30px rgba(0,0,0,0.10);
+}
+
+/* Matchup mini popup */
+.br-match-popup{
+  background: rgba(0,0,0,0.45);
+}
+body.light-mode .br-match-popup{ background: rgba(0,0,0,0.25); }
+
+.br-pop-card{
+  width: min(520px, calc(100vw - 28px));
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  padding: 14px 14px;
+}
+
+body.og-mode .br-pop-card{ background: var(--surface-glass); }
+
+.br-pop-top{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.br-pop-title{
+  font-weight: 950;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+  color: var(--text);
+}
+
+.br-pop-sub{
+  margin-top: 8px;
+  font-weight: 900;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  font-size: 12px;
+}
+
+.br-pop-meta{
+  margin-top: 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+
 body.light-mode .br-match{
   background: var(--surface);
 }
