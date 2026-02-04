@@ -16193,26 +16193,26 @@ body.og-mode .gamelog-shell .sidebar-panel-header { display: none; }
 body.og-mode .gamelog-entries {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 12px 12px;
+  padding: 8px 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 
 body.og-mode .gamelog-turn {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 body.og-mode .gamelog-clue-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
 }
 
 body.og-mode .gamelog-avatar-wrap {
-  width: 52px;
+  width: 56px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -16221,29 +16221,37 @@ body.og-mode .gamelog-avatar-wrap {
 }
 
 body.og-mode .gamelog-avatar {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 900;
   background: linear-gradient(145deg, #e8d5b8 0%, #c9a87c 100%);
   color: rgba(50, 30, 10, 0.9);
-  border: 3px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+body.og-mode .gamelog-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 body.og-mode .gamelog-avatar-name {
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 800;
-  letter-spacing: 0.15px;
-  padding: 1px 5px;
+  letter-spacing: 0.2px;
+  padding: 2px 6px;
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.95);
   text-transform: none;
-  max-width: 50px;
+  max-width: 56px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -16258,22 +16266,43 @@ body.og-mode .gamelog-clue-pill {
   flex: 1;
   min-width: 0;
   background: rgba(255, 255, 255, 0.95);
-  border-radius: 10px;
-  padding: 7px 36px 7px 10px;
+  border-radius: 12px;
+  padding: 18px 42px 14px 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+body.og-mode .gamelog-clue-pill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 45%;
+  border-radius: 12px 12px 0 0;
 }
 
 body.og-mode .gamelog-clue-pill.team-red { border: 3px solid #C8553A; }
 body.og-mode .gamelog-clue-pill.team-blue { border: 3px solid #3B8BEB; }
 
+body.og-mode .gamelog-clue-pill.team-red::before {
+  background: linear-gradient(135deg, #d4513b 0%, #c8553a 50%, #b94a32 100%);
+}
+
+body.og-mode .gamelog-clue-pill.team-blue::before {
+  background: linear-gradient(135deg, #4a9af5 0%, #3b8beb 50%, #2d7ad6 100%);
+}
+
 body.og-mode .gamelog-clue-word {
-  font-size: 15px;
+  position: relative;
+  z-index: 1;
+  font-size: 17px;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   color: rgba(10, 10, 10, 0.92);
   text-align: center;
   line-height: 1.1;
@@ -16284,58 +16313,68 @@ body.og-mode .gamelog-clue-word {
 
 body.og-mode .gamelog-clue-count {
   position: absolute;
-  right: 6px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 900;
   color: rgba(20, 20, 20, 0.9);
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 5px rgba(0, 0, 0, 0.12);
+  background: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 body.og-mode .gamelog-guesses {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding-left: 2px;
+  gap: 8px;
+  padding-left: 4px;
+  margin-top: 2px;
 }
 
 body.og-mode .gamelog-guess-item {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 4px;
 }
 
 body.og-mode .gamelog-avatar-wrap.small {
-  width: 40px;
+  width: 44px;
 }
 
 body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar {
-  width: 28px;
-  height: 28px;
-  font-size: 11px;
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
   border-width: 2px;
 }
 
+body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar-name {
-  font-size: 6px;
-  padding: 1px 4px;
+  font-size: 6.5px;
+  padding: 1px 5px;
 }
 
 body.og-mode .gamelog-word-pill {
   min-width: 50px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
   line-height: 1;
@@ -16361,8 +16400,10 @@ body.og-mode .gamelog-system {
 @media (max-width: 768px) {
   body.og-mode .gamelog-title { font-size: 11px; }
   body.og-mode .gamelog-entries { padding: 5px 8px 8px; gap: 10px; }
-  body.og-mode .gamelog-clue-word { font-size: 13px; }
-  body.og-mode .gamelog-word-pill { font-size: 9px; padding: 5px 7px; }
-  body.og-mode .gamelog-avatar { width: 36px; height: 36px; font-size: 14px; }
-  body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar { width: 24px; height: 24px; font-size: 10px; }
+  body.og-mode .gamelog-clue-word { font-size: 14px; }
+  body.og-mode .gamelog-word-pill { font-size: 9px; padding: 6px 8px; }
+  body.og-mode .gamelog-avatar { width: 40px; height: 40px; font-size: 15px; }
+  body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar { width: 26px; height: 26px; font-size: 10px; }
+  body.og-mode .gamelog-clue-pill { padding: 18px 36px 8px 8px; }
+  body.og-mode .gamelog-clue-count { width: 24px; height: 24px; font-size: 12px; }
 }
