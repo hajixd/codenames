@@ -16158,6 +16158,35 @@ body.og-mode .gamelog-chevron svg {
   height: 18px;
 }
 
+/*
+  Game log chevron sizing (all modes)
+  ---------------------------------
+  The chevron SVG has browser-default dimensions (often 300x150) unless
+  explicitly sized. In non-OG layouts this can balloon and cover the log.
+*/
+.gamelog-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gamelog-chevron {
+  position: absolute;
+  right: 10px;
+  top: 9px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gamelog-chevron svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* Replace the default sidebar header inside the gamelog shell */
 body.og-mode .gamelog-shell .sidebar-panel-header { display: none; }
 
