@@ -3341,6 +3341,11 @@ function renderOgPanels() {
   if (blueScore) blueScore.textContent = blueCardsLeft;
   if (redScore) redScore.textContent = redCardsLeft;
 
+
+const blueAgents = document.getElementById('og-blue-agents');
+const redAgents = document.getElementById('og-red-agents');
+if (blueAgents) blueAgents.innerHTML = renderAgentDots(blueCardsLeft);
+if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
   const blueOps = document.getElementById('og-blue-operatives');
   const blueSpy = document.getElementById('og-blue-spymasters');
   const redOps = document.getElementById('og-red-operatives');

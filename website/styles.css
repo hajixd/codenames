@@ -17027,3 +17027,188 @@ body.og-mode .gamelog-avatar-wrap.small {
   width: auto !important;
 }
 
+
+
+
+/* ==================== OG DESKTOP PANELS MATCH MOBILE STYLE ==================== */
+@media (min-width: 769px) {
+  /* Make the OG team panel feel like the mobile Codenames Online panels */
+  body.og-mode .og-team-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 0;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    min-width: 0;
+  }
+
+  /* Reuse the mobile box-art on desktop roster blocks */
+  body.og-mode .og-team-panel .online-roster-block {
+    position: relative;
+    overflow: hidden;
+  }
+
+  body.og-mode .og-team-panel .online-roster-block::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background-repeat: no-repeat;
+    background-position: left bottom;
+    background-size: 92% auto;
+    filter: drop-shadow(0 14px 18px rgba(0,0,0,0.25));
+    opacity: 0.28;
+    pointer-events: none;
+  }
+
+  body.og-mode .og-team-blue .online-roster-block::before {
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20220%20140%27%3E%0A%3Cg%20opacity%3D%270.28%27%20fill%3D%27%23ffffff%27%3E%0A%3Cpath%20d%3D%27M78%20108c14-9%2030-13%2047-13%2018%200%2034%204%2048%2013%2010%207%2017%2016%2020%2028H58c3-12%2010-21%2020-28z%27/%3E%0A%3Ccircle%20cx%3D%27118%27%20cy%3D%2754%27%20r%3D%2730%27/%3E%0A%3Cpath%20d%3D%27M98%2053c6%208%2012%2012%2020%2012%209%200%2016-4%2022-12%202-3%205-4%209-3-4%2015-15%2024-31%2024-15%200-27-9-31-24%204-1%207%200%2011%203z%27/%3E%0A%3C/g%3E%0A%3C/svg%3E");
+  }
+
+  body.og-mode .og-team-red .online-roster-block::before {
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20220%20140%27%3E%0A%3Cg%20opacity%3D%270.28%27%20fill%3D%27%23ffffff%27%3E%0A%3Cpath%20d%3D%27M78%20108c14-9%2030-13%2047-13%2018%200%2034%204%2048%2013%2010%207%2017%2016%2020%2028H58c3-12%2010-21%2020-28z%27/%3E%0A%3Ccircle%20cx%3D%27118%27%20cy%3D%2754%27%20r%3D%2730%27/%3E%0A%3Cpath%20d%3D%27M98%2053c6%208%2012%2012%2020%2012%209%200%2016-4%2022-12%202-3%205-4%209-3-4%2015-15%2024-31%2024-15%200-27-9-31-24%204-1%207%200%2011%203z%27/%3E%0A%3C/g%3E%0A%3C/svg%3E");
+  }
+
+  /* Spymaster box uses the same art but higher placement + lower opacity (like mobile) */
+  body.og-mode .og-team-panel .online-roster-spymasters::before {
+    opacity: 0.22;
+    background-position: left 65%;
+    background-size: 100% auto;
+  }
+
+  /* Keep text/content above the art */
+  body.og-mode .og-team-panel .online-roster-block > * {
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Score line like the screenshot (big number + agent strip) */
+  body.og-mode .og-score-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 6px;
+  }
+
+  body.og-mode .og-score-blue {
+    justify-content: flex-start;
+  }
+
+  body.og-mode .og-score-red {
+    justify-content: flex-end;
+  }
+
+  body.og-mode .og-score-number {
+    font-size: 56px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+    -webkit-text-stroke: 5px rgba(0,0,0,0.28);
+    text-shadow: 0 3px 0 rgba(0,0,0,0.30), 0 0 14px rgba(0,0,0,0.22);
+    font-variant-numeric: tabular-nums;
+  }
+
+  body.og-mode .og-agent-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-width: 130px;
+    align-content: center;
+  }
+
+  body.og-mode .og-agent-strip .og-agent-dot {
+    width: 14px;
+    height: 9px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.85);
+    border: 1px solid rgba(0,0,0,0.18);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.18);
+  }
+
+  body.og-mode .og-agent-strip-blue .og-agent-dot {
+    background: rgba(200, 245, 255, 0.9);
+  }
+
+  body.og-mode .og-agent-strip-red .og-agent-dot {
+    background: rgba(255, 232, 205, 0.9);
+  }
+
+  /* Give the score "strip" a more rail-like look */
+  body.og-mode .og-score-avatar {
+    width: 96px;
+    height: 34px;
+    border-radius: 12px;
+    flex-shrink: 0;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.55) 0 10px, rgba(255,255,255,0.0) 10px 18px),
+      linear-gradient(135deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.20) 100%);
+    border: 2px solid rgba(255,255,255,0.22);
+    box-shadow: 0 10px 18px rgba(0,0,0,0.28);
+  }
+
+  body.og-mode .og-score-avatar-blue {
+    border-color: rgba(59, 139, 235, 0.28);
+  }
+
+  body.og-mode .og-score-avatar-red {
+    border-color: rgba(200, 85, 58, 0.28);
+  }
+
+  /* Put the red score elements in the same order as mobile: number near the edge */
+  body.og-mode .og-score-red {
+    flex-direction: row-reverse;
+  }
+}
+
+/* ==================== OG DESKTOP GAME LOG SIZING ==================== */
+@media (min-width: 769px) {
+  body.og-mode .gamelog-entries {
+    gap: 10px;
+  }
+
+  body.og-mode .gamelog-turn {
+    gap: 6px;
+  }
+
+  body.og-mode .gamelog-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.30);
+  }
+
+  body.og-mode .gamelog-clue-pill {
+    padding: 4px 6px;
+    border-width: 2px;
+    border-radius: 16px;
+    min-height: 30px;
+  }
+
+  body.og-mode .gamelog-clue-word {
+    font-size: 12px;
+    letter-spacing: 0.6px;
+  }
+
+  body.og-mode .gamelog-clue-count,
+  body.og-mode .gamelog-clue-number {
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+  }
+
+  body.og-mode .gamelog-word-pill {
+    font-size: 9px;
+    padding: 3px 6px;
+    border-radius: 12px;
+    border-width: 1px;
+    box-shadow: 0 2px 7px rgba(0,0,0,0.25);
+  }
+
+  body.og-mode .gamelog-system {
+    font-size: 8px;
+    padding: 3px 6px;
+    border-radius: 10px;
+  }
+}
