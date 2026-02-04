@@ -1224,12 +1224,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initPasswordVisibilityToggles();
   initHeaderLogoNav();
   initTabs();
+  initHomeActions();
   initChromeHeightSync();
   initName();
   initPlayersTab();
   initTeamModal();
   initBracketsUI();
-  initPracticeModal();
+  initPracticePage();
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
@@ -1640,17 +1641,7 @@ function initLaunchScreen() {
   quickBtn?.addEventListener('click', () => requireAuthThen('quick', { gateIfLiveGame: true }));
   tournBtn?.addEventListener('click', () => requireAuthThen('tournament'));
   bracketsBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-brackets' }));
-  practiceBtn?.addEventListener('click', () => {
-    const u = auth.currentUser;
-    const name = getUserName();
-    if (!u || !name) {
-      try { showAuthScreen(); } catch (_) {}
-      if (hint) hint.textContent = 'Sign in to continue.';
-      return;
-    }
-    if (hint) hint.textContent = '';
-    openPracticeModal();
-  });
+  practiceBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-practice' }));
 
   // Auth UI on launch (username + password)
   const loginForm = document.getElementById('launch-login-form');
@@ -2266,6 +2257,18 @@ function restoreLastNavigation() {
       hideAuthLoadingScreen();
     }
   }, 0);
+}
+
+
+function initHomeActions() {
+  const openBrackets = document.getElementById('home-open-brackets');
+  const openPractice = document.getElementById('home-open-practice');
+  openBrackets?.addEventListener('click', () => {
+    try { switchToPanel('panel-brackets'); } catch (_) { activatePanel('panel-brackets'); }
+  });
+  openPractice?.addEventListener('click', () => {
+    try { switchToPanel('panel-practice'); } catch (_) { activatePanel('panel-practice'); }
+  });
 }
 
 /* =========================
@@ -3663,44 +3666,101 @@ function renderBrackets(teams) {
     return getMembers(b).length - getMembers(a).length;
   });
 
-  if (pill) pill.textContent = String(sorted.length);
+  if (pill) pill.textContent = String(visible.length);
 
-  if (sorted.length === 0) {
-    grid.innerHTML = '<div class="empty-state">No teams found</div>';
-    return;
+  // Always render a bracket even when there are 0 teams.
+  const teamCount = sorted.length;
+  const nextPow2 = (n) => {
+    let p = 1;
+    while (p < n) p <<= 1;
+    return p;
+  };
+  const size = Math.max(4, nextPow2(Math.max(teamCount, 2)));
+  const rounds = Math.round(Math.log2(size));
+
+  // Seed teams into slots; pad with TBD.
+  const seeds = Array.from({ length: size }, (_, i) => sorted[i] || null);
+
+  // Build round 1 pairings: 1 vs N, 2 vs N-1 ...
+  const firstRound = [];
+  for (let i = 0; i < size / 2; i++) {
+    const a = seeds[i];
+    const b = seeds[size - 1 - i];
+    firstRound.push({ a, b, seedA: i + 1, seedB: size - i });
   }
 
-  grid.innerHTML = sorted.map((t, idx) => {
-    const members = getMembers(t);
-    const tc = getDisplayTeamColor(t);
-    const isMine = st.teamId === t.id;
-    const memberNames = members.length
-      ? members.map(m => esc((m?.name || '—').trim())).join(', ')
-      : '—';
+  const roundTitles = (r) => {
+    if (r === rounds) return 'Final';
+    if (r === rounds - 1) return 'Semis';
+    const n = size / (1 << (r - 1));
+    return `Round of ${n}`;
+  };
 
-    const name = esc(truncateTeamName(t.teamName || 'Unnamed', 24));
+  const slotHtml = (t, seedNum, which) => {
+    const tc = t ? getDisplayTeamColor(t) : '';
     const accent = tc ? `style="--team-accent:${esc(tc)}"` : '';
-    const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
+    const name = t ? esc(truncateTeamName(t.teamName || 'Unnamed', 22)) : 'TBD';
+    const members = t ? getMembers(t).length : 0;
+    const isMine = t && st.teamId === t.id;
+    const data = t ? `data-team="${esc(t.id)}"` : '';
+    const mine = isMine ? '<span class="br-slot-tag">yours</span>' : '';
+    const seed = (/^\d+$/.test(String(seedNum))) ? `<span class="br-slot-seed">#${seedNum}</span>` : '';
+    const meta = t ? `<span class="br-slot-meta">${members}p</span>` : '<span class="br-slot-meta">—</span>';
+    return `<div class="br-slot ${t ? 'is-team' : 'is-tbd'}" ${data} ${accent} role="button" tabindex="0" aria-label="${t ? 'Open team' : 'TBD'}">${seed}<span class="br-slot-name">${name}</span>${meta}${mine}</div>`;
+  };
 
-    return `
-      <button class="bracket-card" type="button" data-team="${esc(t.id)}" ${accent}>
-        <div class="bracket-top">
-          <div class="bracket-name" ${nameStyle}>${name}</div>
-          <div class="bracket-pill">#${idx + 1}</div>
-        </div>
-        <div class="bracket-meta">
-          <span class="bracket-pill">${members.length} members</span>
-          ${isMine ? '<span class="bracket-pill">yours</span>' : ''}
-        </div>
-        <div class="bracket-members">${memberNames}</div>
-      </button>
-    `;
-  }).join('');
+  // Round columns
+  const cols = [];
+  // Round 1
+  cols.push({
+    title: roundTitles(1),
+    matches: firstRound.map((m, idx) => ({
+      slots: [slotHtml(m.a, m.seedA, 'a'), slotHtml(m.b, m.seedB, 'b')],
+    }))
+  });
 
-  grid.querySelectorAll('[data-team]')?.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const teamId = btn.getAttribute('data-team');
-      if (teamId) openTeamModal(teamId);
+  // Later rounds are TBD until gameplay is implemented.
+  for (let r = 2; r <= rounds; r++) {
+    const matches = size / (1 << r);
+    cols.push({
+      title: roundTitles(r),
+      matches: Array.from({ length: matches }, (_, i) => ({
+        slots: [slotHtml(null, '', 'a'), slotHtml(null, '', 'b')]
+      }))
+    });
+  }
+
+  // Render
+  grid.innerHTML = `
+    <div class="bracket-view" style="--br-rounds:${rounds}">
+      ${cols.map((col, colIdx) => {
+        const gap = 14 * Math.pow(2, colIdx); // increases each round
+        return `
+          <div class="br-round" style="--br-gap:${gap}px">
+            <div class="br-round-title">${esc(col.title)}</div>
+            <div class="br-round-matches">
+              ${col.matches.map((mm) => `
+                <div class="br-match">
+                  ${mm.slots.join('')}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+    <div class="brackets-list-fallback" aria-hidden="true"></div>
+  `;
+
+  // Click/keyboard open team modal for real teams
+  grid.querySelectorAll('.br-slot.is-team[data-team]')?.forEach(el => {
+    const open = () => {
+      const tid = el.getAttribute('data-team');
+      if (tid) openTeamModal(tid);
+    };
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
     });
   });
 }
@@ -10578,6 +10638,98 @@ window.hideProfilePopup = hideProfilePopup;
 document.addEventListener('DOMContentLoaded', initProfilePopup);
 document.addEventListener('DOMContentLoaded', initLogsPopup);
 
+
+/* =========================
+   Practice page (no modal)
+========================= */
+function initPracticePage() {
+  const panel = document.getElementById('panel-practice');
+  if (!panel) return;
+
+  const roleBtns = Array.from(panel.querySelectorAll('[data-practice-role]'));
+  const sizeBtns = Array.from(panel.querySelectorAll('[data-practice-size]'));
+  const vibeInput = document.getElementById('practice-page-vibe');
+  const startBtn = document.getElementById('practice-page-start');
+  const hintEl = document.getElementById('practice-page-hint');
+  const stepSize = document.getElementById('practice-step-size');
+  const stepVibe = document.getElementById('practice-step-vibe');
+
+  const state = { role: null, size: null };
+
+  const setSelected = (btns, activeBtn) => {
+    btns.forEach(b => b.classList.toggle('is-selected', b === activeBtn));
+  };
+
+  const refresh = () => {
+    const ok = !!state.role && !!state.size;
+    if (stepSize) stepSize.style.display = state.role ? "" : "none";
+    if (stepVibe) stepVibe.style.display = ok ? "" : "none";
+    if (startBtn) startBtn.disabled = !ok;
+    if (hintEl) {
+      hintEl.textContent = ok
+        ? 'Ready when you are. Opens in a new tab so you can keep other games running.'
+        : 'Pick a role and team size to continue.';
+    }
+  };
+
+  roleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.role = String(btn.getAttribute('data-practice-role') || '').trim() || null;
+      setSelected(roleBtns, btn);
+      refresh();
+      try { sizeBtns?.[0]?.focus?.(); } catch (_) {}
+    });
+  });
+
+  sizeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const n = parseInt(btn.getAttribute('data-practice-size') || '0', 10);
+      state.size = (n === 2 || n === 3) ? n : null;
+      setSelected(sizeBtns, btn);
+      refresh();
+      try { vibeInput?.focus?.(); } catch (_) {}
+    });
+  });
+
+  const start = async () => {
+    if (!auth.currentUser || !getUserName()) {
+      if (hintEl) hintEl.textContent = 'Sign in to continue.';
+      return;
+    }
+    if (!state.role || !state.size) return;
+
+    const vibe = String(vibeInput?.value || '').trim();
+    const deckId = 'standard';
+
+    // Open a blank tab immediately to avoid popup blockers.
+    let w = null;
+    try { w = window.open('about:blank', '_blank'); } catch (_) {}
+    if (hintEl) hintEl.textContent = 'Starting…';
+
+    try {
+      const createFn = window.createPracticeGame;
+      if (typeof createFn !== 'function') throw new Error('Practice not available');
+      const gameId = await createFn({ size: state.size, role: state.role, vibe, deckId });
+      const url = `${location.origin}${location.pathname}?practice=${encodeURIComponent(gameId)}`;
+      if (w && !w.closed) w.location.href = url;
+      else location.href = url;
+    } catch (e) {
+      console.error(e);
+      if (w && !w.closed) { try { w.close(); } catch (_) {} }
+      if (hintEl) hintEl.textContent = (e?.message || 'Could not start practice.');
+    }
+  };
+
+  startBtn?.addEventListener('click', start);
+  vibeInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!startBtn?.disabled) start();
+    }
+  });
+
+  refresh();
+}
 
 /* =========================
    Practice modal

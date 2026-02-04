@@ -343,7 +343,6 @@
       <nav class="desktop-tabs" aria-label="Primary">
         <button class="tab" data-panel="panel-home" type="button">Home</button>
         <button class="tab" data-panel="panel-teams" type="button">Teams</button>
-        <button class="tab" data-panel="panel-brackets" type="button">Brackets</button>
         <button class="tab" data-panel="panel-players" type="button">Players</button>
         <button class="tab" data-panel="panel-myteam" type="button">
           My Team
@@ -367,6 +366,11 @@
             <div class="spots-display">
               <div class="spots-number" id="spots-left">8</div>
               <div class="spots-label">team slots left</div>
+            </div>
+
+            <div class="home-actions">
+              <button class="btn" id="home-open-brackets" type="button">Brackets</button>
+              <button class="btn" id="home-open-practice" type="button">Practice</button>
             </div>
 
             <div class="info-stats">
@@ -439,6 +443,58 @@
           </div>
         </section>
 
+        <!-- Practice Page -->
+        <section class="panel panel-practice" id="panel-practice">
+          <div class="panel-inner">
+            <div class="practice-head">
+              <h2>Practice</h2>
+              <p class="subtitle small">Pick a role, pick a team size, set a board vibe, and jump into a scrim with AIs.</p>
+            </div>
+
+            <div class="practice-steps">
+              <div class="practice-step" id="practice-step-role">
+                <div class="practice-step-title">1) Choose your role</div>
+                <div class="practice-choice-row">
+                  <button class="mode-card practice-choice" type="button" data-practice-role="spymaster">
+                    <div class="mode-card-icon">🕵️</div>
+                    <div class="mode-card-title">Spymaster</div>
+                    <div class="mode-card-desc">Give clues and guide your team.</div>
+                  </button>
+                  <button class="mode-card practice-choice" type="button" data-practice-role="operative">
+                    <div class="mode-card-icon">🗣️</div>
+                    <div class="mode-card-title">Operative</div>
+                    <div class="mode-card-desc">Guess words and hunt agents.</div>
+                  </button>
+                </div>
+              </div>
+
+              <div class="practice-step" id="practice-step-size">
+                <div class="practice-step-title">2) Choose team size</div>
+                <div class="practice-choice-row">
+                  <button class="mode-card practice-choice" type="button" data-practice-size="2">
+                    <div class="mode-card-icon">2️⃣</div>
+                    <div class="mode-card-title">2v2</div>
+                    <div class="mode-card-desc">One teammate AI + one opponent AI.</div>
+                  </button>
+                  <button class="mode-card practice-choice" type="button" data-practice-size="3">
+                    <div class="mode-card-icon">3️⃣</div>
+                    <div class="mode-card-title">3v3</div>
+                    <div class="mode-card-desc">Two teammates AIs + two opponent AIs.</div>
+                  </button>
+                </div>
+              </div>
+
+              <div class="practice-step" id="practice-step-vibe">
+                <div class="practice-step-title">3) Board vibe</div>
+                <div class="practice-vibe-row">
+                  <input class="input practice-vibe" id="practice-page-vibe" type="text" placeholder="e.g. cozy cafe, cyberpunk noir, ocean animals…" autocomplete="off" />
+                  <button class="btn primary" id="practice-page-start" type="button" disabled>Start Practice</button>
+                </div>
+                <div class="hint" id="practice-page-hint">Opens in a new tab so you can keep other games running.</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <!-- Players Page -->
         <section class="panel panel-players" id="panel-players">
@@ -1087,11 +1143,6 @@
         <button class="tab" data-panel="panel-teams" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Teams</span>
-        </button>
-
-        <button class="tab" data-panel="panel-brackets" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
-          <span>Brackets</span>
         </button>
         <button class="tab" data-panel="panel-players" type="button">
           <!-- Single-person icon to differentiate from Teams on mobile -->

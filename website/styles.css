@@ -17760,9 +17760,9 @@ body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
 
 .brackets-grid {
   margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: block;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .bracket-card {
@@ -17776,7 +17776,7 @@ body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
   overflow: hidden;
 }
 
-body.light .bracket-card {
+body.light-mode .bracket-card {
   background: rgba(0,0,0,0.03);
   border-color: rgba(0,0,0,0.10);
   box-shadow: 0 10px 28px rgba(0,0,0,0.10);
@@ -17790,7 +17790,7 @@ body.light .bracket-card {
   pointer-events: none;
 }
 
-body.light .bracket-card::before {
+body.light-mode .bracket-card::before {
   background: radial-gradient(1200px 140px at 20% 0%, rgba(0,0,0,0.06), transparent 65%);
 }
 
@@ -17827,7 +17827,7 @@ body.light .bracket-card::before {
   border: 1px solid rgba(255,255,255,0.14);
 }
 
-body.light .bracket-pill {
+body.light-mode .bracket-pill {
   background: rgba(255,255,255,0.85);
   border-color: rgba(0,0,0,0.12);
 }
@@ -17837,6 +17837,211 @@ body.light .bracket-pill {
   font-size: 12px;
   opacity: 0.9;
   line-height: 1.35;
+}
+
+
+/* Bracket diagram */
+.bracket-view {
+  display: flex;
+  gap: 16px;
+  min-width: max-content;
+  padding: 6px 2px 10px;
+}
+
+.br-round {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 240px;
+}
+
+.br-round-title {
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.br-round-matches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--br-gap, 14px);
+}
+
+.br-match {
+  position: relative;
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 12px 26px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+
+body.light-mode .br-match {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.10);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.10);
+}
+
+.br-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.20);
+  margin: 8px 0;
+  cursor: default;
+  user-select: none;
+}
+
+body.light-mode .br-slot {
+  background: rgba(255,255,255,0.82);
+  border-color: rgba(0,0,0,0.10);
+}
+
+.br-slot.is-team {
+  cursor: pointer;
+}
+
+.br-slot.is-team::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--team-accent, rgba(255,255,255,0.35));
+  box-shadow: 0 0 16px rgba(255,255,255,0.10);
+}
+
+.br-slot.is-team {
+  padding-left: 16px;
+}
+
+.br-slot.is-team:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.18);
+}
+
+body.light-mode .br-slot.is-team:hover {
+  border-color: rgba(0,0,0,0.18);
+}
+
+.br-slot.is-tbd {
+  opacity: 0.75;
+}
+
+.br-slot-seed {
+  font-weight: 900;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.br-slot-name {
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.br-slot-meta {
+  font-weight: 800;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.br-slot-tag {
+  position: absolute;
+  right: 10px;
+  top: -8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 10px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+body.light-mode .br-slot-tag {
+  background: rgba(255,255,255,0.90);
+  border-color: rgba(0,0,0,0.10);
+}
+
+@media (max-width: 720px) {
+  .br-round { min-width: 220px; }
+  .br-match { padding: 8px; }
+  .br-slot { padding: 10px 11px; }
+}
+
+/* Home quick actions */
+.home-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 14px 0 6px;
+  flex-wrap: wrap;
+}
+
+/* Practice page */
+.panel-practice .panel-inner {
+  max-width: 1050px;
+}
+
+.practice-choice-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.practice-choice.is-selected {
+  outline: none;
+  border-color: rgba(255,255,255,0.24);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.32);
+  transform: translateY(-2px);
+}
+
+body.light-mode .practice-choice.is-selected {
+  border-color: rgba(0,0,0,0.20);
+  box-shadow: 0 14px 26px rgba(0,0,0,0.12);
+}
+
+.practice-step {
+  margin-top: 16px;
+}
+
+.practice-step-title {
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  font-size: 12px;
+  opacity: 0.85;
+  margin-bottom: 10px;
+}
+
+.practice-vibe-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.practice-vibe {
+  flex: 1;
+  min-width: 220px;
+}
+
+@media (max-width: 720px) {
+  .practice-choice-row { grid-template-columns: 1fr; }
+  .practice-vibe-row { flex-direction: column; align-items: stretch; }
 }
 
 /* practice modal tweaks */
@@ -17867,3 +18072,294 @@ body.light .bracket-pill {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =====================================================================
+   Theme-safe Brackets + Practice styling (added 2026-02)
+   Ensures new pages respect dark/light/cozy/online style modes.
+===================================================================== */
+
+.panel-brackets .panel-inner{
+  max-width: 1100px;
+}
+
+#panel-brackets .subtitle.small,
+#panel-practice .subtitle.small{
+  color: var(--text-dim);
+}
+
+.brackets-tree{
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  overflow: auto;
+  padding: 10px 2px 18px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.br-round{
+  min-width: 260px;
+  max-width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+body.og-mode .br-round{
+  background: var(--surface-glass);
+}
+
+.br-round-title{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--text);
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+}
+
+.br-match{
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-soft);
+}
+
+body.light-mode .br-match{
+  background: var(--surface);
+}
+
+.br-slot{
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--card);
+  color: var(--text);
+  margin: 8px 0;
+  cursor: default;
+  user-select: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.br-slot.is-team{
+  cursor: pointer;
+  padding-left: 16px; /* room for accent strip */
+}
+
+.br-slot.is-team::before{
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--team-accent, rgba(255,255,255,0.35));
+  box-shadow: 0 0 16px rgba(0,0,0,0.12);
+}
+
+.br-slot.is-team:hover{
+  transform: translateY(-1px);
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.br-slot.is-tbd{
+  opacity: 0.58;
+  border-style: dashed;
+  background: transparent;
+}
+
+.br-slot-seed{
+  font-weight: 900;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.br-slot-name{
+  font-weight: 900;
+  font-size: 13px;
+  line-height: 1.1;
+  letter-spacing: 0.3px;
+}
+
+.br-slot-meta{
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.br-slot-tag{
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+}
+
+body.light-mode .br-slot-tag{
+  background: var(--card);
+}
+
+@media (max-width: 720px){
+  .brackets-tree{ padding-bottom: 14px; }
+  .br-round{ min-width: 220px; }
+  .br-match{ padding: 8px; }
+  .br-slot{ padding: 10px 11px; }
+}
+
+/* -----------------------------
+   Practice page
+----------------------------- */
+.panel-practice .panel-inner{
+  max-width: 980px;
+}
+
+.practice-steps{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.practice-step{
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+body.og-mode .practice-step{
+  background: var(--surface-glass);
+}
+
+.practice-step-title{
+  color: var(--text);
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  margin-bottom: 10px;
+}
+
+.practice-choice-row{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.practice-choice.mode-card{
+  width: 100%;
+}
+
+.practice-choice.is-selected{
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring), var(--shadow-md);
+}
+
+.practice-vibe-row{
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.practice-vibe{
+  flex: 1;
+  min-width: 220px;
+}
+
+@media (max-width: 720px){
+  .practice-choice-row{ grid-template-columns: 1fr; }
+  .practice-vibe-row{ flex-direction: column; align-items: stretch; }
+}
+
+/* Clean up leftover practice modal grid rules (kept for safety) */
+.practice-card .practice-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 680px){
+  .practice-card .practice-grid{ grid-template-columns: 1fr; }
+}
+
+/* =====================================================================
+   Responsive polish for Brackets + Practice (desktop + mobile)
+   Goal: avoid nested-scroll traps on mobile, keep controls usable,
+   and ensure big tappable targets.
+===================================================================== */
+
+/* Brackets: avoid nested vertical scrolling inside the panel.
+   Let the panel itself handle vertical scroll; keep only horizontal scroll here. */
+.panel-brackets .brackets-grid{
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+}
+
+.panel-brackets .bracket-view{
+  /* Horizontal bracket always scrolls cleanly on small screens */
+  overflow: visible;
+  scroll-snap-type: x proximity;
+}
+
+.panel-brackets .br-round{ scroll-snap-align: start; }
+
+/* Brackets controls: stack nicely on narrow screens */
+@media (max-width: 720px){
+  .brackets-head{ align-items: stretch; }
+  .brackets-controls{ width: 100%; }
+  .brackets-search,
+  .brackets-sort{
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Practice: make choices feel like big home tiles */
+.panel-practice .mode-card.practice-choice{
+  min-height: 112px;
+}
+
+@media (max-width: 720px){
+  .panel-practice .mode-card.practice-choice{ min-height: 96px; }
+  .panel-practice .practice-vibe-row{
+    gap: 10px;
+  }
+  #practice-page-start{
+    width: 100%;
+  }
+}
+
+/* Mobile: reduce over-wide max-width constraints for the new pages
+   so content uses the screen comfortably without looking cramped. */
+@media (max-width: 720px){
+  .panel-brackets .panel-inner,
+  .panel-practice .panel-inner{
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+
