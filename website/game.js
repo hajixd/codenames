@@ -3327,6 +3327,13 @@ function renderOgPanels() {
 
   const blueCardsLeft = currentGame.blueCardsLeft ?? '';
   const redCardsLeft = currentGame.redCardsLeft ?? '';
+  const renderAgentDots = (count) => {
+    const safe = Math.max(0, Math.min(9, Number(count) || 0));
+    let html = '';
+    for (let i = 0; i < safe; i++) html += '<span class="og-agent-dot"></span>';
+    return html;
+  };
+
 
   // --- Desktop panels ---
   const blueScore = document.getElementById('og-blue-score');
@@ -3356,6 +3363,11 @@ function renderOgPanels() {
   const mRedScore = document.getElementById('og-mobile-red-score');
   if (mBlueScore) mBlueScore.textContent = blueCardsLeft;
   if (mRedScore) mRedScore.textContent = redCardsLeft;
+
+  const mBlueAgents = document.getElementById('og-mobile-blue-agents');
+  const mRedAgents = document.getElementById('og-mobile-red-agents');
+  if (mBlueAgents) mBlueAgents.innerHTML = renderAgentDots(blueCardsLeft);
+  if (mRedAgents) mRedAgents.innerHTML = renderAgentDots(redCardsLeft);
 
   const mBlueOps = document.getElementById('og-mobile-blue-operatives');
   const mRedOps = document.getElementById('og-mobile-red-operatives');
