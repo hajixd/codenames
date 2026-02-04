@@ -42,6 +42,12 @@
   --shadow-sm: 0 6px 16px rgba(0,0,0,0.20);
   --focus-ring: 0 0 0 3px rgba(59,130,246,0.35);
 
+  /* Slow, smooth universal reveal/select animations */
+  --card-reveal-duration: 4.8s;
+  --card-select-duration: 3.6s;
+  --card-reveal-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+
   /* In-game markings (card tags) */
   --tag-yes-bg: rgba(34, 197, 94, 0.90);
   --tag-yes-fg: #fff;
@@ -4878,6 +4884,43 @@ body.og-mode .game-card {
 body.og-mode .game-card .card-inner {
   transform: rotateY(0deg);
 }
+
+/* OG (Codenames Online): selecting a card flips it face-down before confirm */
+body.og-mode .game-card .card-inner {
+  transition: transform var(--card-select-duration) var(--card-reveal-ease);
+}
+body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) .card-inner {
+  transform: rotateY(180deg);
+}
+
+/* Face-down back design (hide word until reveal) */
+body.og-mode .game-card:not(.revealed).pending-select .card-back .card-word {
+  opacity: 0;
+}
+body.og-mode .game-card:not(.revealed).pending-select .card-back::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.10);
+}
+body.og-mode .game-card:not(.revealed).pending-select .card-back::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255,255,255,0.10) 0px,
+    rgba(255,255,255,0.10) 10px,
+    rgba(0,0,0,0.06) 10px,
+    rgba(0,0,0,0.06) 20px
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.35;
+}
+
 body.og-mode .game-card.revealed .card-inner {
   transform: rotateY(180deg);
 }
@@ -4885,6 +4928,24 @@ body.og-mode .game-card.revealed .card-inner {
 body.og-mode .game-card.flip-glow {
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.08) inset;
 }
+
+body.og-mode .game-card.pending-select:not(.revealed) .card-back{
+  /* A simple "card back" look */
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(255,255,255,0.04) 45%, rgba(0,0,0,0.10) 80%),
+              linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+}
+body.og-mode .game-card.pending-select:not(.revealed) .card-back .card-word{
+  opacity: 0;
+}
+body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.20) inset;
+}
+
 
 .game-card:hover:not(.revealed):not(.disabled) {
   border-color: var(--accent);
@@ -7225,7 +7286,7 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 .game-card.revealing {
-  animation: cardReveal 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: cardReveal var(--card-reveal-duration) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* =========================
@@ -7547,99 +7608,90 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 /* =========================
-   Base guess-animate (Dark mode default)
+   Universal card selection + reveal animation
+   - Same across ALL styles
+   - Intentionally slow and very smooth
 ========================= */
+
+@keyframes cardGuessUniversal {
+  0% {
+    transform: translate(0,0) scale(1);
+    filter: brightness(1) blur(0px);
+    box-shadow: none;
+  }
+  /* ease into the motion */
+  16% {
+    transform: translate(calc(var(--guess-tx,0px) * 0.35), calc(var(--guess-ty,0px) * 0.35)) scale(1.14);
+    filter: brightness(1.08) blur(0px);
+  }
+  /* slow, readable hold */
+  46% {
+    transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.55);
+    filter: brightness(1.18) blur(0px);
+  }
+  62% {
+    transform: translate(var(--guess-tx,0px), var(--guess-ty,0px)) scale(1.55);
+    filter: brightness(1.18) blur(0px);
+  }
+  /* glide back */
+  86% {
+    transform: translate(calc(var(--guess-tx,0px) * 0.18), calc(var(--guess-ty,0px) * 0.18)) scale(1.06);
+    filter: brightness(1.06) blur(0px);
+  }
+  100% {
+    transform: translate(0,0) scale(1);
+    filter: brightness(1) blur(0px);
+    box-shadow: none;
+  }
+}
+
+@keyframes cardRevealGlowUniversal {
+  0% { box-shadow: none; }
+  10% { box-shadow: 0 0 26px var(--reveal-glow, rgba(255,255,255,0.25)), 0 18px 65px rgba(0,0,0,0.55); }
+  46% { box-shadow: 0 0 48px var(--reveal-glow-strong, rgba(255,255,255,0.35)), 0 30px 110px rgba(0,0,0,0.60); }
+  62% { box-shadow: 0 0 48px var(--reveal-glow-strong, rgba(255,255,255,0.35)), 0 30px 110px rgba(0,0,0,0.60); }
+  92% { box-shadow: 0 0 18px var(--reveal-glow, rgba(255,255,255,0.20)), 0 12px 45px rgba(0,0,0,0.40); }
+  100% { box-shadow: none; }
+}
+
 .game-card.guess-animate {
-  animation: cardGuessDark 3.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: cardGuessUniversal var(--card-reveal-duration) var(--card-reveal-ease) forwards,
+             cardRevealGlowUniversal var(--card-reveal-duration) ease forwards;
   z-index: 50;
   position: relative;
   transform-origin: var(--guess-ox, 50%) var(--guess-oy, 50%);
+  will-change: transform, filter, box-shadow;
 }
 
 .game-card.guess-animate.card-red {
-  animation: cardGuessDark 3.8s cubic-bezier(0.25, 1, 0.5, 1) forwards,
-             cardRevealGlowRedDark 3.8s ease forwards;
+  --reveal-glow: rgba(239, 68, 68, 0.45);
+  --reveal-glow-strong: rgba(239, 68, 68, 0.70);
 }
 .game-card.guess-animate.card-blue {
-  animation: cardGuessDark 3.8s cubic-bezier(0.25, 1, 0.5, 1) forwards,
-             cardRevealGlowBlueDark 3.8s ease forwards;
+  --reveal-glow: rgba(59, 130, 246, 0.45);
+  --reveal-glow-strong: rgba(59, 130, 246, 0.70);
 }
 .game-card.guess-animate.card-neutral {
-  animation: cardGuessDark 3.8s cubic-bezier(0.25, 1, 0.5, 1) forwards,
-             cardRevealGlowNeutralDark 3.8s ease forwards;
+  --reveal-glow: rgba(175, 153, 115, 0.40);
+  --reveal-glow-strong: rgba(175, 153, 115, 0.62);
 }
 .game-card.guess-animate.card-assassin {
-  animation: cardGuessDark 4.2s cubic-bezier(0.25, 1, 0.5, 1) forwards,
-             cardRevealGlowAssassinDark 4.2s ease forwards;
+  --reveal-glow: rgba(255, 60, 45, 0.55);
+  --reveal-glow-strong: rgba(255, 60, 45, 0.85);
 }
 
-/* =========================
-   Light mode overrides
-========================= */
-body.light-mode .game-card.guess-animate {
-  animation: cardGuessLight 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
-}
-body.light-mode .game-card.guess-animate.card-red {
-  animation: cardGuessLight 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-             cardRevealGlowRedLight 3.2s ease forwards !important;
-}
-body.light-mode .game-card.guess-animate.card-blue {
-  animation: cardGuessLight 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-             cardRevealGlowBlueLight 3.2s ease forwards !important;
-}
-body.light-mode .game-card.guess-animate.card-neutral {
-  animation: cardGuessLight 3.2s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-             cardRevealGlowNeutralLight 3.2s ease forwards !important;
-}
-body.light-mode .game-card.guess-animate.card-assassin {
-  animation: cardGuessLight 3.6s cubic-bezier(0.22, 1, 0.36, 1) forwards,
-             cardRevealGlowAssassinLight 3.6s ease forwards !important;
+/* Slow selection animation (runs once when you pick a card) */
+@keyframes cardSelectUniversal {
+  0% { transform: translateY(0) scale(1); filter: brightness(1); }
+  22% { transform: translateY(-2px) scale(1.04); filter: brightness(1.06); }
+  54% { transform: translateY(-2px) scale(1.08); filter: brightness(1.08); }
+  74% { transform: translateY(-1px) scale(1.03); filter: brightness(1.04); }
+  100% { transform: translateY(0) scale(1); filter: brightness(1); }
 }
 
-/* =========================
-   Cozy mode overrides
-========================= */
-body.cozy-mode .game-card.guess-animate {
-  animation: cardGuessCozy 2.8s cubic-bezier(0.34, 1.2, 0.64, 1) forwards !important;
-}
-body.cozy-mode .game-card.guess-animate.card-red {
-  animation: cardGuessCozy 2.8s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
-             cardRevealGlowRedCozy 2.8s ease forwards !important;
-}
-body.cozy-mode .game-card.guess-animate.card-blue {
-  animation: cardGuessCozy 2.8s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
-             cardRevealGlowBlueCozy 2.8s ease forwards !important;
-}
-body.cozy-mode .game-card.guess-animate.card-neutral {
-  animation: cardGuessCozy 2.8s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
-             cardRevealGlowNeutralCozy 2.8s ease forwards !important;
-}
-body.cozy-mode .game-card.guess-animate.card-assassin {
-  animation: cardGuessCozy 3.2s cubic-bezier(0.34, 1.2, 0.64, 1) forwards,
-             cardRevealGlowAssassinCozy 3.2s ease forwards !important;
-}
-
-/* =========================
-   Codenames Online mode overrides
-========================= */
-body.og-mode .game-card.guess-animate {
-  animation: cardGuessOnline 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-}
-body.og-mode .game-card.guess-animate.card-red {
-  animation: cardGuessOnline 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-             cardRevealGlowRedOnline 2.2s ease forwards !important;
-}
-body.og-mode .game-card.guess-animate.card-blue {
-  animation: cardGuessOnline 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-             cardRevealGlowBlueOnline 2.2s ease forwards !important;
-}
-body.og-mode .game-card.guess-animate.card-neutral {
-  animation: cardGuessOnline 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-             cardRevealGlowNeutralOnline 2.2s ease forwards !important;
-}
-body.og-mode .game-card.guess-animate.card-assassin {
-  animation: cardGuessOnline 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-             cardRevealGlowAssassinOnline 2.6s ease forwards !important;
+.game-card.select-animate {
+  animation: cardSelectUniversal var(--card-select-duration) var(--card-reveal-ease) forwards;
+  will-change: transform, filter;
 }
 
 /* Card pulse animation for hints */
@@ -8150,6 +8202,42 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
    - Dark mode remains the only style with the black card + blur.
 ========================= */
 
+
+
+/* Improve clue readability during non-dark animations (no dark-mode card/blur) */
+.clue-variant-light .clue-light-container::before,
+.clue-variant-cozy .clue-cozy-container::before,
+.clue-variant-og .clue-og-container::before{
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, 92vw);
+  height: min(220px, 34vh);
+  border-radius: 26px;
+  background: rgba(255,255,255,0.16);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.25);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  animation: clueChipIn 1.05s var(--card-reveal-ease) forwards;
+  pointer-events: none;
+}
+
+/* OG runs on a dark background; give the chip a slightly darker tint */
+.clue-variant-og .clue-og-container::before{
+  background: rgba(0,0,0,0.28);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+@keyframes clueChipIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
+  28% { opacity: 0.92; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0.92; transform: translate(-50%, -50%) scale(1); }
+}
+
 /* Shared: keep overlay click-to-dismiss but visually transparent for non-dark variants */
 .clue-variant-light,
 .clue-variant-cozy,
@@ -8241,24 +8329,22 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 @keyframes clueLightWord {
-  0% { opacity: 0; transform: translateY(18px); letter-spacing: 26px; filter: blur(4px); }
-  20% { opacity: 1; filter: blur(0px); }
-  40% { transform: translateY(0px); letter-spacing: 10px; }
-  100% { opacity: 1; transform: translateY(0px); letter-spacing: 10px; }
+  0% { opacity: 0; transform: translateY(10px) scale(0.99); letter-spacing: 12px; filter: blur(0px); }
+  16% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 10px; filter: blur(0px); }
+  46% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 10px; }
+  100% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 10px; }
 }
 
 @keyframes clueLightRow {
-  0% { opacity: 0; transform: translateY(10px); }
-  34% { opacity: 0; transform: translateY(10px); }
-  48% { opacity: 1; transform: translateY(0px); }
+  0% { opacity: 0; transform: translateY(8px); }
+  20% { opacity: 1; transform: translateY(0px); }
   100% { opacity: 1; transform: translateY(0px); }
 }
 
 @keyframes clueLightBadge {
-  0% { transform: scale(0.6) rotate(-18deg); opacity: 0; }
-  42% { transform: scale(0.6) rotate(-18deg); opacity: 0; }
-  56% { transform: scale(1.18) rotate(-6deg); opacity: 1; }
-  72% { transform: scale(0.98) rotate(-10deg); }
+  0% { transform: scale(0.7) rotate(-18deg); opacity: 0; }
+  14% { transform: scale(1.08) rotate(-8deg); opacity: 1; }
+  32% { transform: scale(1) rotate(-10deg); opacity: 1; }
   100% { transform: scale(1) rotate(-10deg); opacity: 1; }
 }
 
@@ -8300,6 +8386,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 .clue-variant-cozy .clue-cozy-word {
+  text-shadow: 0 10px 40px rgba(0,0,0,0.30);
   font-size: clamp(34px, 6vw, 58px);
   font-weight: 900;
   letter-spacing: 6px;
@@ -8387,10 +8474,9 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 @keyframes clueCozyBadge {
-  0% { opacity: 0; transform: scale(0.6) rotate(-18deg); }
-  40% { opacity: 0; transform: scale(0.6) rotate(-18deg); }
-  58% { opacity: 1; transform: scale(1.12) rotate(6deg); }
-  74% { transform: scale(0.96) rotate(-3deg); }
+  0% { opacity: 0; transform: scale(0.7) rotate(-18deg); }
+  18% { opacity: 1; transform: scale(1.06) rotate(6deg); }
+  36% { opacity: 1; transform: scale(1) rotate(0deg); }
   100% { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 
@@ -8424,6 +8510,8 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 .clue-variant-og .clue-og-word {
+  text-shadow: 0 14px 60px rgba(0,0,0,0.55);
+  filter: none;
   position: relative;
   font-size: clamp(38px, 6vw, 64px);
   font-weight: 900;
@@ -8521,8 +8609,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 
 @keyframes clueOgMeta {
   0% { opacity: 0; transform: translateY(10px); }
-  40% { opacity: 0; transform: translateY(10px); }
-  56% { opacity: 1; transform: translateY(0px); }
+  20% { opacity: 1; transform: translateY(0px); }
   100% { opacity: 1; transform: translateY(0px); }
 }
 

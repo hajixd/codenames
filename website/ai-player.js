@@ -10,7 +10,7 @@
 // ─── Configuration ───────────────────────────────────────────────────────────
 const AI_CONFIG = {
   baseURL: 'https://api.tokenfactory.nebius.com/v1',
-  apiKey: 'v1.CmMKHHN0YXRpY2tleS1lMDBtdno4YzAxNzRzeWtieHESIXNlcnZpY2VhY2NvdW50LWUwMGJmc2NmMmtjeDRjYno2dzIMCPHW-ssGEPLRz6ICOgsI8dmSlwcQwKbSEUACWgNlMDA.AAAAAAAAAAGvlRuUlCiFAR9lWbGIsK13dOFriMIzHQb9K_wnGyZNYotQJ7XH5mhm_69XgJmjSjpGblyuhw4f2fnX-x45cswK',
+  apiKey: 'v1.CmQKHHN0YXRpY2tleS1lMDBjdzY0ZmQ3NTNrOWRoMXoSIXNlcnZpY2VhY2NvdW50LWUwMHBwNDduZXNteXdoMzlnZTIMCOfAi8wGEPLf0dwCOgwI5sOjlwcQwJry1QJAAloDZTAw.AAAAAAAAAAGXWjOzLEfCSggi1WjNM46kqp8sZaRRs-2J_hoUvtrWEjkUMVG5K-ZoGDtoJ0j5e7jipAH9cwq3Ry1DA6UnkiEO',
   model: 'meta-llama/Llama-3.3-70B-Instruct',
   maxAIsPerTeam: 4,
 };

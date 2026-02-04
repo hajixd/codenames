@@ -2976,7 +2976,7 @@ function startGameListener(gameId, options = {}) {
               const inner = cardEl.querySelector('.card-inner');
               if (inner) {
                 try {
-                  inner.style.transition = 'transform 720ms cubic-bezier(0.22, 0.9, 0.24, 1)';
+                  inner.style.transition = 'transform 4200ms cubic-bezier(0.16, 1, 0.3, 1)';
                   inner.style.transform = 'rotateY(0deg)';
                   // Force a layout so the browser commits the start transform.
                   void inner.offsetWidth;
@@ -4460,7 +4460,9 @@ setTimeout(updateGameTabBadge, 1000);
 
 // State for advanced features
 let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
-let pendingCardSelection = null; // cardIndex pending confirmation
+let pendingCardSelection = null;
+// Used to run the slow, smooth selection animation exactly once
+let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
@@ -4712,21 +4714,31 @@ function loadTagsFromLocal() {
 ========================= */
 function clearPendingCardSelection() {
   pendingCardSelection = null;
+  _pendingSelectAnimIndex = null;
   updatePendingCardSelectionUI();
 }
 
 function setPendingCardSelection(cardIndex) {
   pendingCardSelection = cardIndex;
+  _pendingSelectAnimIndex = cardIndex;
   updatePendingCardSelectionUI();
 }
 
 function updatePendingCardSelectionUI() {
   const cards = document.querySelectorAll('.game-card');
-  cards.forEach((el) => el.classList.remove('pending-select'));
+  cards.forEach((el) => {
+    el.classList.remove('pending-select');
+    el.classList.remove('select-animate');
+  });
   if (pendingCardSelection === null || pendingCardSelection === undefined) return;
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
+    // Run the slow selection animation once (doesn't loop on re-renders)
+    if (_pendingSelectAnimIndex === pendingCardSelection) {
+      target.classList.add('select-animate');
+      _pendingSelectAnimIndex = null;
+    }
   }
 }
 
