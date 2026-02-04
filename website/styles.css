@@ -5029,8 +5029,9 @@ body.og-mode .game-card.flip-glow {
 }
 
 .log-entry {
-  font-size: 13px;
-  line-height: 1.4;
+  /* Keep the game log compact across desktop + mobile (especially mobile). */
+  font-size: 11px;
+  line-height: 1.3;
   padding: 4px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -5052,8 +5053,8 @@ body.og-mode .game-card.flip-glow {
   overflow: hidden;
   width: 100%;
   box-sizing: border-box;
-  min-height: 44px;
-  max-height: 44px;
+  min-height: 34px;
+  max-height: 34px;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -5625,8 +5626,8 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 }
 
 .game-log-panel .log-entry {
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.3;
   padding: 4px 6px 4px 9px;
   word-break: break-word;
 }
@@ -5914,8 +5915,12 @@ box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset, 0 16px 60px rgba(0, 0, 0, 0
 
   /* Log entries comfortable sizing on mobile */
   .game-log-popover .log-entry {
-    font-size: 14px;
-    padding: 8px 0;
+    /* Intentionally smaller than desktop so the log doesn't dominate the screen. */
+    font-size: 10px;
+    line-height: 1.25;
+    padding: 4px 0;
+    min-height: 28px;
+    max-height: 28px;
   }
 
   .popover-backdrop {
@@ -15410,10 +15415,21 @@ body.og-mode .og-mobile-blue .og-section-header{
   min-height: 130px;
   max-height: 190px;
   overflow-y: auto;
-  font-size: 11px;
-  line-height: 1.28;
+  font-size: 10px;
+  line-height: 1.25;
   color: rgba(255,255,255,0.88);
   padding: 4px 0;
+}
+
+/* In OG/Online layout the log is mirrored from the regular log (which uses .log-entry). */
+.og-game-log .log-entry,
+.og-game-log-mobile .log-entry,
+.og-game-log .game-log-entry,
+.og-game-log-mobile .game-log-entry {
+  font-size: 10px;
+  line-height: 1.25;
+  min-height: 28px;
+  max-height: 28px;
 }
 
 /* OG log entries: give each entry its own readable chip */
@@ -15641,6 +15657,17 @@ body.cozy-mode .og-game-log .game-log-entry {
 
 /* --- OG Mobile Overrides --- */
 @media (max-width: 768px) {
+  /* Make OG/Online game log extra compact on mobile. */
+  .og-game-log .log-entry,
+  .og-game-log-mobile .log-entry,
+  .og-game-log .game-log-entry,
+  .og-game-log-mobile .game-log-entry {
+    font-size: 9px;
+    line-height: 1.2;
+    min-height: 24px;
+    max-height: 24px;
+  }
+
   /* Hide desktop side panels on mobile */
   body.og-mode .og-team-panel {
     display: none !important;
@@ -16739,4 +16766,63 @@ body.og-mode .og-team-panel.og-team-red {
     font-size: 10px;
     letter-spacing: 0.5px;
   }
+}
+
+/* =========================================================
+   ULTRA-COMPACT GAME LOG (≈3x smaller text)
+   Applies to default log, sidebar log, popover log, and OG/Online logs.
+========================================================= */
+
+/* Default + sidebar + popover log entries */
+.log-entry,
+.game-log-panel .log-entry,
+.game-log-popover .log-entry {
+  font-size: 4px !important; /* ~11px / 3 */
+  line-height: 1.15 !important;
+}
+
+/* Optional: shrink the label/title above the log as well */
+.game-log-title,
+.popover-title {
+  font-size: 4px !important;
+  letter-spacing: 0.2px !important;
+}
+
+/* OG right-panel mirrored log */
+.og-game-log {
+  font-size: 3px !important; /* ~10px / 3 */
+  line-height: 1.15 !important;
+}
+
+.og-game-log .log-entry,
+.og-game-log-mobile .log-entry,
+.og-game-log .game-log-entry,
+.og-game-log-mobile .game-log-entry {
+  font-size: 3px !important;
+  line-height: 1.15 !important;
+}
+
+/* OG / Codenames Online-style structured log (clue rows + pills) */
+body.og-mode .gamelog-title { font-size: 4px !important; letter-spacing: 0.6px !important; }
+body.og-mode .gamelog-avatar { font-size: 6px !important; }
+body.og-mode .gamelog-avatar-name { font-size: 3px !important; }
+body.og-mode .gamelog-clue-word { font-size: 6px !important; letter-spacing: 0.4px !important; }
+body.og-mode .gamelog-clue-count { font-size: 4px !important; }
+body.og-mode .gamelog-word-pill { font-size: 4px !important; letter-spacing: 0.2px !important; }
+body.og-mode .gamelog-system { font-size: 3px !important; line-height: 1.15 !important; }
+
+/* Keep mobile even tighter (still ~3x smaller than the earlier mobile sizing) */
+@media (max-width: 768px) {
+  .log-entry,
+  .game-log-panel .log-entry,
+  .game-log-popover .log-entry {
+    font-size: 3px !important; /* ~10px / 3 */
+    line-height: 1.1 !important;
+  }
+
+  body.og-mode .gamelog-title { font-size: 3px !important; }
+  body.og-mode .gamelog-clue-word { font-size: 5px !important; }
+  body.og-mode .gamelog-word-pill { font-size: 3px !important; }
+  body.og-mode .gamelog-clue-count { font-size: 3px !important; }
+  body.og-mode .gamelog-system { font-size: 3px !important; }
 }
