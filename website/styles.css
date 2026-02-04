@@ -322,6 +322,15 @@ body.tournament #play-mode-select{ display:none !important; }
     contain: paint;
   }
 
+  /* Brackets + Practice are immersive pages: hide primary tabs and reclaim space. */
+  body.no-primary-tabs .desktop-tabs,
+  body.no-primary-tabs .mobile-tabs {
+    display: none !important;
+  }
+  body.no-primary-tabs .panel {
+    top: var(--header-h);
+  }
+
   .panel.active {
     display: block;
   }
@@ -360,6 +369,118 @@ body.tournament #play-mode-select{ display:none !important; }
     color: var(--text-dim);
     font-size: 13px;
     margin-bottom: 24px;
+  }
+
+  /* =========================
+     Standalone pages (Brackets / Practice)
+  ========================= */
+  .page-topbar{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .page-topbar .icon-btn{
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+  }
+  .page-title{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    margin: 0;
+    font-size: 22px;
+  }
+
+  /* Brackets: symmetric 4-left / 4-right / finals middle */
+  .brackets-board{ width: 100%; }
+  .bracket-sides{
+    display: grid;
+    grid-template-columns: 1fr 0.9fr 1fr;
+    gap: 16px;
+    align-items: start;
+    width: 100%;
+  }
+  .bracket-side,
+  .bracket-center{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.16);
+  }
+  .bracket-side-title{
+    font-weight: 900;
+    letter-spacing: 0.6px;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .bracket-round{ margin-bottom: 14px; }
+  .bracket-round:last-child{ margin-bottom: 0; }
+  .br-round-title{
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--text);
+    opacity: 0.9;
+    margin-bottom: 10px;
+  }
+  .br-match{
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
+    border: 1px solid var(--border-soft, var(--border));
+    margin-bottom: 10px;
+  }
+  .br-match:last-child{ margin-bottom: 0; }
+  .br-match.is-final{
+    padding: 12px;
+  }
+  .br-slot{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    cursor: pointer;
+    user-select: none;
+  }
+  .br-slot.is-tbd{ opacity: 0.75; cursor: default; }
+  .br-slot.is-team:hover{ transform: translateY(-1px); }
+  .br-slot-seed{
+    font-size: 11px;
+    font-weight: 900;
+    color: var(--text-dim);
+    min-width: 28px;
+  }
+  .br-slot-name{ font-weight: 800; flex: 1; }
+  .br-slot-meta{ font-size: 12px; color: var(--text-dim); }
+  .br-slot-tag{ font-size: 11px; font-weight: 800; color: var(--text-dim); }
+  .br-slot.is-team{
+    border-left: 5px solid var(--team-accent, var(--accent));
+  }
+
+  /* Responsive: stack to two columns and allow clean horizontal scroll when needed */
+  @media (max-width: 860px){
+    .bracket-sides{ grid-template-columns: 1fr; }
+    .bracket-center{ order: 2; }
+  }
+
+  @media (max-width: 520px){
+    .panel-inner{ padding: 18px 14px; }
+    .page-title{ font-size: 20px; }
+    .bracket-side,
+    .bracket-center{ padding: 12px; border-radius: 16px; }
+    .br-match{ padding: 10px; border-radius: 14px; }
+    .br-slot{ padding: 10px 10px; }
   }
 
   .spots-display {
@@ -7951,27 +8072,27 @@ body.tournament.has-team-color .btn.primary:hover {
 }
 
 @keyframes clueBackdropCozy {
-  0% { opacity: 0; backdrop-filter: blur(0px); }
+  0% { opacity: 0; }
   12% { opacity: 0.7; }
-  30% { opacity: 1; backdrop-filter: blur(4px); }
-  100% { opacity: 1; backdrop-filter: blur(4px); }
+  30% { opacity: 1; }
+  100% { opacity: 1; }
 }
 
 @keyframes clueCardCozy {
   0% {
     opacity: 0;
     transform: translate(-50%, -20%) scale(0.3) rotate(-8deg);
-    filter: blur(6px);
+    filter: none;
   }
   10% {
     opacity: 0.6;
     transform: translate(-50%, -55%) scale(0.7) rotate(4deg);
-    filter: blur(2px);
+    filter: none;
   }
   22% {
     opacity: 1;
     transform: translate(-50%, -48%) scale(1.08) rotate(-1.5deg);
-    filter: blur(0px);
+    filter: none;
   }
   32% {
     transform: translate(-50%, -51%) scale(1.02) rotate(0.8deg);
@@ -7985,7 +8106,7 @@ body.tournament.has-team-color .btn.primary:hover {
   100% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1) rotate(0deg);
-    filter: blur(0px);
+    filter: none;
   }
 }
 
@@ -7999,16 +8120,16 @@ body.tournament.has-team-color .btn.primary:hover {
   0% {
     opacity: 0;
     transform: translate(-50%, -50%) scale(2.5) rotateX(0deg);
-    filter: brightness(3) blur(12px);
+    filter: none;
   }
   8% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(0.92) rotateX(0deg);
-    filter: brightness(1.4) blur(0px);
+    filter: none;
   }
   16% {
     transform: translate(-50%, -50%) scale(1.05) rotateX(0deg);
-    filter: brightness(1);
+    filter: none;
   }
   24% {
     transform: translate(-50%, -50%) scale(0.99) rotateX(0deg);
@@ -8016,7 +8137,7 @@ body.tournament.has-team-color .btn.primary:hover {
   100% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1) rotateX(0deg);
-    filter: brightness(1) blur(0px);
+    filter: none;
   }
 }
 
@@ -8141,6 +8262,15 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   animation: clueBackdropIn 5.5s ease forwards;
 }
 
+/* Reduce GPU-heavy backdrop-filter on non-dark themes (can cause browser compositing glitches). */
+body.light-mode .clue-announcement-backdrop,
+body.cozy-mode .clue-announcement-backdrop,
+body.og-mode .clue-announcement-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(0, 0, 0, 0.55);
+}
+
 .clue-announcement-card {
   position: absolute;
   top: 50%;
@@ -8155,6 +8285,15 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   min-width: 240px;
   animation: clueCardSlam 5.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   perspective: 1000px;
+}
+
+body.light-mode .clue-announcement-card,
+body.cozy-mode .clue-announcement-card,
+body.og-mode .clue-announcement-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(0, 0, 0, 0.86);
+  border: 1px solid rgba(255,255,255,0.16);
 }
 
 .clue-announcement-card.team-red {
@@ -8257,7 +8396,8 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
     );
   opacity: 0.18;
   pointer-events: none;
-  mix-blend-mode: overlay;
+  /* mix-blend-mode can trigger expensive compositing on some GPUs */
+  mix-blend-mode: normal;
 }
 
 .clue-announcement-divider {
@@ -17848,14 +17988,14 @@ body.light-mode .bracket-pill {
   padding: 6px 2px 10px;
 }
 
-.br-round {
+.bracket-view .br-round {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 240px;
 }
 
-.br-round-title {
+.bracket-view .br-round-title {
   font-weight: 900;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -17863,13 +18003,13 @@ body.light-mode .bracket-pill {
   opacity: 0.85;
 }
 
-.br-round-matches {
+.bracket-view .br-round-matches {
   display: flex;
   flex-direction: column;
   gap: var(--br-gap, 14px);
 }
 
-.br-match {
+.bracket-view .br-match {
   position: relative;
   border-radius: 18px;
   padding: 10px;
@@ -17879,13 +18019,13 @@ body.light-mode .bracket-pill {
   overflow: hidden;
 }
 
-body.light-mode .br-match {
+body.light-mode .bracket-view .br-match {
   background: rgba(0,0,0,0.03);
   border-color: rgba(0,0,0,0.10);
   box-shadow: 0 10px 22px rgba(0,0,0,0.10);
 }
 
-.br-slot {
+.bracket-view .br-slot {
   position: relative;
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -17900,16 +18040,16 @@ body.light-mode .br-match {
   user-select: none;
 }
 
-body.light-mode .br-slot {
+body.light-mode .bracket-view .br-slot {
   background: rgba(255,255,255,0.82);
   border-color: rgba(0,0,0,0.10);
 }
 
-.br-slot.is-team {
+.bracket-view .br-slot.is-team {
   cursor: pointer;
 }
 
-.br-slot.is-team::before {
+.bracket-view .br-slot.is-team::before {
   content: "";
   position: absolute;
   left: 0;
@@ -17921,30 +18061,30 @@ body.light-mode .br-slot {
   box-shadow: 0 0 16px rgba(255,255,255,0.10);
 }
 
-.br-slot.is-team {
+.bracket-view .br-slot.is-team {
   padding-left: 16px;
 }
 
-.br-slot.is-team:hover {
+.bracket-view .br-slot.is-team:hover {
   transform: translateY(-1px);
   border-color: rgba(255,255,255,0.18);
 }
 
-body.light-mode .br-slot.is-team:hover {
+body.light-mode .bracket-view .br-slot.is-team:hover {
   border-color: rgba(0,0,0,0.18);
 }
 
-.br-slot.is-tbd {
+.bracket-view .br-slot.is-tbd {
   opacity: 0.75;
 }
 
-.br-slot-seed {
+.bracket-view .br-slot-seed {
   font-weight: 900;
   font-size: 12px;
   opacity: 0.85;
 }
 
-.br-slot-name {
+.bracket-view .br-slot-name {
   font-weight: 800;
   font-size: 13px;
   letter-spacing: 0.2px;
@@ -17953,13 +18093,13 @@ body.light-mode .br-slot.is-team:hover {
   text-overflow: ellipsis;
 }
 
-.br-slot-meta {
+.bracket-view .br-slot-meta {
   font-weight: 800;
   font-size: 12px;
   opacity: 0.85;
 }
 
-.br-slot-tag {
+.bracket-view .br-slot-tag {
   position: absolute;
   right: 10px;
   top: -8px;
@@ -17971,15 +18111,15 @@ body.light-mode .br-slot.is-team:hover {
   border: 1px solid rgba(255,255,255,0.12);
 }
 
-body.light-mode .br-slot-tag {
+body.light-mode .bracket-view .br-slot-tag {
   background: rgba(255,255,255,0.90);
   border-color: rgba(0,0,0,0.10);
 }
 
 @media (max-width: 720px) {
-  .br-round { min-width: 220px; }
-  .br-match { padding: 8px; }
-  .br-slot { padding: 10px 11px; }
+  .bracket-view .br-round { min-width: 220px; }
+  .bracket-view .br-match { padding: 8px; }
+  .bracket-view .br-slot { padding: 10px 11px; }
 }
 
 /* Home quick actions */

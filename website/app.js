@@ -2129,6 +2129,12 @@ function switchToPanel(panelId) {
 
   activePanelId = targetId;
 
+  // Brackets + Practice are immersive pages; hide primary tabs while viewing them.
+  try {
+    const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
+    document.body.classList.toggle('no-primary-tabs', !!noTabs);
+  } catch (_) {}
+
   // If a game board is visible, we don't show the messages drawer.
   if (isInGameBoardView() && chatDrawerOpen) {
     try { setChatDrawerOpen(false); } catch (_) {}
@@ -3642,59 +3648,25 @@ function renderTeams(teams) {
    Brackets page
 ========================= */
 function renderBrackets(teams) {
-  const grid = document.getElementById('brackets-grid');
+  const board = document.getElementById('brackets-board');
   const pill = document.getElementById('brackets-count-pill');
-  if (!grid) return;
+  if (!board) return;
 
   const st = computeUserState(teams);
   const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
-
-  const q = String(document.getElementById('brackets-search')?.value || '').trim().toLowerCase();
-  let filtered = visible;
-  if (q) {
-    filtered = visible.filter(t => {
-      const name = String(t?.teamName || '').toLowerCase();
-      const members = getMembers(t).map(m => String(m?.name || '').toLowerCase()).join(' ');
-      return name.includes(q) || members.includes(q);
-    });
-  }
-
-  const sort = String(document.getElementById('brackets-sort')?.value || 'size');
-  const sorted = [...filtered].sort((a, b) => {
-    if (sort === 'name') return String(a?.teamName || '').localeCompare(String(b?.teamName || ''));
-    if (sort === 'created') return (tsToMs(b?.createdAt) || 0) - (tsToMs(a?.createdAt) || 0);
-    return getMembers(b).length - getMembers(a).length;
+  // Deterministic seeding: larger rosters first, then name.
+  const sorted = [...visible].sort((a, b) => {
+    const da = getMembers(a).length;
+    const db = getMembers(b).length;
+    if (db !== da) return db - da;
+    return String(a?.teamName || '').localeCompare(String(b?.teamName || ''));
   });
-
   if (pill) pill.textContent = String(visible.length);
 
-  // Always render a bracket even when there are 0 teams.
-  const teamCount = sorted.length;
-  const nextPow2 = (n) => {
-    let p = 1;
-    while (p < n) p <<= 1;
-    return p;
-  };
-  const size = Math.max(4, nextPow2(Math.max(teamCount, 2)));
-  const rounds = Math.round(Math.log2(size));
-
-  // Seed teams into slots; pad with TBD.
-  const seeds = Array.from({ length: size }, (_, i) => sorted[i] || null);
-
-  // Build round 1 pairings: 1 vs N, 2 vs N-1 ...
-  const firstRound = [];
-  for (let i = 0; i < size / 2; i++) {
-    const a = seeds[i];
-    const b = seeds[size - 1 - i];
-    firstRound.push({ a, b, seedA: i + 1, seedB: size - i });
-  }
-
-  const roundTitles = (r) => {
-    if (r === rounds) return 'Final';
-    if (r === rounds - 1) return 'Semis';
-    const n = size / (1 << (r - 1));
-    return `Round of ${n}`;
-  };
+  // Fixed 8-team bracket: 4 teams on left, 4 on right, finals in the middle.
+  const seeds = Array.from({ length: 8 }, (_, i) => sorted[i] || null);
+  const leftSeeds = seeds.slice(0, 4);
+  const rightSeeds = seeds.slice(4, 8);
 
   const slotHtml = (t, seedNum, which) => {
     const tc = t ? getDisplayTeamColor(t) : '';
@@ -3709,51 +3681,54 @@ function renderBrackets(teams) {
     return `<div class="br-slot ${t ? 'is-team' : 'is-tbd'}" ${data} ${accent} role="button" tabindex="0" aria-label="${t ? 'Open team' : 'TBD'}">${seed}<span class="br-slot-name">${name}</span>${meta}${mine}</div>`;
   };
 
-  // Round columns
-  const cols = [];
-  // Round 1
-  cols.push({
-    title: roundTitles(1),
-    matches: firstRound.map((m, idx) => ({
-      slots: [slotHtml(m.a, m.seedA, 'a'), slotHtml(m.b, m.seedB, 'b')],
-    }))
-  });
+  // Pairings: 1v4 + 2v3 on each side.
+  const leftM1 = { a: leftSeeds[0], b: leftSeeds[3], seedA: 1, seedB: 4 };
+  const leftM2 = { a: leftSeeds[1], b: leftSeeds[2], seedA: 2, seedB: 3 };
+  const rightM1 = { a: rightSeeds[0], b: rightSeeds[3], seedA: 5, seedB: 8 };
+  const rightM2 = { a: rightSeeds[1], b: rightSeeds[2], seedA: 6, seedB: 7 };
 
-  // Later rounds are TBD until gameplay is implemented.
-  for (let r = 2; r <= rounds; r++) {
-    const matches = size / (1 << r);
-    cols.push({
-      title: roundTitles(r),
-      matches: Array.from({ length: matches }, (_, i) => ({
-        slots: [slotHtml(null, '', 'a'), slotHtml(null, '', 'b')]
-      }))
-    });
-  }
+  const winnerSlot = (label) => `<div class="br-slot is-tbd br-winner" role="button" tabindex="0" aria-label="TBD"><span class="br-slot-seed">${esc(label)}</span><span class="br-slot-name">TBD</span><span class="br-slot-meta">—</span></div>`;
 
-  // Render
-  grid.innerHTML = `
-    <div class="bracket-view" style="--br-rounds:${rounds}">
-      ${cols.map((col, colIdx) => {
-        const gap = 14 * Math.pow(2, colIdx); // increases each round
-        return `
-          <div class="br-round" style="--br-gap:${gap}px">
-            <div class="br-round-title">${esc(col.title)}</div>
-            <div class="br-round-matches">
-              ${col.matches.map((mm) => `
-                <div class="br-match">
-                  ${mm.slots.join('')}
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        `;
-      }).join('')}
+  board.innerHTML = `
+    <div class="bracket-sides">
+      <div class="bracket-side left" aria-label="Left bracket">
+        <div class="bracket-side-title">Left</div>
+        <div class="bracket-round">
+          <div class="br-round-title">Quarterfinals</div>
+          <div class="br-match">${slotHtml(leftM1.a, leftM1.seedA, 'a')}${slotHtml(leftM1.b, leftM1.seedB, 'b')}</div>
+          <div class="br-match">${slotHtml(leftM2.a, leftM2.seedA, 'a')}${slotHtml(leftM2.b, leftM2.seedB, 'b')}</div>
+        </div>
+        <div class="bracket-round">
+          <div class="br-round-title">Semifinal</div>
+          <div class="br-match">${winnerSlot('W1')}${winnerSlot('W2')}</div>
+        </div>
+      </div>
+
+      <div class="bracket-center" aria-label="Finals">
+        <div class="bracket-side-title">Final</div>
+        <div class="bracket-round">
+          <div class="br-round-title">Championship</div>
+          <div class="br-match is-final">${winnerSlot('L')}${winnerSlot('R')}</div>
+        </div>
+      </div>
+
+      <div class="bracket-side right" aria-label="Right bracket">
+        <div class="bracket-side-title">Right</div>
+        <div class="bracket-round">
+          <div class="br-round-title">Quarterfinals</div>
+          <div class="br-match">${slotHtml(rightM1.a, rightM1.seedA, 'a')}${slotHtml(rightM1.b, rightM1.seedB, 'b')}</div>
+          <div class="br-match">${slotHtml(rightM2.a, rightM2.seedA, 'a')}${slotHtml(rightM2.b, rightM2.seedB, 'b')}</div>
+        </div>
+        <div class="bracket-round">
+          <div class="br-round-title">Semifinal</div>
+          <div class="br-match">${winnerSlot('W3')}${winnerSlot('W4')}</div>
+        </div>
+      </div>
     </div>
-    <div class="brackets-list-fallback" aria-hidden="true"></div>
   `;
 
   // Click/keyboard open team modal for real teams
-  grid.querySelectorAll('.br-slot.is-team[data-team]')?.forEach(el => {
+  board.querySelectorAll('.br-slot.is-team[data-team]')?.forEach(el => {
     const open = () => {
       const tid = el.getAttribute('data-team');
       if (tid) openTeamModal(tid);
@@ -3766,11 +3741,11 @@ function renderBrackets(teams) {
 }
 
 function initBracketsUI() {
-  const search = document.getElementById('brackets-search');
-  const sort = document.getElementById('brackets-sort');
-  const rerender = () => { try { renderBrackets(teamsCache); } catch (_) {} };
-  search?.addEventListener('input', rerender);
-  sort?.addEventListener('change', rerender);
+  // No controls — bracket is always rendered from the current team list.
+  const back = document.getElementById('brackets-back');
+  back?.addEventListener('click', () => {
+    try { switchToPanel('panel-home'); } catch (_) { activatePanel('panel-home'); }
+  });
 }
 
 /* =========================
@@ -6357,6 +6332,11 @@ function activatePanel(panelId) {
   if (!targetId) return;
   tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === targetId));
   panels.forEach(p => p.classList.toggle('active', p.id === targetId));
+
+  try {
+    const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
+    document.body.classList.toggle('no-primary-tabs', !!noTabs);
+  } catch (_) {}
 }
 
 function esc(s) {
@@ -10645,6 +10625,11 @@ document.addEventListener('DOMContentLoaded', initLogsPopup);
 function initPracticePage() {
   const panel = document.getElementById('panel-practice');
   if (!panel) return;
+
+  // Back button (Practice is its own page; hide primary tabs).
+  document.getElementById('practice-back')?.addEventListener('click', () => {
+    try { switchToPanel('panel-home'); } catch (_) { activatePanel('panel-home'); }
+  });
 
   const roleBtns = Array.from(panel.querySelectorAll('[data-practice-role]'));
   const sizeBtns = Array.from(panel.querySelectorAll('[data-practice-size]'));

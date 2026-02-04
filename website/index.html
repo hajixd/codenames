@@ -426,30 +426,23 @@
         <!-- Brackets Page -->
         <section class="panel panel-brackets" id="panel-brackets">
           <div class="panel-inner">
-            <div class="brackets-head">
-              <h2>Brackets <span class="pill" id="brackets-count-pill">0</span></h2>
-              <div class="brackets-controls">
-                <input class="input brackets-search" id="brackets-search" type="text" placeholder="Search teams…" autocomplete="off" />
-                <select class="input brackets-sort" id="brackets-sort" aria-label="Sort brackets">
-                  <option value="size" selected>Sort: size</option>
-                  <option value="name">Sort: name</option>
-                  <option value="created">Sort: created</option>
-                </select>
-              </div>
+            <div class="page-topbar">
+              <button class="icon-btn" id="brackets-back" type="button" aria-label="Back">←</button>
+              <h2 class="page-title">Brackets <span class="pill" id="brackets-count-pill">0</span></h2>
             </div>
-            <p class="subtitle small">All teams in one place. Tap a team to view members.</p>
-            <div class="hint" id="brackets-hint"></div>
-            <div class="brackets-grid" id="brackets-grid"></div>
+            <p class="subtitle small">8-team bracket. Empty slots show as TBD.</p>
+            <div class="brackets-board" id="brackets-board"></div>
           </div>
         </section>
 
         <!-- Practice Page -->
         <section class="panel panel-practice" id="panel-practice">
           <div class="panel-inner">
-            <div class="practice-head">
-              <h2>Practice</h2>
-              <p class="subtitle small">Pick a role, pick a team size, set a board vibe, and jump into a scrim with AIs.</p>
+            <div class="page-topbar">
+              <button class="icon-btn" id="practice-back" type="button" aria-label="Back">←</button>
+              <h2 class="page-title">Practice</h2>
             </div>
+            <p class="subtitle small">Choose a role, choose a team size, set a board vibe, then jump in.</p>
 
             <div class="practice-steps">
               <div class="practice-step" id="practice-step-role">
