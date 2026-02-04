@@ -10095,6 +10095,23 @@ body.tournament.has-team-color .input:focus {
 .operative-chat-panel {
   flex: 1;
   min-height: 140px;
+
+  /* Team palette (JS adds chat-team-red / chat-team-blue when switching views) */
+  --chat-accent: var(--game-blue);
+  --chat-accent-bg: var(--game-blue-bg);
+  --chat-accent-border: var(--game-blue-border);
+}
+
+.operative-chat-panel.chat-team-red {
+  --chat-accent: var(--game-red);
+  --chat-accent-bg: var(--game-red-bg);
+  --chat-accent-border: var(--game-red-border);
+}
+
+.operative-chat-panel.chat-team-blue {
+  --chat-accent: var(--game-blue);
+  --chat-accent-bg: var(--game-blue-bg);
+  --chat-accent-border: var(--game-blue-border);
 }
 
 .chat-privacy-badge {
@@ -10141,8 +10158,8 @@ body.tournament.has-team-color .input:focus {
 }
 
 .chat-message.my-message {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.25);
+  background: var(--chat-accent-bg);
+  border-color: var(--chat-accent-border);
 }
 
 .chat-message-header {
@@ -10195,6 +10212,23 @@ body.tournament.has-team-color .input:focus {
 .chat-send-btn svg {
   width: 16px;
   height: 16px;
+}
+
+/* Make operative chat controls match the currently viewed team palette */
+.operative-chat-panel .chat-send-btn {
+  background: var(--chat-accent);
+  border-color: var(--chat-accent);
+}
+
+.operative-chat-panel .chat-send-btn:hover {
+  filter: brightness(1.05);
+}
+
+.operative-chat-panel .chat-input:focus,
+.operative-chat-panel .chat-input:focus-visible {
+  outline: none;
+  border-color: var(--chat-accent-border);
+  box-shadow: 0 0 0 3px var(--chat-accent-bg);
 }
 
 /* Voting Panel */
@@ -15594,6 +15628,25 @@ body.og-mode #og-chat-host .operative-chat-panel {
   border: none;
   box-shadow: none;
   padding: 0;
+
+  /* Team palette (defaults to blue; JS toggles chat-team-red / chat-team-blue) */
+  --chat-accent: var(--game-blue);
+  --chat-accent-bg: var(--game-blue-bg);
+  --chat-accent-border: var(--game-blue-border);
+}
+
+body.cozy-mode #og-chat-host .operative-chat-panel.chat-team-red,
+body.og-mode #og-chat-host .operative-chat-panel.chat-team-red {
+  --chat-accent: var(--game-red);
+  --chat-accent-bg: var(--game-red-bg);
+  --chat-accent-border: var(--game-red-border);
+}
+
+body.cozy-mode #og-chat-host .operative-chat-panel.chat-team-blue,
+body.og-mode #og-chat-host .operative-chat-panel.chat-team-blue {
+  --chat-accent: var(--game-blue);
+  --chat-accent-bg: var(--game-blue-bg);
+  --chat-accent-border: var(--game-blue-border);
 }
 
 body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-header,
@@ -15650,6 +15703,14 @@ body.cozy-mode #og-chat-host .operative-chat-messages {
 body.og-mode #og-chat-host .operative-chat-messages {
   background: rgba(13, 22, 32, 0.20);
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Subtle team tint on the container border, so red/blue is obvious at a glance */
+body.cozy-mode #og-chat-host .operative-chat-panel.chat-team-red .operative-chat-messages,
+body.cozy-mode #og-chat-host .operative-chat-panel.chat-team-blue .operative-chat-messages,
+body.og-mode #og-chat-host .operative-chat-panel.chat-team-red .operative-chat-messages,
+body.og-mode #og-chat-host .operative-chat-panel.chat-team-blue .operative-chat-messages {
+  border-color: var(--chat-accent-border);
 }
 
 body.cozy-mode #og-chat-host .chat-message,
@@ -15740,12 +15801,13 @@ body.og-mode #og-chat-host .chat-message {
 }
 
 body.cozy-mode #og-chat-host .chat-message.my-message {
-  background: rgba(116, 63, 35, 0.26);
+  background: var(--chat-accent-bg);
+  border-color: var(--chat-accent-border);
 }
 
 body.og-mode #og-chat-host .chat-message.my-message {
-  background: rgba(0, 142, 224, 0.18);
-  border-color: rgba(0, 142, 224, 0.30);
+  background: var(--chat-accent-bg);
+  border-color: var(--chat-accent-border);
 }
 
 body.cozy-mode #og-chat-host .operative-chat-form,
@@ -15766,6 +15828,15 @@ body.og-mode #og-chat-host .input.chat-input {
   color: rgba(255,255,255,0.95);
   border-radius: 999px;
   padding: 9px 12px;
+}
+
+body.cozy-mode #og-chat-host .input.chat-input:focus,
+body.cozy-mode #og-chat-host .input.chat-input:focus-visible,
+body.og-mode #og-chat-host .input.chat-input:focus,
+body.og-mode #og-chat-host .input.chat-input:focus-visible {
+  outline: none;
+  border-color: var(--chat-accent-border);
+  box-shadow: 0 0 0 3px var(--chat-accent-bg);
 }
 
 body.cozy-mode #og-chat-host .input.chat-input {
@@ -15791,17 +15862,8 @@ body.cozy-mode #og-chat-host .chat-send-btn,
 body.og-mode #og-chat-host .chat-send-btn {
   border-radius: 999px;
   padding: 8px 10px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
-}
-
-body.cozy-mode #og-chat-host .chat-send-btn {
-  background: rgba(255, 232, 200, 0.10);
-  border-color: rgba(255, 232, 200, 0.18);
-}
-
-body.og-mode #og-chat-host .chat-send-btn {
-  background: rgba(255,255,255,0.08);
+  background: var(--chat-accent-bg);
+  border: 1px solid var(--chat-accent-border);
 }
 
 body.cozy-mode #og-chat-host .chat-send-btn:hover,

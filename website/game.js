@@ -4754,6 +4754,15 @@ function initOperativeChat() {
   if (!teamForChat) return;
   operativeChatTeamViewing = teamForChat;
 
+  // Apply a team palette class so CSS can theme the chat (red/blue)
+  try {
+    const panel = document.querySelector('.operative-chat-panel');
+    if (panel) {
+      panel.classList.toggle('chat-team-red', teamForChat === 'red');
+      panel.classList.toggle('chat-team-blue', teamForChat === 'blue');
+    }
+  } catch (_) {}
+
   // Update spectator toggle UI + read-only state
   const toggleBtn = document.getElementById('spectator-chat-toggle');
   const input = document.getElementById('operative-chat-input');
