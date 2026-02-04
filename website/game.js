@@ -2986,16 +2986,29 @@ function startGameListener(gameId, options = {}) {
               if (inner) {
                 try {
                   // Drive a very obvious, slow 3D flip via CSS keyframes.
-                  // Start from face-down so the reveal always reads as a flip.
-                  inner.style.animation = 'none';
+                  // IMPORTANT: do NOT leave any inline `animation: none` on the element,
+                  // or it will override the class-based keyframes and you'll only see the
+                  // subtle lift from the generic reveal.
+
+                  // Reset any leftover inline styles from prior flips.
+                  inner.style.removeProperty('animation');
+                  inner.style.removeProperty('transform');
+
+                  // Force the starting pose (face-down), then kick the keyframes.
+                  // Using a reflow boundary ensures the browser commits the 180deg pose
+                  // before starting the 180->0 keyframe animation.
+                  void inner.offsetWidth;
                   inner.style.transform = 'rotateY(180deg)';
                   void inner.offsetWidth;
+
                   cardEl.classList.add('og-reveal-flip', 'flip-glow');
-                  inner.addEventListener('animationend', () => {
+
+                  const onEnd = () => {
                     cardEl.classList.remove('og-reveal-flip', 'flip-glow');
-                    inner.style.animation = '';
-                    inner.style.transform = '';
-                  }, { once: true });
+                    inner.style.removeProperty('animation');
+                    inner.style.removeProperty('transform');
+                  };
+                  inner.addEventListener('animationend', onEnd, { once: true });
                 } catch (_) {}
               }
             }
@@ -3468,6 +3481,9 @@ function renderBoard(isSpymaster) {
     // Pending selection highlight
     if (!card.revealed && pendingCardSelection === i) {
       classes.push('pending-select');
+      if (document.body.classList.contains('og-mode') && _ogPeekIndex === i) {
+        classes.push('og-peek');
+      }
     }
 
     // Allow clicking for selection/tagging (if not revealed)
@@ -3488,6 +3504,7 @@ function renderBoard(isSpymaster) {
             </div>
           </div>
           <div class="card-face card-back">
+            <div class="card-checkmark card-checkmark-back" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
         </div>
@@ -4480,6 +4497,9 @@ let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
 let pendingCardSelection = null;
 // Used to run the slow, smooth selection animation exactly once
 let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
+// OG (Codenames Online): remember which selected card is currently "peeking"
+// so the stand-up animation survives re-renders.
+let _ogPeekIndex = null;
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
@@ -4732,20 +4752,14 @@ function loadTagsFromLocal() {
 function clearPendingCardSelection() {
   pendingCardSelection = null;
   _pendingSelectAnimIndex = null;
-  // Clear any OG "peek" state.
-  try {
-    document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
-  } catch (_) {}
+  _ogPeekIndex = null;
   updatePendingCardSelectionUI();
 }
 
 function setPendingCardSelection(cardIndex) {
   pendingCardSelection = cardIndex;
   _pendingSelectAnimIndex = cardIndex;
-  // Ensure only one card can be in "peek" mode.
-  try {
-    document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
-  } catch (_) {}
+  _ogPeekIndex = null;
   updatePendingCardSelectionUI();
 }
 
@@ -4754,11 +4768,15 @@ function updatePendingCardSelectionUI() {
   cards.forEach((el) => {
     el.classList.remove('pending-select');
     el.classList.remove('select-animate');
+    el.classList.remove('og-peek');
   });
   if (pendingCardSelection === null || pendingCardSelection === undefined) return;
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
+    if (_ogPeekIndex === pendingCardSelection) {
+      target.classList.add('og-peek');
+    }
     // Run the slow selection animation once (doesn't loop on re-renders)
     if (_pendingSelectAnimIndex === pendingCardSelection) {
       target.classList.add('select-animate');
@@ -5805,17 +5823,14 @@ function handleCardSelect(cardIndex) {
   // "peeks" (stands it up) so you can read the word; a third click deselects.
   const isOgMode = document.body.classList.contains('og-mode');
   if (isOgMode && pendingCardSelection === cardIndex) {
-    const el = document.querySelector(`.game-card[data-index="${cardIndex}"]`);
-    if (el && el.classList.contains('pending-select') && !el.classList.contains('revealed')) {
-      if (el.classList.contains('og-peek')) {
-        clearPendingCardSelection();
-      } else {
-        // Only one peek at a time
-        try { document.querySelectorAll('.game-card.og-peek').forEach(n => n.classList.remove('og-peek')); } catch (_) {}
-        el.classList.add('og-peek');
-      }
-      return;
+    // Second click: peek (stand it up so you can read). Third click: deselect.
+    if (_ogPeekIndex === cardIndex) {
+      clearPendingCardSelection();
+    } else {
+      _ogPeekIndex = cardIndex;
+      updatePendingCardSelectionUI();
     }
+    return;
   }
 
   // Toggle selection
