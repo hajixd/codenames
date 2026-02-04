@@ -16982,3 +16982,51 @@ body.og-mode .gamelog-system { padding: 1px 2px !important; border-radius: 3px !
   body.og-mode .gamelog-clue-count { font-size: 3px !important; }
   body.og-mode .gamelog-system { font-size: 3px !important; }
 }
+
+
+
+/* Make OG structured-log avatar/name badge use space better (not circular) */
+body.og-mode .gamelog-clue-row .gamelog-avatar-wrap {
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: auto !important;
+  padding: 1px 2px !important;
+  border-radius: 4px !important;
+  gap: 2px !important;
+  background: rgba(255,255,255,0.85) !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18) !important;
+}
+
+body.og-mode .gamelog-clue-row .gamelog-avatar {
+  width: 18px !important;
+  height: 14px !important;
+  border-radius: 4px !important; /* was 50% circle */
+  font-size: 8px !important;
+  line-height: 1 !important;
+}
+
+body.og-mode .gamelog-clue-row .gamelog-avatar-name {
+  max-width: 999px !important;
+  padding: 1px 3px !important;
+  border-radius: 3px !important;
+  font-size: 4px !important; /* keep tiny but a touch clearer */
+  white-space: nowrap !important;
+}
+
+/* Keep guess avatars consistent: small rounded-rect instead of circles */
+body.og-mode .gamelog-guess-item .gamelog-avatar {
+  border-radius: 3px !important;
+}
+
+body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar {
+  width: 14px !important;
+  height: 11px !important;
+  border-radius: 3px !important;
+  font-size: 7px !important;
+}
+
+body.og-mode .gamelog-avatar-wrap.small {
+  width: auto !important;
+}
+
