@@ -461,9 +461,10 @@ body.tournament #play-mode-select{ display:none !important; }
 
   /* Content width: treat the bracket as a horizontal "canvas" */
   .bracket-sides{
-    min-width: 980px;
+    /* Give Finals more presence (avoid a huge empty center column) */
+    min-width: 1020px;
     display: grid;
-    grid-template-columns: 1fr 0.92fr 1fr;
+    grid-template-columns: 1fr 0.72fr 1fr;
     gap: var(--br-gap);
     align-items: stretch;
     position: relative;
@@ -509,17 +510,24 @@ body.tournament #play-mode-select{ display:none !important; }
     justify-content:center;
   }
 
+  /* Make Finals feel like the hero card, not a tiny widget floating in space */
+  .bracket-center .br-final{
+    width: min(440px, 100%);
+  }
+
   /* Wire connectors (no SVG, no blur) */
   .bracket-side.left::after,
   .bracket-side.right::after{
     content:"";
     position:absolute;
-    top: calc(var(--br-title-h) + (var(--br-match-h) + var(--br-match-gap)) / 2);
+    /* Center the connector between the two match cards (no semifinals shown) */
+    top: 50%;
     width: calc(var(--br-gap) + 8px);
     height: var(--br-wire);
     background: var(--br-line);
     opacity: var(--br-wire-alpha);
     pointer-events:none;
+    transform: translateY(-50%);
   }
   .bracket-side.left::after{ right: calc(-1 * (var(--br-gap) + 6px)); }
   .bracket-side.right::after{ left: calc(-1 * (var(--br-gap) + 6px)); }
@@ -537,6 +545,19 @@ body.tournament #play-mode-select{ display:none !important; }
   }
   .bracket-side.left::before{ right: -6px; }
   .bracket-side.right::before{ left: -6px; }
+
+  /* No semifinals are rendered — remove the vertical "join" wire so the layout
+     doesn't look like it's pointing at a missing middle round. */
+  .bracket-side.left::before,
+  .bracket-side.right::before{
+    display: none;
+  }
+
+  /* The vertical "semifinal" stem reads wrong when we intentionally hide semifinals. */
+  .bracket-side.left::before,
+  .bracket-side.right::before{
+    display: none;
+  }
 
   .bracket-center::before,
   .bracket-center::after{
@@ -18593,7 +18614,7 @@ body.og-mode .br-round{
 
 /* New Brackets layout (no semifinals): 4 matchups (2 left, 2 right) -> Finals center */
 .panel-brackets .bracket-sides.bo3{
-  grid-template-columns: 1fr minmax(240px, 0.9fr) 1fr;
+  grid-template-columns: 1fr minmax(260px, 0.72fr) 1fr;
   gap: 18px;
 }
 
