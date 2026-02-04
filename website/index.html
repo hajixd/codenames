@@ -260,16 +260,28 @@
           <div class="launch-mode-row">
             <button class="mode-card" id="launch-quick-play" type="button">
               <div class="mode-card-icon">⚡</div>
-              <div class="mode-card-title">Quick Play</div>
+              <div class="mode-card-title">Quick Match</div>
               <div class="mode-card-desc">Jump into a casual live game.</div>
             </button>
 
             <button class="mode-card" id="launch-tournament" type="button">
-              <div class="mode-card-icon">🏆</div>
-              <div class="mode-card-title">Tournament</div>
-              <div class="mode-card-desc">Challenge teams and climb ranks.</div>
+              <div class="mode-card-icon">👥</div>
+              <div class="mode-card-title">Teams</div>
+              <div class="mode-card-desc">Join a team and play structured matches.</div>
             </button>
-          </div>
+
+            <button class="mode-card" id="launch-brackets" type="button">
+              <div class="mode-card-icon">🗂️</div>
+              <div class="mode-card-title">Brackets</div>
+              <div class="mode-card-desc">Browse all teams and standings.</div>
+            </button>
+
+            <button class="mode-card" id="launch-practice" type="button">
+              <div class="mode-card-icon">🤖</div>
+              <div class="mode-card-title">Practice</div>
+              <div class="mode-card-desc">Pick a vibe, pick a role, scrim with AIs.</div>
+            </button>
+            </div>
         </div>
       </div>
 
@@ -331,6 +343,7 @@
       <nav class="desktop-tabs" aria-label="Primary">
         <button class="tab" data-panel="panel-home" type="button">Home</button>
         <button class="tab" data-panel="panel-teams" type="button">Teams</button>
+        <button class="tab" data-panel="panel-brackets" type="button">Brackets</button>
         <button class="tab" data-panel="panel-players" type="button">Players</button>
         <button class="tab" data-panel="panel-myteam" type="button">
           My Team
@@ -347,7 +360,7 @@
         <section class="panel panel-info" id="panel-home">
           <div class="panel-inner">
             <div class="home-hero">
-              <h1 class="home-title">Codenames Tournament</h1>
+              <h1 class="home-title">Teams</h1>
               <p class="subtitle">Create a team or request to join one.</p>
             </div>
 
@@ -404,6 +417,28 @@
             <div class="teams-list" id="teams-list"></div>
           </div>
         </section>
+
+
+        <!-- Brackets Page -->
+        <section class="panel panel-brackets" id="panel-brackets">
+          <div class="panel-inner">
+            <div class="brackets-head">
+              <h2>Brackets <span class="pill" id="brackets-count-pill">0</span></h2>
+              <div class="brackets-controls">
+                <input class="input brackets-search" id="brackets-search" type="text" placeholder="Search teams…" autocomplete="off" />
+                <select class="input brackets-sort" id="brackets-sort" aria-label="Sort brackets">
+                  <option value="size" selected>Sort: size</option>
+                  <option value="name">Sort: name</option>
+                  <option value="created">Sort: created</option>
+                </select>
+              </div>
+            </div>
+            <p class="subtitle small">All teams in one place. Tap a team to view members.</p>
+            <div class="hint" id="brackets-hint"></div>
+            <div class="brackets-grid" id="brackets-grid"></div>
+          </div>
+        </section>
+
 
         <!-- Players Page -->
         <section class="panel panel-players" id="panel-players">
@@ -1053,6 +1088,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>Teams</span>
         </button>
+
+        <button class="tab" data-panel="panel-brackets" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+          <span>Brackets</span>
+        </button>
         <button class="tab" data-panel="panel-players" type="button">
           <!-- Single-person icon to differentiate from Teams on mobile -->
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -1069,6 +1109,60 @@
           <span class="badge tab-badge" id="badge-game-mobile" aria-label="Active games" style="display:none;"></span>
         </button>
       </nav>
+
+
+      <!-- Practice Modal -->
+      <div class="modal" id="practice-modal" aria-hidden="true" style="display:none;">
+        <div class="modal-backdrop" id="practice-backdrop"></div>
+        <div class="modal-card practice-card" role="dialog" aria-modal="true" aria-label="Practice setup">
+          <div class="modal-head">
+            <div class="modal-title">Practice</div>
+            <button class="icon-btn" id="practice-close" type="button" aria-label="Close">✕</button>
+          </div>
+
+          <div class="modal-body">
+            <div class="practice-grid">
+              <label class="setting-row">
+                <span class="setting-label">Team size</span>
+                <select class="input setting-select" id="practice-size">
+                  <option value="2" selected>2v2</option>
+                  <option value="3">3v3</option>
+                </select>
+              </label>
+
+              <label class="setting-row">
+                <span class="setting-label">Your role</span>
+                <select class="input setting-select" id="practice-role">
+                  <option value="operative" selected>Operative</option>
+                  <option value="spymaster">Spymaster</option>
+                </select>
+              </label>
+
+              <label class="setting-row">
+                <span class="setting-label">Board vibe</span>
+                <input type="text" class="input setting-input" id="practice-vibe" placeholder="e.g. oceans, sci‑fi, desserts…" maxlength="60" autocomplete="off" />
+              </label>
+
+              <label class="setting-row">
+                <span class="setting-label">Deck</span>
+                <select class="input setting-select" id="practice-deck">
+                  <option value="standard" selected>Standard</option>
+                  <option value="duet">Duet</option>
+                  <option value="family">Family</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="hint" id="practice-hint">Opens in a new tab so you can keep other games running.</div>
+
+            <div class="form-actions" style="margin-top: 14px;">
+              <button class="btn primary" id="practice-start" type="button">Start Practice</button>
+              <button class="btn" id="practice-cancel" type="button">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
 
       <!-- Team Modal -->
       <div class="modal" id="team-modal" style="display:none;" role="dialog" aria-modal="true">

@@ -115,6 +115,7 @@ async function applyGameResultToPlayerStatsIfNeeded(game) {
 }
 
 let gameUnsub = null;
+let currentListenerEphemeral = false;
 let challengesUnsub = null;
 let quickGamesUnsub = null;
 let spectatorMode = false;
@@ -552,6 +553,127 @@ async function buildQuickPlayCardsFromSettings(settings) {
   const keyCard = generateKeyCard(firstTeam, s.blackCards);
   return words.map((word, i) => ({ word, type: keyCard[i], revealed: false }));
 }
+
+/* =========================
+   Practice (AI scrim)
+========================= */
+
+function _practiceAIPool() {
+  return ['Nova','Atlas','Pixel','Echo','Moss','Sage','Koi','Luna','Orion','Byte','Vega','Sol','Ivy','Nix','Roam','Pico','Rune','Fable','Zephyr','Quill'];
+}
+
+function _makePracticeAI(team, role, usedNames) {
+  const pool = _practiceAIPool().filter(n => !usedNames.has(n));
+  const base = pool.length ? pool[Math.floor(Math.random() * pool.length)] : `Bot${Math.floor(Math.random()*999)}`;
+  usedNames.add(base);
+  const odId = `ai_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  return {
+    odId,
+    name: base,
+    role,
+    team,
+    isAI: true,
+    ready: true,
+    aiId: odId,
+    aiMode: 'autonomous',
+    aiTemperature: 0.6 + Math.random() * 0.6,
+  };
+}
+
+/**
+ * Creates a brand-new practice game with AI teammates/opponents.
+ * Does NOT touch LS_ACTIVE_GAME_ID — Practice opens in a new tab.
+ */
+window.createPracticeGame = async function createPracticeGame(opts = {}) {
+  const u = auth.currentUser;
+  if (!u) throw new Error('Sign in first.');
+  const userName = (getUserName() || u.displayName || 'Player').trim();
+  if (!userName) throw new Error('Set a name first.');
+
+  const size = Math.max(2, Math.min(3, parseInt(opts.size, 10) || 2)); // 2 or 3
+  const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
+  const vibe = String(opts.vibe || '').trim();
+  const deckId = String(opts.deckId || 'standard');
+
+  const usedNames = new Set([userName]);
+  const uid = getUserId();
+
+  // Build board cards (reuse Quick Play generator so "vibe" works consistently).
+  const cardSettings = {
+    vibe: vibe || 'codenames',
+    deckId,
+    blackCards: 1
+  };
+  const cards = await buildQuickPlayCardsFromSettings(cardSettings);
+
+  // Teams
+  const redPlayers = [];
+  const bluePlayers = [];
+
+  const human = {
+    odId: uid,
+    name: userName,
+    role: yourRole === 'spymaster' ? 'spymaster' : 'operative',
+    team: 'red',
+    ready: true,
+    isAI: false,
+  };
+
+  const needOps = (size === 2) ? 1 : 2;
+
+  if (human.role === 'spymaster') {
+    // You are red spymaster
+    redPlayers.push(human);
+    for (let i = 0; i < needOps; i++) redPlayers.push(_makePracticeAI('red', 'operative', usedNames));
+  } else {
+    // You are red operative
+    redPlayers.push(_makePracticeAI('red', 'spymaster', usedNames));
+    redPlayers.push(human);
+    for (let i = 1; i < needOps; i++) redPlayers.push(_makePracticeAI('red', 'operative', usedNames));
+  }
+
+  // Blue team all AI
+  bluePlayers.push(_makePracticeAI('blue', 'spymaster', usedNames));
+  for (let i = 0; i < needOps; i++) bluePlayers.push(_makePracticeAI('blue', 'operative', usedNames));
+
+  // Ensure spymaster fields
+  const redSpy = redPlayers.find(p => p.role === 'spymaster');
+  const blueSpy = bluePlayers.find(p => p.role === 'spymaster');
+
+  const gameData = {
+    type: 'practice',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdAtMs: Date.now(),
+    createdBy: uid,
+    createdByName: userName,
+    vibe: cardSettings.vibe,
+    deckId,
+    cards,
+    // game state
+    currentPhase: 'spymaster',
+    currentTeam: 'red',
+    currentClueWord: null,
+    currentClueNumber: null,
+    winner: null,
+    redPlayers,
+    bluePlayers,
+    spectators: [],
+    redSpymaster: redSpy ? redSpy.odId : null,
+    blueSpymaster: blueSpy ? blueSpy.odId : null,
+    // practice knobs
+    practice: {
+      size,
+      yourRole: human.role,
+      openedAtMs: Date.now(),
+    },
+    // tracking for inactivity logic
+    lastMoveAtMs: Date.now(),
+  };
+
+  const ref = await db.collection('games').add(gameData);
+  return ref.id;
+};
+
 
 /* =========================
    Key Card Generation
@@ -2850,11 +2972,13 @@ async function rejoinCurrentGame() {
 ========================= */
 function startGameListener(gameId, options = {}) {
   if (gameUnsub) gameUnsub();
+  currentListenerEphemeral = !!options.ephemeral;
 
   spectatorMode = !!options.spectator;
   spectatingGameId = spectatorMode ? gameId : null;
-
   // Persist last active game (device-local) for refresh resume.
+  // Skip this for ephemeral listeners (Practice tabs) so they don't steal your resume slot.
+  if (!currentListenerEphemeral) {
   try {
     if (typeof safeLSSet === 'function') {
       safeLSSet(LS_ACTIVE_GAME_ID, String(gameId || ''));
@@ -2864,6 +2988,7 @@ function startGameListener(gameId, options = {}) {
       localStorage.setItem(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
     }
   } catch (_) {}
+  }
 
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
     if (!snap.exists) {
@@ -2986,29 +3111,16 @@ function startGameListener(gameId, options = {}) {
               if (inner) {
                 try {
                   // Drive a very obvious, slow 3D flip via CSS keyframes.
-                  // IMPORTANT: do NOT leave any inline `animation: none` on the element,
-                  // or it will override the class-based keyframes and you'll only see the
-                  // subtle lift from the generic reveal.
-
-                  // Reset any leftover inline styles from prior flips.
-                  inner.style.removeProperty('animation');
-                  inner.style.removeProperty('transform');
-
-                  // Force the starting pose (face-down), then kick the keyframes.
-                  // Using a reflow boundary ensures the browser commits the 180deg pose
-                  // before starting the 180->0 keyframe animation.
-                  void inner.offsetWidth;
+                  // Start from face-down so the reveal always reads as a flip.
+                  inner.style.animation = 'none';
                   inner.style.transform = 'rotateY(180deg)';
                   void inner.offsetWidth;
-
                   cardEl.classList.add('og-reveal-flip', 'flip-glow');
-
-                  const onEnd = () => {
+                  inner.addEventListener('animationend', () => {
                     cardEl.classList.remove('og-reveal-flip', 'flip-glow');
-                    inner.style.removeProperty('animation');
-                    inner.style.removeProperty('transform');
-                  };
-                  inner.addEventListener('animationend', onEnd, { once: true });
+                    inner.style.animation = '';
+                    inner.style.transform = '';
+                  }, { once: true });
                 } catch (_) {}
               }
             }
@@ -3047,6 +3159,9 @@ function startGameListener(gameId, options = {}) {
 // Allows app.js to show a live Quick Play game behind the 3-button chooser.
 // - spectator=true: view-only background (default)
 // - spectator=false: interactive rejoin (only if you're already a participant)
+
+// Export for app.js (Practice deep-links and other navigation)
+window.startGameListener = startGameListener;
 window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {}) {
   const spectator = (typeof opts.spectator === 'boolean') ? opts.spectator : true;
 
@@ -3066,6 +3181,8 @@ function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
   currentGame = null;
+  const wasEphemeral = !!currentListenerEphemeral;
+  currentListenerEphemeral = false;
   _prevRevealedIndexes = new Set();
   _prevClue = null;
   spectatorMode = false;
@@ -3073,12 +3190,15 @@ function stopGameListener() {
 
   // Hide in-game controls in settings once we are out of a game.
   updateSettingsInGameActions(false);
+  // Clear resume info only for non-ephemeral sessions.
+  if (!wasEphemeral) {
 
   // Clear resume info when the user intentionally leaves the game.
   try {
     localStorage.removeItem(LS_ACTIVE_GAME_ID);
     localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR);
   } catch (_) {}
+  }
 }
 
 /* =========================
@@ -3097,6 +3217,9 @@ function showGameBoard() {
   document.getElementById('game-board-container').style.display = 'flex';
   document.getElementById('panel-game').classList.add('game-active');
 }
+
+window.showGameBoard = showGameBoard;
+
 
 // Settings modal: show/hide in-game actions when a user is inside a game.
 function updateSettingsInGameActions(isInGame) {
@@ -3481,9 +3604,6 @@ function renderBoard(isSpymaster) {
     // Pending selection highlight
     if (!card.revealed && pendingCardSelection === i) {
       classes.push('pending-select');
-      if (document.body.classList.contains('og-mode') && _ogPeekIndex === i) {
-        classes.push('og-peek');
-      }
     }
 
     // Allow clicking for selection/tagging (if not revealed)
@@ -3504,7 +3624,6 @@ function renderBoard(isSpymaster) {
             </div>
           </div>
           <div class="card-face card-back">
-            <div class="card-checkmark card-checkmark-back" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
         </div>
@@ -4497,9 +4616,6 @@ let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
 let pendingCardSelection = null;
 // Used to run the slow, smooth selection animation exactly once
 let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
-// OG (Codenames Online): remember which selected card is currently "peeking"
-// so the stand-up animation survives re-renders.
-let _ogPeekIndex = null;
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
@@ -4752,14 +4868,20 @@ function loadTagsFromLocal() {
 function clearPendingCardSelection() {
   pendingCardSelection = null;
   _pendingSelectAnimIndex = null;
-  _ogPeekIndex = null;
+  // Clear any OG "peek" state.
+  try {
+    document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
+  } catch (_) {}
   updatePendingCardSelectionUI();
 }
 
 function setPendingCardSelection(cardIndex) {
   pendingCardSelection = cardIndex;
   _pendingSelectAnimIndex = cardIndex;
-  _ogPeekIndex = null;
+  // Ensure only one card can be in "peek" mode.
+  try {
+    document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
+  } catch (_) {}
   updatePendingCardSelectionUI();
 }
 
@@ -4768,15 +4890,11 @@ function updatePendingCardSelectionUI() {
   cards.forEach((el) => {
     el.classList.remove('pending-select');
     el.classList.remove('select-animate');
-    el.classList.remove('og-peek');
   });
   if (pendingCardSelection === null || pendingCardSelection === undefined) return;
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    if (_ogPeekIndex === pendingCardSelection) {
-      target.classList.add('og-peek');
-    }
     // Run the slow selection animation once (doesn't loop on re-renders)
     if (_pendingSelectAnimIndex === pendingCardSelection) {
       target.classList.add('select-animate');
@@ -5823,14 +5941,17 @@ function handleCardSelect(cardIndex) {
   // "peeks" (stands it up) so you can read the word; a third click deselects.
   const isOgMode = document.body.classList.contains('og-mode');
   if (isOgMode && pendingCardSelection === cardIndex) {
-    // Second click: peek (stand it up so you can read). Third click: deselect.
-    if (_ogPeekIndex === cardIndex) {
-      clearPendingCardSelection();
-    } else {
-      _ogPeekIndex = cardIndex;
-      updatePendingCardSelectionUI();
+    const el = document.querySelector(`.game-card[data-index="${cardIndex}"]`);
+    if (el && el.classList.contains('pending-select') && !el.classList.contains('revealed')) {
+      if (el.classList.contains('og-peek')) {
+        clearPendingCardSelection();
+      } else {
+        // Only one peek at a time
+        try { document.querySelectorAll('.game-card.og-peek').forEach(n => n.classList.remove('og-peek')); } catch (_) {}
+        el.classList.add('og-peek');
+      }
+      return;
     }
-    return;
   }
 
   // Toggle selection

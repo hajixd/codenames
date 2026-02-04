@@ -1228,6 +1228,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initName();
   initPlayersTab();
   initTeamModal();
+  initBracketsUI();
+  initPracticeModal();
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
@@ -1593,6 +1595,8 @@ function initLaunchScreen() {
 
   const quickBtn = document.getElementById('launch-quick-play');
   const tournBtn = document.getElementById('launch-tournament');
+  const bracketsBtn = document.getElementById('launch-brackets');
+  const practiceBtn = document.getElementById('launch-practice');
 
   const hint = document.getElementById('launch-name-hint');
 
@@ -1621,7 +1625,7 @@ function initLaunchScreen() {
 
     (async () => {
       try {
-        enterAppFromLaunch(mode);
+        enterAppFromLaunch(mode, opts);
         if (mode === 'quick' && typeof window.waitForQuickPlayReady === 'function') {
           await window.waitForQuickPlayReady({ timeoutMs: 15000 });
         }
@@ -1635,6 +1639,18 @@ function initLaunchScreen() {
   // In that case we keep the game running in the background and show a chooser.
   quickBtn?.addEventListener('click', () => requireAuthThen('quick', { gateIfLiveGame: true }));
   tournBtn?.addEventListener('click', () => requireAuthThen('tournament'));
+  bracketsBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-brackets' }));
+  practiceBtn?.addEventListener('click', () => {
+    const u = auth.currentUser;
+    const name = getUserName();
+    if (!u || !name) {
+      try { showAuthScreen(); } catch (_) {}
+      if (hint) hint.textContent = 'Sign in to continue.';
+      return;
+    }
+    if (hint) hint.textContent = '';
+    openPracticeModal();
+  });
 
   // Auth UI on launch (username + password)
   const loginForm = document.getElementById('launch-login-form');
@@ -1892,11 +1908,12 @@ function enterAppFromLaunch(mode, opts = {}) {
   try { refreshHeaderIdentity?.(); } catch (_) {}
   setBrowserTitle('tournament');
 
-  // By default we land on Home, but when restoring after a refresh we let
-  // the restore logic pick the correct panel without overwriting storage.
+  // By default we land on Home, but allow callers to request a specific panel.
+  const requestedPanel = (opts && typeof opts.panel === 'string') ? opts.panel : null;
   if (!opts || !opts.restore) {
-    switchToPanel('panel-home');
-    safeLSSet(LS_NAV_PANEL, 'panel-home');
+    const target = requestedPanel || 'panel-home';
+    switchToPanel(target);
+    safeLSSet(LS_NAV_PANEL, target);
   }
 
   try { window.bumpPresence?.(); } catch (_) {}
@@ -2072,10 +2089,14 @@ if (integrity && integrity.ok === false) {
       } catch (_) {}
 
       // Restore last navigation if available; otherwise show the mode chooser.
+      // If this tab is a Practice deep link, jump straight into that game.
       try {
-        restoreLastNavigation();
-        const inMode = document.body.classList.contains('quickplay') || document.body.classList.contains('tournament');
-        if (!inMode) showLaunchScreen();
+        const didPractice = (typeof handlePracticeDeepLink === 'function') ? handlePracticeDeepLink() : false;
+        if (!didPractice) {
+          restoreLastNavigation();
+          const inMode = document.body.classList.contains('quickplay') || document.body.classList.contains('tournament');
+          if (!inMode) showLaunchScreen();
+        }
       } catch (_) {
         try { showLaunchScreen(); } catch (_) {}
       }
@@ -2699,6 +2720,10 @@ function refreshNameUI() {
   const canEnter = !!auth.currentUser && !!name;
   if (launchQuick) launchQuick.disabled = !canEnter;
   if (launchTourn) launchTourn.disabled = !canEnter;
+  const launchBrackets = document.getElementById('launch-brackets');
+  const launchPractice = document.getElementById('launch-practice');
+  if (launchBrackets) launchBrackets.disabled = !canEnter;
+  if (launchPractice) launchPractice.disabled = !canEnter;
 
   // Hide account-only header controls until signed in.
   // Re-query headerNamePill to avoid variable shadowing.
@@ -2711,6 +2736,7 @@ function refreshNameUI() {
 
   // Update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
+  try { renderBrackets(teamsCache); } catch (_) {}
   renderMyTeam(teamsCache);
   recomputeMyTeamTabBadge();
   refreshHeaderIdentity();
@@ -3606,6 +3632,85 @@ function renderTeams(teams) {
       await adminDeleteTeam(tid);
     });
   });
+}
+
+
+/* =========================
+   Brackets page
+========================= */
+function renderBrackets(teams) {
+  const grid = document.getElementById('brackets-grid');
+  const pill = document.getElementById('brackets-count-pill');
+  if (!grid) return;
+
+  const st = computeUserState(teams);
+  const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
+
+  const q = String(document.getElementById('brackets-search')?.value || '').trim().toLowerCase();
+  let filtered = visible;
+  if (q) {
+    filtered = visible.filter(t => {
+      const name = String(t?.teamName || '').toLowerCase();
+      const members = getMembers(t).map(m => String(m?.name || '').toLowerCase()).join(' ');
+      return name.includes(q) || members.includes(q);
+    });
+  }
+
+  const sort = String(document.getElementById('brackets-sort')?.value || 'size');
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === 'name') return String(a?.teamName || '').localeCompare(String(b?.teamName || ''));
+    if (sort === 'created') return (tsToMs(b?.createdAt) || 0) - (tsToMs(a?.createdAt) || 0);
+    return getMembers(b).length - getMembers(a).length;
+  });
+
+  if (pill) pill.textContent = String(sorted.length);
+
+  if (sorted.length === 0) {
+    grid.innerHTML = '<div class="empty-state">No teams found</div>';
+    return;
+  }
+
+  grid.innerHTML = sorted.map((t, idx) => {
+    const members = getMembers(t);
+    const tc = getDisplayTeamColor(t);
+    const isMine = st.teamId === t.id;
+    const memberNames = members.length
+      ? members.map(m => esc((m?.name || '—').trim())).join(', ')
+      : '—';
+
+    const name = esc(truncateTeamName(t.teamName || 'Unnamed', 24));
+    const accent = tc ? `style="--team-accent:${esc(tc)}"` : '';
+    const nameStyle = tc ? `style="color:${esc(tc)}"` : '';
+
+    return `
+      <button class="bracket-card" type="button" data-team="${esc(t.id)}" ${accent}>
+        <div class="bracket-top">
+          <div class="bracket-name" ${nameStyle}>${name}</div>
+          <div class="bracket-pill">#${idx + 1}</div>
+        </div>
+        <div class="bracket-meta">
+          <span class="bracket-pill">${members.length} members</span>
+          ${isMine ? '<span class="bracket-pill">yours</span>' : ''}
+        </div>
+        <div class="bracket-members">${memberNames}</div>
+      </button>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('[data-team]')?.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const teamId = btn.getAttribute('data-team');
+      if (teamId) openTeamModal(teamId);
+    });
+  });
+}
+
+function initBracketsUI() {
+  const search = document.getElementById('brackets-search');
+  const sort = document.getElementById('brackets-sort');
+  const rerender = () => { try { renderBrackets(teamsCache); } catch (_) {} };
+  search?.addEventListener('input', rerender);
+  sort?.addEventListener('change', rerender);
 }
 
 /* =========================
@@ -10472,3 +10577,89 @@ window.hideProfilePopup = hideProfilePopup;
 // Initialize profile popup on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', initProfilePopup);
 document.addEventListener('DOMContentLoaded', initLogsPopup);
+
+
+/* =========================
+   Practice modal
+========================= */
+function openPracticeModal() {
+  const modal = document.getElementById('practice-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+  try { document.getElementById('practice-vibe')?.focus?.(); } catch (_) {}
+}
+
+function closePracticeModal() {
+  const modal = document.getElementById('practice-modal');
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  modal.setAttribute('aria-hidden', 'true');
+  setTimeout(() => { modal.style.display = 'none'; }, 180);
+  const hint = document.getElementById('practice-hint');
+  if (hint) hint.textContent = 'Opens in a new tab so you can keep other games running.';
+}
+
+function initPracticeModal() {
+  const modal = document.getElementById('practice-modal');
+  if (!modal) return;
+
+  const close = () => closePracticeModal();
+  document.getElementById('practice-close')?.addEventListener('click', close);
+  document.getElementById('practice-cancel')?.addEventListener('click', close);
+  document.getElementById('practice-backdrop')?.addEventListener('click', close);
+
+  document.getElementById('practice-start')?.addEventListener('click', async () => {
+    const hintEl = document.getElementById('practice-hint');
+    const size = parseInt(document.getElementById('practice-size')?.value || '2', 10) || 2;
+    const role = String(document.getElementById('practice-role')?.value || 'operative');
+    const vibe = String(document.getElementById('practice-vibe')?.value || '').trim();
+    const deckId = String(document.getElementById('practice-deck')?.value || 'standard');
+
+    if (!auth.currentUser || !getUserName()) {
+      if (hintEl) hintEl.textContent = 'Sign in to continue.';
+      return;
+    }
+
+    // Open a blank tab immediately (helps avoid popup blockers)
+    let w = null;
+    try { w = window.open('about:blank', '_blank'); } catch (_) {}
+    if (hintEl) hintEl.textContent = 'Starting…';
+
+    try {
+      const createFn = window.createPracticeGame;
+      if (typeof createFn !== 'function') throw new Error('Practice not available');
+      const gameId = await createFn({ size, role, vibe, deckId });
+
+      const url = `${location.origin}${location.pathname}?practice=${encodeURIComponent(gameId)}`;
+      if (w && !w.closed) w.location.href = url;
+      else location.href = url;
+
+      closePracticeModal();
+    } catch (e) {
+      console.error(e);
+      if (w && !w.closed) { try { w.close(); } catch (_) {} }
+      if (hintEl) hintEl.textContent = (e?.message || 'Could not start practice.');
+    }
+  });
+}
+
+
+function handlePracticeDeepLink() {
+  try {
+    const qs = new URLSearchParams(location.search || '');
+    const gid = String(qs.get('practice') || '').trim();
+    if (!gid) return false;
+    if (!auth.currentUser || !getUserName()) return false;
+
+    enterAppFromLaunch('quick', { skipQuickLobby: true });
+    try { window.showGameBoard?.(); } catch (_) {}
+    try { window.startGameListener?.(gid, { spectator: false, ephemeral: true }); } catch (e) { console.warn(e); }
+
+    try { document.body.classList.add('practice'); } catch (_) {}
+    return true;
+  } catch (_) {
+    return false;
+  }
+}

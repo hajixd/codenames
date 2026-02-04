@@ -137,19 +137,6 @@ body.light-mode {
   cursor: pointer;
 }
 
-/* OG (Codenames Online): when a card is flipped face-down (pending-select),
-   the confirm checkmark must live on the BACK face so the user can still
-   click the card body to peek/stand it up without an invisible element
-   intercepting the click. */
-body.og-mode .game-card.pending-select:not(.revealed) .card-front .card-checkmark{
-  pointer-events: none;
-  opacity: 0;
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back .card-checkmark-back{
-  pointer-events: auto;
-  opacity: 1;
-}
-
 .game-card.pending-select:not(.revealed):not(.disabled){
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(59,130,246,0.22);
@@ -8428,10 +8415,9 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   position: absolute;
   inset: -10px -16px;
   border-radius: 30px;
-  /* Much darker plate for readability during the entire animation */
-  background: rgba(0,0,0,0.74);
-  border: 1px solid rgba(255,255,255,0.16);
-  box-shadow: 0 18px 60px rgba(0,0,0,0.38);
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.18);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   opacity: 1;
@@ -8443,8 +8429,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   font-size: 12px;
   letter-spacing: 6px;
   text-transform: uppercase;
-  opacity: 0.9;
-  color: rgba(255,255,255,0.86);
+  opacity: 0.7;
   transform: translateY(-6px);
   animation: clueLightLabel 2.9s ease forwards;
 }
@@ -8455,8 +8440,8 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   letter-spacing: 4px;
   text-transform: uppercase;
   line-height: 1.0;
-  color: #fff;
-  text-shadow: 0 14px 60px rgba(0,0,0,0.55);
+  text-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  color: var(--text, #111);
   animation: clueLightWord 2.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -8468,29 +8453,27 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 4px;
-  color: rgba(255,255,255,0.92);
   opacity: 0;
   animation: clueLightRow 2.9s ease forwards;
 }
 
 .clue-variant-light .clue-light-for {
   font-size: 12px;
-  opacity: 0.85;
+  opacity: 0.65;
 }
 
 .clue-variant-light .clue-light-num {
   font-size: 20px;
-  color: #fff;
+  color: var(--clue-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
-  background: rgba(0,0,0,0.42);
+  background: rgba(255,255,255,0.65);
   border-radius: 999px;
   border: 2px solid var(--clue-accent);
-  box-shadow: 0 14px 40px var(--clue-accent-soft);
-  text-shadow: 0 8px 18px rgba(0,0,0,0.55);
+  box-shadow: 0 10px 30px var(--clue-accent-soft);
   transform: rotate(-14deg);
   animation: clueLightBadge 2.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -8569,10 +8552,9 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   position: absolute;
   inset: -10px -16px;
   border-radius: 32px;
-  /* Darker plate so the clue stays readable during the wobble/scribble. */
-  background: rgba(0,0,0,0.70);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 18px 60px rgba(0,0,0,0.38);
+  background: rgba(255, 248, 235, 0.72);
+  border: 1px solid rgba(85, 53, 16, 0.10);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.18);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   opacity: 1;
@@ -8584,8 +8566,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   font-size: 12px;
   letter-spacing: 4px;
   text-transform: lowercase;
-  opacity: 0.88;
-  color: rgba(255,255,255,0.86);
+  opacity: 0.75;
   margin-bottom: 6px;
 }
 
@@ -8611,8 +8592,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   border-radius: 999px;
   border: 2px dashed var(--clue-accent);
   box-shadow: 0 16px 34px var(--clue-accent-soft);
-  background: rgba(0,0,0,0.26);
-  color: #fff;
+  color: var(--clue-accent);
   text-transform: lowercase;
   font-weight: 900;
   opacity: 1;
@@ -8715,10 +8695,9 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   position: absolute;
   inset: -10px -16px;
   border-radius: 30px;
-  /* Much darker plate: OG background is busy and the clue needs to pop. */
-  background: rgba(0,0,0,0.78);
-  border: 1px solid rgba(255,255,255,0.18);
-  box-shadow: 0 22px 70px rgba(0,0,0,0.38);
+  background: rgba(0,0,0,0.30);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 18px 52px rgba(0,0,0,0.28);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   opacity: 1;
@@ -8730,8 +8709,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   font-size: 11px;
   letter-spacing: 6px;
   text-transform: uppercase;
-  opacity: 0.92;
-  color: rgba(255,255,255,0.86);
+  opacity: 0.6;
   margin-bottom: 8px;
 }
 
@@ -17746,5 +17724,146 @@ body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
     font-size: 8px;
     padding: 3px 6px;
     border-radius: 10px;
+  }
+}
+
+
+/* =========================
+   Brackets (Teams index)
+========================= */
+.panel-brackets .panel-inner {
+  max-width: 1100px;
+}
+
+.brackets-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brackets-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.brackets-search {
+  min-width: 220px;
+}
+
+.brackets-sort {
+  min-width: 160px;
+}
+
+.brackets-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bracket-card {
+  position: relative;
+  border-radius: 16px;
+  padding: 14px 14px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+  text-align: left;
+  overflow: hidden;
+}
+
+body.light .bracket-card {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.10);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.10);
+}
+
+.bracket-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(1200px 140px at 20% 0%, rgba(255,255,255,0.14), transparent 65%);
+  pointer-events: none;
+}
+
+body.light .bracket-card::before {
+  background: radial-gradient(1200px 140px at 20% 0%, rgba(0,0,0,0.06), transparent 65%);
+}
+
+.bracket-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bracket-name {
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  font-size: 16px;
+}
+
+.bracket-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.bracket-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+body.light .bracket-pill {
+  background: rgba(255,255,255,0.85);
+  border-color: rgba(0,0,0,0.12);
+}
+
+.bracket-members {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+
+/* practice modal tweaks */
+.practice-card .practice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .brackets-grid {
+    grid-template-columns: 1fr;
+  }
+  .practice-card .practice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* launch cards: allow wrap on desktop */
+.launch-mode-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 720px) {
+  .launch-mode-row {
+    grid-template-columns: 1fr;
   }
 }
