@@ -12214,6 +12214,70 @@ body.og-mode .drawer-backdrop#chat-drawer-backdrop{
   }
 }
 
+/* ==================== OG DESKTOP CHAT: "CODENAMES ONLINE" AESTHETIC ==================== */
+body.og-mode .chat-drawer{
+  background: linear-gradient(180deg, rgba(24,24,24,0.86), rgba(12,12,12,0.78));
+  border-color: rgba(255,255,255,0.16);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.55);
+  backdrop-filter: blur(10px);
+}
+
+body.og-mode .chat-drawer .drawer-header{
+  background: rgba(0,0,0,0.18);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+body.og-mode .chat-drawer .drawer-title{
+  font-weight: 900;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+
+/* Remove "Operative mode" tabs in OG (keep Global only) */
+body.og-mode #chat-mode-team,
+body.og-mode #chat-mode-personal{
+  display: none !important;
+}
+
+body.og-mode .chat-drawer .segmented{
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  border-radius: 14px;
+}
+
+body.og-mode .chat-drawer .seg-btn{
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+body.og-mode .chat-drawer .chat-card.drawer-chat-card{
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+}
+
+body.og-mode .chat-drawer .chat-messages{
+  scrollbar-color: rgba(255,255,255,0.22) rgba(0,0,0,0.0);
+}
+
+body.og-mode .chat-drawer .chat-compose{
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+body.og-mode .chat-drawer .chat-input{
+  background: rgba(0,0,0,0.30);
+  border-color: rgba(255,255,255,0.12);
+}
+
+@media (min-width: 769px){
+  /* OG desktop uses the drawer chat only; remove the embedded operative chat block */
+  body.og-mode #og-chat-section,
+  body.og-mode .operative-chat-panel{
+    display: none !important;
+  }
+}
+
 
 .chat-personal-picker-wrap{ position: relative; flex: 1; }
 .chat-personal-picker{
@@ -17173,42 +17237,42 @@ body.og-mode .gamelog-avatar-wrap.small {
   }
 
   body.og-mode .gamelog-avatar {
-    width: 28px;
-    height: 28px;
-    font-size: 11px;
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
     box-shadow: 0 6px 16px rgba(0,0,0,0.30);
   }
 
   body.og-mode .gamelog-clue-pill {
-    padding: 4px 6px;
+    padding: 7px 10px;
     border-width: 2px;
     border-radius: 16px;
-    min-height: 30px;
+    min-height: 38px;
   }
 
   body.og-mode .gamelog-clue-word {
-    font-size: 12px;
-    letter-spacing: 0.6px;
+    font-size: 16px;
+    letter-spacing: 0.8px;
   }
 
   body.og-mode .gamelog-clue-count,
   body.og-mode .gamelog-clue-number {
-    width: 18px;
-    height: 18px;
-    font-size: 11px;
+    width: 22px;
+    height: 22px;
+    font-size: 13px;
   }
 
   body.og-mode .gamelog-word-pill {
-    font-size: 9px;
-    padding: 3px 6px;
+    font-size: 12px;
+    padding: 6px 10px;
     border-radius: 12px;
     border-width: 1px;
     box-shadow: 0 2px 7px rgba(0,0,0,0.25);
   }
 
   body.og-mode .gamelog-system {
-    font-size: 8px;
-    padding: 3px 6px;
+    font-size: 11px;
+    padding: 6px 10px;
     border-radius: 10px;
   }
 }
