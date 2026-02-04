@@ -3694,7 +3694,7 @@ function renderBrackets(teams) {
     const aId = m.a ? String(m.a.id || '') : '';
     const bId = m.b ? String(m.b.id || '') : '';
     return `
-      <div class="br-match" data-match="${esc(m.id)}" data-match-a="${esc(aId)}" data-match-b="${esc(bId)}" data-match-a-name="${esc(aName)}" data-match-b-name="${esc(bName)}" role="button" tabindex="0" aria-label="Open matchup">
+      <div class="br-match brk-card" data-wire="${esc(m.id)}" data-match="${esc(m.id)}" data-match-a="${esc(aId)}" data-match-b="${esc(bId)}" data-match-a-name="${esc(aName)}" data-match-b-name="${esc(bName)}" role="button" tabindex="0" aria-label="Open matchup">
         <div class="br-match-top">
           <span class="br-match-title">${esc(m.label)}</span>
           <span class="br-match-bo3">BO3</span>
@@ -3709,7 +3709,7 @@ function renderBrackets(teams) {
 
   const finalsHtml = () => {
     return `
-      <div class="br-final" data-match="F" data-match-a-name="TBD" data-match-b-name="TBD" role="button" tabindex="0" aria-label="Open finals matchup">
+      <div class="br-final brk-card" data-wire="F" data-match="F" data-match-a-name="TBD" data-match-b-name="TBD" role="button" tabindex="0" aria-label="Open finals matchup">
         <div class="br-match-top">
           <span class="br-match-title">Finals</span>
           <span class="br-match-bo3">BO3</span>
@@ -3722,22 +3722,34 @@ function renderBrackets(teams) {
     `;
   };
 
+  // New layout: a single bracket "canvas" (no side panels) + SVG wires,
+  // closer to classic playoff bracket visuals.
   board.innerHTML = `
-    <div class="bracket-sides bo3">
-      <div class="bracket-side left" aria-label="Left bracket">
-        <div class="bracket-side-title">Left</div>
-        ${matchHtml(leftM1)}
-        ${matchHtml(leftM2)}
-      </div>
+    <div class="brk-canvas" aria-label="8-team bracket">
+      <svg class="brk-wires" aria-hidden="true"></svg>
+      <div class="brk-layout">
+        <div class="brk-round brk-left" aria-label="Left side">
+          <div class="brk-round-label">LEFT</div>
+          <div class="brk-match-wrap">
+            ${matchHtml(leftM1)}
+            ${matchHtml(leftM2)}
+          </div>
+        </div>
 
-      <div class="bracket-center" aria-label="Finals">
-        ${finalsHtml()}
-      </div>
+        <div class="brk-finals" aria-label="Finals">
+          <div class="brk-finals-label"><span class="brk-trophy">🏆</span> FINALS</div>
+          <div class="brk-finals-card">
+            ${finalsHtml()}
+          </div>
+        </div>
 
-      <div class="bracket-side right" aria-label="Right bracket">
-        <div class="bracket-side-title">Right</div>
-        ${matchHtml(rightM1)}
-        ${matchHtml(rightM2)}
+        <div class="brk-round brk-right" aria-label="Right side">
+          <div class="brk-round-label">RIGHT</div>
+          <div class="brk-match-wrap">
+            ${matchHtml(rightM1)}
+            ${matchHtml(rightM2)}
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -3767,10 +3779,104 @@ function renderBrackets(teams) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
     });
   });
+
+  // Draw connector wires after DOM paints.
+  requestAnimationFrame(() => {
+    try { drawBracketWires(); } catch (_) {}
+  });
+}
+
+// Draw classic bracket connector lines using an SVG overlay.
+function drawBracketWires() {
+  const canvas = document.querySelector('.panel-brackets .brk-canvas');
+  if (!canvas) return;
+  const svg = canvas.querySelector('.brk-wires');
+  if (!svg) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const q = (sel) => canvas.querySelector(sel);
+  const a = q('[data-wire="L1"]');
+  const b = q('[data-wire="L2"]');
+  const c = q('[data-wire="R1"]');
+  const d = q('[data-wire="R2"]');
+  const f = q('[data-wire="F"]');
+  if (!a || !b || !c || !d || !f) return;
+
+  // Finals slots inside the finals card
+  const finalsSlots = f.querySelectorAll('.br-slot');
+  const finalsLeft = finalsSlots?.[0];
+  const finalsRight = finalsSlots?.[1];
+  if (!finalsLeft || !finalsRight) return;
+
+  const r = (el) => el.getBoundingClientRect();
+  const pt = (x, y) => ({ x: x - rect.left, y: y - rect.top });
+
+  const ra = r(a);
+  const rb = r(b);
+  const rc = r(c);
+  const rd = r(d);
+  const rfl = r(finalsLeft);
+  const rfr = r(finalsRight);
+
+  // Anchor points
+  const L1 = pt(ra.right, ra.top + ra.height * 0.50);
+  const L2 = pt(rb.right, rb.top + rb.height * 0.50);
+  const R1 = pt(rc.left,  rc.top + rc.height * 0.50);
+  const R2 = pt(rd.left,  rd.top + rd.height * 0.50);
+
+  const FL = pt(rfl.left,  rfl.top + rfl.height * 0.50);
+  const FR = pt(rfr.right, rfr.top + rfr.height * 0.50);
+
+  // Merge points
+  const mergeLX = FL.x - 28;
+  const mergeLY = (L1.y + L2.y) / 2;
+  const mergeRX = FR.x + 28;
+  const mergeRY = (R1.y + R2.y) / 2;
+
+  const d1 = `M ${L1.x} ${L1.y} H ${mergeLX} V ${mergeLY} H ${FL.x}`;
+  const d2 = `M ${L2.x} ${L2.y} H ${mergeLX}`;
+  const d3 = `M ${R1.x} ${R1.y} H ${mergeRX} V ${mergeRY} H ${FR.x}`;
+  const d4 = `M ${R2.x} ${R2.y} H ${mergeRX}`;
+
+  const w = rect.width;
+  const h = rect.height;
+  svg.setAttribute('width', String(Math.max(1, Math.floor(w))));
+  svg.setAttribute('height', String(Math.max(1, Math.floor(h))));
+  svg.setAttribute('viewBox', `0 0 ${Math.max(1, Math.floor(w))} ${Math.max(1, Math.floor(h))}`);
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="brk-wire-grad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="var(--brk-wire-start)" />
+        <stop offset="1" stop-color="var(--brk-wire-end)" />
+      </linearGradient>
+    </defs>
+    <path class="brk-wire" d="${d1}" />
+    <path class="brk-wire" d="${d2}" />
+    <path class="brk-wire" d="${d3}" />
+    <path class="brk-wire" d="${d4}" />
+  `;
 }
 
 function initBracketsUI() {
   // No controls — bracket is always rendered from the current team list.
+  // Keep bracket wires aligned on resize (and after font loading).
+  let raf = null;
+  const schedule = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      try {
+        const panel = document.getElementById('panel-brackets');
+        if (panel && !panel.classList.contains('hidden')) drawBracketWires();
+      } catch (_) {}
+    });
+  };
+  window.addEventListener('resize', schedule);
+  // Fonts can shift measurements slightly.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(schedule).catch(() => {});
+  }
 }
 
 // Small info popup for a bracket matchup.
