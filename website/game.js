@@ -2985,19 +2985,16 @@ function startGameListener(gameId, options = {}) {
               const inner = cardEl.querySelector('.card-inner');
               if (inner) {
                 try {
-                  inner.style.transition = 'transform 4200ms cubic-bezier(0.16, 1, 0.3, 1)';
-                  // Start face-down so the transition always reads as a flip.
+                  // Drive a very obvious, slow 3D flip via CSS keyframes.
+                  // Start from face-down so the reveal always reads as a flip.
+                  inner.style.animation = 'none';
                   inner.style.transform = 'rotateY(180deg)';
-                  // Force a layout so the browser commits the start transform.
                   void inner.offsetWidth;
-                  requestAnimationFrame(() => {
-                    inner.style.transform = 'rotateY(0deg)';
-                    cardEl.classList.add('flip-glow');
-                  });
-                  inner.addEventListener('transitionend', () => {
-                    inner.style.transition = '';
+                  cardEl.classList.add('og-reveal-flip', 'flip-glow');
+                  inner.addEventListener('animationend', () => {
+                    cardEl.classList.remove('og-reveal-flip', 'flip-glow');
+                    inner.style.animation = '';
                     inner.style.transform = '';
-                    cardEl.classList.remove('flip-glow');
                   }, { once: true });
                 } catch (_) {}
               }
@@ -3481,6 +3478,7 @@ function renderBoard(isSpymaster) {
     const word = escapeHtml(card.word);
     return `
       <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
+        <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
           <div class="card-face card-front">
             <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
@@ -4734,12 +4732,20 @@ function loadTagsFromLocal() {
 function clearPendingCardSelection() {
   pendingCardSelection = null;
   _pendingSelectAnimIndex = null;
+  // Clear any OG "peek" state.
+  try {
+    document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
+  } catch (_) {}
   updatePendingCardSelectionUI();
 }
 
 function setPendingCardSelection(cardIndex) {
   pendingCardSelection = cardIndex;
   _pendingSelectAnimIndex = cardIndex;
+  // Ensure only one card can be in "peek" mode.
+  try {
+    document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
+  } catch (_) {}
   updatePendingCardSelectionUI();
 }
 
@@ -5755,9 +5761,9 @@ function showClueAnimation(word, number, teamColor) {
 
   // Auto-dismiss duration matches the style-specific animation length.
   let autoDismissMs = 5500; // dark mode default
-  if (isLight) autoDismissMs = 2900;
-  else if (isCozy) autoDismissMs = 3600;
-  else if (isOg) autoDismissMs = 3200;
+  if (isLight) autoDismissMs = 3800;
+  else if (isCozy) autoDismissMs = 4800;
+  else if (isOg) autoDismissMs = 4400;
 
   setTimeout(() => {
     if (overlay.parentNode) {
@@ -5794,6 +5800,23 @@ function handleCardSelect(cardIndex) {
   }
 
   if (!canCurrentUserGuess()) return;
+
+  // OG (Codenames Online): if the selected card is already face-down, a second click
+  // "peeks" (stands it up) so you can read the word; a third click deselects.
+  const isOgMode = document.body.classList.contains('og-mode');
+  if (isOgMode && pendingCardSelection === cardIndex) {
+    const el = document.querySelector(`.game-card[data-index="${cardIndex}"]`);
+    if (el && el.classList.contains('pending-select') && !el.classList.contains('revealed')) {
+      if (el.classList.contains('og-peek')) {
+        clearPendingCardSelection();
+      } else {
+        // Only one peek at a time
+        try { document.querySelectorAll('.game-card.og-peek').forEach(n => n.classList.remove('og-peek')); } catch (_) {}
+        el.classList.add('og-peek');
+      }
+      return;
+    }
+  }
 
   // Toggle selection
   if (pendingCardSelection === cardIndex) {

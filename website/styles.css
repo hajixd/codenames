@@ -4893,6 +4893,44 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) .card-inner
   transform: rotateY(180deg);
 }
 
+/* OG: click the face-down selected card again to "peek" the word (card stands up). */
+body.og-mode .game-card .og-peek-label{
+  position: absolute;
+  left: 50%;
+  bottom: -30px;
+  transform: translateX(-50%) translateY(8px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.95);
+  background: linear-gradient(135deg, rgba(0,0,0,0.55), rgba(0,0,0,0.32));
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 700ms cubic-bezier(0.16, 1, 0.3, 1), transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 3;
+}
+
+body.og-mode .game-card.og-peek .og-peek-label{
+  opacity: 1;
+  transform: translateX(-50%) translateY(0px);
+}
+
+body.og-mode .game-card.pending-select:not(.revealed).og-peek{
+  z-index: 80;
+}
+
+body.og-mode .game-card.pending-select:not(.revealed).og-peek .card-inner{
+  /* "stand up" toward the player to reveal the label under it */
+  transform-origin: 50% 100%;
+  transform: rotateY(180deg) rotateX(-68deg) translateY(-10px);
+  transition: transform 1200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* OG: the back face is always a "card back" pattern (word hidden). */
 body.og-mode .game-card .card-back{
   background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(255,255,255,0.04) 45%, rgba(0,0,0,0.10) 80%),
@@ -4951,6 +4989,19 @@ body.og-mode .game-card.flip-glow {
 body.og-mode .game-card.og-reveal-bump{
   position: relative;
   z-index: 60;
+}
+
+/* OG (Codenames Online): newly revealed cards do a very obvious slow flip. */
+body.og-mode .game-card.og-reveal-flip .card-inner{
+  animation: ogCardRevealFlip 3200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes ogCardRevealFlip {
+  0%   { transform: rotateY(180deg) rotateX(10deg) translateZ(0px); }
+  32%  { transform: rotateY(120deg) rotateX(12deg) translateZ(22px); }
+  50%  { transform: rotateY(90deg)  rotateX(12deg) translateZ(26px); }
+  68%  { transform: rotateY(50deg)  rotateX(8deg)  translateZ(18px); }
+  100% { transform: rotateY(0deg)   rotateX(0deg)  translateZ(0px); }
 }
 
 body.og-mode .game-card.pending-select:not(.revealed) .card-back{
@@ -8353,6 +8404,25 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   transform: translate(-50%, 0);
   text-align: center;
   pointer-events: none;
+  z-index: 90;
+  padding: 18px 22px;
+  border-radius: 26px;
+}
+
+/* Light mode readability plate (no full-screen blur, no dark-box treatment). */
+.clue-variant-light .clue-light-container::before{
+  content: "";
+  position: absolute;
+  inset: -10px -16px;
+  border-radius: 30px;
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.18);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 1;
+  animation: none;
+  z-index: -1;
 }
 
 .clue-variant-light .clue-light-label {
@@ -8367,7 +8437,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 .clue-variant-light .clue-light-word {
   font-size: clamp(40px, 6vw, 68px);
   font-weight: 900;
-  letter-spacing: 10px;
+  letter-spacing: 4px;
   text-transform: uppercase;
   line-height: 1.0;
   text-shadow: 0 10px 40px rgba(0,0,0,0.15);
@@ -8393,13 +8463,14 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 .clue-variant-light .clue-light-num {
-  font-size: 16px;
+  font-size: 20px;
   color: var(--clue-accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
+  background: rgba(255,255,255,0.65);
   border-radius: 999px;
   border: 2px solid var(--clue-accent);
   box-shadow: 0 10px 30px var(--clue-accent-soft);
@@ -8426,15 +8497,14 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 @keyframes clueLightWord {
-  0% { opacity: 0; transform: translateY(10px) scale(0.99); letter-spacing: 12px; filter: blur(0px); }
-  16% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 10px; filter: blur(0px); }
-  46% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 10px; }
-  100% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 10px; }
+  0% { opacity: 0; transform: translateY(10px) scale(0.99); letter-spacing: 6px; }
+  12% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 4px; }
+  100% { opacity: 1; transform: translateY(0px) scale(1); letter-spacing: 4px; }
 }
 
 @keyframes clueLightRow {
   0% { opacity: 0; transform: translateY(8px); }
-  20% { opacity: 1; transform: translateY(0px); }
+  10% { opacity: 1; transform: translateY(0px); }
   100% { opacity: 1; transform: translateY(0px); }
 }
 
@@ -8472,6 +8542,24 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   text-align: center;
   pointer-events: none;
   animation: clueCozyFloatIn 3.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 90;
+  padding: 18px 22px;
+  border-radius: 28px;
+}
+
+.clue-variant-cozy .clue-cozy-container::before{
+  content: "";
+  position: absolute;
+  inset: -10px -16px;
+  border-radius: 32px;
+  background: rgba(255, 248, 235, 0.72);
+  border: 1px solid rgba(85, 53, 16, 0.10);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.18);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 1;
+  animation: none;
+  z-index: -1;
 }
 
 .clue-variant-cozy .clue-cozy-label {
@@ -8486,7 +8574,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   text-shadow: 0 10px 40px rgba(0,0,0,0.30);
   font-size: clamp(34px, 6vw, 58px);
   font-weight: 900;
-  letter-spacing: 6px;
+  letter-spacing: 3px;
   text-transform: uppercase;
   color: var(--text, #fff);
   text-shadow: 0 8px 26px rgba(0,0,0,0.35);
@@ -8507,7 +8595,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   color: var(--clue-accent);
   text-transform: lowercase;
   font-weight: 900;
-  opacity: 0;
+  opacity: 1;
   animation: clueCozyBadge 3.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -8572,7 +8660,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 
 @keyframes clueCozyBadge {
   0% { opacity: 0; transform: scale(0.7) rotate(-18deg); }
-  18% { opacity: 1; transform: scale(1.06) rotate(6deg); }
+  10% { opacity: 1; transform: scale(1.06) rotate(6deg); }
   36% { opacity: 1; transform: scale(1) rotate(0deg); }
   100% { opacity: 1; transform: scale(1) rotate(0deg); }
 }
@@ -8596,6 +8684,25 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   text-align: center;
   pointer-events: none;
   animation: clueOgIn 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 90;
+  padding: 18px 22px;
+  border-radius: 26px;
+}
+
+/* OG readability plate (keeps clue + number legible through the animation). */
+.clue-variant-og .clue-og-container::before{
+  content: "";
+  position: absolute;
+  inset: -10px -16px;
+  border-radius: 30px;
+  background: rgba(0,0,0,0.30);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 18px 52px rgba(0,0,0,0.28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 1;
+  animation: none;
+  z-index: -1;
 }
 
 .clue-variant-og .clue-og-label {
@@ -8612,7 +8719,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
   position: relative;
   font-size: clamp(38px, 6vw, 64px);
   font-weight: 900;
-  letter-spacing: 8px;
+  letter-spacing: 4px;
   text-transform: uppercase;
   color: #eaf2ff;
   text-shadow:
@@ -8664,9 +8771,13 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 }
 
 .clue-variant-og .clue-og-num {
-  font-size: 20px;
+  font-size: 28px;
   color: var(--clue-accent);
   text-shadow: 0 0 18px var(--clue-accent-soft);
+  background: rgba(0,0,0,0.22);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .clue-variant-og .clue-og-emblem {
@@ -8706,7 +8817,7 @@ body.og-mode .clue-announcement-divider { animation-name: clueDividerGrowOnline 
 
 @keyframes clueOgMeta {
   0% { opacity: 0; transform: translateY(10px); }
-  20% { opacity: 1; transform: translateY(0px); }
+  10% { opacity: 1; transform: translateY(0px); }
   100% { opacity: 1; transform: translateY(0px); }
 }
 
