@@ -3786,12 +3786,11 @@ function buildOgStructuredLog() {
       : (currentGame.blueSpymaster || 'Spymaster');
     const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
 
+    // In OG/Codenames-Online style, show the hint in the *same badge* as the avatar (like the spymaster card).
+    // This makes the clue more visible and uses space more efficiently.
     const clueRow = `<div class="gamelog-clue-row">
-        <div class="gamelog-avatar-wrap team-${escapeHtml(team)}">
+        <div class="gamelog-clue-pill clue-with-avatar team-${escapeHtml(team)}">
           <div class="gamelog-avatar">${escapeHtml(initial)}</div>
-          <div class="gamelog-avatar-name">${escapeHtml(spymaster)}</div>
-        </div>
-        <div class="gamelog-clue-pill team-${escapeHtml(team)}">
           <div class="gamelog-clue-word">${escapeHtml(clue.word)}</div>
           <div class="gamelog-clue-count">${escapeHtml(String(clue.number))}</div>
         </div>
