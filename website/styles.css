@@ -15715,6 +15715,106 @@ body.og-mode #og-chat-host .operative-chat-form .chat-send-btn {
   padding: 7px 9px;
 }
 
+
+/* OG docked chat: align colors + vibe with Codenames Online panels (desktop) */
+body.cozy-mode #og-chat-host .chat-privacy-badge,
+body.og-mode #og-chat-host .chat-privacy-badge {
+  display: none;
+}
+
+body.cozy-mode #og-chat-host .chat-message,
+body.og-mode #og-chat-host .chat-message {
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: none;
+}
+
+body.cozy-mode #og-chat-host .chat-message {
+  background: rgba(34, 24, 16, 0.18);
+  border-color: rgba(255, 232, 200, 0.18);
+}
+
+body.og-mode #og-chat-host .chat-message {
+  background: rgba(13, 22, 32, 0.26);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.cozy-mode #og-chat-host .chat-message.my-message {
+  background: rgba(116, 63, 35, 0.26);
+}
+
+body.og-mode #og-chat-host .chat-message.my-message {
+  background: rgba(0, 142, 224, 0.18);
+  border-color: rgba(0, 142, 224, 0.30);
+}
+
+body.cozy-mode #og-chat-host .operative-chat-form,
+body.og-mode #og-chat-host .operative-chat-form {
+  padding: 6px 0 0;
+  gap: 6px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+body.cozy-mode #og-chat-host .operative-chat-form {
+  border-top-color: rgba(255, 232, 200, 0.18);
+}
+
+body.cozy-mode #og-chat-host .input.chat-input,
+body.og-mode #og-chat-host .input.chat-input {
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.95);
+  border-radius: 999px;
+  padding: 9px 12px;
+}
+
+body.cozy-mode #og-chat-host .input.chat-input {
+  background: rgba(34, 24, 16, 0.22);
+  border-color: rgba(255, 232, 200, 0.20);
+}
+
+body.og-mode #og-chat-host .input.chat-input {
+  background: rgba(13, 22, 32, 0.30);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+body.cozy-mode #og-chat-host .input.chat-input::placeholder,
+body.og-mode #og-chat-host .input.chat-input::placeholder {
+  color: rgba(255,255,255,0.60);
+}
+
+body.cozy-mode #og-chat-host .input.chat-input::placeholder {
+  color: rgba(255, 232, 200, 0.70);
+}
+
+body.cozy-mode #og-chat-host .chat-send-btn,
+body.og-mode #og-chat-host .chat-send-btn {
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+body.cozy-mode #og-chat-host .chat-send-btn {
+  background: rgba(255, 232, 200, 0.10);
+  border-color: rgba(255, 232, 200, 0.18);
+}
+
+body.og-mode #og-chat-host .chat-send-btn {
+  background: rgba(255,255,255,0.08);
+}
+
+body.cozy-mode #og-chat-host .chat-send-btn:hover,
+body.og-mode #og-chat-host .chat-send-btn:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+body.cozy-mode #og-chat-host .chat-send-btn:active,
+body.og-mode #og-chat-host .chat-send-btn:active {
+  transform: translateY(0);
+}
+
 /* --- OG Tag Legend --- */
 body.og-mode .card-tag-legend {
   background: rgba(27, 40, 56, 0.9);
