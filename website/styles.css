@@ -15660,6 +15660,8 @@ body.cozy-mode .og-game-log .game-log-entry {
 /* --- OG Mobile Overrides --- */
 @media (max-width: 768px) {
   /* Make OG/Online game log extra compact on mobile. */
+  body.og-mode #mobile-game-actions { display: none !important; }
+
   .og-game-log .log-entry,
   .og-game-log-mobile .log-entry,
   .og-game-log .game-log-entry,
@@ -16812,6 +16814,39 @@ body.og-mode .gamelog-clue-word { font-size: 6px !important; letter-spacing: 0.4
 body.og-mode .gamelog-clue-count { font-size: 4px !important; }
 body.og-mode .gamelog-word-pill { font-size: 4px !important; letter-spacing: 0.2px !important; }
 body.og-mode .gamelog-system { font-size: 3px !important; line-height: 1.15 !important; }
+
+/* Also shrink the geometry (circles/pills) to match the ~3x smaller type */
+body.og-mode .gamelog-entries { padding: 3px 5px 5px !important; gap: 6px !important; }
+body.og-mode .gamelog-turn { gap: 3px !important; }
+body.og-mode .gamelog-clue-row { gap: 3px !important; }
+
+body.og-mode .gamelog-avatar-wrap { width: 19px !important; gap: 1px !important; }
+body.og-mode .gamelog-avatar { width: 16px !important; height: 16px !important; border-width: 1px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.35) !important; }
+body.og-mode .gamelog-avatar-name { padding: 1px 2px !important; border-radius: 2px !important; max-width: 19px !important; }
+
+body.og-mode .gamelog-clue-pill { border-radius: 3px !important; padding: 3px 13px 3px 3px !important; border-width: 1px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.22) !important; }
+body.og-mode .gamelog-clue-count { width: 9px !important; height: 9px !important; right: 2px !important; border-width: 1px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important; }
+
+body.og-mode .gamelog-guesses { gap: 3px !important; padding-left: 1px !important; margin-top: 0 !important; }
+body.og-mode .gamelog-guess-item { gap: 2px !important; }
+
+body.og-mode .gamelog-avatar-wrap.small { width: 15px !important; }
+body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar { width: 11px !important; height: 11px !important; border-width: 1px !important; }
+body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar-name { padding: 0px 2px !important; border-radius: 2px !important; max-width: 15px !important; }
+
+body.og-mode .gamelog-word-pill { min-width: 17px !important; padding: 3px 3px !important; border-radius: 3px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.22) !important; }
+body.og-mode .gamelog-system { padding: 1px 2px !important; border-radius: 3px !important; }
+
+/* The mirrored OG log had fixed px heights; override so the pill shrinks too */
+.og-game-log .log-entry,
+.og-game-log-mobile .log-entry,
+.og-game-log .game-log-entry,
+.og-game-log-mobile .game-log-entry {
+  min-height: 1.95em !important;
+  max-height: 3.2em !important;
+  padding: 0.35em 0.65em 0.35em 0.85em !important;
+  border-radius: 0.6em !important;
+}
 
 /* Keep mobile even tighter (still ~3x smaller than the earlier mobile sizing) */
 @media (max-width: 768px) {

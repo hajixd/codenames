@@ -3357,8 +3357,12 @@ function renderOgPanels() {
   if (mBlueScore) mBlueScore.textContent = blueCardsLeft;
   if (mRedScore) mRedScore.textContent = redCardsLeft;
 
+  const mBlueOps = document.getElementById('og-mobile-blue-operatives');
+  const mRedOps = document.getElementById('og-mobile-red-operatives');
   const mBlueSpy = document.getElementById('og-mobile-blue-spymasters');
   const mRedSpy = document.getElementById('og-mobile-red-spymasters');
+  if (mBlueOps) mBlueOps.innerHTML = renderSlotHtml(blue.operatives);
+  if (mRedOps) mRedOps.innerHTML = renderSlotHtml(red.operatives);
   if (mBlueSpy) mBlueSpy.innerHTML = renderSlotHtml(blue.spymasters);
   if (mRedSpy) mRedSpy.innerHTML = renderSlotHtml(red.spymasters);
 
