@@ -12214,70 +12214,6 @@ body.og-mode .drawer-backdrop#chat-drawer-backdrop{
   }
 }
 
-/* ==================== OG DESKTOP CHAT: "CODENAMES ONLINE" AESTHETIC ==================== */
-body.og-mode .chat-drawer{
-  background: linear-gradient(180deg, rgba(24,24,24,0.86), rgba(12,12,12,0.78));
-  border-color: rgba(255,255,255,0.16);
-  box-shadow: 0 18px 70px rgba(0,0,0,0.55);
-  backdrop-filter: blur(10px);
-}
-
-body.og-mode .chat-drawer .drawer-header{
-  background: rgba(0,0,0,0.18);
-  border-bottom: 1px solid rgba(255,255,255,0.10);
-}
-
-body.og-mode .chat-drawer .drawer-title{
-  font-weight: 900;
-  letter-spacing: 1.6px;
-  text-transform: uppercase;
-  opacity: 0.92;
-}
-
-/* Remove "Operative mode" tabs in OG (keep Global only) */
-body.og-mode #chat-mode-team,
-body.og-mode #chat-mode-personal{
-  display: none !important;
-}
-
-body.og-mode .chat-drawer .segmented{
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  border-radius: 14px;
-}
-
-body.og-mode .chat-drawer .seg-btn{
-  font-weight: 800;
-  letter-spacing: 0.8px;
-}
-
-body.og-mode .chat-drawer .chat-card.drawer-chat-card{
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-}
-
-body.og-mode .chat-drawer .chat-messages{
-  scrollbar-color: rgba(255,255,255,0.22) rgba(0,0,0,0.0);
-}
-
-body.og-mode .chat-drawer .chat-compose{
-  border-top: 1px solid rgba(255,255,255,0.10);
-}
-
-body.og-mode .chat-drawer .chat-input{
-  background: rgba(0,0,0,0.30);
-  border-color: rgba(255,255,255,0.12);
-}
-
-@media (min-width: 769px){
-  /* OG desktop uses the drawer chat only; remove the embedded operative chat block */
-  body.og-mode #og-chat-section,
-  body.og-mode .operative-chat-panel{
-    display: none !important;
-  }
-}
-
 
 .chat-personal-picker-wrap{ position: relative; flex: 1; }
 .chat-personal-picker{
@@ -16955,143 +16891,82 @@ body.og-mode .og-team-panel.og-team-red {
   }
 }
 
+
 /* =========================================================
-   ULTRA-COMPACT GAME LOG (≈3x smaller text)
-   Applies to default log, sidebar log, popover log, and OG/Online logs.
+   GAME LOG READABILITY (DESKTOP)
+   - Removes the accidental ultra-compact overrides.
+   - Keeps the Codenames Online-style structured log readable.
 ========================================================= */
 
-/* Default + sidebar + popover log entries */
-.log-entry,
-.game-log-panel .log-entry,
-.game-log-popover .log-entry {
-  font-size: 4px !important; /* ~11px / 3 */
-  line-height: 1.15 !important;
-}
-
-/* Optional: shrink the label/title above the log as well */
-.game-log-title,
-.popover-title {
-  font-size: 4px !important;
-  letter-spacing: 0.2px !important;
-}
-
-/* OG right-panel mirrored log */
-.og-game-log {
-  font-size: 3px !important; /* ~10px / 3 */
-  line-height: 1.15 !important;
-}
-
-.og-game-log .log-entry,
-.og-game-log-mobile .log-entry,
-.og-game-log .game-log-entry,
-.og-game-log-mobile .game-log-entry {
-  font-size: 3px !important;
-  line-height: 1.15 !important;
-}
-
-/* OG / Codenames Online-style structured log (clue rows + pills) */
-body.og-mode .gamelog-title { font-size: 4px !important; letter-spacing: 0.6px !important; }
-body.og-mode .gamelog-avatar { font-size: 6px !important; }
-body.og-mode .gamelog-avatar-name { font-size: 3px !important; }
-body.og-mode .gamelog-clue-word { font-size: 6px !important; letter-spacing: 0.4px !important; }
-body.og-mode .gamelog-clue-count { font-size: 4px !important; }
-body.og-mode .gamelog-word-pill { font-size: 4px !important; letter-spacing: 0.2px !important; }
-body.og-mode .gamelog-system { font-size: 3px !important; line-height: 1.15 !important; }
-
-/* Also shrink the geometry (circles/pills) to match the ~3x smaller type */
-body.og-mode .gamelog-entries { padding: 3px 5px 5px !important; gap: 6px !important; }
-body.og-mode .gamelog-turn { gap: 3px !important; }
-body.og-mode .gamelog-clue-row { gap: 3px !important; }
-
-body.og-mode .gamelog-avatar-wrap { width: 19px !important; gap: 1px !important; }
-body.og-mode .gamelog-avatar { width: 16px !important; height: 16px !important; border-width: 1px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.35) !important; }
-body.og-mode .gamelog-avatar-name { padding: 1px 2px !important; border-radius: 2px !important; max-width: 19px !important; }
-
-body.og-mode .gamelog-clue-pill { border-radius: 3px !important; padding: 3px 13px 3px 3px !important; border-width: 1px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.22) !important; }
-body.og-mode .gamelog-clue-count { width: 9px !important; height: 9px !important; right: 2px !important; border-width: 1px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important; }
-
-body.og-mode .gamelog-guesses { gap: 3px !important; padding-left: 1px !important; margin-top: 0 !important; }
-body.og-mode .gamelog-guess-item { gap: 2px !important; }
-
-body.og-mode .gamelog-avatar-wrap.small { width: 15px !important; }
-body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar { width: 11px !important; height: 11px !important; border-width: 1px !important; }
-body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar-name { padding: 0px 2px !important; border-radius: 2px !important; max-width: 15px !important; }
-
-body.og-mode .gamelog-word-pill { min-width: 17px !important; padding: 3px 3px !important; border-radius: 3px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.22) !important; }
-body.og-mode .gamelog-system { padding: 1px 2px !important; border-radius: 3px !important; }
-
-/* The mirrored OG log had fixed px heights; override so the pill shrinks too */
-.og-game-log .log-entry,
-.og-game-log-mobile .log-entry,
-.og-game-log .game-log-entry,
-.og-game-log-mobile .game-log-entry {
-  min-height: 1.95em !important;
-  max-height: 3.2em !important;
-  padding: 0.35em 0.65em 0.35em 0.85em !important;
-  border-radius: 0.6em !important;
-}
-
-/* Keep mobile even tighter (still ~3x smaller than the earlier mobile sizing) */
-@media (max-width: 768px) {
+@media (min-width: 769px) {
+  /* Default + sidebar + popover log entries */
   .log-entry,
   .game-log-panel .log-entry,
   .game-log-popover .log-entry {
-    font-size: 3px !important; /* ~10px / 3 */
-    line-height: 1.1 !important;
+    font-size: 12px;
+    line-height: 1.35;
   }
 
-  body.og-mode .gamelog-title { font-size: 3px !important; }
-  body.og-mode .gamelog-clue-word { font-size: 5px !important; }
-  body.og-mode .gamelog-word-pill { font-size: 3px !important; }
-  body.og-mode .gamelog-clue-count { font-size: 3px !important; }
-  body.og-mode .gamelog-system { font-size: 3px !important; }
+  /* OG score "rail" looked like a broken pill next to the cards-left number */
+  body.og-mode .og-score-avatar {
+    display: none;
+  }
+
+  /* OG docked chat: remove the "Operatives Only" badge text and match the panel aesthetic */
+  body.og-mode #og-chat-host .chat-privacy-badge {
+    display: none;
+  }
+
+  body.og-mode #og-chat-host .operative-chat-messages {
+    padding: 6px;
+    border-radius: 16px;
+  }
+
+  body.og-mode #og-chat-host .chat-text {
+    font-size: 12px;
+    line-height: 1.32;
+  }
+
+  body.og-mode #og-chat-host .chat-message {
+    border-radius: 12px;
+  }
+
+  body.og-mode #og-chat-host .operative-chat-form {
+    border-radius: 16px;
+  }
 }
 
-
-
-/* OG structured log: put the clue *in the same pill* as the avatar (like the spymaster badge). */
+/* OG structured log: keep the clue *in the same pill* as the avatar, but at normal readable sizes */
 body.og-mode .gamelog-clue-pill.clue-with-avatar {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 3px !important;
-  padding: 3px 3px !important; /* override the old right-padding reserved for an absolute count */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px;
 }
 
 body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar {
-  flex: 0 0 auto !important;
-  width: 16px !important;
-  height: 16px !important;
-  border-radius: 50% !important;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+  border-radius: 50%;
 }
 
 body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-word {
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-  text-align: center !important;
-  padding: 0 2px !important;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  padding: 0 4px;
 }
 
 body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
-  position: static !important;
-  transform: none !important;
-  right: auto !important;
-  top: auto !important;
-  margin-left: 2px !important;
+  position: static;
+  transform: none;
+  right: auto;
+  top: auto;
+  margin-left: 2px;
 }
-
-body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar {
-  width: 14px !important;
-  height: 11px !important;
-  border-radius: 3px !important;
-  font-size: 7px !important;
-}
-
-body.og-mode .gamelog-avatar-wrap.small {
-  width: auto !important;
-}
-
-
 
 
 /* ==================== OG DESKTOP PANELS MATCH MOBILE STYLE ==================== */
@@ -17237,42 +17112,42 @@ body.og-mode .gamelog-avatar-wrap.small {
   }
 
   body.og-mode .gamelog-avatar {
-    width: 36px;
-    height: 36px;
-    font-size: 13px;
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
     box-shadow: 0 6px 16px rgba(0,0,0,0.30);
   }
 
   body.og-mode .gamelog-clue-pill {
-    padding: 7px 10px;
+    padding: 4px 6px;
     border-width: 2px;
     border-radius: 16px;
-    min-height: 38px;
+    min-height: 30px;
   }
 
   body.og-mode .gamelog-clue-word {
-    font-size: 16px;
-    letter-spacing: 0.8px;
+    font-size: 12px;
+    letter-spacing: 0.6px;
   }
 
   body.og-mode .gamelog-clue-count,
   body.og-mode .gamelog-clue-number {
-    width: 22px;
-    height: 22px;
-    font-size: 13px;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
   }
 
   body.og-mode .gamelog-word-pill {
-    font-size: 12px;
-    padding: 6px 10px;
+    font-size: 9px;
+    padding: 3px 6px;
     border-radius: 12px;
     border-width: 1px;
     box-shadow: 0 2px 7px rgba(0,0,0,0.25);
   }
 
   body.og-mode .gamelog-system {
-    font-size: 11px;
-    padding: 6px 10px;
+    font-size: 8px;
+    padding: 3px 6px;
     border-radius: 10px;
   }
 }
