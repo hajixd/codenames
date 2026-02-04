@@ -2976,7 +2976,7 @@ function startGameListener(gameId, options = {}) {
               const inner = cardEl.querySelector('.card-inner');
               if (inner) {
                 try {
-                  inner.style.transition = 'transform 4200ms cubic-bezier(0.16, 1, 0.3, 1)';
+                  inner.style.transition = 'transform 5200ms cubic-bezier(0.16, 1, 0.3, 1)';
                   inner.style.transform = 'rotateY(0deg)';
                   // Force a layout so the browser commits the start transform.
                   void inner.offsetWidth;
