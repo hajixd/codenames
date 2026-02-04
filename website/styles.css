@@ -12248,6 +12248,33 @@ body.og-mode .drawer-backdrop#chat-drawer-backdrop{
   }
 }
 
+/* OG (Codenames Online style) — Desktop Messages drawer should match the Dark placement
+   (right-side sliding drawer). Keep the bottom-left popover behavior for mobile. */
+@media (min-width: 769px){
+  body.og-mode .chat-drawer{
+    top: env(safe-area-inset-top);
+    right: 0;
+    left: auto;
+    bottom: auto;
+    height: calc(100dvh - env(safe-area-inset-top));
+    height: calc(100vh - env(safe-area-inset-top)); /* fallback */
+    width: min(420px, 94vw);
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid var(--border);
+    box-shadow: -24px 0 60px rgba(0,0,0,.25);
+    transform: translateX(102%);
+    transition: transform .18s ease;
+  }
+
+  body.og-mode .chat-drawer.open{ transform: translateX(0); }
+
+  body.og-mode #chat-drawer-backdrop{
+    background: rgba(0,0,0,.40);
+    backdrop-filter: blur(2px);
+  }
+}
+
 
 .chat-personal-picker-wrap{ position: relative; flex: 1; }
 .chat-personal-picker{
@@ -16692,11 +16719,20 @@ body.og-mode .gamelog-clue-pill {
 
 body.og-mode .gamelog-clue-pill.team-red {
   border: 3px solid #C8553A;
-  background: linear-gradient(180deg, #c8553a 0%, #c8553a 48%, rgba(255,255,255,0.95) 48%, rgba(255,255,255,0.95) 100%);
+  /* Full team color (match Codenames Online vibe) */
+  background: #c8553a;
 }
 body.og-mode .gamelog-clue-pill.team-blue {
   border: 3px solid #3B8BEB;
-  background: linear-gradient(180deg, #3b8beb 0%, #3b8beb 48%, rgba(255,255,255,0.95) 48%, rgba(255,255,255,0.95) 100%);
+  /* Full team color (match Codenames Online vibe) */
+  background: #3b8beb;
+}
+
+/* Ensure clue text stays readable on the fully-colored pill */
+body.og-mode .gamelog-clue-pill.team-red .gamelog-clue-word,
+body.og-mode .gamelog-clue-pill.team-blue .gamelog-clue-word {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 body.og-mode .gamelog-clue-word {
