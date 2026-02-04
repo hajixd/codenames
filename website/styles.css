@@ -14395,8 +14395,8 @@ body.cozy-mode .og-game-log .game-log-entry {
   /* Show mobile panels at top */
   body.cozy-mode .og-mobile-panels {
     display: flex;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 4px;
+    padding: 4px 6px;
     flex-shrink: 0;
   }
 
@@ -14404,9 +14404,9 @@ body.cozy-mode .og-game-log .game-log-entry {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 8px;
-    border-radius: 10px;
+    gap: 3px;
+    padding: 5px;
+    border-radius: 8px;
     min-width: 0;
   }
 
@@ -14425,21 +14425,21 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   .og-mobile-log {
-    flex: 0.8;
+    flex: 0.7;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 8px;
-    border-radius: 10px;
+    gap: 3px;
+    padding: 5px;
+    border-radius: 8px;
     background: rgba(0, 0, 0, 0.25);
     min-width: 0;
     overflow: hidden;
   }
 
   .og-illustration-sm {
-    aspect-ratio: 1.8;
-    border-radius: 8px;
-    padding: 4px;
+    aspect-ratio: 1.4;
+    border-radius: 6px;
+    padding: 3px;
   }
 
   /* Show standard game header on mobile for timer/scores (hidden behind mobile panels) */
@@ -14463,11 +14463,16 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.cozy-mode .game-board {
-    gap: 5px;
+    gap: 3px;
+  }
+
+  body.cozy-mode .game-card {
+    aspect-ratio: 1.55;
   }
 
   body.cozy-mode .game-card .card-word {
-    font-size: clamp(8px, 2.8vw, 13px);
+    font-size: clamp(7px, 2.2vw, 11px);
+    letter-spacing: 0.2px;
   }
 
   body.cozy-mode .og-topbar {
@@ -14477,6 +14482,38 @@ body.cozy-mode .og-game-log .game-log-entry {
   body.cozy-mode .og-topbar-btn {
     font-size: 11px;
     padding: 4px 8px;
+  }
+
+  /* Cozy mobile panels: compact scores & illustrations */
+  .og-score-number-sm {
+    font-size: 20px;
+  }
+
+  .og-section-header {
+    font-size: 8px;
+    letter-spacing: 0.8px;
+    padding: 2px 0 1px;
+  }
+
+  .og-mobile-score-row {
+    gap: 4px;
+    padding: 2px 0;
+  }
+
+  .og-avatar-sm {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+  }
+
+  .og-player-slots-sm .og-player-slot {
+    font-size: 9px;
+    padding: 2px 4px;
+  }
+
+  body.cozy-mode .og-phase-text {
+    font-size: 11px;
+    letter-spacing: 0.8px;
   }
 }
 
@@ -15612,8 +15649,8 @@ body.cozy-mode .og-game-log .game-log-entry {
   /* Show mobile panels at top */
   body.og-mode .og-mobile-panels {
     display: flex;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 4px;
+    padding: 4px 6px;
     flex-shrink: 0;
   }
 
@@ -15621,11 +15658,11 @@ body.cozy-mode .og-game-log .game-log-entry {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 10px 12px;
-    border-radius: 18px;
+    gap: 3px;
+    padding: 5px;
+    border-radius: 12px;
     min-width: 0;
-    box-shadow: 0 12px 26px rgba(0,0,0,0.40);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35);
   }
 
   .og-mobile-blue {
@@ -15645,23 +15682,23 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   .og-mobile-log {
-    flex: 1;
+    flex: 0.7;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 12px;
-    border-radius: 18px;
+    gap: 3px;
+    padding: 5px;
+    border-radius: 12px;
     background: rgba(0, 0, 0, 0.35);
     border: 2px solid rgba(255,255,255,0.18);
     min-width: 0;
     overflow: hidden;
-    box-shadow: 0 12px 26px rgba(0,0,0,0.45);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35);
   }
 
   .og-illustration-sm {
-    aspect-ratio: 1.8;
-    border-radius: 8px;
-    padding: 4px;
+    aspect-ratio: 1.4;
+    border-radius: 6px;
+    padding: 3px;
   }
 
   /* Show standard game header on mobile for timer/scores (hidden behind mobile panels) */
@@ -15670,12 +15707,12 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .og-phase-banner {
-    padding: 6px 0 2px;
+    padding: 4px 0 2px;
   }
 
   body.og-mode .og-phase-text {
-    font-size: 13px;
-    letter-spacing: 1px;
+    font-size: 11px;
+    letter-spacing: 0.8px;
   }
 
   body.og-mode .clue-form-expanded {
@@ -15685,19 +15722,30 @@ body.cozy-mode .og-game-log .game-log-entry {
   }
 
   body.og-mode .game-board {
-    gap: 5px;
+    gap: 3px;
   }
 
   body.og-mode .game-card{
-    /* Match desktop geometry: keep word strip fully inside the inner plate */
-    --labelInsetX: 12px;
-    --labelInsetY: 12px;
+    --labelInsetX: 6px;
+    --labelInsetY: 6px;
     --labelHeight: 36%;
+    aspect-ratio: 1.35;
+  }
+
+  body.og-mode .game-card::before {
+    inset: 3px;
+    border-radius: 4px;
+    border-width: 1px;
+  }
+
+  body.og-mode .game-card::after {
+    left: 3px;
+    right: 3px;
   }
 
   body.og-mode .game-card .card-word {
-    font-size: clamp(10px, 3.6vw, 15px);
-    padding: 5px 10px 2px;
+    font-size: clamp(7px, 2.2vw, 12px);
+    padding: 2px 4px 1px;
     border-radius: 2px;
   }
 
@@ -15708,6 +15756,34 @@ body.cozy-mode .og-game-log .game-log-entry {
   body.og-mode .og-topbar-btn {
     font-size: 11px;
     padding: 4px 8px;
+  }
+
+  /* OG mobile score & section overrides */
+  body.og-mode .og-score-number-sm {
+    font-size: 20px;
+    -webkit-text-stroke-width: 2px;
+  }
+
+  body.og-mode .og-section-header {
+    font-size: 8px;
+    letter-spacing: 0.8px;
+    padding: 2px 0 1px;
+  }
+
+  body.og-mode .og-avatar-sm {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+  }
+
+  body.og-mode .og-mobile-score-row {
+    gap: 4px;
+    padding: 2px 0;
+  }
+
+  body.og-mode .og-player-slots-sm .og-player-slot {
+    font-size: 9px;
+    padding: 2px 4px;
   }
 }
 
@@ -16045,7 +16121,17 @@ textarea{
   gap: 10px;
 }
 @media (max-width: 560px){
-  .game-board{ gap: 8px; }
+  .game-board{ gap: 4px; }
+}
+
+@media (max-width: 768px){
+  .game-card .card-word{
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  .game-card .card-face{
+    padding: 4px;
+  }
 }
 
 /* Game cards (clean + tactile) */
@@ -16504,4 +16590,153 @@ body.og-mode .og-team-panel.og-team-red {
   --obg-bot: rgba(214,104,60,0.70);
   --oinner: rgba(255,255,255,0.18);
   --oshade: rgba(0,0,0,0.18);
+}
+
+/* ==================== MOBILE COMPACT OVERRIDES ==================== */
+/* Tighten everything for phone screens so the board and panels fit */
+
+@media (max-width: 768px) {
+  /* --- Online Roster Blocks (og-mode team panels on mobile sidebar) --- */
+  .online-roster-block {
+    border-radius: 16px;
+    padding: 8px 10px 10px;
+    border-width: 2px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+  }
+
+  .online-roster-block::after {
+    inset: 3px;
+    border-radius: 12px;
+    border-width: 1px;
+  }
+
+  .online-roster-block::before {
+    width: 140px;
+    height: 140px;
+    right: -10px;
+    top: -10px;
+  }
+
+  .online-roster-title {
+    font-size: 18px;
+    letter-spacing: 1px;
+    margin: 1px 0 6px;
+  }
+
+  .online-roster-operatives .online-roster-surface {
+    min-height: 80px;
+  }
+
+  .online-roster-surface {
+    gap: 4px;
+  }
+
+  /* --- General game board mobile tightening --- */
+  .game-center-area .game-board {
+    gap: 4px;
+  }
+
+  .game-center-area .game-card {
+    padding: 3px 4px;
+    border-radius: 6px;
+    border-width: 1px;
+  }
+
+  .game-center-area .game-card .card-word {
+    font-size: clamp(7px, 2.2vw, 11px);
+    letter-spacing: 0.2px;
+    line-height: 1.1;
+  }
+
+  /* --- Expanded container mobile tightening --- */
+  .game-container-expanded {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  /* --- Mobile panels row --- */
+  body.cozy-mode .og-mobile-panels,
+  body.og-mode .og-mobile-panels {
+    gap: 4px;
+    padding: 4px 6px;
+  }
+
+  /* --- Game board wrapper --- */
+  .game-board-wrapper {
+    padding: 1px;
+  }
+
+  /* --- Clue display bar --- */
+  .game-action-bar {
+    padding: 6px 8px;
+    gap: 6px;
+    border-radius: 8px;
+  }
+
+  .clue-word-compact {
+    font-size: 13px;
+  }
+}
+
+/* Extra small phones */
+@media (max-width: 420px) {
+  .og-score-number-sm {
+    font-size: 16px;
+  }
+
+  body.og-mode .og-score-number-sm {
+    font-size: 16px;
+    -webkit-text-stroke-width: 1.5px;
+  }
+
+  .og-illustration-sm {
+    aspect-ratio: 1.2;
+  }
+
+  .og-section-header {
+    font-size: 7px;
+  }
+
+  body.og-mode .og-section-header {
+    font-size: 7px;
+  }
+
+  body.cozy-mode .game-card .card-word,
+  body.og-mode .game-card .card-word {
+    font-size: clamp(6px, 2vw, 10px);
+  }
+
+  .game-center-area .game-card .card-word {
+    font-size: clamp(6px, 2vw, 10px);
+  }
+
+  .game-center-area .game-board,
+  body.cozy-mode .game-board,
+  body.og-mode .game-board {
+    gap: 2px;
+  }
+
+  body.cozy-mode .game-card,
+  body.og-mode .game-card {
+    border-radius: 5px;
+  }
+
+  .online-roster-title {
+    font-size: 14px;
+  }
+
+  .online-roster-block {
+    padding: 6px 8px 8px;
+    border-radius: 12px;
+  }
+
+  .online-roster-operatives .online-roster-surface {
+    min-height: 60px;
+  }
+
+  body.og-mode .og-phase-text,
+  body.cozy-mode .og-phase-text {
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
 }

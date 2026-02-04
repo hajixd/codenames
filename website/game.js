@@ -3484,7 +3484,7 @@ function fitAllCardWords() {
     const baseLS = parseFloat(cs.letterSpacing) || 0;
 
     let size = baseSize;
-    const minSize = 10;
+    const minSize = window.innerWidth <= 768 ? 6 : 10;
     let guard = 0;
 
     // Use the container as the constraint box (this is the visible label strip)
@@ -3509,7 +3509,8 @@ function fitAllCardWords() {
     if (overflows()) {
       // Ensure measurements update before we compute the ratio
       const sw = textEl.scrollWidth || 1;
-      const ratio = Math.max(0.78, Math.min(1, boxW / sw));
+      const minRatio = window.innerWidth <= 768 ? 0.65 : 0.78;
+      const ratio = Math.max(minRatio, Math.min(1, boxW / sw));
       textEl.style.transformOrigin = 'center';
       textEl.style.transform = `scaleX(${ratio})`;
       // Slightly reduce tracking to avoid "smeared" look when scaled
