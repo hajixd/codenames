@@ -4893,6 +4893,21 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) .card-inner
   transform: rotateY(180deg);
 }
 
+/* OG: the back face is always a "card back" pattern (word hidden). */
+body.og-mode .game-card .card-back{
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(255,255,255,0.04) 45%, rgba(0,0,0,0.10) 80%),
+              linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+}
+body.og-mode .game-card .card-back .card-word{ opacity: 0; }
+body.og-mode .game-card .card-back::after{
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.20) inset;
+}
+
 /* Face-down back design (hide word until reveal) */
 body.og-mode .game-card:not(.revealed).pending-select .card-back .card-word {
   opacity: 0;
@@ -4921,12 +4936,21 @@ body.og-mode .game-card:not(.revealed).pending-select .card-back::after {
   opacity: 0.35;
 }
 
+/* OG (Codenames Online): revealed cards live on the FRONT face.
+   We flip newly revealed cards in JS by animating from 180deg -> 0deg.
+   This keeps already-revealed boards stable on initial render. */
 body.og-mode .game-card.revealed .card-inner {
-  transform: rotateY(180deg);
+  transform: rotateY(0deg);
 }
 
 body.og-mode .game-card.flip-glow {
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.08) inset;
+}
+
+/* OG reveal helper: keep the revealed card above neighbors while it flips */
+body.og-mode .game-card.og-reveal-bump{
+  position: relative;
+  z-index: 60;
 }
 
 body.og-mode .game-card.pending-select:not(.revealed) .card-back{
@@ -4944,6 +4968,79 @@ body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,0.18);
   box-shadow: 0 0 0 1px rgba(0,0,0,0.20) inset;
+}
+
+/* OG (Codenames Online) revealed face (front side after the flip) */
+.og-reveal-face{
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.og-mode .game-card.revealed .card-front .card-word,
+body.og-mode .game-card.revealed .card-front .card-checkmark{
+  opacity: 0;
+}
+
+body.og-mode .game-card.revealed .og-reveal-face{ opacity: 1; }
+
+body.og-mode .game-card.revealed .og-reveal-face{
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+body.og-mode .game-card.revealed.card-red .og-reveal-face{
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.18) 78%),
+              linear-gradient(135deg, rgba(239, 68, 68, 0.92), rgba(185, 28, 28, 0.92));
+}
+body.og-mode .game-card.revealed.card-blue .og-reveal-face{
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.18) 78%),
+              linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(37, 99, 235, 0.92));
+}
+body.og-mode .game-card.revealed.card-neutral .og-reveal-face{
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.18) 78%),
+              linear-gradient(135deg, rgba(192, 167, 125, 0.92), rgba(139, 115, 79, 0.92));
+}
+body.og-mode .game-card.revealed.card-assassin .og-reveal-face{
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.12), rgba(255,255,255,0.03) 45%, rgba(0,0,0,0.25) 80%),
+              linear-gradient(135deg, rgba(35, 35, 35, 0.96), rgba(10, 10, 10, 0.96));
+}
+
+body.og-mode .game-card.revealed .og-reveal-face::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255,255,255,0.10) 0px,
+    rgba(255,255,255,0.10) 10px,
+    rgba(0,0,0,0.06) 10px,
+    rgba(0,0,0,0.06) 20px
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.25;
+}
+
+body.og-mode .og-reveal-icon{
+  width: 52%;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  position: relative;
+  z-index: 1;
+  background: rgba(255,255,255,0.18);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.35), 0 0 0 2px rgba(255,255,255,0.18) inset;
+}
+body.og-mode .og-reveal-icon::before{
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.22);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.10) inset;
 }
 
 
@@ -17518,375 +17615,3 @@ body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
     border-radius: 10px;
   }
 }
-
-/* =====================================================
-   OG (Codenames Online) — TRUE card flip (front vs back)
-   Fix: previously the main card surfaces were drawn on .game-card
-   (outside the flipping .card-inner), so the flip looked like a tiny lift.
-   These overrides move the surfaces onto the flipping faces.
-===================================================== */
-
-/* Make the container just a perspective holder (no static plate). */
-body.og-mode .game-card{
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-body.og-mode .game-card::before,
-body.og-mode .game-card::after{
-  content: none !important;
-}
-
-/* Base face surface (this is what actually flips). */
-body.og-mode .game-card .card-face{
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--face-cardBg);
-  border: 1px solid var(--face-cardBorder);
-  box-shadow: 0 8px 18px rgba(0,0,0,0.32);
-}
-
-/* Inner plate */
-body.og-mode .game-card .card-face::before{
-  content:"";
-  position:absolute;
-  inset: 6px;
-  border-radius: 6px;
-  background:
-    linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.00) 30%),
-    var(--face-innerBg);
-  border: 2px solid var(--face-innerBorder);
-  box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.16),
-    inset 0 -2px 0 rgba(0,0,0,0.10);
-  pointer-events:none;
-}
-
-/* Divider line */
-body.og-mode .game-card .card-face::after{
-  content:"";
-  position:absolute;
-  left: 6px;
-  right: 6px;
-  bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
-  height: 2px;
-  background: var(--face-innerBorder);
-  opacity: 0.45;
-  pointer-events:none;
-}
-
-/* FRONT face always uses the neutral (unrevealed) palette */
-body.og-mode .game-card .card-front{
-  --face-cardBg: var(--neutral-cardBg);
-  --face-cardBorder: var(--neutral-cardBorder);
-  --face-innerBg: var(--neutral-innerBg);
-  --face-innerBorder: var(--neutral-innerBorder);
-}
-
-/* BACK face defaults to neutral unless revealed/spymaster-view overrides it */
-body.og-mode .game-card .card-back{
-  --face-cardBg: var(--neutral-cardBg);
-  --face-cardBorder: var(--neutral-cardBorder);
-  --face-innerBg: var(--neutral-innerBg);
-  --face-innerBorder: var(--neutral-innerBorder);
-}
-
-/* When revealed, the BACK face becomes the fully colored agent card */
-body.og-mode .game-card.revealed .card-back,
-body.og-mode .game-card.spymaster-view .card-back{
-  --face-cardBg: var(--cardBg);
-  --face-cardBorder: var(--cardBorder);
-  --face-innerBg: var(--innerBg);
-  --face-innerBorder: var(--innerBorder);
-}
-
-/* Face-down (selected but not confirmed): show a patterned card back.
-   This overrides the generic plate/divider to keep the back clean + recognizable. */
-body.og-mode .game-card.pending-select:not(.revealed) .card-back{
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(255,255,255,0.04) 45%, rgba(0,0,0,0.10) 80%),
-              linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-  border-color: rgba(255,255,255,0.20);
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back::before{
-  /* Replace inner plate with a simple inset frame */
-  inset: 10px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
-  border: 2px solid rgba(255,255,255,0.12);
-  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.18);
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
-  /* Replace divider line with a subtle pattern overlay */
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: auto;
-  inset: 0;
-  border-radius: inherit;
-  background: repeating-linear-gradient(
-    135deg,
-    rgba(255,255,255,0.10) 0px,
-    rgba(255,255,255,0.10) 10px,
-    rgba(0,0,0,0.06) 10px,
-    rgba(0,0,0,0.06) 20px
-  );
-  mix-blend-mode: overlay;
-  opacity: 0.35;
-}
-
-/* OG reveal: don't run the generic "lift" animation on the card container.
-   The flip is driven by JS + the face surfaces above. */
-body.og-mode .game-card.guess-animate{
-  animation: none !important;
-}
-
-/* =====================================================
-   OG (Codenames Online) — TRUE card flip (front vs back)
-   Surfaces live on .card-front/.card-back so the flip is obvious.
-===================================================== */
-
-/* The container itself should not draw the card plates (those don't flip). */
-body.og-mode .game-card{
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-body.og-mode .game-card::before,
-body.og-mode .game-card::after{
-  content: none !important;
-}
-
-/* Default face palette: neutral (front stays neutral even after reveal). */
-body.og-mode .game-card .card-front{
-  --face-cardBg: var(--neutral-cardBg);
-  --face-cardBorder: var(--neutral-cardBorder);
-  --face-innerBg: var(--neutral-innerBg);
-  --face-innerBorder: var(--neutral-innerBorder);
-}
-
-/* Back face palette defaults to neutral; revealed/spymaster-view swaps to team palette. */
-body.og-mode .game-card .card-back{
-  --face-cardBg: var(--neutral-cardBg);
-  --face-cardBorder: var(--neutral-cardBorder);
-  --face-innerBg: var(--neutral-innerBg);
-  --face-innerBorder: var(--neutral-innerBorder);
-}
-body.og-mode .game-card.revealed .card-back,
-body.og-mode .game-card.spymaster-view .card-back{
-  --face-cardBg: var(--cardBg);
-  --face-cardBorder: var(--cardBorder);
-  --face-innerBg: var(--innerBg);
-  --face-innerBorder: var(--innerBorder);
-}
-
-/* Draw the whole card plate on the flipping faces */
-body.og-mode .game-card .card-face{
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--face-cardBg);
-  border: 1px solid var(--face-cardBorder);
-  box-shadow: 0 8px 18px rgba(0,0,0,0.32);
-}
-
-/* Inner plate */
-body.og-mode .game-card .card-face::before{
-  content:"";
-  position:absolute;
-  inset: 6px;
-  border-radius: 6px;
-  background:
-    linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.00) 30%),
-    var(--face-innerBg);
-  border: 2px solid var(--face-innerBorder);
-  box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.16),
-    inset 0 -2px 0 rgba(0,0,0,0.10);
-  pointer-events:none;
-}
-
-/* Divider line above the word strip */
-body.og-mode .game-card .card-face::after{
-  content:"";
-  position:absolute;
-  left: 6px;
-  right: 6px;
-  bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
-  height: 2px;
-  background: var(--face-innerBorder);
-  opacity: 0.45;
-  pointer-events:none;
-}
-
-/* Face-down (selected) card-back design — hides word and shows patterned back */
-body.og-mode .game-card.pending-select:not(.revealed) .card-back{
-  /* Override the reveal palette: this is the classic card-back. */
-  --face-cardBg: rgba(12,12,14,0.86);
-  --face-cardBorder: rgba(255,255,255,0.18);
-  --face-innerBg: rgba(255,255,255,0.05);
-  --face-innerBorder: rgba(255,255,255,0.14);
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.18), rgba(255,255,255,0.05) 45%, rgba(0,0,0,0.18) 82%),
-              linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-}
-
-/* Replace the generic inner-plate/divider with a subtle back pattern */
-body.og-mode .game-card.pending-select:not(.revealed) .card-back::before{
-  content: "";
-  position: absolute;
-  inset: 10px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.10);
-  border: none;
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: repeating-linear-gradient(
-    135deg,
-    rgba(255,255,255,0.10) 0px,
-    rgba(255,255,255,0.10) 10px,
-    rgba(0,0,0,0.06) 10px,
-    rgba(0,0,0,0.06) 20px
-  );
-  mix-blend-mode: overlay;
-  opacity: 0.35;
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back .card-word{ opacity: 0 !important; }
-
-/* During OG reveals, avoid the universal translate/scale animation on the container.
-   The reveal should read as a flip. (We keep the flip-glow class added by JS.) */
-body.og-mode .game-card.guess-animate{
-  animation: none !important;
-}
-
-
-/* =====================================================
-   OG (Codenames Online) — TRUE card flip (front vs back)
-   Surfaces live on .card-front/.card-back so the flip is obvious.
-===================================================== */
-
-/* The container itself should not draw the card plates (those don't flip). */
-body.og-mode .game-card{
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-body.og-mode .game-card::before,
-body.og-mode .game-card::after{
-  content: none !important;
-}
-
-/* Front face is always the neutral unrevealed word card. */
-body.og-mode .game-card .card-front{
-  --face-cardBorder: var(--neutral-cardBorder);
-  --face-cardBg: var(--neutral-cardBg);
-  --face-innerBorder: var(--neutral-innerBorder);
-  --face-innerBg: var(--neutral-innerBg);
-  /* Keep the unrevealed label strip neutral during reveal flips. */
-  --wordBg: var(--neutral-darkWordBg);
-  --wordColor: #ffffff;
-}
-
-/* Back face defaults to neutral unless revealed/spymaster-view sets vars. */
-body.og-mode .game-card .card-back{
-  --face-cardBorder: var(--neutral-cardBorder);
-  --face-cardBg: var(--neutral-cardBg);
-  --face-innerBorder: var(--neutral-innerBorder);
-  --face-innerBg: var(--neutral-innerBg);
-}
-
-/* When revealed (or spymaster-view), back face uses the team palette vars. */
-body.og-mode .game-card.revealed .card-back,
-body.og-mode .game-card.spymaster-view .card-back{
-  --face-cardBorder: var(--cardBorder);
-  --face-cardBg: var(--cardBg);
-  --face-innerBorder: var(--innerBorder);
-  --face-innerBg: var(--innerBg);
-}
-
-/* Build the CNO-style card plate on EACH face. */
-body.og-mode .game-card .card-face{
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--face-cardBg);
-  border: 1px solid var(--face-cardBorder);
-  box-shadow: 0 8px 18px rgba(0,0,0,0.32);
-}
-
-body.og-mode .game-card .card-face::before{
-  content:"";
-  position:absolute;
-  inset: 6px;
-  border-radius: 6px;
-  background:
-    linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.00) 30%),
-    var(--face-innerBg);
-  border: 2px solid var(--face-innerBorder);
-  box-shadow:
-    inset 0 2px 0 rgba(255,255,255,0.16),
-    inset 0 -2px 0 rgba(0,0,0,0.10);
-  pointer-events:none;
-}
-
-/* Divider line at the top edge of the word strip. */
-body.og-mode .game-card .card-face::after{
-  content:"";
-  position:absolute;
-  left: 6px;
-  right: 6px;
-  bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
-  height: 2px;
-  background: var(--face-innerBorder);
-  opacity: 0.45;
-  pointer-events:none;
-}
-
-/* Face-down back (selected-but-not-confirmed): hide divider + use patterned back. */
-body.og-mode .game-card.pending-select:not(.revealed) .card-back{
-  background:
-    radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(255,255,255,0.04) 45%, rgba(0,0,0,0.10) 80%),
-    linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-  border-color: rgba(255,255,255,0.22);
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
-  /* Replace the divider with an inner frame on the face-down side */
-  content: "";
-  position: absolute;
-  inset: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.18);
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.20) inset;
-  pointer-events: none;
-  opacity: 1;
-}
-body.og-mode .game-card.pending-select:not(.revealed) .card-back::before{
-  /* Patterned plate instead of the regular inner plate */
-  content: "";
-  position: absolute;
-  inset: 10px;
-  border-radius: 12px;
-  background: repeating-linear-gradient(
-    135deg,
-    rgba(255,255,255,0.10) 0px,
-    rgba(255,255,255,0.10) 10px,
-    rgba(0,0,0,0.06) 10px,
-    rgba(0,0,0,0.06) 20px
-  );
-  mix-blend-mode: overlay;
-  opacity: 0.35;
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.10);
-  pointer-events: none;
-}
-
-/* Hide the word on the face-down side until the card is actually revealed. */
-body.og-mode .game-card:not(.revealed).pending-select .card-back .card-word{
-  opacity: 0;
-}
-
-/* Keep the dramatic reveal from being "just a lift" in OG; the flip is the show. */
-body.og-mode .game-card.guess-animate{
-  animation: none !important;
-}
-

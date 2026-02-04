@@ -2968,20 +2968,30 @@ function startGameListener(gameId, options = {}) {
               }
             } catch (_) {}
 
-            cardEl.classList.add('guess-animate');
+            const isOgMode = document.body.classList.contains('og-mode');
+            if (isOgMode) {
+              // In Codenames Online style, the flip IS the reveal. Avoid stacking the universal
+              // "lift" animation on top of it (it reads as a subtle hover instead of a flip).
+              cardEl.classList.add('og-reveal-bump');
+            } else {
+              cardEl.classList.add('guess-animate');
+            }
 
-            // Codenames Online: add a satisfying flip when a card is revealed.
+            // Codenames Online: slow, obvious flip reveal.
+            // - Pending selections are already face-down (180deg) showing the patterned back.
+            // - On reveal, we flip back to 0deg where the FRONT face becomes the revealed agent.
             // We drive this in JS so only newly revealed cards flip (no mass flip on initial render).
-            if (document.body.classList.contains('og-mode')) {
+            if (isOgMode) {
               const inner = cardEl.querySelector('.card-inner');
               if (inner) {
                 try {
-                  inner.style.transition = 'transform 5200ms cubic-bezier(0.16, 1, 0.3, 1)';
-                  inner.style.transform = 'rotateY(0deg)';
+                  inner.style.transition = 'transform 4200ms cubic-bezier(0.16, 1, 0.3, 1)';
+                  // Start face-down so the transition always reads as a flip.
+                  inner.style.transform = 'rotateY(180deg)';
                   // Force a layout so the browser commits the start transform.
                   void inner.offsetWidth;
                   requestAnimationFrame(() => {
-                    inner.style.transform = 'rotateY(180deg)';
+                    inner.style.transform = 'rotateY(0deg)';
                     cardEl.classList.add('flip-glow');
                   });
                   inner.addEventListener('transitionend', () => {
@@ -2997,10 +3007,16 @@ function startGameListener(gameId, options = {}) {
               if (cleaned) return;
               cleaned = true;
               cardEl.classList.remove('guess-animate');
+              cardEl.classList.remove('og-reveal-bump');
             };
-            cardEl.addEventListener('animationend', cleanup, { once: true });
-            // Fallback cleanup
-            setTimeout(cleanup, 5000);
+            if (!isOgMode) {
+              cardEl.addEventListener('animationend', cleanup, { once: true });
+              // Fallback cleanup
+              setTimeout(cleanup, 5000);
+            } else {
+              // No CSS animation to listen for in OG mode; just clear the bump after the flip.
+              setTimeout(cleanup, 4600);
+            }
           }
         });
       });
@@ -3469,6 +3485,9 @@ function renderBoard(isSpymaster) {
           <div class="card-face card-front">
             <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
             <span class="card-word"><span class="word-text">${word}</span></span>
+            <div class="og-reveal-face" aria-hidden="true">
+              <div class="og-reveal-icon"></div>
+            </div>
           </div>
           <div class="card-face card-back">
             <span class="card-word"><span class="word-text">${word}</span></span>
