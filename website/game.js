@@ -3743,12 +3743,61 @@ function renderGameLog() {
   }).join('');
 
   if (popoverEl) popoverEl.innerHTML = html;
-  if (sidebarEl) sidebarEl.innerHTML = html;
+
+  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
+  if (isOgMode && currentGame.clueHistory && currentGame.clueHistory.length > 0) {
+    const ogHtml = buildOgStructuredLog();
+    if (sidebarEl) sidebarEl.innerHTML = ogHtml;
+  } else {
+    if (sidebarEl) sidebarEl.innerHTML = html;
+  }
 
   // Auto-scroll to bottom (popover container + sidebar scroller)
   const popover = document.getElementById('game-log');
   if (popover) popover.scrollTop = popover.scrollHeight;
   if (sidebarEl) sidebarEl.scrollTop = sidebarEl.scrollHeight;
+}
+
+function buildOgStructuredLog() {
+  if (!currentGame?.clueHistory) return '';
+  const history = currentGame.clueHistory;
+
+  return history.map(clue => {
+    const team = clue.team || 'red';
+    const spymaster = team === 'red'
+      ? (currentGame.redSpymaster || 'Spymaster')
+      : (currentGame.blueSpymaster || 'Spymaster');
+    const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
+
+    const clueRow = `<div class="gamelog-clue-row">
+        <div class="gamelog-avatar-wrap team-${escapeHtml(team)}">
+          <div class="gamelog-avatar">${escapeHtml(initial)}</div>
+          <div class="gamelog-avatar-name">${escapeHtml(spymaster)}</div>
+        </div>
+        <div class="gamelog-clue-pill team-${escapeHtml(team)}">
+          <div class="gamelog-clue-word">${escapeHtml(clue.word)}</div>
+          <div class="gamelog-clue-count">${escapeHtml(String(clue.number))}</div>
+        </div>
+      </div>`;
+
+    const guessesHtml = (clue.results || []).map(r => {
+      const name = r.by || 'Someone';
+      const gi = name.trim().slice(0, 1).toUpperCase();
+      const cardType = r.type || 'neutral';
+      return `<div class="gamelog-guess-item">
+          <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
+            <div class="gamelog-avatar">${escapeHtml(gi)}</div>
+            <div class="gamelog-avatar-name">${escapeHtml(name)}</div>
+          </div>
+          <div class="gamelog-word-pill type-${escapeHtml(cardType)}">${escapeHtml(r.word)}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="gamelog-turn">
+        ${clueRow}
+        ${guessesHtml ? `<div class="gamelog-guesses">${guessesHtml}</div>` : ''}
+      </div>`;
+  }).join('');
 }
 
 function updateRoleButtons() {
