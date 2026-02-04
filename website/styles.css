@@ -16265,9 +16265,8 @@ body.og-mode .gamelog-clue-pill {
   position: relative;
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
-  padding: 18px 42px 14px 14px;
+  border-radius: 10px;
+  padding: 10px 40px 10px 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -16275,25 +16274,13 @@ body.og-mode .gamelog-clue-pill {
   overflow: hidden;
 }
 
-body.og-mode .gamelog-clue-pill::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 45%;
-  border-radius: 12px 12px 0 0;
+body.og-mode .gamelog-clue-pill.team-red {
+  border: 3px solid #C8553A;
+  background: linear-gradient(180deg, #c8553a 0%, #c8553a 48%, rgba(255,255,255,0.95) 48%, rgba(255,255,255,0.95) 100%);
 }
-
-body.og-mode .gamelog-clue-pill.team-red { border: 3px solid #C8553A; }
-body.og-mode .gamelog-clue-pill.team-blue { border: 3px solid #3B8BEB; }
-
-body.og-mode .gamelog-clue-pill.team-red::before {
-  background: linear-gradient(135deg, #d4513b 0%, #c8553a 50%, #b94a32 100%);
-}
-
-body.og-mode .gamelog-clue-pill.team-blue::before {
-  background: linear-gradient(135deg, #4a9af5 0%, #3b8beb 50%, #2d7ad6 100%);
+body.og-mode .gamelog-clue-pill.team-blue {
+  border: 3px solid #3B8BEB;
+  background: linear-gradient(180deg, #3b8beb 0%, #3b8beb 48%, rgba(255,255,255,0.95) 48%, rgba(255,255,255,0.95) 100%);
 }
 
 body.og-mode .gamelog-clue-word {
@@ -16313,21 +16300,21 @@ body.og-mode .gamelog-clue-word {
 
 body.og-mode .gamelog-clue-count {
   position: absolute;
-  right: 8px;
+  right: 7px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 900;
   color: rgba(20, 20, 20, 0.9);
   background: #fff;
-  border: 2px solid rgba(0, 0, 0, 0.08);
+  border: 2px solid rgba(0, 0, 0, 0.06);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
@@ -16404,6 +16391,6 @@ body.og-mode .gamelog-system {
   body.og-mode .gamelog-word-pill { font-size: 9px; padding: 6px 8px; }
   body.og-mode .gamelog-avatar { width: 40px; height: 40px; font-size: 15px; }
   body.og-mode .gamelog-avatar-wrap.small .gamelog-avatar { width: 26px; height: 26px; font-size: 10px; }
-  body.og-mode .gamelog-clue-pill { padding: 18px 36px 8px 8px; }
-  body.og-mode .gamelog-clue-count { width: 24px; height: 24px; font-size: 12px; }
+  body.og-mode .gamelog-clue-pill { padding: 8px 34px 8px 8px; }
+  body.og-mode .gamelog-clue-count { width: 22px; height: 22px; font-size: 11px; }
 }
