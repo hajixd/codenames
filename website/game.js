@@ -1382,6 +1382,80 @@ async function startQuickLobbyListener() {
 const GAME_INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
 let lastInactiveGameCheck = 0;
 
+// Practice inactivity timeout: auto-close practice tab after 10 minutes of no activity
+const PRACTICE_INACTIVITY_MS = 10 * 60 * 1000; // 10 minutes
+let practiceInactivityTimer = null;
+let practiceActivityBound = false;
+let practiceLastActivityAt = 0;
+let practiceAutoClosed = false;
+
+function isPracticeActive() {
+  return !!(currentGame && currentGame.type === 'practice');
+}
+
+function markPracticeActivity() {
+  if (!isPracticeActive()) return;
+  const now = Date.now();
+  if (now - practiceLastActivityAt < 1000) return;
+  practiceLastActivityAt = now;
+  resetPracticeInactivityTimer();
+}
+
+function resetPracticeInactivityTimer() {
+  if (practiceInactivityTimer) clearTimeout(practiceInactivityTimer);
+  practiceInactivityTimer = setTimeout(() => {
+    if (!isPracticeActive()) return;
+    const now = Date.now();
+    if (now - practiceLastActivityAt >= PRACTICE_INACTIVITY_MS) {
+      autoClosePracticeGame();
+      return;
+    }
+    resetPracticeInactivityTimer();
+  }, PRACTICE_INACTIVITY_MS + 250);
+}
+
+function startPracticeInactivityWatcher() {
+  if (!isPracticeActive()) return;
+  if (!practiceActivityBound) {
+    const handler = markPracticeActivity;
+    window.addEventListener('pointerdown', handler, { passive: true });
+    window.addEventListener('keydown', handler, { passive: true });
+    window.addEventListener('mousemove', handler, { passive: true });
+    window.addEventListener('wheel', handler, { passive: true });
+    window.addEventListener('touchstart', handler, { passive: true });
+    window.addEventListener('scroll', handler, { passive: true });
+    window.addEventListener('focus', handler, { passive: true });
+    practiceActivityBound = true;
+  }
+  practiceAutoClosed = false;
+  if (!practiceLastActivityAt) practiceLastActivityAt = Date.now();
+  resetPracticeInactivityTimer();
+}
+
+function stopPracticeInactivityWatcher() {
+  if (practiceInactivityTimer) clearTimeout(practiceInactivityTimer);
+  practiceInactivityTimer = null;
+  practiceLastActivityAt = 0;
+  practiceAutoClosed = false;
+  if (practiceActivityBound) {
+    const handler = markPracticeActivity;
+    window.removeEventListener('pointerdown', handler);
+    window.removeEventListener('keydown', handler);
+    window.removeEventListener('mousemove', handler);
+    window.removeEventListener('wheel', handler);
+    window.removeEventListener('touchstart', handler);
+    window.removeEventListener('scroll', handler);
+    window.removeEventListener('focus', handler);
+    practiceActivityBound = false;
+  }
+}
+
+function autoClosePracticeGame() {
+  if (!isPracticeActive() || practiceAutoClosed) return;
+  practiceAutoClosed = true;
+  try { handleLeaveGame({ skipConfirm: true, closePracticeWindow: true }); } catch (_) {}
+}
+
 async function checkAndEndInactiveGame(game) {
   if (!game) return;
 
@@ -2993,12 +3067,15 @@ function startGameListener(gameId, options = {}) {
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
     if (!snap.exists) {
       currentGame = null;
+      stopPracticeInactivityWatcher();
       showGameLobby();
       try { window.bumpPresence?.(); } catch (_) {}
       return;
     }
 
     currentGame = { id: snap.id, ...snap.data() };
+    if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
+    else stopPracticeInactivityWatcher();
 
     // Reset local per-card tags whenever we detect a brand-new board.
     // This matters especially for Quick Play, where the doc id stays the same across games.
@@ -3181,6 +3258,7 @@ function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
   currentGame = null;
+  stopPracticeInactivityWatcher();
   const wasEphemeral = !!currentListenerEphemeral;
   currentListenerEphemeral = false;
   _prevRevealedIndexes = new Set();
@@ -4280,8 +4358,10 @@ async function handleEndTurn() {
   }
 }
 
-async function handleLeaveGame() {
+async function handleLeaveGame(opts = {}) {
   // Handles both "Leave Game" (participant) and "Stop Spectating" (spectator).
+  const skipConfirm = !!opts.skipConfirm;
+  const closePracticeWindow = !!opts.closePracticeWindow;
   if (!currentGame) {
     try { stopGameListener(); } catch (_) {}
     try { window.returnToLaunchScreen?.(); } catch (_) { try { showGameLobby(); } catch (_) {} }
@@ -4289,6 +4369,7 @@ async function handleLeaveGame() {
   }
 
   const gameId = currentGame.id;
+  const wasPractice = currentGame?.type === 'practice';
   const odId = getUserId();
   const userName = getUserName() || 'Someone';
 
@@ -4297,7 +4378,7 @@ async function handleLeaveGame() {
 
   // Confirm leaving if you are an active participant (not a spectator) and the game is in progress.
   const inProgress = !!(currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.winner == null && currentGame.currentPhase !== 'ended');
-  if (!spectator && inProgress) {
+  if (!skipConfirm && !spectator && inProgress) {
     const ok = await showCustomConfirm({
       title: 'Leave game?',
       message: 'You can rejoin later, but your seat will be freed for others.',
@@ -4354,6 +4435,9 @@ async function handleLeaveGame() {
   }
 
   // Return to home/launch (do NOT sign out)
+  if (closePracticeWindow && wasPractice) {
+    try { window.close(); } catch (_) {}
+  }
   try { window.returnToLaunchScreen?.(); }
   catch (_) { try { showGameLobby(); } catch (_) {} }
 }
