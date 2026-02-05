@@ -393,6 +393,12 @@ body.tournament #play-mode-select{ display:none !important; }
     font-size: 22px;
   }
 
+  .panel-brackets .panel-inner{
+    max-width: none;
+    padding: clamp(18px, 2.8vw, 36px);
+    gap: 10px;
+  }
+
   
   /* Brackets: cinematic 8-team BO3 (style-aware, no heavy GPU filters) */
   .brackets-board{
@@ -415,6 +421,10 @@ body.tournament #play-mode-select{ display:none !important; }
     --br-wire-alpha: 0.70;
 
     position: relative;
+    flex: 1;
+    min-height: clamp(520px, 72vh, 920px);
+    display: flex;
+    align-items: stretch;
     padding: 16px;
     border-radius: var(--br-radius);
     border: 1px solid var(--br-line);
@@ -463,6 +473,8 @@ body.tournament #play-mode-select{ display:none !important; }
   /* NEW: single bracket canvas (classic playoff layout) */
   .brk-canvas{
     position: relative;
+    width: 100%;
+    min-height: 100%;
     min-width: 1040px;
     border-radius: calc(var(--br-radius) + 6px);
     padding: 22px 22px 24px 22px;
@@ -481,6 +493,8 @@ body.tournament #play-mode-select{ display:none !important; }
     grid-template-columns: minmax(320px, 1fr) minmax(280px, 0.92fr) minmax(320px, 1fr);
     gap: 74px;
     align-items: center;
+    height: 100%;
+    align-content: center;
   }
 
   .brk-round{
@@ -959,18 +973,18 @@ body.tournament #play-mode-select{ display:none !important; }
 
   /* Responsive: keep the bracket layout, make it swipeable and spacious */
   @media (max-width: 980px){
-    .brackets-board{ padding: 14px; }
+    .brackets-board{ padding: 14px; min-height: clamp(480px, 70vh, 820px); }
     .brk-canvas{ min-width: 940px; }
     .brk-layout{ gap: 58px; }
   }
   @media (max-width: 740px){
-    .brackets-board{ padding: 12px; }
+    .brackets-board{ padding: 12px; min-height: clamp(460px, 70vh, 780px); }
     .brk-canvas{ min-width: 900px; }
     .brk-layout{ gap: 44px; }
     .brk-match-wrap{ gap: 28px; }
   }
   @media (max-width: 520px){
-    .brackets-board{ padding: 10px; border-radius: 22px; }
+    .brackets-board{ padding: 10px; border-radius: 22px; min-height: clamp(420px, 70vh, 700px); }
     .brk-canvas{ min-width: 860px; }
     .br-match, .br-final{ border-radius: 18px; }
     .br-slot{ border-radius: 14px; }
@@ -18366,7 +18380,9 @@ body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
    Brackets (Teams index)
 ========================= */
 .panel-brackets .panel-inner {
-  max-width: 1100px;
+  max-width: none;
+  padding: clamp(18px, 2.8vw, 36px);
+  gap: 10px;
 }
 
 .brackets-head {
@@ -18714,7 +18730,9 @@ body.light-mode .practice-choice.is-selected {
 ===================================================================== */
 
 .panel-brackets .panel-inner{
-  max-width: 1100px;
+  max-width: none;
+  padding: clamp(18px, 2.8vw, 36px);
+  gap: 10px;
 }
 
 #panel-brackets .subtitle.small,
@@ -19160,4 +19178,3 @@ body.og-mode .practice-step{
     padding-right: 18px;
   }
 }
-
