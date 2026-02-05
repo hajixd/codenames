@@ -3833,10 +3833,14 @@ function drawBracketWires() {
   const mergeRX = FR.x + 28;
   const mergeRY = (R1.y + R2.y) / 2;
 
-  const d1 = `M ${L1.x} ${L1.y} H ${mergeLX} V ${mergeLY} H ${FL.x}`;
+  const d1 = `M ${L1.x} ${L1.y} H ${mergeLX}`;
   const d2 = `M ${L2.x} ${L2.y} H ${mergeLX}`;
-  const d3 = `M ${R1.x} ${R1.y} H ${mergeRX} V ${mergeRY} H ${FR.x}`;
-  const d4 = `M ${R2.x} ${R2.y} H ${mergeRX}`;
+  const d3 = `M ${mergeLX} ${L1.y} V ${L2.y}`;
+  const d4 = `M ${mergeLX} ${mergeLY} H ${FL.x}`;
+  const d5 = `M ${R1.x} ${R1.y} H ${mergeRX}`;
+  const d6 = `M ${R2.x} ${R2.y} H ${mergeRX}`;
+  const d7 = `M ${mergeRX} ${R1.y} V ${R2.y}`;
+  const d8 = `M ${mergeRX} ${mergeRY} H ${FR.x}`;
 
   const w = rect.width;
   const h = rect.height;
@@ -3845,16 +3849,7 @@ function drawBracketWires() {
   svg.setAttribute('viewBox', `0 0 ${Math.max(1, Math.floor(w))} ${Math.max(1, Math.floor(h))}`);
 
   svg.innerHTML = `
-    <defs>
-      <linearGradient id="brk-wire-grad" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="var(--brk-wire-start)" />
-        <stop offset="1" stop-color="var(--brk-wire-end)" />
-      </linearGradient>
-    </defs>
-    <path class="brk-wire" d="${d1}" />
-    <path class="brk-wire" d="${d2}" />
-    <path class="brk-wire" d="${d3}" />
-    <path class="brk-wire" d="${d4}" />
+    <path class="brk-wire" d="${d1} ${d2} ${d3} ${d4} ${d5} ${d6} ${d7} ${d8}" />
   `;
 }
 
