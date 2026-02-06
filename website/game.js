@@ -260,6 +260,153 @@ function getRandomWords(count, deckId) {
   return shuffled.slice(0, count);
 }
 
+function _normVibeToken(input) {
+  return String(input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function _splitVibeWordTokens(input) {
+  return String(input || '')
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function _shuffleInPlace(list) {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = list[i];
+    list[i] = list[j];
+    list[j] = t;
+  }
+  return list;
+}
+
+// Local fallback hints used when AI vibe generation is unavailable.
+// This keeps "vibe" useful in Practice/Quick Play without requiring network AI.
+const LOCAL_VIBE_HINTS = {
+  COUNTRY: ['EGYPT', 'GERMANY', 'GREECE', 'CHINA', 'INDIA', 'ENGLAND', 'FRANCE', 'RUSSIA', 'MEXICO', 'BRAZIL'],
+  COUNTRIES: ['EGYPT', 'GERMANY', 'GREECE', 'CHINA', 'INDIA', 'ENGLAND', 'FRANCE', 'RUSSIA', 'MEXICO', 'BRAZIL'],
+  NATION: ['EGYPT', 'GERMANY', 'GREECE', 'CHINA', 'INDIA', 'ENGLAND', 'FRANCE', 'RUSSIA', 'MEXICO', 'BRAZIL'],
+  NATIONS: ['EGYPT', 'GERMANY', 'GREECE', 'CHINA', 'INDIA', 'ENGLAND', 'FRANCE', 'RUSSIA', 'MEXICO', 'BRAZIL'],
+  SPORT: ['CRICKET', 'BAT', 'NET', 'GOAL', 'COURT', 'PITCH', 'RACKET', 'MATCH', 'SKATE', 'RACE'],
+  SPORTS: ['CRICKET', 'BAT', 'NET', 'GOAL', 'COURT', 'PITCH', 'RACKET', 'MATCH', 'SKATE', 'RACE'],
+  ANIMAL: ['SHARK', 'SEAL', 'BUG', 'SPIDER', 'BAT', 'MOUSE', 'HORSE', 'BEAR', 'FOX', 'WHALE'],
+  ANIMALS: ['SHARK', 'SEAL', 'BUG', 'SPIDER', 'BAT', 'MOUSE', 'HORSE', 'BEAR', 'FOX', 'WHALE'],
+  MUSIC: ['PIANO', 'FLUTE', 'NOTE', 'BAND', 'DRUM', 'SONG', 'OPERA', 'CONCERT', 'JAZZ', 'ROCK'],
+  SONG: ['PIANO', 'FLUTE', 'NOTE', 'BAND', 'DRUM', 'OPERA', 'CONCERT', 'JAZZ', 'ROCK'],
+  FOOD: ['APPLE', 'ORANGE', 'CHOCOLATE', 'BREAD', 'CHEESE', 'SALT', 'SUGAR', 'HONEY'],
+  SPACE: ['STAR', 'MOON', 'SATURN', 'MARS', 'COMET', 'ORBIT', 'ROCKET', 'PLANET'],
+  SCIENCE: ['LAB', 'ATOM', 'MODEL', 'ENERGY', 'GRAVITY', 'CELL', 'DNA', 'LASER'],
+  TECH: ['MODEL', 'SCREEN', 'KEY', 'MOUSE', 'CHIP', 'NET', 'SERVER', 'CODE'],
+  TECHNOLOGY: ['MODEL', 'SCREEN', 'KEY', 'MOUSE', 'CHIP', 'NET', 'SERVER', 'CODE'],
+  WAR: ['BOND', 'TANK', 'BATTLE', 'ARMY', 'MISSILE', 'SPY', 'GENERAL'],
+  MILITARY: ['BOND', 'TANK', 'BATTLE', 'ARMY', 'MISSILE', 'SPY', 'GENERAL'],
+  OCEAN: ['SHARK', 'SEAL', 'WHALE', 'FISH', 'WATER', 'SHIP', 'SUB', 'HARBOR'],
+  WATER: ['SHARK', 'SEAL', 'WHALE', 'FISH', 'SHIP', 'SUB', 'RIVER', 'LAKE'],
+};
+
+const LOCAL_VIBE_HINT_SETS = Object.fromEntries(
+  Object.entries(LOCAL_VIBE_HINTS).map(([k, arr]) => [
+    _normVibeToken(k),
+    new Set((arr || []).map(_normVibeToken).filter(Boolean))
+  ])
+);
+
+function scoreWordAgainstVibeLocally(word, vibeTokens) {
+  const raw = String(word || '').trim();
+  const norm = _normVibeToken(raw);
+  if (!norm) return 0;
+  const parts = _splitVibeWordTokens(raw).map(_normVibeToken).filter(Boolean);
+
+  let score = 0;
+  for (const token of vibeTokens) {
+    if (!token) continue;
+
+    if (norm === token) score += 26;
+    if (norm.includes(token) || token.includes(norm)) score += 13;
+
+    for (const p of parts) {
+      if (p === token) score += 19;
+      else if (p.startsWith(token) || token.startsWith(p)) score += 9;
+    }
+
+    const hintSet = LOCAL_VIBE_HINT_SETS[token];
+    if (hintSet) {
+      if (hintSet.has(norm)) score += 17;
+      else if (parts.some(p => hintSet.has(p))) score += 12;
+    }
+  }
+
+  return score;
+}
+
+function getLocalVibeWords(vibe, deckId, count = BOARD_SIZE) {
+  const terms = parseVibeTerms(vibe);
+  const pool = Array.isArray(getWordsForDeck(deckId)) ? getWordsForDeck(deckId) : wordsBank;
+  if (!terms.length || !Array.isArray(pool) || pool.length < count) {
+    return getRandomWords(count, deckId);
+  }
+
+  const vibeTokens = new Set();
+  for (const term of terms) {
+    const main = _normVibeToken(term);
+    if (main) vibeTokens.add(main);
+    for (const t of _splitVibeWordTokens(term)) {
+      const n = _normVibeToken(t);
+      if (!n) continue;
+      vibeTokens.add(n);
+      if (n.endsWith('S') && n.length > 3) vibeTokens.add(n.slice(0, -1));
+      if (!n.endsWith('S') && n.length > 3) vibeTokens.add(`${n}S`);
+    }
+  }
+
+  const seen = new Set();
+  const scored = [];
+  for (const w of pool) {
+    const key = String(w || '').trim().toUpperCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    scored.push({ word: w, score: scoreWordAgainstVibeLocally(w, vibeTokens) });
+  }
+
+  const strong = scored.filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+  const remainder = scored.filter(x => x.score <= 0);
+  _shuffleInPlace(remainder);
+
+  let picked = [];
+  if (strong.length) {
+    const topWindow = strong.slice(0, Math.min(strong.length, count * 3));
+    _shuffleInPlace(topWindow);
+    picked = topWindow.slice(0, count).map(x => x.word);
+  }
+
+  if (picked.length < count) {
+    const existing = new Set(picked.map(w => String(w || '').trim().toUpperCase()));
+    for (const row of remainder) {
+      const key = String(row.word || '').trim().toUpperCase();
+      if (!key || existing.has(key)) continue;
+      picked.push(row.word);
+      existing.add(key);
+      if (picked.length >= count) break;
+    }
+  }
+
+  if (picked.length < count) {
+    const backup = getRandomWords(count, deckId);
+    const existing = new Set(picked.map(w => String(w || '').trim().toUpperCase()));
+    for (const w of backup) {
+      const key = String(w || '').trim().toUpperCase();
+      if (!key || existing.has(key)) continue;
+      picked.push(w);
+      existing.add(key);
+      if (picked.length >= count) break;
+    }
+  }
+
+  return _shuffleInPlace(picked).slice(0, count);
+}
+
 /* =========================
    AI Word Generation
 ========================= */
@@ -538,12 +685,16 @@ async function buildQuickPlayCardsFromSettings(settings) {
 
   let words;
   const vibe = String(s.vibe || '').trim();
-  if (vibe && typeof window.aiChatCompletion === 'function') {
-    try {
-      words = await generateAIWords(vibe);
-    } catch (err) {
-      console.warn('AI vibe word generation failed, falling back to deck:', err);
-      words = getRandomWords(BOARD_SIZE, s.deckId);
+  if (vibe) {
+    if (typeof window.aiChatCompletion === 'function') {
+      try {
+        words = await generateAIWords(vibe);
+      } catch (err) {
+        console.warn('AI vibe word generation failed, using local vibe fallback:', err);
+        words = getLocalVibeWords(vibe, s.deckId, BOARD_SIZE);
+      }
+    } else {
+      words = getLocalVibeWords(vibe, s.deckId, BOARD_SIZE);
     }
   } else {
     // If no vibe was provided, use the selected deck bank.
@@ -3174,6 +3325,7 @@ function startGameListener(gameId, options = {}) {
         // Clear all local tags without writing anything to Firestore (markers are reset server-side).
         cardTags = {};
         pendingCardSelection = null;
+        revealedPeekCardIndex = null;
         renderCardTags();
         saveTagsToLocal();
         setActiveTagMode(null);
@@ -3261,7 +3413,7 @@ function startGameListener(gameId, options = {}) {
               }
             } catch (_) {}
 
-            const isOgMode = document.body.classList.contains('og-mode');
+            const isOgMode = isOnlineStyleActive();
             if (isOgMode) {
               // In Codenames Online style, the flip IS the reveal. Avoid stacking the universal
               // "lift" animation on top of it (it reads as a subtle hover instead of a flip).
@@ -3274,23 +3426,7 @@ function startGameListener(gameId, options = {}) {
             // - Pending selections are already face-down (180deg) showing the patterned back.
             // - On reveal, we flip back to 0deg where the FRONT face becomes the revealed agent.
             // We drive this in JS so only newly revealed cards flip (no mass flip on initial render).
-            if (isOgMode) {
-              const inner = cardEl.querySelector('.card-inner');
-              if (inner) {
-                try {
-                  // Start from face-down so the reveal always reads as a deliberate flip.
-                  inner.style.animation = 'none';
-                  inner.style.transform = 'rotateY(180deg)';
-                  void inner.offsetWidth;
-                  cardEl.classList.add('og-reveal-flip', 'flip-glow');
-                  inner.addEventListener('animationend', () => {
-                    cardEl.classList.remove('og-reveal-flip', 'flip-glow');
-                    inner.style.animation = '';
-                    inner.style.transform = '';
-                  }, { once: true });
-                } catch (_) {}
-              }
-            }
+            if (isOgMode) runOnlineRevealFlipAnimation(cardEl);
             let cleaned = false;
             const cleanup = () => {
               if (cleaned) return;
@@ -3355,6 +3491,8 @@ function stopGameListener() {
   currentListenerEphemeral = false;
   _prevRevealedIndexes = new Set();
   _prevClue = null;
+  revealedPeekCardIndex = null;
+  pendingCardSelection = null;
   spectatorMode = false;
   spectatingGameId = null;
 
@@ -3410,6 +3548,108 @@ function getCardsLeft(game, team) {
   if (Number.isFinite(derived) && derived >= 0) return derived;
 
   return team === 'red' ? FIRST_TEAM_CARDS : SECOND_TEAM_CARDS;
+}
+
+function isOnlineStyleActive() {
+  return document.body.classList.contains('og-mode');
+}
+
+function isOgLikeStyleActive() {
+  return document.body.classList.contains('og-mode') || document.body.classList.contains('cozy-mode');
+}
+
+function syncClueSubmitButtonAppearance() {
+  const form = document.getElementById('clue-form');
+  const submitBtn = form?.querySelector('button[type="submit"]');
+  if (!submitBtn) return;
+
+  const iconMode = isOgLikeStyleActive();
+  if (iconMode) {
+    submitBtn.classList.add('clue-submit-check');
+    submitBtn.setAttribute('aria-label', 'Submit clue');
+    submitBtn.setAttribute('title', 'Submit clue');
+    if (submitBtn.dataset.iconMode !== '1') {
+      submitBtn.textContent = '';
+      const icon = document.createElement('span');
+      icon.className = 'clue-submit-check-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '✓';
+      submitBtn.appendChild(icon);
+      submitBtn.dataset.iconMode = '1';
+    }
+    return;
+  }
+
+  submitBtn.classList.remove('clue-submit-check');
+  submitBtn.removeAttribute('title');
+  submitBtn.removeAttribute('aria-label');
+  if (submitBtn.dataset.iconMode === '1') {
+    submitBtn.textContent = 'Give Clue';
+    submitBtn.dataset.iconMode = '0';
+  }
+}
+
+function runOnlineRevealFlipAnimation(cardEl) {
+  const inner = cardEl?.querySelector?.('.card-inner');
+  if (!cardEl || !inner) return;
+
+  cardEl.classList.add('og-reveal-bump');
+
+  // Start from face-down so the reveal visibly flips into place.
+  inner.style.animation = 'none';
+  inner.style.transform = 'rotateY(180deg)';
+  void inner.offsetWidth;
+
+  cardEl.classList.add('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
+
+  let liftAnim = null;
+  let flipAnim = null;
+  let finished = false;
+  const cleanup = () => {
+    if (finished) return;
+    finished = true;
+    try { liftAnim?.cancel?.(); } catch (_) {}
+    try { flipAnim?.cancel?.(); } catch (_) {}
+    cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
+    inner.style.animation = '';
+    inner.style.transform = '';
+  };
+
+  // Use WAAPI so this still runs even if CSS "no-animations" mode was enabled earlier.
+  if (typeof cardEl.animate === 'function' && typeof inner.animate === 'function') {
+    try {
+      const tiltX = String(cardEl.style.getPropertyValue('--og-flip-tilt-x') || '6deg').trim();
+      const tiltY = String(cardEl.style.getPropertyValue('--og-flip-tilt-y') || '0deg').trim();
+      liftAnim = cardEl.animate(
+        [
+          { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
+          { transform: 'translateY(-16px) scale(1.04)', filter: 'brightness(1.08)', offset: 0.24 },
+          { transform: 'translateY(-10px) scale(1.08)', filter: 'brightness(1.12)', offset: 0.52 },
+          { transform: 'translateY(-2px) scale(1.03)', filter: 'brightness(1.05)', offset: 0.78 },
+          { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' }
+        ],
+        { duration: 1320, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
+      );
+      flipAnim = inner.animate(
+        [
+          { transform: 'rotateY(180deg) rotateX(0deg) rotateZ(0deg)' },
+          { transform: `rotateY(136deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.25 },
+          { transform: `rotateY(84deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.5 },
+          { transform: `rotateY(26deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.76 },
+          { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' }
+        ],
+        { duration: 1320, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
+      );
+      Promise.allSettled([liftAnim.finished, flipAnim.finished]).then(cleanup);
+      setTimeout(cleanup, 1800);
+      return;
+    } catch (_) {
+      // Fall through to CSS animation cleanup.
+    }
+  }
+
+  inner.addEventListener('animationend', cleanup, { once: true });
+  setTimeout(cleanup, 1800);
 }
 
 
@@ -3551,6 +3791,13 @@ function renderGame() {
   renderAdvancedFeatures();
 }
 
+window.refreshStyleSensitiveGameUI = function refreshStyleSensitiveGameUI() {
+  try { syncClueSubmitButtonAppearance(); } catch (_) {}
+  if (currentGame) {
+    try { renderGame(); } catch (_) {}
+  }
+};
+
 // Advanced features rendering hook
 function renderAdvancedFeatures() {
   if (!currentGame) return;
@@ -3562,6 +3809,7 @@ function renderAdvancedFeatures() {
   const canGuessNow = isMyTurn && currentGame.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame.winner;
   if (!canGuessNow) {
     pendingCardSelection = null;
+    revealedPeekCardIndex = null;
   }
 
   // Load tags from localStorage for this game
@@ -3777,7 +4025,13 @@ function dockChatIntoOgPanels(isOgMode) {
 function renderBoard(isSpymaster) {
   const boardEl = document.getElementById('game-board');
   if (!boardEl || !currentGame?.cards) return;
-  const isOgMode = document.body.classList.contains('og-mode');
+  const isOgMode = isOnlineStyleActive();
+
+  // If the peeked card is no longer revealed (new board / reset), clear stale state.
+  if (revealedPeekCardIndex !== null && revealedPeekCardIndex !== undefined) {
+    const peeked = currentGame.cards[revealedPeekCardIndex];
+    if (!peeked || !peeked.revealed) revealedPeekCardIndex = null;
+  }
 
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
@@ -3790,6 +4044,7 @@ function renderBoard(isSpymaster) {
     if (card.revealed) {
       classes.push('revealed');
       classes.push(`card-${card.type}`);
+      if (isOgMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
       classes.push(`card-${card.type}`);
@@ -3803,10 +4058,14 @@ function renderBoard(isSpymaster) {
       classes.push('pending-select');
     }
 
-    // Allow clicking for selection/tagging (if not revealed)
-    const canClick = !card.revealed && !isSpymaster;
-    // Card tap selects (shows checkmark). Confirmation requires tapping the checkmark.
-    const clickHandler = canClick ? `onclick="handleCardSelect(${i})"` : '';
+    // Revealed cards in OG mode can be "peeked" (stand up) one at a time.
+    // Unrevealed cards still use selection -> checkmark confirmation.
+    let clickHandler = '';
+    if (card.revealed && isOgMode) {
+      clickHandler = `onclick="handleRevealedCardPeek(${i})"`;
+    } else if (!isSpymaster) {
+      clickHandler = `onclick="handleCardSelect(${i})"`;
+    }
 
     const word = escapeHtml(card.word);
     const backFace = isOgMode
@@ -3921,6 +4180,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const clueFormEl = document.getElementById('clue-form');
   const operativeActionsEl = document.getElementById('operative-actions');
   const waitingEl = document.getElementById('waiting-message');
+  if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
+
+  syncClueSubmitButtonAppearance();
 
   // Hide all first
   currentClueEl.style.display = 'none';
@@ -4341,6 +4603,7 @@ async function handleClueSubmit(e) {
 async function handleCardClick(cardIndex) {
   // Clear any pending selection as soon as a guess is being processed
   pendingCardSelection = null;
+  revealedPeekCardIndex = null;
   if (!currentGame || currentGame.currentPhase !== 'operatives') return;
   if (isSpectating()) return;
   if (currentGame.winner) return;
@@ -4891,6 +5154,7 @@ let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
 let pendingCardSelection = null;
 // Used to run the slow, smooth selection animation exactly once
 let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
+let revealedPeekCardIndex = null; // one revealed card can be "stood up" at a time
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
@@ -5154,7 +5418,7 @@ function tagCard(cardIndex, tag) {
 function clearAllTags() {
   cardTags = {};
   pendingCardSelection = null;
-  pendingCardSelection = null;
+  revealedPeekCardIndex = null;
   renderCardTags();
   saveTagsToLocal();
   try { clearTeamMarkers(); } catch (_) {}
@@ -5261,23 +5525,48 @@ function loadTagsFromLocal() {
 /* =========================
    Card Selection Confirmation
 ========================= */
+function updateRevealedCardPeekUI() {
+  const cards = document.querySelectorAll('.game-card.revealed');
+  cards.forEach((el) => el.classList.remove('revealed-peek'));
+  if (revealedPeekCardIndex === null || revealedPeekCardIndex === undefined) return;
+  const target = document.querySelector(`.game-card[data-index="${revealedPeekCardIndex}"]`);
+  if (target && target.classList.contains('revealed')) {
+    target.classList.add('revealed-peek');
+  }
+}
+
+function handleRevealedCardPeek(cardIndex) {
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  const card = currentGame?.cards?.[idx];
+  if (!card || !card.revealed) return;
+
+  if (revealedPeekCardIndex === idx) revealedPeekCardIndex = null;
+  else revealedPeekCardIndex = idx;
+  updateRevealedCardPeekUI();
+}
+
 function clearPendingCardSelection() {
   pendingCardSelection = null;
   _pendingSelectAnimIndex = null;
+  revealedPeekCardIndex = null;
   // Clear any OG "peek" state.
   try {
     document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
   } catch (_) {}
+  updateRevealedCardPeekUI();
   updatePendingCardSelectionUI();
 }
 
 function setPendingCardSelection(cardIndex) {
   pendingCardSelection = cardIndex;
   _pendingSelectAnimIndex = cardIndex;
+  revealedPeekCardIndex = null;
   // Ensure only one card can be in "peek" mode.
   try {
     document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
   } catch (_) {}
+  updateRevealedCardPeekUI();
   updatePendingCardSelectionUI();
 }
 
@@ -5297,6 +5586,7 @@ function updatePendingCardSelectionUI() {
       _pendingSelectAnimIndex = null;
     }
   }
+  updateRevealedCardPeekUI();
 }
 
 /* =========================
@@ -6331,7 +6621,7 @@ function handleCardSelect(cardIndex) {
 
   // OG (Codenames Online): if the selected card is already face-down, a second click
   // "peeks" (stands it up) so you can read the word; a third click deselects.
-  const isOgMode = document.body.classList.contains('og-mode');
+  const isOgMode = isOnlineStyleActive();
   if (isOgMode && pendingCardSelection === cardIndex) {
     const el = document.querySelector(`.game-card[data-index="${cardIndex}"]`);
     if (el && el.classList.contains('pending-select') && !el.classList.contains('revealed')) {
@@ -6452,6 +6742,8 @@ function cleanupAdvancedFeatures() {
 
   cardTags = {};
   pendingCardSelection = null;
+  _pendingSelectAnimIndex = null;
+  revealedPeekCardIndex = null;
   activeTagMode = null;
   setActiveTagMode(null);
   closeMobileSidebars();

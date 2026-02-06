@@ -7187,6 +7187,9 @@ function applyStyleModeSetting() {
   if (typeof renderOgPanels === 'function') {
     try { renderOgPanels(); } catch (_) { /* ignore if game not initialized */ }
   }
+
+  // Let game.js refresh any style-dependent runtime UI (clue submit icon, board faces, etc.).
+  try { window.refreshStyleSensitiveGameUI?.(); } catch (_) {}
 }
 
 function syncLegacyStyleKeys() {
