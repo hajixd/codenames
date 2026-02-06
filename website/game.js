@@ -4545,6 +4545,35 @@ async function handleLeaveGame(opts = {}) {
     }
   }
 
+  // Practice should always terminate when the player leaves.
+  // This avoids orphan practice docs and stale "in progress" sessions.
+  if (wasPractice && gameId) {
+    try {
+      const ref = db.collection('games').doc(gameId);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const g = snap.data() || {};
+        if (String(g.type || '') !== 'practice') return;
+        if (g.winner || g.currentPhase === 'ended') return;
+
+        tx.update(ref, {
+          winner: 'ended',
+          currentPhase: 'ended',
+          endedReason: 'practice_left',
+          endedBy: {
+            odId: odId || null,
+            name: userName || 'Someone'
+          },
+          log: firebase.firestore.FieldValue.arrayUnion(`${userName} left practice. Practice ended.`),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+    } catch (e) {
+      console.warn('Ending practice on leave failed (best-effort):', e);
+    }
+  }
+
   // Local cleanup
   try { cleanupAdvancedFeatures?.(); } catch (_) {}
   try { window.cleanupAllAI && window.cleanupAllAI(); } catch (_) {}
@@ -6087,6 +6116,7 @@ function showClueAnimation(word, number, teamColor) {
   } else {
     // OG mode: neon scanline + glitch word + rotating emblem (no box / no blur).
     overlay.innerHTML = `
+      <div class="clue-announcement-backdrop clue-og-backdrop"></div>
       <div class="clue-og-container ${teamClass}">
         <div class="clue-og-scan" aria-hidden="true"></div>
         <div class="clue-og-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>

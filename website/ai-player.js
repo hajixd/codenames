@@ -1050,12 +1050,99 @@ function sanitizeChatText(text, vision, maxLen = 180) {
     // If it still contains a standalone "N =" anywhere, drop the "N ="
     s = s.replace(/\b\d{1,2}\s*=\s*/g, '');
 
+    // Never leak internal confidence scoring in visible team chat.
+    s = s.replace(/\b(?:confidence|certainty|sure(?:ness)?)\s*(?:is|=|:)?\s*\d{1,2}(?:\s*\/\s*10|\s*%?)\b/gi, '');
+    s = s.replace(/\b(?:\d{1,2}\s*\/\s*10|\d{1,2}\s*%)\s*(?:confidence|certain(?:ty)?|sure(?:ness)?)\b/gi, '');
+
     s = s.replace(/\s{2,}/g, ' ').trim();
     if (!s) return '';
     return s.slice(0, maxLen);
   } catch (_) {
     return String(text || '').trim().slice(0, maxLen);
   }
+}
+
+function normalizeConfidence10(value, fallback = 6) {
+  const fbNum = Number(fallback);
+  const fb = Number.isFinite(fbNum) ? Math.max(1, Math.min(10, Math.round(fbNum))) : 6;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fb;
+  if (n > 0 && n <= 1) return Math.max(1, Math.min(10, Math.round(n * 10)));
+  return Math.max(1, Math.min(10, Math.round(n)));
+}
+
+function confidenceToUnit(value, fallback = 0.6) {
+  const fbNum = Number(fallback);
+  const fb = Number.isFinite(fbNum) ? fbNum : 0.6;
+  return normalizeConfidence10(value, fb * 10) / 10;
+}
+
+function buildOperativeConsensusSnapshot(proposals, councilSize) {
+  const ps = (proposals || []).filter(p => p && p.action === 'guess' && p.index !== null && p.index !== undefined);
+  if (!ps.length) return null;
+  const size = Number.isFinite(+councilSize) && +councilSize > 0 ? +councilSize : ps.length;
+
+  const byIndex = new Map();
+  for (const p of ps) {
+    const k = Number(p.index);
+    if (!Number.isFinite(k)) continue;
+    const cur = byIndex.get(k) || { votes: 0, sum: 0 };
+    cur.votes += 1;
+    cur.sum += normalizeConfidence10(p.confidence, 6);
+    byIndex.set(k, cur);
+  }
+
+  let best = null;
+  for (const [index, info] of byIndex.entries()) {
+    const avg = info.sum / Math.max(1, info.votes);
+    if (!best || info.votes > best.votes || (info.votes === best.votes && avg > best.avg)) {
+      best = { index, votes: info.votes, avg };
+    }
+  }
+  if (!best) return null;
+  return { ...best, councilSize: size, voteRatio: best.votes / Math.max(1, size) };
+}
+
+function shouldMinimizeOperativeDiscussion(proposals, councilSize) {
+  const snap = buildOperativeConsensusSnapshot(proposals, councilSize);
+  if (!snap) return false;
+  const voteFloor = snap.councilSize >= 3 ? 2 : snap.councilSize;
+  return snap.votes >= voteFloor && snap.voteRatio >= 0.66 && snap.avg >= 8;
+}
+
+function buildSpymasterConsensusSnapshot(proposals, councilSize) {
+  const ps = (proposals || []).filter(p => p && p.clue);
+  if (!ps.length) return null;
+  const size = Number.isFinite(+councilSize) && +councilSize > 0 ? +councilSize : ps.length;
+
+  const byClue = new Map();
+  for (const p of ps) {
+    const clue = String(p.clue || '').trim().toUpperCase();
+    if (!clue) continue;
+    const number = Number.isFinite(+p.number) ? +p.number : 1;
+    const key = `${clue}|${number}`;
+    const cur = byClue.get(key) || { clue, number, votes: 0, sum: 0 };
+    cur.votes += 1;
+    cur.sum += normalizeConfidence10(p.confidence, 6);
+    byClue.set(key, cur);
+  }
+
+  let best = null;
+  for (const entry of byClue.values()) {
+    const avg = entry.sum / Math.max(1, entry.votes);
+    if (!best || entry.votes > best.votes || (entry.votes === best.votes && avg > best.avg)) {
+      best = { clue: entry.clue, number: entry.number, votes: entry.votes, avg };
+    }
+  }
+  if (!best) return null;
+  return { ...best, councilSize: size, voteRatio: best.votes / Math.max(1, size) };
+}
+
+function shouldMinimizeSpymasterDiscussion(proposals, councilSize) {
+  const snap = buildSpymasterConsensusSnapshot(proposals, councilSize);
+  if (!snap) return false;
+  const voteFloor = snap.councilSize >= 3 ? 2 : snap.councilSize;
+  return snap.votes >= voteFloor && snap.voteRatio >= 0.66 && snap.avg >= 8;
 }
 
 // ─── Human-sounding chat post-processing (anti-repetition) ──────────────────
@@ -1276,9 +1363,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const team = ai.team;
   const vision = buildAIVision(game, ai);
   const persona = core.personality;
-  const requireChat = !!opts.requireChat;
   const requireMarks = !!opts.requireMarks;
-  const councilSize = Number(opts.councilSize || 0);
 
 
   if (!vision.clue || !vision.clue.word) return null;
@@ -1322,9 +1407,10 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- NEVER sound like a formal essay or AI. No "I believe", "I suggest", "Additionally", "Furthermore".`,
     `- Keep it to 1-2 short sentences MAX. Think group chat, not paragraph.`,
     `- EVERY message must add NEW information or a NEW opinion. If someone already said what you're thinking, just agree and move on.`,
+    `- NEVER mention your confidence score/percent in chat.`,
     ``,
     `Return JSON only:`,
-    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"your message to teammates"}`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"your message to teammates"}`,
     ``,
     `Rules:`,
     `- If action="guess", index MUST be an unrevealed index from the list.`,
@@ -1361,7 +1447,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   const action = String(parsed.action || '').toLowerCase().trim();
   const idx = Number(parsed.index);
-  const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+  const conf = normalizeConfidence10(parsed.confidence, 6);
   const candidate = unrevealed.find(c => c.index === idx);
 
   const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
@@ -1381,29 +1467,17 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   let chat = String(parsed.chat || '').trim();
   chat = sanitizeChatText(chat, vision, 180);
-
-  // If we are coordinating with teammates, prefer always sending something human-readable.
-  if (!chat && requireChat) {
-    if (action === 'guess' && candidate) {
-      const w = String(candidate.word || '').toUpperCase();
-      const fallbacks = [`gotta be ${w} right?`, `${w} for sure`, `i'm going ${w}`, `${w} — pretty obvious imo`];
-      chat = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-    } else {
-      const endFallbacks = [`not feeling any of these, end it?`, `idk let's just end the turn`, `nothing's jumping out, pass?`];
-      chat = endFallbacks[Math.floor(Math.random() * endFallbacks.length)];
-    }
-  }
   chat = chat.slice(0, 180);
 
   if (action === 'end_turn') {
-    return { ai, action: 'end_turn', index: null, confidence: conf || 0.0, marks, chat };
+    return { ai, action: 'end_turn', index: null, confidence: conf, marks, chat };
   }
   if (action === 'guess' && candidate) {
-    return { ai, action: 'guess', index: candidate.index, confidence: Number.isFinite(conf) ? conf : 0.55, marks, chat };
+    return { ai, action: 'guess', index: candidate.index, confidence: conf, marks, chat };
   }
 
   // If invalid, default safe.
-  return { ai, action: 'end_turn', index: null, confidence: 0.0, marks, chat: chat || '' };
+  return { ai, action: 'end_turn', index: null, confidence: 1, marks, chat: chat || '' };
 }
 
 function chooseOperativeAction(proposals, game, councilSize) {
@@ -1417,7 +1491,7 @@ function chooseOperativeAction(proposals, game, councilSize) {
     if (p.action !== 'guess' || p.index === null || p.index === undefined) continue;
     const k = p.index;
     const cur = byIndex.get(k) || { sum: 0, n: 0, max: 0 };
-    const c = Number.isFinite(+p.confidence) ? +p.confidence : 0.55;
+    const c = confidenceToUnit(p.confidence, 0.6);
     cur.sum += c; cur.n += 1; cur.max = Math.max(cur.max, c);
     byIndex.set(k, cur);
   }
@@ -1466,8 +1540,8 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
   const proposalLines = ps.slice(0, 6).map(p => {
     if (p.action === 'guess' && Number.isFinite(+p.index)) {
       const w = idxToWord.get(Number(p.index)) || 'UNKNOWN';
-      const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
-      return `- ${String(p.ai?.name || 'AI')}: guess ${w} (~${c}%)`;
+      const c = normalizeConfidence10(p.confidence, 6);
+      return `- ${String(p.ai?.name || 'AI')}: guess ${w} (confidence ${c}/10)`;
     }
     return `- ${String(p.ai?.name || 'AI')}: end turn`;
   }).join('\n');
@@ -1491,12 +1565,13 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
     `- If everyone agreed: "aight let's go with WORD" or "nice, WORD it is" — that's it.`,
     `- If it was debated: briefly acknowledge the debate, like "was torn but WORD makes sense"`,
     `- If ending turn: "yeah let's play it safe" or "not feeling great about any of these, end it"`,
-    `- Do NOT recap the entire conversation. Everyone was there. They know what was said.`,
-    `- Do NOT repeat reasoning that was already given.`,
-    `- 1 short sentence max. Casual tone.`,
-    `- NEVER reference card indices/numbers. Use the WORD itself.`,
-    ``,
-    `Return JSON only: {"mind":"2-4 lines first-person", "chat":"1 short sentence"}`,
+      `- Do NOT recap the entire conversation. Everyone was there. They know what was said.`,
+      `- Do NOT repeat reasoning that was already given.`,
+      `- 1 short sentence max. Casual tone.`,
+      `- NEVER reference card indices/numbers. Use the WORD itself.`,
+      `- NEVER mention confidence numbers/percentages.`,
+      ``,
+      `Return JSON only: {"mind":"2-4 lines first-person", "chat":"1 short sentence"}`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-8).join('\n');
@@ -1547,8 +1622,8 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     const proposalLines = ps.slice(0, 8).map(p => {
       if (p.action === 'guess' && Number.isFinite(+p.index)) {
         const w = idxToWord.get(Number(p.index)) || 'UNKNOWN';
-        const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
-        return `- ${String(p.ai?.name || 'AI')}: guess ${w} (~${c}%)`;
+        const c = normalizeConfidence10(p.confidence, 6);
+        return `- ${String(p.ai?.name || 'AI')}: guess ${w} (confidence ${c}/10)`;
       }
       return `- ${String(p.ai?.name || 'AI')}: end turn`;
     }).join('\n');
@@ -1585,9 +1660,10 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `- If you disagree: "eh idk about WORD, what about OTHER_WORD instead?"`,
       `- If you agree and want to add context: "yeah and also WORD works cause [new reason]"`,
       `- Max 1-2 short sentences.`,
+      `- NEVER mention confidence numbers/percentages in chat.`,
       ``,
       `Return JSON only:`,
-      `{"mind":"2-8 lines first-person thinking", "chat":"(empty string if nothing new to say)", "action":"guess|end_turn|no_change", "index":N, "confidence":0.0-1.0, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`,
+      `{"mind":"2-8 lines first-person thinking", "chat":"(empty string if nothing new to say)", "action":"guess|end_turn|no_change", "index":N, "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`,
       `Set continue=false if the team seems to agree or you have nothing more to add.`,
       `In chat, NEVER write card indices/numbers. Use the WORD itself.`,
     ].join('\n');
@@ -1635,7 +1711,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const action = String(parsed.action || 'no_change').toLowerCase().trim();
     const idx = Number(parsed.index);
-    const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+    const conf = normalizeConfidence10(parsed.confidence, 6);
     const cont = (parsed.continue === true);
 
     const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
@@ -1655,11 +1731,11 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       if (action === 'guess' && unrevealedIdx.has(idx)) {
         out.action = 'guess';
         out.index = idx;
-        out.confidence = Number.isFinite(conf) ? conf : 0.55;
+        out.confidence = conf;
       } else if (action === 'end_turn') {
         out.action = 'end_turn';
         out.index = null;
-        out.confidence = Number.isFinite(conf) ? conf : 0.0;
+        out.confidence = conf;
       }
     }
     return out;
@@ -1696,7 +1772,6 @@ async function runOperativeCouncil(game, team) {
     aiThinkingState[ai.id] = true;
     try {
       const prop = await aiOperativePropose(ai, working, {
-        requireChat: ops.length >= 2,
         requireMarks: ops.length >= 2,
         councilSize: ops.length,
         chatDocs: chatBefore.docs
@@ -1735,11 +1810,12 @@ async function runOperativeCouncil(game, team) {
 
   // If nobody proposed anything new for this key, don't re-act.
   if (!proposalsByAi.size) return;
+  const minimizeDiscussion = shouldMinimizeOperativeDiscussion(Array.from(proposalsByAi.values()), ops.length);
 
   // Open discussion phase: AIs may send as many short back-and-forth messages as
   // they want (bounded internally), always thinking first. They can also revise
   // their own suggested action as the conversation evolves.
-  if (ops.length >= 2) {
+  if (ops.length >= 2 && !minimizeDiscussion) {
     let rounds = 0;
     while (rounds < 3) {
       rounds += 1;
@@ -1797,7 +1873,7 @@ async function runOperativeCouncil(game, team) {
     }
   }
 
-  if (ops.length >= 2) await sleep(AI_COUNCIL_PACE.beforeDecisionMs);
+  if (ops.length >= 2 && !minimizeDiscussion) await sleep(AI_COUNCIL_PACE.beforeDecisionMs);
 
   // Decide and act (rotating executor)
   const executor = pickRotatingAI(game, team, 'op', ops) || ops[0];
@@ -1819,7 +1895,7 @@ async function runOperativeCouncil(game, team) {
 
   // Optional follow-up wrap-up message (allows an AI to speak twice and helps
   // them actually process teammate input). This is advice-driven, not forced.
-  if (ops.length >= 2) {
+  if (ops.length >= 2 && !minimizeDiscussion) {
     try {
       const core = ensureAICore(executor);
       if (core && core.lastCouncilSummaryKey !== key) {
@@ -1865,8 +1941,9 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
     `Think through your options in "mind", then propose a clue. Aim for 2-4 when safe; 0 only if defensive.`,
     `If chatting with teammate spymasters, be casual: "thinking ANIMAL for 3, connects BEAR, FOX, and TIGER"`,
     `Keep chat short. No formal language.`,
+    `NEVER mention confidence scores/percentages in chat.`,
     `Return JSON only:`,
-    `{"mind":"first-person thinking (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "chat":"optional short teammate message"}`,
+    `{"mind":"first-person thinking (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":1-10, "chat":"optional short teammate message"}`,
     ``,
     `Rules:`,
     `- clue: ONE word (no spaces, no hyphens), NOT any board word.`,
@@ -1902,7 +1979,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
   let clueNumber = parseInt(parsed.number, 10);
   if (!Number.isFinite(clueNumber)) clueNumber = 1;
   clueNumber = Math.max(0, Math.min(9, clueNumber));
-  const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+  const conf = normalizeConfidence10(parsed.confidence, 6);
 
   const bad =
     (!clueWord) ? 'empty clue' :
@@ -1918,7 +1995,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
   let chat = String(parsed.chat || '').trim();
   chat = sanitizeChatText(chat, vision, 180);
   chat = chat.slice(0, 180);
-  return { ai, clue: clueWord, number: clueNumber, confidence: Number.isFinite(conf) ? conf : 0.6, chat };
+  return { ai, clue: clueWord, number: clueNumber, confidence: conf, chat };
 }
 
 function chooseSpymasterClue(proposals) {
@@ -1929,7 +2006,7 @@ function chooseSpymasterClue(proposals) {
   let best = null;
   for (const p of ps) {
     const n = Number.isFinite(+p.number) ? +p.number : 1;
-    const c = Number.isFinite(+p.confidence) ? +p.confidence : 0.6;
+    const c = confidenceToUnit(p.confidence, 0.6);
     const score = c + (Math.min(4, Math.max(0, n)) * 0.08); // reward 2-4 gently
     if (!best || score > best.score) best = { clue: p.clue, number: n, score };
   }
@@ -1945,8 +2022,8 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
   const ps = Array.isArray(proposals) ? proposals.filter(p => p && p.clue) : [];
   const proposalLines = ps.slice(0, 6).map(p => {
     const n = Number.isFinite(+p.number) ? +p.number : 1;
-    const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
-    return `- ${String(p.ai?.name || 'AI')}: ${String(p.clue).toUpperCase()} for ${n} (~${c}%)`;
+    const c = normalizeConfidence10(p.confidence, 6);
+    return `- ${String(p.ai?.name || 'AI')}: ${String(p.clue).toUpperCase()} for ${n} (confidence ${c}/10)`;
   }).join('\n');
 
   const chosen = pick ? `${String(pick.clue || '').toUpperCase()} for ${Number(pick.number || 0)}` : '';
@@ -1964,6 +2041,7 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
     `- If there was debate: very briefly acknowledge it, like "was between X and Y but going ${chosen}"`,
     `- Do NOT recap the whole discussion. 1 short sentence.`,
     `- No card indices/numbers. No formal language.`,
+    `- NEVER mention confidence numbers/percentages.`,
     `Return JSON only: {"mind":"2-4 lines thinking", "chat":"1 short sentence"}`,
   ].join('\n');
 
@@ -2048,8 +2126,8 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
     const ps = Array.from((proposalsByAi || new Map()).values()).filter(p => p && p.clue);
     const proposalLines = ps.slice(0, 8).map(p => {
       const n = Number.isFinite(+p.number) ? +p.number : 1;
-      const c = Number.isFinite(+p.confidence) ? Math.round(+p.confidence * 100) : 0;
-      return `- ${String(p.ai?.name || 'AI')}: ${String(p.clue).toUpperCase()} for ${n} (~${c}%)`;
+      const c = normalizeConfidence10(p.confidence, 6);
+      return `- ${String(p.ai?.name || 'AI')}: ${String(p.clue).toUpperCase()} for ${n} (confidence ${c}/10)`;
     }).join('\n');
 
     const myPrev = proposalsByAi?.get(ai.id);
@@ -2069,8 +2147,9 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
       `- If you want to propose a DIFFERENT clue, explain why briefly.`,
       `- If you want to adjust the number, say so concisely.`,
       `- Casual tone, short messages. No formal language.`,
+      `- NEVER mention confidence numbers/percentages in chat.`,
       `Return JSON only:`,
-      `{"mind":"2-6 lines thinking", "chat":"(empty if nothing new)", "action":"propose|no_change", "clue":"ONEWORD", "number":N, "confidence":0.0-1.0, "continue":true|false}`,
+      `{"mind":"2-6 lines thinking", "chat":"(empty if nothing new)", "action":"propose|no_change", "clue":"ONEWORD", "number":N, "confidence":1-10, "continue":true|false}`,
       `clue must be ONE word (no spaces/hyphens), NOT a board word.`,
       `In chat, NEVER write card indices/numbers.`,
     ].join('\n');
@@ -2114,7 +2193,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
       let clueNumber = parseInt(parsed.number, 10);
       if (!Number.isFinite(clueNumber)) clueNumber = 1;
       clueNumber = Math.max(0, Math.min(9, clueNumber));
-      const conf = Math.max(0, Math.min(1, Number(parsed.confidence)));
+      const conf = normalizeConfidence10(parsed.confidence, 6);
       const bad =
         (!clueWord) ? 'empty clue' :
         (clueWord.includes(' ') || clueWord.includes('-')) ? 'not one word' :
@@ -2123,7 +2202,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
       if (!bad) {
         out.clue = clueWord;
         out.number = clueNumber;
-        out.confidence = Number.isFinite(conf) ? conf : 0.6;
+        out.confidence = conf;
       }
     }
     return out;
@@ -2178,10 +2257,11 @@ async function runSpymasterCouncil(game, team) {
   }
 
   if (!proposalsByAi.size) return;
+  const minimizeDiscussion = shouldMinimizeSpymasterDiscussion(Array.from(proposalsByAi.values()), spies.length);
 
   // Open discussion phase (multiple short messages). Not forced; AIs may talk
   // as much as they want (bounded internally) and can revise their own clue lean.
-  if (spies.length >= 2) {
+  if (spies.length >= 2 && !minimizeDiscussion) {
     let rounds = 0;
     while (rounds < 3) {
       rounds += 1;
@@ -2228,7 +2308,7 @@ async function runSpymasterCouncil(game, team) {
     }
   }
 
-  if (spies.length >= 2) await sleep(AI_COUNCIL_PACE.beforeDecisionMs);
+  if (spies.length >= 2 && !minimizeDiscussion) await sleep(AI_COUNCIL_PACE.beforeDecisionMs);
 
   const proposals = Array.from(proposalsByAi.values()).filter(Boolean);
   const pick = chooseSpymasterClue(proposals);
@@ -2249,7 +2329,7 @@ async function runSpymasterCouncil(game, team) {
 
   // Optional follow-up wrap-up message (allows an AI to speak twice and helps
   // them integrate teammate input). Advice-driven, not forced.
-  if (spies.length >= 2) {
+  if (spies.length >= 2 && !minimizeDiscussion) {
     try {
       const core = ensureAICore(executor);
       if (core && core.lastCouncilSummaryKey !== key) {
