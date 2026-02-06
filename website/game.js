@@ -874,9 +874,27 @@ function initGameUI() {
   document.getElementById('og-num-minus')?.addEventListener('click', () => {
     const numInput = document.getElementById('clue-num-input');
     if (numInput) {
-      const val = parseInt(numInput.value) || 0;
+      const val = parseInt(numInput.value, 10) || 0;
       numInput.value = Math.max(0, val - 1);
     }
+  });
+  document.getElementById('og-num-plus')?.addEventListener('click', () => {
+    const numInput = document.getElementById('clue-num-input');
+    if (numInput) {
+      const val = parseInt(numInput.value, 10) || 0;
+      numInput.value = Math.min(9, val + 1);
+    }
+  });
+  document.getElementById('clue-num-input')?.addEventListener('input', (e) => {
+    const el = e.target;
+    if (!el) return;
+    const raw = String(el.value || '').replace(/[^\d]/g, '');
+    if (!raw) {
+      el.value = '';
+      return;
+    }
+    const n = Math.max(0, Math.min(9, parseInt(raw, 10) || 0));
+    el.value = String(n);
   });
 
   // OG Mode: Settings button opens settings modal
@@ -3960,6 +3978,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     if (!spectator && isMyTurn && isSpymaster) {
       // Show clue input
       clueFormEl.style.display = 'flex';
+      const numInput = document.getElementById('clue-num-input');
+      if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
     } else {
       // Show waiting message
       waitingEl.style.display = 'block';
@@ -4223,9 +4243,12 @@ async function handleClueSubmit(e) {
 
   const wordInput = document.getElementById('clue-input');
   const numInput = document.getElementById('clue-num-input');
+  const submitBtn = document.querySelector('#clue-form button[type="submit"]');
 
   const word = (wordInput.value || '').trim().toUpperCase();
-  const number = parseInt(numInput.value, 10);
+  const parsed = parseInt(numInput.value, 10);
+  const number = Number.isInteger(parsed) ? parsed : 1;
+  if (!Number.isInteger(parsed)) numInput.value = '1';
 
   if (!word || isNaN(number) || number < 0 || number > 9) {
     return;
@@ -4247,7 +4270,12 @@ async function handleClueSubmit(e) {
   // Prevent double-submission (rapid double-click / double Enter)
   if (_processingClue) return;
   _processingClue = true;
+  if (submitBtn) submitBtn.disabled = true;
   try {
+    const teamName = currentGame.currentTeam === 'red'
+      ? (currentGame.redTeamName || 'Red Team')
+      : (currentGame.blueTeamName || 'Blue Team');
+
     // Add clue to history
     const clueEntry = {
       team: currentGame.currentTeam,
@@ -4274,6 +4302,7 @@ async function handleClueSubmit(e) {
   } catch (e) {
     console.error('Failed to give clue:', e);
   } finally {
+    if (submitBtn) submitBtn.disabled = false;
     _processingClue = false;
   }
 }

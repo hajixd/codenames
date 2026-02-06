@@ -19821,3 +19821,43 @@ textarea.input{
     gap: 10px;
   }
 }
+
+/* Practice/OG clue bar fix: restore a clean, aligned control row. */
+body.og-mode .clue-form-expanded,
+body.cozy-mode .clue-form-expanded{
+  align-items: center;
+  min-height: 50px;
+}
+
+body.og-mode .clue-input-expanded,
+body.cozy-mode .clue-input-expanded,
+body.og-mode .clue-num-expanded,
+body.cozy-mode .clue-num-expanded{
+  min-height: 0 !important;
+  height: 38px;
+}
+
+body.og-mode .clue-num-expanded,
+body.cozy-mode .clue-num-expanded{
+  appearance: textfield;
+  -moz-appearance: textfield;
+  padding: 0 6px;
+}
+
+body.og-mode .clue-num-expanded::-webkit-outer-spin-button,
+body.og-mode .clue-num-expanded::-webkit-inner-spin-button,
+body.cozy-mode .clue-num-expanded::-webkit-outer-spin-button,
+body.cozy-mode .clue-num-expanded::-webkit-inner-spin-button{
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+body.og-mode .og-num-btn,
+body.cozy-mode .og-num-btn{
+  font-size: 19px;
+}
+
+body.og-mode .clue-form-expanded .btn.primary,
+body.cozy-mode .clue-form-expanded .btn.primary{
+  min-height: 40px;
+}
