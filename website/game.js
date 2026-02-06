@@ -3251,9 +3251,13 @@ function startGameListener(gameId, options = {}) {
 
                 cardEl.style.setProperty('--guess-tx', `${tx}px`);
                 cardEl.style.setProperty('--guess-ty', `${ty}px`);
+                cardEl.style.setProperty('--og-flip-tilt-x', `${sy ? (-sy * 8) : 5}deg`);
+                cardEl.style.setProperty('--og-flip-tilt-y', `${sx ? (sx * 9) : 0}deg`);
               } else {
                 cardEl.style.setProperty('--guess-tx', `0px`);
                 cardEl.style.setProperty('--guess-ty', `0px`);
+                cardEl.style.setProperty('--og-flip-tilt-x', `6deg`);
+                cardEl.style.setProperty('--og-flip-tilt-y', `0deg`);
               }
             } catch (_) {}
 
@@ -3274,8 +3278,7 @@ function startGameListener(gameId, options = {}) {
               const inner = cardEl.querySelector('.card-inner');
               if (inner) {
                 try {
-                  // Drive a very obvious, slow 3D flip via CSS keyframes.
-                  // Start from face-down so the reveal always reads as a flip.
+                  // Start from face-down so the reveal always reads as a deliberate flip.
                   inner.style.animation = 'none';
                   inner.style.transform = 'rotateY(180deg)';
                   void inner.offsetWidth;
@@ -3294,14 +3297,16 @@ function startGameListener(gameId, options = {}) {
               cleaned = true;
               cardEl.classList.remove('guess-animate');
               cardEl.classList.remove('og-reveal-bump');
+              cardEl.style.removeProperty('--og-flip-tilt-x');
+              cardEl.style.removeProperty('--og-flip-tilt-y');
             };
             if (!isOgMode) {
               cardEl.addEventListener('animationend', cleanup, { once: true });
               // Fallback cleanup
               setTimeout(cleanup, 5000);
             } else {
-              // No CSS animation to listen for in OG mode; just clear the bump after the flip.
-              setTimeout(cleanup, 4600);
+              // OG flip is shorter; clear lift state quickly so interaction feels snappy.
+              setTimeout(cleanup, 1700);
             }
           }
         });
@@ -4942,29 +4947,103 @@ function setActiveTagMode(mode) {
   });
 }
 
+function getCurrentMarkerOwnerId() {
+  try {
+    const uid = (typeof getUserId === 'function') ? String(getUserId() || '').trim() : '';
+    return uid ? `u:${uid}` : 'u:local';
+  } catch (_) {
+    return 'u:local';
+  }
+}
+
+function normalizeTeamMarkerBucket(raw) {
+  const out = {};
+  if (!raw) return out;
+  const valid = new Set(['yes', 'maybe', 'no']);
+
+  // Legacy shape: marker is a single string for this card.
+  if (typeof raw === 'string') {
+    const t = String(raw || '').toLowerCase().trim();
+    if (valid.has(t)) out.legacy = t;
+    return out;
+  }
+
+  if (typeof raw !== 'object') return out;
+  for (const [owner, value] of Object.entries(raw || {})) {
+    const id = String(owner || '').trim();
+    const t = String(value || '').toLowerCase().trim();
+    if (!id || !valid.has(t)) continue;
+    out[id] = t;
+  }
+  return out;
+}
+
+function getTeamMarkerEntriesForCard(teamMarkers, cardIndex, myOwnerId = '') {
+  const raw = teamMarkers ? (teamMarkers[String(cardIndex)] ?? teamMarkers[cardIndex]) : null;
+  const bucket = normalizeTeamMarkerBucket(raw);
+  return Object.entries(bucket).map(([owner, tag]) => ({
+    owner,
+    tag,
+    isAI: owner.startsWith('ai:') || owner.startsWith('ai_'),
+    isMine: !!(myOwnerId && owner === myOwnerId),
+  }));
+}
+
+function buildCardTagElement(tag, opts = {}) {
+  const isAI = !!opts.isAI;
+  const isShared = !!opts.isShared;
+  const isMine = !!opts.isMine;
+
+  const tagEl = document.createElement('div');
+  tagEl.className = `card-tag ${isAI ? 'ai' : ''} ${isShared ? 'shared' : ''} ${isMine ? 'mine' : ''} tag-${tag}`;
+  tagEl.setAttribute('aria-hidden', 'true');
+
+  if (tag === 'yes') {
+    tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+  } else if (tag === 'maybe') {
+    tagEl.innerHTML = '?';
+  } else if (tag === 'no') {
+    tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  } else {
+    return null;
+  }
+
+  return tagEl;
+}
 
 async function syncTeamMarker(cardIndex, tag) {
   try {
     if (!currentGame?.id) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
-
+    const idx = Number(cardIndex);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    const ownerId = getCurrentMarkerOwnerId();
     const field = (myTeam === 'red') ? 'redMarkers' : 'blueMarkers';
-    const path = `${field}.${Number(cardIndex)}`;
+    const t = String(tag || '').toLowerCase().trim();
+    const clear = !t || t === 'clear';
+    if (!clear && !['yes', 'maybe', 'no'].includes(t)) return;
 
-    if (!tag || tag === 'clear') {
-      await db.collection('games').doc(currentGame.id).update({
-        [path]: firebase.firestore.FieldValue.delete(),
+    const ref = db.collection('games').doc(currentGame.id);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const markers = { ...(game?.[field] || {}) };
+      const key = String(idx);
+      const bucket = normalizeTeamMarkerBucket(markers[key]);
+
+      if (clear) delete bucket[ownerId];
+      else bucket[ownerId] = t;
+
+      if (Object.keys(bucket).length) markers[key] = bucket;
+      else delete markers[key];
+
+      tx.update(ref, {
+        [field]: markers,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-    } else {
-      const t = String(tag).toLowerCase();
-      if (!['yes','maybe','no'].includes(t)) return;
-      await db.collection('games').doc(currentGame.id).update({
-        [path]: t,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }
+    });
   } catch (e) {
     // ignore
   }
@@ -4975,10 +5054,26 @@ async function clearTeamMarkers() {
     if (!currentGame?.id) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
+    const ownerId = getCurrentMarkerOwnerId();
     const field = (myTeam === 'red') ? 'redMarkers' : 'blueMarkers';
-    await db.collection('games').doc(currentGame.id).update({
-      [field]: {},
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    const ref = db.collection('games').doc(currentGame.id);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const markers = { ...(game?.[field] || {}) };
+
+      for (const key of Object.keys(markers)) {
+        const bucket = normalizeTeamMarkerBucket(markers[key]);
+        delete bucket[ownerId];
+        if (Object.keys(bucket).length) markers[key] = bucket;
+        else delete markers[key];
+      }
+
+      tx.update(ref, {
+        [field]: markers,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
   } catch (e) {}
 }
@@ -4993,9 +5088,10 @@ function tagCard(cardIndex, tag) {
     : (myTeam === 'blue')
       ? (currentGame?.blueMarkers || {})
       : {};
+  const myOwnerId = getCurrentMarkerOwnerId();
 
   const currentLocal = cardTags[idx] || null;
-  const currentShared = (teamMarkers && typeof teamMarkers[idx] !== 'undefined') ? teamMarkers[idx] : null;
+  const currentShared = getTeamMarkerEntriesForCard(teamMarkers, idx, myOwnerId).find(m => m.isMine)?.tag || null;
   const currentEffective = currentLocal || currentShared || null;
 
   // Toggle behavior:
@@ -5055,36 +5151,66 @@ function renderCardTags() {
     : (myTeam === 'blue')
       ? (currentGame?.blueMarkers || {})
       : {};
+  const myOwnerId = getCurrentMarkerOwnerId();
 
   cards.forEach((card, index) => {
     // Remove existing tags (human, team, or AI)
+    card.querySelectorAll('.card-tag-row').forEach(el => el.remove());
     card.querySelectorAll('.card-tag').forEach(el => el.remove());
 
     if (card.classList.contains('revealed')) return;
 
     const humanTag = cardTags[index];
-    const teamTag = teamMarkers ? teamMarkers[index] : null;
     const aiTag = aiMarks ? aiMarks[index] : null;
+    const sharedEntries = getTeamMarkerEntriesForCard(teamMarkers, index, myOwnerId);
+    const marks = [];
 
-    // Priority: human local tags > team markers (shared with your team) > AI local marks
-    const tag = humanTag || teamTag || aiTag;
-    if (!tag) return;
-
-    const isShared = !humanTag && !!teamTag;
-    const isAI = !humanTag && !teamTag && !!aiTag;
-
-    const tagEl = document.createElement('div');
-    tagEl.className = `card-tag ${isAI ? 'ai' : ''} ${isShared ? 'shared' : ''} tag-${tag}`;
-
-    if (tag === 'yes') {
-      tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
-    } else if (tag === 'maybe') {
-      tagEl.innerHTML = '?';
-    } else if (tag === 'no') {
-      tagEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    // Local mark first (instant feedback).
+    if (humanTag && ['yes', 'maybe', 'no'].includes(humanTag)) {
+      marks.push({ tag: humanTag, isAI: false, isShared: false, isMine: true, owner: myOwnerId });
     }
 
-    card.appendChild(tagEl);
+    // Team-shared marks (other players + AIs). If my local tag exists, suppress my shared duplicate.
+    sharedEntries
+      .sort((a, b) => {
+        if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
+        if (a.isAI !== b.isAI) return a.isAI ? 1 : -1;
+        return String(a.owner).localeCompare(String(b.owner));
+      })
+      .forEach(entry => {
+        if (!['yes', 'maybe', 'no'].includes(entry.tag)) return;
+        if (entry.isMine && humanTag) return;
+        marks.push({ tag: entry.tag, isAI: entry.isAI, isShared: true, isMine: entry.isMine, owner: entry.owner });
+      });
+
+    // Fallback to local-only AI hint if no shared marks are present.
+    if (!marks.length && aiTag && ['yes', 'maybe', 'no'].includes(aiTag)) {
+      marks.push({ tag: aiTag, isAI: true, isShared: false, isMine: false, owner: 'ai:local' });
+    }
+
+    if (!marks.length) return;
+
+    const row = document.createElement('div');
+    row.className = 'card-tag-row';
+
+    const visible = marks.slice(0, 4);
+    for (const mark of visible) {
+      const el = buildCardTagElement(mark.tag, {
+        isAI: mark.isAI,
+        isShared: mark.isShared,
+        isMine: mark.isMine
+      });
+      if (el) row.appendChild(el);
+    }
+
+    if (marks.length > visible.length) {
+      const extra = document.createElement('div');
+      extra.className = 'card-tag card-tag-more';
+      extra.textContent = `+${marks.length - visible.length}`;
+      row.appendChild(extra);
+    }
+
+    card.appendChild(row);
   });
 }
 

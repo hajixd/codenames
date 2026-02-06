@@ -10885,6 +10885,35 @@ body.tournament.has-team-color .input:focus {
   height: 10px;
 }
 
+.card-tag-row {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 6;
+  pointer-events: none;
+  max-width: calc(100% - 8px);
+}
+
+.card-tag-row .card-tag {
+  position: static;
+  flex: 0 0 18px;
+}
+
+.card-tag.card-tag-more {
+  width: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 0.2px;
+  background: rgba(0, 0, 0, 0.62);
+  color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
 
 /* AI tags are a little subtler (human tags always take precedence) */
 .card-tag.ai {
@@ -10892,6 +10921,10 @@ body.tournament.has-team-color .input:focus {
   transform: scale(0.92);
   filter: saturate(0.85);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+}
+
+.card-tag.mine {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.34) inset, var(--tag-shadow, 0 2px 10px rgba(0,0,0,0.35));
 }
 
 /* Card Vote Indicators */
@@ -19862,6 +19895,16 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   min-height: 40px;
 }
 
+@media (max-width: 900px){
+  body.brackets-mobile-no-tabs .mobile-tabs{
+    display: none !important;
+  }
+
+  body.brackets-mobile-no-tabs .panel{
+    bottom: 0;
+  }
+}
+
 /* Motion + OG clue overlay polish: faster card feedback and aligned, stronger clue glass. */
 :root{
   --card-reveal-duration: 1180ms;
@@ -19916,25 +19959,91 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   100% { transform: translateY(0) scale(1); filter: brightness(1); }
 }
 
-body.og-mode .game-card.og-reveal-flip .card-inner{
-  animation: ogCardRevealFlip 980ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+/* Cozy/Dark word ghosting fix: only OG uses the back face. */
+body:not(.og-mode) .game-card .card-back {
+  display: none !important;
 }
 
-@keyframes ogCardRevealFlip {
-  0%   { transform: rotateY(180deg) rotateX(6deg) translateZ(0px); }
-  44%  { transform: rotateY(88deg) rotateX(8deg) translateZ(16px); }
-  72%  { transform: rotateY(24deg) rotateX(2deg) translateZ(8px); }
-  100% { transform: rotateY(0deg) rotateX(0deg) translateZ(0px); }
+body:not(.og-mode) .game-card .card-inner {
+  transform: none !important;
+}
+
+/* Fully revamped OG flip reveal animation */
+body.og-mode .game-card.og-reveal-flip {
+  z-index: 95;
+  transform-style: preserve-3d;
+  will-change: transform, filter, box-shadow;
+  animation: ogCardFlipLift 1040ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+body.og-mode .game-card.og-reveal-flip .card-inner{
+  transform-origin: 50% 52%;
+  will-change: transform;
+  animation: ogCardFlipCore 1040ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+body.og-mode .game-card.og-reveal-flip .og-reveal-face::before{
+  content: "";
+  position: absolute;
+  inset: -14% -34%;
+  background: linear-gradient(112deg, transparent 18%, rgba(255,255,255,0.76) 50%, transparent 82%);
+  opacity: 0;
+  transform: translateX(-85%) rotate(9deg);
+  animation: ogCardFlipSheen 1040ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes ogCardFlipLift {
+  0%   { transform: translateY(0) scale(1); filter: brightness(1); }
+  24%  { transform: translateY(-14px) scale(1.03); filter: brightness(1.08); }
+  52%  { transform: translateY(-10px) scale(1.06); filter: brightness(1.13); }
+  76%  { transform: translateY(-2px) scale(1.02); filter: brightness(1.05); }
+  100% { transform: translateY(0) scale(1); filter: brightness(1); }
+}
+
+@keyframes ogCardFlipCore {
+  0% {
+    transform: rotateY(180deg) rotateX(0deg) rotateZ(0deg);
+  }
+  26% {
+    transform: rotateY(140deg) rotateX(var(--og-flip-tilt-x, 6deg)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.18));
+  }
+  48% {
+    transform: rotateY(86deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.82)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.24));
+  }
+  70% {
+    transform: rotateY(28deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.28)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.1));
+  }
+  100% {
+    transform: rotateY(0deg) rotateX(0deg) rotateZ(0deg);
+  }
+}
+
+@keyframes ogCardFlipSheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-85%) rotate(9deg);
+  }
+  28% {
+    opacity: 0.68;
+  }
+  58% {
+    opacity: 0.86;
+    transform: translateX(10%) rotate(9deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(95%) rotate(9deg);
+  }
 }
 
 .clue-variant-og .clue-announcement-backdrop.clue-og-backdrop{
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(1200px 760px at 50% 48%, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.90) 72%),
-    rgba(0,0,0,0.86) !important;
-  backdrop-filter: blur(11px) !important;
-  -webkit-backdrop-filter: blur(11px) !important;
+    radial-gradient(560px 240px at 50% 48%, rgba(0,0,0,0.46) 0%, rgba(0,0,0,0.28) 46%, rgba(0,0,0,0.08) 72%, rgba(0,0,0,0) 100%) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
   animation: clueBackdropOnline 4.4s ease forwards !important;
 }
 
@@ -19949,11 +20058,28 @@ body.og-mode .game-card.og-reveal-flip .card-inner{
   width: auto;
   height: auto;
   inset: -14px -18px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.74), rgba(0,0,0,0.58));
+  background: linear-gradient(180deg, rgba(0,0,0,0.62), rgba(0,0,0,0.45));
   border: 1px solid rgba(255,255,255,0.18);
-  box-shadow: 0 18px 58px rgba(0,0,0,0.54), inset 0 1px 0 rgba(255,255,255,0.08);
+  box-shadow: 0 16px 44px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.08);
   opacity: 1;
   animation: none !important;
+}
+
+.clue-announcement-backdrop {
+  background:
+    radial-gradient(520px 220px at 50% 50%, rgba(0, 0, 0, 0.40) 0%, rgba(0, 0, 0, 0.20) 46%, rgba(0, 0, 0, 0.03) 72%, rgba(0, 0, 0, 0) 100%) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+}
+
+body.light-mode .clue-announcement-backdrop,
+body.cozy-mode .clue-announcement-backdrop,
+body.og-mode .clue-announcement-backdrop,
+body:not(.light-mode):not(.cozy-mode):not(.og-mode) .clue-announcement-backdrop {
+  background:
+    radial-gradient(520px 220px at 50% 50%, rgba(0, 0, 0, 0.40) 0%, rgba(0, 0, 0, 0.20) 46%, rgba(0, 0, 0, 0.03) 72%, rgba(0, 0, 0, 0) 100%) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
 }
 
 @media (max-width: 820px){

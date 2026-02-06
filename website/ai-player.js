@@ -679,6 +679,58 @@ function buildClueHistoryContext(game, team) {
   return `Your team's clue history this game:\n${lines.join('\n')}`;
 }
 
+function buildOperativePriorityStack(game, team) {
+  try {
+    const stack = computeClueStack(game, team);
+    if (!Array.isArray(stack) || !stack.length) return [];
+
+    const currentWord = String(game?.currentClue?.word || '').trim().toUpperCase();
+    const unresolved = stack.filter(it => it && Number(it.remainingTargets || 0) > 0);
+    if (!unresolved.length) return [];
+
+    return unresolved
+      .map((it, idx) => {
+        const remaining = Math.max(0, Number(it.remainingTargets || 0));
+        const correct = Math.max(0, Number(it.correct || 0));
+        const number = Math.max(0, Number(it.number || 0));
+        const isCurrent = !!(currentWord && String(it.word || '').toUpperCase() === currentWord);
+
+        // "Easier" clues get higher priority:
+        // - fewer unresolved targets
+        // - already proven by previous correct hits
+        // - current clue gets a slight bump
+        // - newer clues are slightly preferred
+        const easeFromRemaining = remaining <= 1 ? 1.0 : (remaining === 2 ? 0.82 : 0.64);
+        const proofBonus = Math.min(0.18, correct * 0.06);
+        const currentBonus = isCurrent ? 0.09 : 0;
+        const recencyPenalty = Math.min(0.2, idx * 0.04);
+        const score = Math.max(0.2, easeFromRemaining + proofBonus + currentBonus - recencyPenalty);
+
+        return {
+          word: String(it.word || '').toUpperCase(),
+          remainingTargets: remaining,
+          number,
+          correct,
+          score,
+          isCurrent,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  } catch (_) {
+    return [];
+  }
+}
+
+function buildOperativePriorityContext(game, team) {
+  const stack = buildOperativePriorityStack(game, team).slice(0, 4);
+  if (!stack.length) return '';
+  const lines = stack.map((it, idx) => {
+    const ease = Math.round(it.score * 10);
+    return `  ${idx + 1}. ${it.word} (remaining ${it.remainingTargets}, ease ${ease}/10${it.isCurrent ? ', current' : ''})`;
+  });
+  return `PRIORITY ORDER (easy -> harder) for unfinished clues:\n${lines.join('\n')}`;
+}
+
 async function maybeMindTick(ai, game) {
   const core = ensureAICore(ai);
   if (!core) return;
@@ -984,19 +1036,114 @@ function isAISpymasterForTeam(game, team) {
 
 // ─── Strategic Analysis Helpers ─────────────────────────────────────────────
 
-async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag) {
+function _normalizeMarkerBucket(raw) {
+  const out = {};
+  const valid = new Set(['yes', 'maybe', 'no']);
+  if (!raw) return out;
+
+  // Legacy shape: redMarkers[index] = "yes"
+  if (typeof raw === 'string') {
+    const t = String(raw || '').toLowerCase().trim();
+    if (valid.has(t)) out.legacy = t;
+    return out;
+  }
+
+  if (typeof raw !== 'object') return out;
+  for (const [owner, value] of Object.entries(raw || {})) {
+    const id = String(owner || '').trim();
+    const t = String(value || '').toLowerCase().trim();
+    if (!id || !valid.has(t)) continue;
+    out[id] = t;
+  }
+  return out;
+}
+
+function _markerOwnerId(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return 'legacy';
+  return raw.startsWith('ai:') || raw.startsWith('u:') ? raw : `ai:${raw}`;
+}
+
+async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag, ownerId = 'legacy') {
   try {
     if (!gameId) return;
+    const idx = Number(cardIndex);
+    if (!Number.isFinite(idx) || idx < 0) return;
+
     const ref = db.collection('games').doc(String(gameId));
     const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
-    const keyPath = `${field}.${Number(cardIndex)}`;
-    if (!tag || tag === 'clear') {
-      await ref.update({ [keyPath]: firebase.firestore.FieldValue.delete() });
-    } else {
-      const t = String(tag).toLowerCase();
-      if (!['yes','maybe','no'].includes(t)) return;
-      await ref.update({ [keyPath]: t });
+    const owner = _markerOwnerId(ownerId);
+    const requested = String(tag || '').toLowerCase().trim();
+    const clear = !requested || requested === 'clear';
+    const nextTag = clear ? null : requested;
+    if (!clear && !['yes', 'maybe', 'no'].includes(nextTag)) return;
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const markers = { ...(game?.[field] || {}) };
+      const key = String(idx);
+      const bucket = _normalizeMarkerBucket(markers[key]);
+
+      if (clear) delete bucket[owner];
+      else bucket[owner] = nextTag;
+
+      if (Object.keys(bucket).length) markers[key] = bucket;
+      else delete markers[key];
+
+      tx.update(ref, {
+        [field]: markers,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch (_) {}
+}
+
+async function syncAIMarkerSet(gameId, team, ai, marks) {
+  try {
+    if (!gameId || !ai || !ai.id) return;
+    const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
+    const owner = _markerOwnerId(ai.id);
+    const desired = new Map();
+
+    for (const m of (Array.isArray(marks) ? marks : [])) {
+      const idx = Number(m?.index);
+      const t = String(m?.tag || '').toLowerCase().trim();
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      if (!['yes', 'maybe', 'no'].includes(t)) continue;
+      desired.set(String(idx), t);
     }
+
+    const ref = db.collection('games').doc(String(gameId));
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const markers = { ...(game?.[field] || {}) };
+
+      // Remove stale marks owned by this AI first.
+      for (const [idx, raw] of Object.entries(markers)) {
+        const bucket = _normalizeMarkerBucket(raw);
+        if (bucket[owner] && !desired.has(String(idx))) {
+          delete bucket[owner];
+          if (Object.keys(bucket).length) markers[idx] = bucket;
+          else delete markers[idx];
+        }
+      }
+
+      // Apply latest marks.
+      for (const [idx, t] of desired.entries()) {
+        const bucket = _normalizeMarkerBucket(markers[idx]);
+        bucket[owner] = t;
+        markers[idx] = bucket;
+      }
+
+      tx.update(ref, {
+        [field]: markers,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
   } catch (_) {}
 }
 
@@ -1378,6 +1525,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const teamChat = chatDocs.slice(-10).map(m => `${m.senderName}: ${m.text}`).join('\\n');
 
   const clueHistoryCtx = buildClueHistoryContext(game, team);
+  const priorityCtx = buildOperativePriorityContext(game, team);
   const opponentTeam = team === 'red' ? 'blue' : 'red';
   const opponentLeft = vision.score ? (opponentTeam === 'red' ? vision.score.redLeft : vision.score.blueLeft) : '?';
   const myLeft = vision.score ? (team === 'red' ? vision.score.redLeft : vision.score.blueLeft) : '?';
@@ -1408,9 +1556,10 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Keep it to 1-2 short sentences MAX. Think group chat, not paragraph.`,
     `- EVERY message must add NEW information or a NEW opinion. If someone already said what you're thinking, just agree and move on.`,
     `- NEVER mention your confidence score/percent in chat.`,
+    `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
     ``,
     `Return JSON only:`,
-    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"your message to teammates"}`,
+    `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "focusClue":"CLUEWORD", "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"your message to teammates"}`,
     ``,
     `Rules:`,
     `- If action="guess", index MUST be an unrevealed index from the list.`,
@@ -1427,6 +1576,8 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `UNREVEALED WORDS (choose ONLY from this list):\n${list}`,
     ``,
     clueHistoryCtx ? `${clueHistoryCtx}` : '',
+    ``,
+    priorityCtx ? `${priorityCtx}` : '',
     ``,
     `TEAM CHAT (latest messages — read these and respond naturally):\n${teamChat || '(no messages yet — you speak first)'}`,
     ``,
@@ -1448,6 +1599,11 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const action = String(parsed.action || '').toLowerCase().trim();
   const idx = Number(parsed.index);
   const conf = normalizeConfidence10(parsed.confidence, 6);
+  const priorityWords = new Set(buildOperativePriorityStack(game, team).map(it => String(it.word || '').toUpperCase()));
+  const currentClueWord = String(vision?.clue?.word || '').trim().toUpperCase();
+  let focusClue = String(parsed.focusClue || '').trim().toUpperCase();
+  if (focusClue && !priorityWords.has(focusClue) && focusClue !== currentClueWord) focusClue = '';
+  if (!focusClue && currentClueWord) focusClue = currentClueWord;
   const candidate = unrevealed.find(c => c.index === idx);
 
   const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
@@ -1470,29 +1626,38 @@ async function aiOperativePropose(ai, game, opts = {}) {
   chat = chat.slice(0, 180);
 
   if (action === 'end_turn') {
-    return { ai, action: 'end_turn', index: null, confidence: conf, marks, chat };
+    return { ai, action: 'end_turn', index: null, focusClue, confidence: conf, marks, chat };
   }
   if (action === 'guess' && candidate) {
-    return { ai, action: 'guess', index: candidate.index, confidence: conf, marks, chat };
+    return { ai, action: 'guess', index: candidate.index, focusClue, confidence: conf, marks, chat };
   }
 
   // If invalid, default safe.
-  return { ai, action: 'end_turn', index: null, confidence: 1, marks, chat: chat || '' };
+  return { ai, action: 'end_turn', index: null, focusClue, confidence: 1, marks, chat: chat || '' };
 }
 
 function chooseOperativeAction(proposals, game, councilSize) {
   const ps = (proposals || []).filter(Boolean);
-  const n = Number.isFinite(+councilSize) && +councilSize > 0 ? +councilSize : ps.length;
   if (!ps.length) return { action: 'end_turn', index: null };
+  const team = String(ps[0]?.ai?.team || game?.currentTeam || '').toLowerCase();
+  const priorityStack = buildOperativePriorityStack(game, team);
+  const currentClueWord = String(game?.currentClue?.word || '').trim().toUpperCase();
+  const cluePriority = new Map(priorityStack.map(it => [String(it.word || '').toUpperCase(), Number(it.score || 0.5)]));
+  const hasOlderUnresolved = priorityStack.some(it => !it.isCurrent && it.remainingTargets > 0);
 
   // Count guess consensus
   const byIndex = new Map();
   for (const p of ps) {
     if (p.action !== 'guess' || p.index === null || p.index === undefined) continue;
     const k = p.index;
-    const cur = byIndex.get(k) || { sum: 0, n: 0, max: 0 };
+    const cur = byIndex.get(k) || { sum: 0, n: 0, max: 0, prioritySum: 0 };
     const c = confidenceToUnit(p.confidence, 0.6);
+    const focus = String(p.focusClue || currentClueWord || '').trim().toUpperCase();
+    const pScore = cluePriority.has(focus)
+      ? Number(cluePriority.get(focus) || 0.5)
+      : (focus === currentClueWord ? 0.72 : 0.52);
     cur.sum += c; cur.n += 1; cur.max = Math.max(cur.max, c);
+    cur.prioritySum += pScore;
     byIndex.set(k, cur);
   }
 
@@ -1502,8 +1667,9 @@ function chooseOperativeAction(proposals, game, councilSize) {
   let best = null;
   for (const [idx, v] of byIndex.entries()) {
     const avg = v.sum / Math.max(1, v.n);
-    const score = avg + (0.14 * v.n) + (0.06 * v.max);
-    if (!best || score > best.score) best = { index: idx, score, avg, n: v.n };
+    const priorityAvg = v.prioritySum / Math.max(1, v.n);
+    const score = avg + (0.14 * v.n) + (0.06 * v.max) + (0.11 * priorityAvg);
+    if (!best || score > best.score) best = { index: idx, score, avg, n: v.n, priorityAvg };
   }
 
   // Ending early is allowed, but we bias against "silent" bails when there is a decent shared guess.
@@ -1512,6 +1678,10 @@ function chooseOperativeAction(proposals, game, councilSize) {
     if (!best) return { action: 'end_turn', index: null };
     // If the team doesn't converge and confidence is low, ending is reasonable.
     if (best.avg < 0.56 && best.n < 2) return { action: 'end_turn', index: null };
+    // When unfinished older clues exist, avoid low-priority speculative votes.
+    if (hasOlderUnresolved && best.priorityAvg < 0.66 && best.avg < 0.64 && best.n < 2) {
+      return { action: 'end_turn', index: null };
+    }
     // Otherwise, prefer taking the shared guess.
   }
 
@@ -1519,6 +1689,9 @@ function chooseOperativeAction(proposals, game, councilSize) {
 
   // Threshold to guess: either decent avg confidence, or at least 2 AIs align.
   if (best.avg < 0.55 && best.n < 2) return { action: 'end_turn', index: null };
+  if (hasOlderUnresolved && best.priorityAvg < 0.62 && best.avg < 0.62 && best.n < 2) {
+    return { action: 'end_turn', index: null };
+  }
   return { action: 'guess', index: best.index };
 }
 
@@ -1631,6 +1804,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     const opponentTeam = team === 'red' ? 'blue' : 'red';
     const opponentLeft = vision.score ? (opponentTeam === 'red' ? vision.score.redLeft : vision.score.blueLeft) : '?';
     const clueHistoryCtx = buildClueHistoryContext(game, team);
+    const priorityCtx = buildOperativePriorityContext(game, team);
 
     const systemPrompt = [
       `You are ${ai.name}, OPERATIVE on ${String(team).toUpperCase()} team.`,
@@ -1661,9 +1835,10 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `- If you agree and want to add context: "yeah and also WORD works cause [new reason]"`,
       `- Max 1-2 short sentences.`,
       `- NEVER mention confidence numbers/percentages in chat.`,
+      `- Priority rule: if unfinished older clues still have easy targets, finish those before speculative guesses.`,
       ``,
       `Return JSON only:`,
-      `{"mind":"2-8 lines first-person thinking", "chat":"(empty string if nothing new to say)", "action":"guess|end_turn|no_change", "index":N, "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`,
+      `{"mind":"2-8 lines first-person thinking", "chat":"(empty string if nothing new to say)", "action":"guess|end_turn|no_change", "index":N, "focusClue":"CLUEWORD", "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`,
       `Set continue=false if the team seems to agree or you have nothing more to add.`,
       `In chat, NEVER write card indices/numbers. Use the WORD itself.`,
     ].join('\n');
@@ -1682,6 +1857,8 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `VISION:\n${JSON.stringify(vision)}`,
       '',
       clueHistoryCtx ? `${clueHistoryCtx}` : '',
+      '',
+      priorityCtx ? `${priorityCtx}` : '',
       '',
       `TEAM CHAT (read carefully — do NOT repeat what's already been said):\n${teamChat}`,
       '',
@@ -1712,6 +1889,11 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     const action = String(parsed.action || 'no_change').toLowerCase().trim();
     const idx = Number(parsed.index);
     const conf = normalizeConfidence10(parsed.confidence, 6);
+    const priorityWords = new Set(buildOperativePriorityStack(game, team).map(it => String(it.word || '').toUpperCase()));
+    const currentClueWord = String(vision?.clue?.word || '').trim().toUpperCase();
+    let focusClue = String(parsed.focusClue || '').trim().toUpperCase();
+    if (focusClue && !priorityWords.has(focusClue) && focusClue !== currentClueWord) focusClue = '';
+    if (!focusClue && currentClueWord) focusClue = currentClueWord;
     const cont = (parsed.continue === true);
 
     const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
@@ -1726,7 +1908,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       if (marks.length >= 3) break;
     }
 
-    const out = { ai, chat, marks, continue: cont };
+    const out = { ai, chat, marks, continue: cont, focusClue };
     if (action === 'guess' || action === 'end_turn') {
       if (action === 'guess' && unrevealedIdx.has(idx)) {
         out.action = 'guess';
@@ -1791,11 +1973,7 @@ async function runOperativeCouncil(game, team) {
       proposalsByAi.set(ai.id, prop);
 
       // Share markers (team-visible) and short chat to coordinate
-      const existingMarkers = (team === 'red') ? (working.redMarkers || {}) : (working.blueMarkers || {});
-      for (const m of (prop?.marks || [])) {
-        const cur = String(existingMarkers?.[String(m.index)] || existingMarkers?.[m.index] || '').toLowerCase();
-        if (cur !== m.tag) await setTeamMarkerInFirestore(game.id, team, m.index, m.tag);
-      }
+      await syncAIMarkerSet(game.id, team, ai, prop?.marks || []);
       if (prop?.chat) await sendAIChatMessage(ai, working, prop.chat);
 
       core.lastSuggestionKey = key;
@@ -1842,11 +2020,7 @@ async function runOperativeCouncil(game, team) {
           }
 
           // Apply any new markers.
-          const existingMarkers = (team === 'red') ? (working.redMarkers || {}) : (working.blueMarkers || {});
-          for (const m of (follow.marks || [])) {
-            const cur = String(existingMarkers?.[String(m.index)] || existingMarkers?.[m.index] || '').toLowerCase();
-            if (cur !== m.tag) await setTeamMarkerInFirestore(game.id, team, m.index, m.tag);
-          }
+          await syncAIMarkerSet(game.id, team, ai, follow.marks || []);
 
           // Update this AI's latest lean if it provided one.
           if (follow.action === 'guess' || follow.action === 'end_turn') {

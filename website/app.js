@@ -2132,6 +2132,7 @@ function switchToPanel(panelId) {
   try {
     const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
     document.body.classList.toggle('no-primary-tabs', !!noTabs);
+    document.body.classList.toggle('brackets-mobile-no-tabs', targetId === 'panel-brackets');
   } catch (_) {}
 
   // If a game board is visible, we don't show the messages drawer.
@@ -6564,6 +6565,7 @@ function activatePanel(panelId) {
   try {
     const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
     document.body.classList.toggle('no-primary-tabs', !!noTabs);
+    document.body.classList.toggle('brackets-mobile-no-tabs', targetId === 'panel-brackets');
   } catch (_) {}
 }
 
