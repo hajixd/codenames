@@ -3777,6 +3777,7 @@ function dockChatIntoOgPanels(isOgMode) {
 function renderBoard(isSpymaster) {
   const boardEl = document.getElementById('game-board');
   if (!boardEl || !currentGame?.cards) return;
+  const isOgMode = document.body.classList.contains('og-mode');
 
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
@@ -3808,6 +3809,13 @@ function renderBoard(isSpymaster) {
     const clickHandler = canClick ? `onclick="handleCardSelect(${i})"` : '';
 
     const word = escapeHtml(card.word);
+    const backFace = isOgMode
+      ? `
+          <div class="card-face card-back">
+            <span class="card-word"><span class="word-text">${word}</span></span>
+          </div>
+        `
+      : '';
     return `
       <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
         <div class="og-peek-label" aria-hidden="true">${word}</div>
@@ -3819,9 +3827,7 @@ function renderBoard(isSpymaster) {
               <div class="og-reveal-icon"></div>
             </div>
           </div>
-          <div class="card-face card-back">
-            <span class="card-word"><span class="word-text">${word}</span></span>
-          </div>
+          ${backFace}
         </div>
       </div>
     `;

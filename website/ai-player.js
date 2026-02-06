@@ -30,6 +30,7 @@ let aiIntervals = {}; // keyed by ai id → interval handle for game loop
 let aiChatTimers = {}; // keyed by ai id → timeout for delayed chat
 let aiLastChatSeenMs = {}; // keyed by ai id → last seen team-chat timestamp
 let aiLastChatReplyMs = {}; // keyed by ai id → last time we replied
+let aiLastOffTurnScoutMs = {}; // keyed by ai id → last off-turn analysis timestamp
 let aiNextId = 1;
 
 // ─── Multi-client AI hosting (one "controller" runs the AI loop) ─────────────
@@ -3136,6 +3137,113 @@ async function maybeAIRespondToTeamChat(ai, game) {
   }
 }
 
+function offTurnScoutKey(game, ai) {
+  const g = game || {};
+  const clueWord = String(g?.currentClue?.word || '').trim().toUpperCase();
+  const clueNum = Number(g?.currentClue?.number || 0);
+  const sig = Array.isArray(g.cards) ? g.cards.map(c => c && c.revealed ? '1' : '0').join('') : '';
+  return `${String(g.id || '')}:${String(ai?.team || '')}:${String(g.currentTeam || '')}:${String(g.currentPhase || '')}:${clueWord}_${clueNum}:${sig}`;
+}
+
+async function aiOffTurnScout(ai, game) {
+  try {
+    if (!ai || !game?.id) return false;
+    if (String(ai.mode || '') !== 'autonomous') return false;
+    if (String(ai.seatRole || '') !== 'operative') return false;
+    if (String(game.currentPhase || '') !== 'operatives') return false;
+    if (!game.currentClue || !String(game.currentClue.word || '').trim()) return false;
+    if (String(ai.team || '') === String(game.currentTeam || '')) return false;
+    if (aiThinkingState[ai.id]) return false;
+
+    const now = Date.now();
+    const last = Number(aiLastOffTurnScoutMs[ai.id] || 0);
+    if (now - last < 12000) return false;
+
+    const core = ensureAICore(ai);
+    if (!core) return false;
+
+    const key = offTurnScoutKey(game, ai);
+    if (core.lastOffTurnScoutKey === key) return false;
+
+    const vision = buildAIVision(game, ai);
+    const clueWord = String(vision?.clue?.word || '').trim().toUpperCase();
+    if (!clueWord) return false;
+
+    const unrevealed = (vision.cards || []).filter(c => !c.revealed);
+    if (!unrevealed.length) return false;
+    const wordsList = unrevealed.map(c => `- ${c.index}: ${String(c.word || '').toUpperCase()}`).join('\n');
+    const opponent = String(game.currentTeam || '').toLowerCase() === 'red' ? 'RED' : 'BLUE';
+
+    aiThinkingState[ai.id] = true;
+
+    const systemPrompt = [
+      `You are ${ai.name}, an OPERATIVE on ${String(ai.team || '').toUpperCase()} team in Codenames.`,
+      `It is NOT your team's turn right now. Opponent (${opponent}) gave clue "${clueWord}" for ${Number(vision?.clue?.number || 0)}.`,
+      `Do fast off-turn scouting for your teammates: mark words likely tied to the opponent clue so your team can avoid traps later.`,
+      `Use tags as follows:`,
+      `- "no" = likely opponent-related/risky word (danger for your team)`,
+      `- "maybe" = possible opponent-related word`,
+      `- "yes" = exceptionally strong counter-signal for your own team (rare off-turn)`,
+      `Pick 1-3 marks max. Only use indices from the unrevealed list.`,
+      `Optional chat should be one short casual sentence. If nothing useful, chat="".`,
+      `Never mention confidence scores.`,
+      `Return JSON only: {"mind":"2-6 lines first-person thinking","marks":[{"index":N,"tag":"yes|maybe|no"}],"chat":"short optional message"}`,
+    ].join('\n');
+
+    const userPrompt = [
+      `VISION:\n${JSON.stringify(vision)}`,
+      ``,
+      `UNREVEALED WORDS:\n${wordsList}`,
+      ``,
+      `Focus on the opponent clue and likely opponent targets.`,
+    ].join('\n');
+
+    const raw = await aiChatCompletion(
+      [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      { temperature: Math.min(1.0, core.temperature * 0.9), max_tokens: 300, response_format: { type: 'json_object' } }
+    );
+
+    let parsed = null;
+    try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
+    if (!parsed) {
+      core.lastOffTurnScoutKey = key;
+      aiLastOffTurnScoutMs[ai.id] = Date.now();
+      return false;
+    }
+
+    const mind = String(parsed.mind || '').trim();
+    if (mind) appendMind(ai, mind);
+
+    const validIdx = new Set(unrevealed.map(c => Number(c.index)));
+    const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
+    const marks = [];
+    for (const m of marksIn) {
+      const idx = Number(m?.index);
+      const tag = String(m?.tag || '').toLowerCase().trim();
+      if (!Number.isFinite(idx) || !validIdx.has(idx)) continue;
+      if (!['yes', 'maybe', 'no'].includes(tag)) continue;
+      marks.push({ index: idx, tag });
+      if (marks.length >= 3) break;
+    }
+
+    if (marks.length) await syncAIMarkerSet(game.id, ai.team, ai, marks);
+    else await syncAIMarkerSet(game.id, ai.team, ai, []);
+
+    let chat = sanitizeChatText(String(parsed.chat || '').trim(), vision, 140);
+    if (chat && (Math.random() < 0.72)) {
+      await sendAIChatMessage(ai, game, chat);
+    }
+
+    core.lastOffTurnScoutKey = key;
+    aiLastOffTurnScoutMs[ai.id] = Date.now();
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    if (ai && ai.id) aiThinkingState[ai.id] = false;
+  }
+}
+
 // ─── AI Role Selection ──────────────────────────────────────────────────────
 
 async function aiSelectRole(ai, game) {
@@ -3248,6 +3356,21 @@ function startAIGameLoop() {
 
     const currentTeam = game.currentTeam;
 
+    // Off-turn scouting: waiting-team operatives can still discuss and place markers
+    // based on the opponent clue while they wait.
+    if (game.currentPhase === 'operatives' && game.currentClue && Math.random() < 0.68) {
+      const waitingOps = (aiPlayers || []).filter(a =>
+        a &&
+        a.mode === 'autonomous' &&
+        a.seatRole === 'operative' &&
+        String(a.team || '') !== String(currentTeam || '')
+      );
+      if (waitingOps.length) {
+        const scout = waitingOps[Math.floor(Math.random() * waitingOps.length)];
+        await aiOffTurnScout(scout, game);
+      }
+    }
+
 
     // Spymaster phase
     if (game.currentPhase === 'spymaster') {
@@ -3313,6 +3436,7 @@ function cleanupAllAI() {
   }
   aiIntervals = {};
   aiChatTimers = {};
+  aiLastOffTurnScoutMs = {};
   aiThinkingState = {};
 }
 
