@@ -4024,7 +4024,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 function renderGameLog() {
   const popoverEl = document.getElementById('game-log-entries');
   const sidebarEl = document.getElementById('game-log-entries-sidebar');
-  if ((!popoverEl && !sidebarEl) || !currentGame?.log) return;
+  if (!popoverEl && !sidebarEl) return;
+  if (!currentGame) return;
+
+  const rawLog = Array.isArray(currentGame.log)
+    ? currentGame.log.map(entry => String(entry ?? '')).filter(Boolean)
+    : [];
 
   const redName = String(currentGame.redTeamName || 'Red').trim();
   const blueName = String(currentGame.blueTeamName || 'Blue').trim();
@@ -4113,22 +4118,23 @@ function renderGameLog() {
     }).join('');
   };
 
-  const html = currentGame.log.map(entry => {
+  const html = rawLog.map(entry => {
     const team = detectTeam(entry);
     const type = detectType(entry);
     const cls = ['log-entry', `type-${type}`];
     if (team) cls.push(`team-${team}`);
     return `<div class="${cls.join(' ')}">${renderWithQuotes(entry)}</div>`;
   }).join('');
+  const fallbackHtml = html || '<div class="gamelog-empty">No events yet. Clues and guesses will appear here.</div>';
 
-  if (popoverEl) popoverEl.innerHTML = html;
+  if (popoverEl) popoverEl.innerHTML = fallbackHtml;
 
   const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
   if (isOgMode && currentGame.clueHistory && currentGame.clueHistory.length > 0) {
     const ogHtml = buildOgStructuredLog();
-    if (sidebarEl) sidebarEl.innerHTML = ogHtml;
+    if (sidebarEl) sidebarEl.innerHTML = ogHtml || fallbackHtml;
   } else {
-    if (sidebarEl) sidebarEl.innerHTML = html;
+    if (sidebarEl) sidebarEl.innerHTML = fallbackHtml;
   }
 
   // Auto-scroll to bottom (popover container + sidebar scroller)
@@ -4138,34 +4144,45 @@ function renderGameLog() {
 }
 
 function buildOgStructuredLog() {
-  if (!currentGame?.clueHistory) return '';
+  if (!Array.isArray(currentGame?.clueHistory) || currentGame.clueHistory.length === 0) return '';
   const history = currentGame.clueHistory;
 
   return history.map(clue => {
-    const team = clue.team || 'red';
+    if (!clue || typeof clue !== 'object') return '';
+
+    const teamRaw = String(clue.team || 'red').toLowerCase();
+    const team = (teamRaw === 'blue' || teamRaw === 'red') ? teamRaw : 'red';
     const spymaster = getTeamSpymasterName(team, currentGame) || 'Spymaster';
     const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
+    const clueWord = String(clue.word || '').trim() || 'CLUE';
+    const clueNumberRaw = parseInt(clue.number, 10);
+    const clueNumber = Number.isFinite(clueNumberRaw) && clueNumberRaw >= 0 ? clueNumberRaw : '?';
 
     // In OG/Codenames-Online style, show the hint in the *same badge* as the avatar (like the spymaster card).
     // This makes the clue more visible and uses space more efficiently.
     const clueRow = `<div class="gamelog-clue-row">
         <div class="gamelog-clue-pill clue-with-avatar team-${escapeHtml(team)}">
           <div class="gamelog-avatar">${escapeHtml(initial)}</div>
-          <div class="gamelog-clue-word">${escapeHtml(clue.word)}</div>
-          <div class="gamelog-clue-count">${escapeHtml(String(clue.number))}</div>
+          <div class="gamelog-clue-word">${escapeHtml(clueWord)}</div>
+          <div class="gamelog-clue-count">${escapeHtml(String(clueNumber))}</div>
         </div>
       </div>`;
 
-    const guessesHtml = (clue.results || []).map(r => {
-      const name = r.by || 'Someone';
+    const guesses = Array.isArray(clue.results) ? clue.results : [];
+    const guessesHtml = guesses.map(r => {
+      const name = String(r?.by || 'Someone').trim() || 'Someone';
       const gi = name.trim().slice(0, 1).toUpperCase();
-      const cardType = r.type || 'neutral';
+      const typeRaw = String(r?.type || 'neutral').toLowerCase();
+      const cardType = (typeRaw === 'red' || typeRaw === 'blue' || typeRaw === 'neutral' || typeRaw === 'assassin')
+        ? typeRaw
+        : 'neutral';
+      const guessedWord = String(r?.word || '').trim() || 'Unknown';
       return `<div class="gamelog-guess-item">
           <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
             <div class="gamelog-avatar">${escapeHtml(gi)}</div>
             <div class="gamelog-avatar-name">${escapeHtml(name)}</div>
           </div>
-          <div class="gamelog-word-pill type-${escapeHtml(cardType)}">${escapeHtml(r.word)}</div>
+          <div class="gamelog-word-pill type-${escapeHtml(cardType)}">${escapeHtml(guessedWord)}</div>
         </div>`;
     }).join('');
 
@@ -4173,7 +4190,7 @@ function buildOgStructuredLog() {
         ${clueRow}
         ${guessesHtml ? `<div class="gamelog-guesses">${guessesHtml}</div>` : ''}
       </div>`;
-  }).join('');
+  }).filter(Boolean).join('');
 }
 
 function updateRoleButtons() {
