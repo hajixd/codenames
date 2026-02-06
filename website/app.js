@@ -1357,6 +1357,7 @@ function showAuthScreen() {
   document.body.classList.add('launch');
   document.body.classList.remove('quickplay');
   document.body.classList.remove('tournament');
+  document.body.classList.remove('practice');
   document.body.classList.remove('has-team-color');
   setBrowserTitle('launch');
   try { refreshNameUI?.(); } catch (_) {}
@@ -1371,6 +1372,7 @@ function showLaunchScreen() {
   document.body.classList.add('launch');
   document.body.classList.remove('quickplay');
   document.body.classList.remove('tournament');
+  document.body.classList.remove('practice');
   document.body.classList.remove('has-team-color');
   setBrowserTitle('launch');
   try { refreshNameUI?.(); } catch (_) {}
@@ -1850,6 +1852,7 @@ function enterAppFromLaunch(mode, opts = {}) {
   // Default: leave launch state.
   document.body.classList.remove('launch');
   document.body.classList.remove('tournament');
+  document.body.classList.remove('practice');
 
   // QUICK PLAY
   // - Full-screen lobby/game
@@ -2066,10 +2069,6 @@ if (integrity && integrity.ok === false) {
       // unread badge count even when the Personal tab isn't open.
       try { startDmInboxListener(); } catch (_) {}
 
-      // Personal messages unread badge should update even when the Personal tab
-      // isn't open.
-      try { startDmInboxListener(); } catch (_) {}
-
       // Presence must start after sign-in. Without this, "Who's Online" can't
       // mark anyone as online/idle.
       try {
@@ -2160,6 +2159,10 @@ function switchToPanel(panelId) {
         skipQuickPlayLobbyOnce = false;
       }
     } catch (_) {}
+  }
+
+  if (targetId === 'panel-brackets') {
+    try { renderBrackets(teamsCache); } catch (_) {}
   }
 
   // Keep header icons in sync with current view
@@ -2830,6 +2833,7 @@ function listenToTeams() {
       recomputeMyTeamTabBadge();
       updateHomeStats(teamsCache);
       renderTeams(teamsCache);
+      renderBrackets(teamsCache);
       renderMyTeam(teamsCache);
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
@@ -3647,287 +3651,326 @@ function renderTeams(teams) {
 /* =========================
    Brackets page
 ========================= */
-function renderBrackets(teams) {
-  const board = document.getElementById('brackets-board');
-  const pill = document.getElementById('brackets-count-pill');
-  if (!board) return;
-
-  const st = computeUserState(teams);
+function getBracketTeamPool(teams) {
   const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
-  // Deterministic seeding: larger rosters first, then name.
   const sorted = [...visible].sort((a, b) => {
     const da = getMembers(a).length;
     const db = getMembers(b).length;
     if (db !== da) return db - da;
     return String(a?.teamName || '').localeCompare(String(b?.teamName || ''));
   });
-  if (pill) pill.textContent = String(visible.length);
+  return { visible, sorted };
+}
 
-  // Fixed 8-team bracket: 4 teams on left, 4 on right, finals in the middle.
-  const seeds = Array.from({ length: 8 }, (_, i) => sorted[i] || null);
-  const leftSeeds = seeds.slice(0, 4);
-  const rightSeeds = seeds.slice(4, 8);
-
-  const slotHtml = (t, seedNum, which) => {
-    const tc = t ? getDisplayTeamColor(t) : '';
-    const accent = tc ? `style="--team-accent:${esc(tc)}"` : '';
-    const name = t ? esc(truncateTeamName(t.teamName || 'Unnamed', 22)) : 'TBD';
-    const members = t ? getMembers(t).length : 0;
-    const isMine = t && st.teamId === t.id;
-    const data = t ? `data-team="${esc(t.id)}"` : '';
-    const mine = isMine ? '<span class="br-slot-tag">yours</span>' : '';
-    const seed = (/^\d+$/.test(String(seedNum))) ? `<span class="br-slot-seed">#${seedNum}</span>` : '';
-    const meta = t ? `<span class="br-slot-meta">${members}p</span>` : '<span class="br-slot-meta">—</span>';
-    return `<div class="br-slot ${t ? 'is-team' : 'is-tbd'}" ${data} ${accent} role="button" tabindex="0" aria-label="${t ? 'Open team' : 'TBD'}">${seed}<span class="br-slot-name">${name}</span>${meta}${mine}</div>`;
+function buildBracketSlot(team, seed, st) {
+  if (!team) {
+    return { kind: 'tbd', seed, name: 'TBD', members: 0, id: '', color: '', isMine: false };
+  }
+  return {
+    kind: 'team',
+    seed,
+    name: truncateTeamName(team.teamName || 'Unnamed', 24),
+    fullName: String(team.teamName || 'Unnamed'),
+    members: getMembers(team).length,
+    id: String(team.id || ''),
+    color: getDisplayTeamColor(team) || '',
+    isMine: !!(st && st.teamId === team.id),
   };
+}
 
-  // Pairings: 1v4 + 2v3 (left) and 5v8 + 6v7 (right).
-  // NOTE: We intentionally do not display semifinals. Winners from each side advance to Finals (visual-only).
-  const leftM1 = { id: 'L1', label: 'Left Match 1', a: leftSeeds[0], b: leftSeeds[3], seedA: 1, seedB: 4 };
-  const leftM2 = { id: 'L2', label: 'Left Match 2', a: leftSeeds[1], b: leftSeeds[2], seedA: 2, seedB: 3 };
-  const rightM1 = { id: 'R1', label: 'Right Match 1', a: rightSeeds[0], b: rightSeeds[3], seedA: 5, seedB: 8 };
-  const rightM2 = { id: 'R2', label: 'Right Match 2', a: rightSeeds[1], b: rightSeeds[2], seedA: 6, seedB: 7 };
+function buildPlaceholderSlot(name, source) {
+  return {
+    kind: 'placeholder',
+    seed: '',
+    name: String(name || 'TBD'),
+    source: String(source || ''),
+    members: 0,
+    id: '',
+    color: '',
+    isMine: false,
+  };
+}
 
-  const matchHtml = (m) => {
-    const aName = m.a ? truncateTeamName(m.a.teamName || 'Unnamed', 26) : 'TBD';
-    const bName = m.b ? truncateTeamName(m.b.teamName || 'Unnamed', 26) : 'TBD';
-    const aId = m.a ? String(m.a.id || '') : '';
-    const bId = m.b ? String(m.b.id || '') : '';
-    return `
-      <div class="br-match brk-card" data-wire="${esc(m.id)}" data-match="${esc(m.id)}" data-match-a="${esc(aId)}" data-match-b="${esc(bId)}" data-match-a-name="${esc(aName)}" data-match-b-name="${esc(bName)}" role="button" tabindex="0" aria-label="Open matchup">
-        <div class="br-match-top">
-          <span class="br-match-title">${esc(m.label)}</span>
-          <span class="br-match-bo3">BO3</span>
-        </div>
-        <div class="br-match-slots">
-          ${slotHtml(m.a, m.seedA, 'a')}
-          ${slotHtml(m.b, m.seedB, 'b')}
-        </div>
+function buildBracketModel(teams) {
+  const safeTeams = Array.isArray(teams) ? teams : [];
+  const st = computeUserState(safeTeams);
+  const pool = getBracketTeamPool(safeTeams);
+  const seededTeams = Array.from({ length: 8 }, (_, i) => pool.sorted[i] || null);
+  const seededSlots = seededTeams.map((t, idx) => buildBracketSlot(t, idx + 1, st));
+
+  const match = (id, label, round, a, b) => ({
+    id,
+    label,
+    round,
+    bestOf: 3,
+    slots: [a, b],
+  });
+
+  const qf1 = match('QF1', 'Quarterfinal 1', 'Quarterfinals', seededSlots[0], seededSlots[7]);
+  const qf2 = match('QF2', 'Quarterfinal 2', 'Quarterfinals', seededSlots[3], seededSlots[4]);
+  const qf3 = match('QF3', 'Quarterfinal 3', 'Quarterfinals', seededSlots[1], seededSlots[6]);
+  const qf4 = match('QF4', 'Quarterfinal 4', 'Quarterfinals', seededSlots[2], seededSlots[5]);
+
+  const sf1 = match(
+    'SF1',
+    'Semifinal 1',
+    'Semifinals',
+    buildPlaceholderSlot('Winner QF1', 'QF1'),
+    buildPlaceholderSlot('Winner QF2', 'QF2')
+  );
+  const sf2 = match(
+    'SF2',
+    'Semifinal 2',
+    'Semifinals',
+    buildPlaceholderSlot('Winner QF3', 'QF3'),
+    buildPlaceholderSlot('Winner QF4', 'QF4')
+  );
+
+  const final = match(
+    'F',
+    'Grand Final',
+    'Final',
+    buildPlaceholderSlot('Winner SF1', 'SF1'),
+    buildPlaceholderSlot('Winner SF2', 'SF2')
+  );
+
+  return {
+    state: st,
+    visibleCount: pool.visible.length,
+    seededCount: Math.min(8, pool.sorted.length),
+    rounds: {
+      quarterfinals: [qf1, qf2, qf3, qf4],
+      semifinals: [sf1, sf2],
+      final,
+    },
+  };
+}
+
+function bracketSlotLabel(slot) {
+  if (!slot) return 'TBD';
+  if (slot.kind === 'team') return `${slot.seed}. ${slot.name}`;
+  if (slot.kind === 'placeholder') return slot.name;
+  return 'TBD';
+}
+
+function renderBracketSlot(slot) {
+  const safe = slot || { kind: 'tbd', seed: '', name: 'TBD', members: 0, id: '', color: '', isMine: false };
+  const cls = ['brx-slot', `is-${safe.kind}`];
+  if (safe.isMine) cls.push('is-mine');
+
+  const attrs = [];
+  if (safe.kind === 'team' && safe.id) {
+    attrs.push(`data-team-id="${esc(safe.id)}"`);
+    attrs.push('role="button" tabindex="0"');
+    attrs.push(`aria-label="Open team ${esc(safe.fullName || safe.name || 'details')}"`);
+  }
+  if (safe.kind === 'team' && safe.fullName) attrs.push(`title="${esc(safe.fullName)}"`);
+  if (safe.kind === 'placeholder' && safe.source) attrs.push(`data-source="${esc(safe.source)}"`);
+  if (safe.color) attrs.push(`style="--team-accent:${esc(safe.color)}"`);
+
+  const seed = safe.seed ? `<span class="brx-slot-seed">#${esc(String(safe.seed))}</span>` : '<span class="brx-slot-seed">—</span>';
+  const meta = safe.kind === 'team' ? `<span class="brx-slot-meta">${esc(String(safe.members))}p</span>` : '<span class="brx-slot-meta">—</span>';
+  const mine = safe.isMine ? '<span class="brx-slot-you">Your team</span>' : '';
+
+  return `
+    <div class="${cls.join(' ')}" ${attrs.join(' ')}>
+      ${seed}
+      <span class="brx-slot-name">${esc(safe.name || 'TBD')}</span>
+      ${meta}
+      ${mine}
+    </div>
+  `;
+}
+
+function renderBracketMatchCard(m, opts = {}) {
+  const match = m || { id: '', label: 'Match', round: '', bestOf: 3, slots: [null, null] };
+  const a = match.slots?.[0] || null;
+  const b = match.slots?.[1] || null;
+  const attrs = [
+    `data-brx-match-id="${esc(match.id || '')}"`,
+    `data-brx-round="${esc(match.round || '')}"`,
+    `data-brx-bestof="${esc(String(match.bestOf || 3))}"`,
+    `data-brx-a="${esc(bracketSlotLabel(a))}"`,
+    `data-brx-b="${esc(bracketSlotLabel(b))}"`,
+  ];
+
+  return `
+    <article class="brx-match ${opts.isFinal ? 'is-final' : ''}" ${attrs.join(' ')} role="button" tabindex="0" aria-label="Open ${esc(match.label || 'match')} details">
+      <header class="brx-match-head">
+        <span class="brx-match-title">${esc(match.label || 'Match')}</span>
+        <span class="brx-match-badge">BO${esc(String(match.bestOf || 3))}</span>
+      </header>
+      <div class="brx-match-slots">
+        ${renderBracketSlot(a)}
+        ${renderBracketSlot(b)}
       </div>
-    `;
-  };
+    </article>
+  `;
+}
 
-  const finalsHtml = () => {
-    return `
-      <div class="br-final brk-card" data-wire="F" data-match="F" data-match-a-name="TBD" data-match-b-name="TBD" role="button" tabindex="0" aria-label="Open finals matchup">
-        <div class="br-match-top">
-          <span class="br-match-title">Finals</span>
-          <span class="br-match-bo3">BO3</span>
-        </div>
-        <div class="br-match-slots">
-          <div class="br-slot is-tbd br-winner" role="button" tabindex="0" aria-label="TBD"><span class="br-slot-seed">L</span><span class="br-slot-name">TBD</span><span class="br-slot-meta">—</span></div>
-          <div class="br-slot is-tbd br-winner" role="button" tabindex="0" aria-label="TBD"><span class="br-slot-seed">R</span><span class="br-slot-name">TBD</span><span class="br-slot-meta">—</span></div>
-        </div>
-      </div>
-    `;
-  };
+function renderBrackets(teams) {
+  const board = document.getElementById('brackets-board');
+  const pill = document.getElementById('brackets-count-pill');
+  if (!board) return;
 
-  // New layout: a single bracket "canvas" (no side panels) + SVG wires,
-  // closer to classic playoff bracket visuals.
+  const model = buildBracketModel(teams);
+  if (pill) pill.textContent = String(model.visibleCount);
+
+  const missing = Math.max(0, 8 - model.seededCount);
+  const status = missing > 0
+    ? `${missing} more team${missing === 1 ? '' : 's'} needed for a full 8-team bracket.`
+    : 'Top 8 teams are seeded by roster size, then alphabetically.';
+
   board.innerHTML = `
-    <div class="brk-canvas" aria-label="8-team bracket">
-      <svg class="brk-wires" aria-hidden="true"></svg>
-      <div class="brk-layout">
-        <div class="brk-round brk-left" aria-label="Left side">
-          <div class="brk-round-label">LEFT</div>
-          <div class="brk-match-wrap">
-            ${matchHtml(leftM1)}
-            ${matchHtml(leftM2)}
+    <div class="brx-shell" aria-label="Tournament bracket">
+      <div class="brx-status">${esc(status)}</div>
+      <div class="brx-grid">
+        <section class="brx-round brx-round-qf" aria-label="Quarterfinals">
+          <div class="brx-round-title">Quarterfinals</div>
+          <div class="brx-match-stack">
+            ${model.rounds.quarterfinals.map(m => renderBracketMatchCard(m)).join('')}
           </div>
-        </div>
+        </section>
 
-        <div class="brk-finals" aria-label="Finals">
-          <div class="brk-finals-label"><span class="brk-trophy">🏆</span> FINALS</div>
-          <div class="brk-finals-card">
-            ${finalsHtml()}
+        <section class="brx-round brx-round-sf" aria-label="Semifinals">
+          <div class="brx-round-title">Semifinals</div>
+          <div class="brx-match-stack is-spread">
+            ${model.rounds.semifinals.map(m => renderBracketMatchCard(m)).join('')}
           </div>
-        </div>
+        </section>
 
-        <div class="brk-round brk-right" aria-label="Right side">
-          <div class="brk-round-label">RIGHT</div>
-          <div class="brk-match-wrap">
-            ${matchHtml(rightM1)}
-            ${matchHtml(rightM2)}
+        <section class="brx-round brx-round-f" aria-label="Final">
+          <div class="brx-round-title">Final</div>
+          <div class="brx-match-stack is-final">
+            ${renderBracketMatchCard(model.rounds.final, { isFinal: true })}
+            <div class="brx-champion" aria-hidden="true">
+              <div class="brx-champion-label">Champion</div>
+              <div class="brx-champion-value">Winner Final</div>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   `;
 
-  // Click/keyboard open team modal for real teams
-  board.querySelectorAll('.br-slot.is-team[data-team]')?.forEach(el => {
+  board.querySelectorAll('.brx-slot.is-team[data-team-id]')?.forEach(el => {
     const open = () => {
-      const tid = el.getAttribute('data-team');
-      if (tid) openTeamModal(tid);
+      const teamId = String(el.getAttribute('data-team-id') || '').trim();
+      if (teamId) openTeamModal(teamId);
     };
-    el.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      open();
+    });
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        open();
+      }
     });
   });
 
-  // Matchup mini popup
-  board.querySelectorAll('[data-match]')?.forEach(el => {
+  board.querySelectorAll('.brx-match[data-brx-match-id]')?.forEach(el => {
     const open = () => {
-      const aName = el.getAttribute('data-match-a-name') || 'TBD';
-      const bName = el.getAttribute('data-match-b-name') || 'TBD';
-      const matchId = el.getAttribute('data-match') || '';
-      showBracketMatchPopup({ matchId, aName, bName });
+      showBracketMatchPopup({
+        matchId: el.getAttribute('data-brx-match-id') || '',
+        round: el.getAttribute('data-brx-round') || '',
+        bestOf: el.getAttribute('data-brx-bestof') || '3',
+        aName: el.getAttribute('data-brx-a') || 'TBD',
+        bName: el.getAttribute('data-brx-b') || 'TBD',
+      });
     };
     el.addEventListener('click', open);
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
     });
   });
-
-  // Draw connector wires after DOM paints.
-  requestAnimationFrame(() => {
-    try { drawBracketWires(); } catch (_) {}
-  });
 }
 
-// Draw classic bracket connector lines using an SVG overlay.
-function drawBracketWires() {
-  const canvas = document.querySelector('.panel-brackets .brk-canvas');
-  if (!canvas) return;
-  const svg = canvas.querySelector('.brk-wires');
-  if (!svg) return;
-
-  const rect = canvas.getBoundingClientRect();
-  const q = (sel) => canvas.querySelector(sel);
-  const a = q('[data-wire="L1"]');
-  const b = q('[data-wire="L2"]');
-  const c = q('[data-wire="R1"]');
-  const d = q('[data-wire="R2"]');
-  const f = q('[data-wire="F"]');
-  if (!a || !b || !c || !d || !f) return;
-
-  // Finals slots inside the finals card
-  const finalsSlots = f.querySelectorAll('.br-slot');
-  const finalsLeft = finalsSlots?.[0];
-  const finalsRight = finalsSlots?.[1];
-  if (!finalsLeft || !finalsRight) return;
-
-  const r = (el) => el.getBoundingClientRect();
-  const pt = (x, y) => ({ x: x - rect.left, y: y - rect.top });
-
-  const ra = r(a);
-  const rb = r(b);
-  const rc = r(c);
-  const rd = r(d);
-  const rfl = r(finalsLeft);
-  const rfr = r(finalsRight);
-
-  // Anchor points
-  const L1 = pt(ra.right, ra.top + ra.height * 0.50);
-  const L2 = pt(rb.right, rb.top + rb.height * 0.50);
-  const R1 = pt(rc.left,  rc.top + rc.height * 0.50);
-  const R2 = pt(rd.left,  rd.top + rd.height * 0.50);
-
-  const FL = pt(rfl.left,  rfl.top + rfl.height * 0.50);
-  const FR = pt(rfr.right, rfr.top + rfr.height * 0.50);
-
-  // Merge points
-  const mergeLX = FL.x - 28;
-  const mergeLY = (L1.y + L2.y) / 2;
-  const mergeRX = FR.x + 28;
-  const mergeRY = (R1.y + R2.y) / 2;
-
-  const d1 = `M ${L1.x} ${L1.y} H ${mergeLX}`;
-  const d2 = `M ${L2.x} ${L2.y} H ${mergeLX}`;
-  const d3 = `M ${mergeLX} ${L1.y} V ${L2.y}`;
-  const d4 = `M ${mergeLX} ${mergeLY} H ${FL.x}`;
-  const d5 = `M ${R1.x} ${R1.y} H ${mergeRX}`;
-  const d6 = `M ${R2.x} ${R2.y} H ${mergeRX}`;
-  const d7 = `M ${mergeRX} ${R1.y} V ${R2.y}`;
-  const d8 = `M ${mergeRX} ${mergeRY} H ${FR.x}`;
-
-  const w = rect.width;
-  const h = rect.height;
-  svg.setAttribute('width', String(Math.max(1, Math.floor(w))));
-  svg.setAttribute('height', String(Math.max(1, Math.floor(h))));
-  svg.setAttribute('viewBox', `0 0 ${Math.max(1, Math.floor(w))} ${Math.max(1, Math.floor(h))}`);
-
-  svg.innerHTML = `
-    <path class="brk-wire" d="${d1} ${d2} ${d3} ${d4} ${d5} ${d6} ${d7} ${d8}" />
-  `;
-}
+// Back-compat no-op for older code paths that still reference this helper.
+function drawBracketWires() {}
 
 function initBracketsUI() {
-  // No controls — bracket is always rendered from the current team list.
-  // Keep bracket wires aligned on resize (and after font loading).
   let raf = null;
-  const schedule = () => {
+  const rerenderIfVisible = () => {
     if (raf) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = null;
-      try {
-        const panel = document.getElementById('panel-brackets');
-        if (panel && !panel.classList.contains('hidden')) drawBracketWires();
-      } catch (_) {}
+      const panel = document.getElementById('panel-brackets');
+      if (!panel || !panel.classList.contains('active')) return;
+      try { renderBrackets(teamsCache); } catch (_) {}
     });
   };
-  window.addEventListener('resize', schedule);
-  // Fonts can shift measurements slightly.
+
+  window.addEventListener('resize', rerenderIfVisible);
   if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(schedule).catch(() => {});
+    document.fonts.ready.then(rerenderIfVisible).catch(() => {});
   }
 }
 
-// Small info popup for a bracket matchup.
 let _bracketsPopupEl = null;
-function showBracketMatchPopup({ matchId, aName, bName }) {
+let _bracketsPopupTeardown = null;
+
+function closeBracketMatchPopup() {
+  if (_bracketsPopupTeardown) {
+    try { _bracketsPopupTeardown(); } catch (_) {}
+    _bracketsPopupTeardown = null;
+  }
+  if (_bracketsPopupEl) _bracketsPopupEl.style.display = 'none';
+}
+
+function showBracketMatchPopup({ matchId, round, bestOf, aName, bName }) {
   try {
+    closeBracketMatchPopup();
+
     if (!_bracketsPopupEl) {
       _bracketsPopupEl = document.createElement('div');
-      _bracketsPopupEl.className = 'br-match-popup';
+      _bracketsPopupEl.className = 'brx-popup';
       _bracketsPopupEl.style.display = 'none';
       document.body.appendChild(_bracketsPopupEl);
     }
 
     const title = `${String(aName || 'TBD')} vs ${String(bName || 'TBD')}`;
     _bracketsPopupEl.innerHTML = `
-      <div class="br-pop-card" role="dialog" aria-label="Matchup info">
-        <div class="br-pop-top">
-          <div class="br-pop-title">${esc(title)}</div>
-          <button class="icon-btn small" type="button" data-br-pop-close aria-label="Close">✕</button>
+      <div class="brx-pop-card" role="dialog" aria-modal="true" aria-label="Bracket match details">
+        <div class="brx-pop-top">
+          <div class="brx-pop-title">${esc(title)}</div>
+          <button class="icon-btn small" type="button" data-brx-pop-close aria-label="Close">✕</button>
         </div>
-        <div class="br-pop-sub">Best of 3</div>
-        <div class="br-pop-meta">Match: <span class="mono">${esc(matchId || '')}</span></div>
+        <div class="brx-pop-meta">
+          <div><span>Round</span><strong>${esc(round || 'Match')}</strong></div>
+          <div><span>Best Of</span><strong>${esc(String(bestOf || 3))}</strong></div>
+          <div><span>Match ID</span><strong class="mono">${esc(matchId || '')}</strong></div>
+        </div>
       </div>
     `;
 
-    const close = () => {
-      if (_bracketsPopupEl) _bracketsPopupEl.style.display = 'none';
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
+    _bracketsPopupEl.style.display = 'flex';
 
-    const onDoc = (e) => {
+    const onDocDown = (e) => {
       if (!_bracketsPopupEl) return;
-      if (!_bracketsPopupEl.contains(e.target)) close();
+      if (!_bracketsPopupEl.querySelector('.brx-pop-card')?.contains(e.target)) closeBracketMatchPopup();
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') closeBracketMatchPopup();
     };
 
-    _bracketsPopupEl.querySelector('[data-br-pop-close]')?.addEventListener('click', (e) => {
+    _bracketsPopupEl.querySelector('[data-brx-pop-close]')?.addEventListener('click', (e) => {
       e.preventDefault();
-      close();
+      closeBracketMatchPopup();
     });
 
-    // Centered mini popup
-    _bracketsPopupEl.style.display = 'flex';
-    _bracketsPopupEl.style.alignItems = 'center';
-    _bracketsPopupEl.style.justifyContent = 'center';
-    _bracketsPopupEl.style.position = 'fixed';
-    _bracketsPopupEl.style.inset = '0';
-    _bracketsPopupEl.style.zIndex = '9999';
-
-    setTimeout(() => {
-      document.addEventListener('mousedown', onDoc);
-      document.addEventListener('keydown', onKey);
-    }, 0);
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKey);
+    _bracketsPopupTeardown = () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKey);
+    };
   } catch (_) {
     // no-op
   }
@@ -10807,6 +10850,46 @@ document.addEventListener('DOMContentLoaded', initLogsPopup);
 /* =========================
    Practice page (no modal)
 ========================= */
+function openPracticeGameInApp(gameId) {
+  const gid = String(gameId || '').trim();
+  if (!gid) throw new Error('Missing practice game id.');
+
+  enterAppFromLaunch('quick', { skipQuickLobby: true });
+  try { window.showGameBoard?.(); } catch (_) {}
+  try { window.startGameListener?.(gid, { spectator: false, ephemeral: true }); } catch (e) { console.warn(e); }
+  try { document.body.classList.add('practice'); } catch (_) {}
+
+  // Keep URL clean in same-tab mode.
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('practice')) {
+      url.searchParams.delete('practice');
+      history.replaceState(null, '', url.toString());
+    }
+  } catch (_) {}
+}
+
+async function startPracticeInApp(opts = {}, hintEl = null) {
+  if (!auth.currentUser || !getUserName()) {
+    if (hintEl) hintEl.textContent = 'Sign in to continue.';
+    return null;
+  }
+
+  if (hintEl) hintEl.textContent = 'Starting…';
+  const createFn = window.createPracticeGame;
+  if (typeof createFn !== 'function') throw new Error('Practice not available');
+
+  const sizeNum = parseInt(opts?.size, 10);
+  const size = (sizeNum === 3) ? 3 : 2;
+  const role = String(opts?.role || 'operative');
+  const vibe = String(opts?.vibe || '').trim();
+  const deckId = String(opts?.deckId || 'standard');
+
+  const gameId = await createFn({ size, role, vibe, deckId });
+  openPracticeGameInApp(gameId);
+  return gameId;
+}
+
 function initPracticePage() {
   const panel = document.getElementById('panel-practice');
   if (!panel) return;
@@ -10834,7 +10917,7 @@ function initPracticePage() {
     if (startBtn) startBtn.disabled = !ok;
     if (hintEl) {
       hintEl.textContent = ok
-        ? 'Ready when you are. Opens in a new tab so you can keep other games running.'
+        ? 'Ready when you are. Starts here in this tab.'
         : 'Pick a role and team size to continue.';
     }
   };
@@ -10859,30 +10942,15 @@ function initPracticePage() {
   });
 
   const start = async () => {
-    if (!auth.currentUser || !getUserName()) {
-      if (hintEl) hintEl.textContent = 'Sign in to continue.';
-      return;
-    }
     if (!state.role || !state.size) return;
 
     const vibe = String(vibeInput?.value || '').trim();
     const deckId = 'standard';
 
-    // Open a blank tab immediately to avoid popup blockers.
-    let w = null;
-    try { w = window.open('about:blank', '_blank'); } catch (_) {}
-    if (hintEl) hintEl.textContent = 'Starting…';
-
     try {
-      const createFn = window.createPracticeGame;
-      if (typeof createFn !== 'function') throw new Error('Practice not available');
-      const gameId = await createFn({ size: state.size, role: state.role, vibe, deckId });
-      const url = `${location.origin}${location.pathname}?practice=${encodeURIComponent(gameId)}`;
-      if (w && !w.closed) w.location.href = url;
-      else location.href = url;
+      await startPracticeInApp({ size: state.size, role: state.role, vibe, deckId }, hintEl);
     } catch (e) {
       console.error(e);
-      if (w && !w.closed) { try { w.close(); } catch (_) {} }
       if (hintEl) hintEl.textContent = (e?.message || 'Could not start practice.');
     }
   };
@@ -10917,7 +10985,7 @@ function closePracticeModal() {
   modal.setAttribute('aria-hidden', 'true');
   setTimeout(() => { modal.style.display = 'none'; }, 180);
   const hint = document.getElementById('practice-hint');
-  if (hint) hint.textContent = 'Opens in a new tab so you can keep other games running.';
+  if (hint) hint.textContent = 'Starts here in this tab.';
 }
 
 function initPracticeModal() {
@@ -10936,29 +11004,11 @@ function initPracticeModal() {
     const vibe = String(document.getElementById('practice-vibe')?.value || '').trim();
     const deckId = String(document.getElementById('practice-deck')?.value || 'standard');
 
-    if (!auth.currentUser || !getUserName()) {
-      if (hintEl) hintEl.textContent = 'Sign in to continue.';
-      return;
-    }
-
-    // Open a blank tab immediately (helps avoid popup blockers)
-    let w = null;
-    try { w = window.open('about:blank', '_blank'); } catch (_) {}
-    if (hintEl) hintEl.textContent = 'Starting…';
-
     try {
-      const createFn = window.createPracticeGame;
-      if (typeof createFn !== 'function') throw new Error('Practice not available');
-      const gameId = await createFn({ size, role, vibe, deckId });
-
-      const url = `${location.origin}${location.pathname}?practice=${encodeURIComponent(gameId)}`;
-      if (w && !w.closed) w.location.href = url;
-      else location.href = url;
-
+      await startPracticeInApp({ size, role, vibe, deckId }, hintEl);
       closePracticeModal();
     } catch (e) {
       console.error(e);
-      if (w && !w.closed) { try { w.close(); } catch (_) {} }
       if (hintEl) hintEl.textContent = (e?.message || 'Could not start practice.');
     }
   });
@@ -10972,11 +11022,7 @@ function handlePracticeDeepLink() {
     if (!gid) return false;
     if (!auth.currentUser || !getUserName()) return false;
 
-    enterAppFromLaunch('quick', { skipQuickLobby: true });
-    try { window.showGameBoard?.(); } catch (_) {}
-    try { window.startGameListener?.(gid, { spectator: false, ephemeral: true }); } catch (e) { console.warn(e); }
-
-    try { document.body.classList.add('practice'); } catch (_) {}
+    openPracticeGameInApp(gid);
     return true;
   } catch (_) {
     return false;

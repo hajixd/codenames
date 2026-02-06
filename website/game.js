@@ -582,7 +582,7 @@ function _makePracticeAI(team, role, usedNames) {
 
 /**
  * Creates a brand-new practice game with AI teammates/opponents.
- * Does NOT touch LS_ACTIVE_GAME_ID — Practice opens in a new tab.
+ * Does NOT touch LS_ACTIVE_GAME_ID.
  */
 window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const u = auth.currentUser;
@@ -593,14 +593,14 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const size = Math.max(2, Math.min(3, parseInt(opts.size, 10) || 2)); // 2 or 3
   const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
   const vibe = String(opts.vibe || '').trim();
-  const deckId = String(opts.deckId || 'standard');
+  const deckId = normalizeDeckId(opts.deckId || 'standard');
 
   const usedNames = new Set([userName]);
   const uid = getUserId();
 
   // Build board cards (reuse Quick Play generator so "vibe" works consistently).
   const cardSettings = {
-    vibe: vibe || 'codenames',
+    vibe,
     deckId,
     blackCards: 1
   };
@@ -637,29 +637,37 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   for (let i = 0; i < needOps; i++) bluePlayers.push(_makePracticeAI('blue', 'operative', usedNames));
 
   // Ensure spymaster fields
-  const redSpy = redPlayers.find(p => p.role === 'spymaster');
-  const blueSpy = bluePlayers.find(p => p.role === 'spymaster');
+  const redSpy = redPlayers.find(p => p.role === 'spymaster') || null;
+  const blueSpy = bluePlayers.find(p => p.role === 'spymaster') || null;
 
   const gameData = {
     type: 'practice',
+    redTeamName: 'Red Team',
+    blueTeamName: 'Blue Team',
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     createdAtMs: Date.now(),
     createdBy: uid,
     createdByName: userName,
-    vibe: cardSettings.vibe,
+    vibe,
     deckId,
     cards,
+    redMarkers: {},
+    blueMarkers: {},
     // game state
     currentPhase: 'spymaster',
     currentTeam: 'red',
-    currentClueWord: null,
-    currentClueNumber: null,
+    currentClue: null,
+    guessesRemaining: 0,
+    redCardsLeft: FIRST_TEAM_CARDS,
+    blueCardsLeft: SECOND_TEAM_CARDS,
     winner: null,
     redPlayers,
     bluePlayers,
     spectators: [],
-    redSpymaster: redSpy ? redSpy.odId : null,
-    blueSpymaster: blueSpy ? blueSpy.odId : null,
+    redSpymaster: redSpy ? String(redSpy.name || '').trim() : null,
+    blueSpymaster: blueSpy ? String(blueSpy.name || '').trim() : null,
+    log: ['Practice game started.'],
+    clueHistory: [],
     // practice knobs
     practice: {
       size,
@@ -668,6 +676,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     },
     // tracking for inactivity logic
     lastMoveAtMs: Date.now(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   };
 
   const ref = await db.collection('games').add(gameData);
@@ -2425,7 +2434,67 @@ function displayNameFromRoster(name, rosterPlayers) {
   const list = Array.isArray(rosterPlayers) ? rosterPlayers : [];
   const match = list.find(p => p && String(p.name || '').trim() === raw);
   if (match && match.isAI) return `AI ${raw}`;
+  // Back-compat: some older docs may have stored an id in place of the name.
+  const idMatch = list.find(p => p && String(p.odId || '').trim() === raw);
+  if (idMatch) return displayPlayerName(idMatch);
   return raw;
+}
+
+function getTeamPlayers(team, game = currentGame) {
+  if (team !== 'red' && team !== 'blue') return [];
+  const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+  return Array.isArray(game?.[key]) ? game[key] : [];
+}
+
+function normalizeSpyIdentity(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^ai\s+/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+function isSpymasterPlayerForTeam(player, team, game = currentGame) {
+  if (!player || (team !== 'red' && team !== 'blue')) return false;
+  const role = String(player?.role || '').trim().toLowerCase();
+  if (role === 'spymaster') return true;
+
+  const key = team === 'red' ? 'redSpymaster' : 'blueSpymaster';
+  const spyRaw = String(game?.[key] || '').trim();
+  if (!spyRaw) return false;
+
+  const playerNameRaw = String(player?.name || '').trim();
+  const playerId = String(player?.odId || player?.id || '').trim();
+
+  // Back-compat: some docs stored the player's id in redSpymaster/blueSpymaster.
+  if (playerId && spyRaw === playerId) return true;
+
+  // Name match with tolerance for "AI " prefix and casing differences.
+  const spyNorm = normalizeSpyIdentity(spyRaw);
+  const playerNorm = normalizeSpyIdentity(playerNameRaw);
+  return !!spyNorm && !!playerNorm && spyNorm === playerNorm;
+}
+
+function getTeamSpymasterName(team, game = currentGame) {
+  if (team !== 'red' && team !== 'blue') return '';
+  const players = getTeamPlayers(team, game);
+  const byRole = players.find(p => isSpymasterPlayerForTeam(p, team, game));
+  if (byRole && String(byRole.name || '').trim()) return String(byRole.name || '').trim();
+
+  const key = team === 'red' ? 'redSpymaster' : 'blueSpymaster';
+  const spyRaw = String(game?.[key] || '').trim();
+  if (!spyRaw) return '';
+
+  // Back-compat: when a raw id is stored, map it back to a roster name.
+  const byId = players.find(p => String(p?.odId || p?.id || '').trim() === spyRaw);
+  if (byId && String(byId?.name || '').trim()) return String(byId.name || '').trim();
+
+  // Back-compat: allow "AI Name" vs "Name" mismatches.
+  const spyNorm = normalizeSpyIdentity(spyRaw);
+  const byName = players.find(p => normalizeSpyIdentity(p?.name) === spyNorm);
+  if (byName && String(byName?.name || '').trim()) return String(byName.name || '').trim();
+
+  return spyRaw;
 }
 
 function truncateTeamNameGame(name, maxLen = 20) {
@@ -2449,7 +2518,7 @@ async function renderSpectateGames() {
     // Only show games that have actually started (not in waiting phase)
     // Games in 'waiting' phase are still in lobby/setup and shouldn't be visible
     const activeGames = games
-      .filter(g => g.currentPhase && g.currentPhase !== 'waiting')
+      .filter(g => g.type !== 'practice' && g.currentPhase && g.currentPhase !== 'waiting')
       .slice(0, 10);
 
     if (activeGames.length === 0) {
@@ -2762,7 +2831,7 @@ function isBeyondGracePeriod(game) {
 function shouldEndAbandonedTournamentGame(game, presenceMap) {
   if (!game) return false;
   if (game.winner != null) return false;
-  if (game.type === 'quick') return false;
+  if (game.type !== 'tournament') return false;
   if (!isBeyondGracePeriod(game)) return false;
 
   const participants = getGameParticipantIds(game);
@@ -2807,7 +2876,7 @@ async function getActiveGames(limit = 25) {
 
     // Filter out games that haven't actually started (waiting phase)
     // These are Quick Play lobbies where players are not ready
-    games = games.filter(g => g.currentPhase && g.currentPhase !== 'waiting');
+    games = games.filter(g => g.type !== 'practice' && g.currentPhase && g.currentPhase !== 'waiting');
 
     // Auto-end abandoned tournament games (no online/idle participants).
     // This also cleans up orphaned matches with no rostered players.
@@ -3298,6 +3367,28 @@ function showGameBoard() {
 
 window.showGameBoard = showGameBoard;
 
+function deriveCardsLeftFromBoard(game, team) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  let left = 0;
+  for (const c of cards) {
+    if (!c) continue;
+    if (String(c.type || '') === team && !c.revealed) left += 1;
+  }
+  return left;
+}
+
+function getCardsLeft(game, team) {
+  if (team !== 'red' && team !== 'blue') return 0;
+  const key = team === 'red' ? 'redCardsLeft' : 'blueCardsLeft';
+  const raw = Number(game?.[key]);
+  if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+
+  const derived = deriveCardsLeftFromBoard(game, team);
+  if (Number.isFinite(derived) && derived >= 0) return derived;
+
+  return team === 'red' ? FIRST_TEAM_CARDS : SECOND_TEAM_CARDS;
+}
+
 
 // Settings modal: show/hide in-game actions when a user is inside a game.
 function updateSettingsInGameActions(isInGame) {
@@ -3369,8 +3460,12 @@ function renderGame() {
     if (blueTeamEl) blueTeamEl.textContent = truncateTeamNameGame(currentGame.blueTeamName || 'Blue Team');
   }
 
-  document.getElementById('game-red-left').textContent = currentGame.redCardsLeft;
-  document.getElementById('game-blue-left').textContent = currentGame.blueCardsLeft;
+  const redLeftRaw = getCardsLeft(currentGame, 'red');
+  const blueLeftRaw = getCardsLeft(currentGame, 'blue');
+  const redLeft = Number.isFinite(redLeftRaw) ? redLeftRaw : 0;
+  const blueLeft = Number.isFinite(blueLeftRaw) ? blueLeftRaw : 0;
+  document.getElementById('game-red-left').textContent = String(redLeft);
+  document.getElementById('game-blue-left').textContent = String(blueLeft);
   // Update turn display (kept for mobile / a11y, hidden on desktop)
   const turnTeamEl = document.getElementById('game-turn-team');
   const turnRoleEl = document.getElementById('game-turn-role');
@@ -3402,7 +3497,7 @@ function renderGame() {
   // Role selection
   const roleSelectionEl = document.getElementById('role-selection');
   if (!spectator && currentGame.currentPhase === 'role-selection' && myTeamColor) {
-    const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
+    const mySpymaster = getTeamSpymasterName(myTeamColor, currentGame);
     if (!mySpymaster) {
       roleSelectionEl.style.display = 'block';
       updateRoleButtons();
@@ -3528,16 +3623,14 @@ function renderOgPanels() {
   ogPanelBlue.style.display = 'flex';
   ogPanelRed.style.display = 'flex';
 
-  // Split players into spymasters and operatives
-  const splitRoles = (players, spymasterName) => {
+  // Split players into spymasters and operatives.
+  // Prefer explicit role, with name field as fallback for older docs.
+  const splitRoles = (team, players) => {
     const spymasters = [];
     const operatives = [];
     (players || []).forEach(p => {
-      if (p?.name && String(p.name).trim() === String(spymasterName || '').trim()) {
-        spymasters.push(p);
-      } else {
-        operatives.push(p);
-      }
+      if (isSpymasterPlayerForTeam(p, team, currentGame)) spymasters.push(p);
+      else operatives.push(p);
     });
     return { spymasters, operatives };
   };
@@ -3549,11 +3642,13 @@ function renderOgPanels() {
     ).join('');
   };
 
-  const blue = splitRoles(currentGame.bluePlayers, currentGame.blueSpymaster);
-  const red = splitRoles(currentGame.redPlayers, currentGame.redSpymaster);
+  const blue = splitRoles('blue', currentGame.bluePlayers);
+  const red = splitRoles('red', currentGame.redPlayers);
 
-  const blueCardsLeft = currentGame.blueCardsLeft ?? '';
-  const redCardsLeft = currentGame.redCardsLeft ?? '';
+  const blueCardsLeftRaw = getCardsLeft(currentGame, 'blue');
+  const redCardsLeftRaw = getCardsLeft(currentGame, 'red');
+  const blueCardsLeft = Number.isFinite(blueCardsLeftRaw) ? blueCardsLeftRaw : 0;
+  const redCardsLeft = Number.isFinite(redCardsLeftRaw) ? redCardsLeftRaw : 0;
   const renderAgentDots = (count) => {
     const safe = Math.max(0, Math.min(9, Number(count) || 0));
     let html = '';
@@ -4017,9 +4112,7 @@ function buildOgStructuredLog() {
 
   return history.map(clue => {
     const team = clue.team || 'red';
-    const spymaster = team === 'red'
-      ? (currentGame.redSpymaster || 'Spymaster')
-      : (currentGame.blueSpymaster || 'Spymaster');
+    const spymaster = getTeamSpymasterName(team, currentGame) || 'Spymaster';
     const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
 
     // In OG/Codenames-Online style, show the hint in the *same badge* as the avatar (like the spymaster card).
@@ -4061,7 +4154,7 @@ function updateRoleButtons() {
   // Spectators can view chats but cannot post.
   if (!myTeamColor) return;
 
-  const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
+  const mySpymaster = getTeamSpymasterName(myTeamColor, currentGame);
 
   if (mySpymaster) {
     spymasterBtn.classList.add('taken');
@@ -4221,6 +4314,8 @@ async function handleCardClick(cardIndex) {
     cards: updatedCards,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
+  const redCardsLeftNow = getCardsLeft(currentGame, 'red');
+  const blueCardsLeftNow = getCardsLeft(currentGame, 'blue');
 
   let logEntry = `${guessByName} (${teamName}) guessed "${card.word}" - `;
   let endTurn = false;
@@ -4244,10 +4339,10 @@ async function handleCardClick(cardIndex) {
 
     // Update cards left
     if (currentGame.currentTeam === 'red') {
-      updates.redCardsLeft = currentGame.redCardsLeft - 1;
+      updates.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
       if (updates.redCardsLeft === 0) winner = 'red';
     } else {
-      updates.blueCardsLeft = currentGame.blueCardsLeft - 1;
+      updates.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
 
@@ -4260,15 +4355,18 @@ async function handleCardClick(cardIndex) {
     setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
   } else {
     // Other team's card - end turn and give them a point
-    logEntry += `Wrong! (${card.type === 'red' ? currentGame.redTeamName : currentGame.blueTeamName}'s card)`;
+    const ownerTeamName = card.type === 'red'
+      ? (currentGame.redTeamName || 'Red Team')
+      : (currentGame.blueTeamName || 'Blue Team');
+    logEntry += `Wrong! (${ownerTeamName}'s card)`;
     // Play wrong sound
     setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
 
     if (card.type === 'red') {
-      updates.redCardsLeft = currentGame.redCardsLeft - 1;
+      updates.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
       if (updates.redCardsLeft === 0) winner = 'red';
     } else {
-      updates.blueCardsLeft = currentGame.blueCardsLeft - 1;
+      updates.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
       if (updates.blueCardsLeft === 0) winner = 'blue';
     }
 
@@ -4609,8 +4707,8 @@ function getMyTeamColor() {
 
   const odId = getUserId();
 
-  // For Quick Play games, check player arrays
-  if (currentGame.type === 'quick') {
+  // Quick Play + Practice both store per-game player arrays.
+  if (currentGame.type === 'quick' || currentGame.type === 'practice') {
     const inRed = (currentGame.redPlayers || []).some(p => p.odId === odId);
     const inBlue = (currentGame.bluePlayers || []).some(p => p.odId === odId);
     if (inRed) return 'red';
@@ -4636,8 +4734,15 @@ function isCurrentUserSpymaster() {
   const myTeamColor = getMyTeamColor();
   if (!myTeamColor) return false;
 
-  const mySpymaster = myTeamColor === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster;
-  return mySpymaster === userName;
+  const byName = getTeamSpymasterName(myTeamColor, currentGame);
+  if (byName && byName === userName) return true;
+
+  // Back-compat: trust the roster role flag when present.
+  const myId = String(getUserId() || '').trim();
+  if (!myId) return false;
+  const roster = getTeamPlayers(myTeamColor, currentGame);
+  const me = roster.find(p => String(p?.odId || '').trim() === myId);
+  return !!(me && String(me?.role || '').toLowerCase() === 'spymaster');
 }
 
 function escapeHtml(str) {
@@ -5248,13 +5353,13 @@ function renderTeamRoster() {
 
   if (!redContainer || !blueContainer || !currentGame) return;
 
-  const renderPlayers = (players, spymaster, isCurrentTeam) => {
+  const renderPlayers = (players, team, isCurrentTeam) => {
     if (!players || players.length === 0) {
       return '<div class="roster-player"><span class="roster-player-name" style="color: var(--text-dim);">No players</span></div>';
     }
 
     return players.map(p => {
-      const isSpymaster = p.name === spymaster;
+      const isSpymaster = isSpymasterPlayerForTeam(p, team, currentGame);
       const role = isSpymaster ? 'spymaster' : 'operative';
       const isCurrent = isCurrentTeam && currentGame.currentPhase !== 'ended';
       const playerId = p.odId || '';
@@ -5273,13 +5378,13 @@ function renderTeamRoster() {
 
   redContainer.innerHTML = renderPlayers(
     currentGame.redPlayers,
-    currentGame.redSpymaster,
+    'red',
     isRedTurn
   );
 
   blueContainer.innerHTML = renderPlayers(
     currentGame.bluePlayers,
-    currentGame.blueSpymaster,
+    'blue',
     isBlueTurn
   );
 }
@@ -5375,13 +5480,8 @@ function renderTopbarTeamNames() {
     const isRed = team === 'red';
     const teamName = truncateTeamNameGame(isRed ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team'));
     const roster = isRed ? (currentGame.redPlayers || []) : (currentGame.bluePlayers || []);
-    const spymasterName = isRed ? currentGame.redSpymaster : currentGame.blueSpymaster;
-
-    const spymasterEntry = spymasterName
-      ? roster.find(p => String(p?.name || '').trim() === String(spymasterName).trim())
-      : null;
-
-    const operatives = roster.filter(p => String(p?.name || '').trim() !== String(spymasterName || '').trim());
+    const spymasterEntry = roster.find(p => isSpymasterPlayerForTeam(p, team, currentGame)) || null;
+    const operatives = roster.filter(p => !isSpymasterPlayerForTeam(p, team, currentGame));
 
     const renderPlayerRow = (p, role) => {
       const pid = String(p?.odId || p?.userId || '').trim();
@@ -5875,7 +5975,7 @@ function renderPlayersPopup() {
       const rawName = String(p?.name || '—');
       const displayName = p?.isAI ? `AI ${rawName}` : rawName;
       const name = escapeHtml(displayName);
-      const role = (team === 'red' ? currentGame.redSpymaster : currentGame.blueSpymaster) === p?.name ? 'Spy' : 'Op';
+      const role = isSpymasterPlayerForTeam(p, team, currentGame) ? 'Spy' : 'Op';
       const attrs = pid
         ? `class="players-popup-item ${team} ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
         : `class="players-popup-item ${team} ${isMe ? 'is-me' : ''}"`;
