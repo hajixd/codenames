@@ -4172,14 +4172,13 @@ body.light-mode .chat-meta{ color: var(--text); }
   body.quickplay .panel-game .panel-inner{
     padding: 14px;
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-    height: 100dvh;
-  height: 100vh; /* fallback */
-    min-height: 0;
+    min-height: 100dvh;
+    min-height: 100vh; /* fallback */
   }
 
-  /* Avoid page scroll; the lobby itself manages its layout and internal scroll areas. */
   body.quickplay .panel-game{
-    overflow: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     /* Tabs are hidden in Quick Play, so remove the 72px bottom offset
        that normally reserves space for the mobile tab bar. */
     bottom: 0;
@@ -4188,9 +4187,8 @@ body.light-mode .chat-meta{ color: var(--text); }
   body.quickplay #quick-play-lobby{
     display: flex;
     flex-direction: column;
-    height: 100dvh;
-  height: 100vh; /* fallback */
-    min-height: 0;
+    min-height: 100dvh;
+    min-height: 100vh; /* fallback */
   }
 
   /* Save vertical space: the panel already has a title via the app header. */
