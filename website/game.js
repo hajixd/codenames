@@ -3861,12 +3861,10 @@ function renderAdvancedFeatures() {
   renderTeamRoster();
   updateChatPrivacyBadge();
 
-  // Show/hide tag legend based on role
+  // Hide tag legend (tagging removed)
   const tagLegend = document.getElementById('card-tag-legend');
   if (tagLegend) {
-    const isSpymaster = isCurrentUserSpymaster();
-    const isSpectator = isSpectating();
-    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner) ? 'flex' : 'none';
+    tagLegend.style.display = 'none';
   }
 
   // Initialize operative chat
@@ -4147,10 +4145,7 @@ function renderBoard(isSpymaster) {
   // Fit words into their label boxes
   scheduleFitCardWords();
 
-  // Re-render tags and votes after board re-renders
-  setTimeout(() => {
-    renderCardTags();
-  }, 10);
+  // Tags removed – no longer rendering card tags
 }
 
 
@@ -6696,12 +6691,6 @@ function canCurrentUserGuess() {
 }
 
 function handleCardSelect(cardIndex) {
-  // Tagging mode: tapping the card tags it (no confirm step)
-  if (activeTagMode) {
-    tagCard(cardIndex, activeTagMode);
-    return;
-  }
-
   if (!canCurrentUserGuess()) return;
 
   // Toggle selection
@@ -6717,7 +6706,6 @@ async function handleCardConfirm(evt, cardIndex) {
   try { evt?.stopPropagation?.(); } catch (_) {}
   try { evt?.preventDefault?.(); } catch (_) {}
 
-  if (activeTagMode) return;
   if (!canCurrentUserGuess()) return;
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
