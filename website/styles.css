@@ -5657,12 +5657,12 @@ body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
   pointer-events: none;
 }
 
-body.og-mode .game-card.revealed .card-front .card-word,
+/* Keep word visible on revealed cards (two-tone design stays) */
 body.og-mode .game-card.revealed .card-front .card-checkmark{
   opacity: 0;
 }
 
-body.og-mode .game-card.revealed .og-reveal-face{ opacity: 1; }
+body.og-mode .game-card.revealed .og-reveal-face{ opacity: 0; }
 
 body.og-mode .game-card.revealed .og-reveal-face{
   border-radius: 9px;
@@ -16210,7 +16210,7 @@ body.og-mode .game-card{
   --labelInsetX: 12px;     /* left/right inset for the word strip */
   --labelInsetY: 12px;     /* bottom inset for the word strip */
   /* Slightly taller word strip so the divider sits a bit higher */
-  --labelHeight: 42%;      /* height of the bottom word strip */
+  --labelHeight: 38%;      /* height of the bottom word strip */
 
   background: var(--cardBg);
   /* Thinner outer rim like the reference */
@@ -17264,7 +17264,7 @@ body.cozy-mode .og-game-log .game-log-entry {
   body.og-mode .game-card{
     --labelInsetX: 6px;
     --labelInsetY: 6px;
-    --labelHeight: 43%;
+    --labelHeight: 39%;
     aspect-ratio: 1.25;
   }
 
