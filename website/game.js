@@ -4098,7 +4098,6 @@ function renderBoard(isSpymaster) {
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
           <div class="card-face card-front">
-            <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
             <span class="card-word"><span class="word-text">${word}</span></span>
             <div class="og-reveal-face" aria-hidden="true">
               <div class="og-reveal-icon"></div>
@@ -4106,6 +4105,7 @@ function renderBoard(isSpymaster) {
           </div>
           ${backFace}
         </div>
+        <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
       </div>
     `;
   }).join('');
@@ -6693,12 +6693,18 @@ async function handleCardConfirm(evt, cardIndex) {
 
   if (activeTagMode) return;
   if (!canCurrentUserGuess()) return;
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return;
 
   // Only confirm if this card is the selected one.
-  if (pendingCardSelection !== cardIndex) return;
+  if (pendingCardSelection !== idx) {
+    const selectedInDom = !!document.querySelector(`.game-card[data-index="${idx}"].pending-select:not(.revealed)`);
+    if (!selectedInDom) return;
+    pendingCardSelection = idx;
+  }
 
   clearPendingCardSelection();
-  await _originalHandleCardClick(cardIndex);
+  await _originalHandleCardClick(idx);
 }
 
 // Expose for inline handlers
