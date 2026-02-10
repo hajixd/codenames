@@ -5460,7 +5460,7 @@ button.player-tag.pill-action:disabled{
 .game-board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 7px;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
@@ -6074,7 +6074,7 @@ line-height: 1.25;
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .game-board {
-    gap: 6px;
+    gap: 8px;
   }
 
   .game-card {
@@ -6280,14 +6280,14 @@ line-height: 1.25;
   align-items: center;
   justify-content: center;
   min-height: 0;
-  padding: 4px;
+  padding: 12px 4px 4px;
 }
 
 .game-container-compact .game-board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(5, 1fr);
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   max-width: min(100%, calc((100dvh - 280px) * 1.25)); /* Maintain aspect ratio */
   aspect-ratio: 5 / 4;
@@ -6661,11 +6661,11 @@ line-height: 1.25;
 
   /* Board Mobile */
   .game-board-wrapper {
-    padding: 2px;
+    padding: 10px 2px 2px;
   }
 
   .game-container-compact .game-board {
-    gap: 4px;
+    gap: 6px;
     max-width: min(100%, calc((100dvh - 220px) * 1.25));
   }
 
@@ -10797,14 +10797,14 @@ body.tournament.has-team-color .input:focus {
   align-items: center;
   justify-content: center;
   min-height: 0;
-  padding: 2px 0;
+  padding: 14px 0 2px;
 }
 
 .game-center-area .game-board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(5, 1fr);
-  gap: 7px;
+  gap: 10px;
   width: 100%;
   aspect-ratio: 5 / 4;
   max-width: min(100%, calc((100dvh - 220px) * 1.2));
@@ -12789,7 +12789,7 @@ body.qp-gate-open .app {
   /* Slightly smaller board/cards on desktop to keep focus on the whole grid */
   .game-center-area .game-board {
     max-width: min(720px, 100%, calc((100dvh - 220px) * 1.05));
-    gap: 6px;
+    gap: 8px;
   }
 
   .game-center-area .game-card {
