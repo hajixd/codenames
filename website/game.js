@@ -3325,6 +3325,7 @@ function startGameListener(gameId, options = {}) {
         // Clear all local tags without writing anything to Firestore (markers are reset server-side).
         cardTags = {};
         pendingCardSelection = null;
+        _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
         renderCardTags();
         saveTagsToLocal();
@@ -3493,6 +3494,7 @@ function stopGameListener() {
   _prevClue = null;
   revealedPeekCardIndex = null;
   pendingCardSelection = null;
+  _pendingSelectionContextKey = null;
   spectatorMode = false;
   spectatingGameId = null;
 
@@ -3807,9 +3809,8 @@ function renderAdvancedFeatures() {
   const spectator = isSpectating();
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuessNow = isMyTurn && currentGame.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame.winner;
-  if (!canGuessNow) {
-    pendingCardSelection = null;
-    revealedPeekCardIndex = null;
+  if (!canGuessNow && (pendingCardSelection !== null || revealedPeekCardIndex !== null)) {
+    clearPendingCardSelection();
   }
 
   // Load tags from localStorage for this game
@@ -4037,6 +4038,23 @@ function renderBoard(isSpymaster) {
   const spectator = isSpectating();
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuess = isMyTurn && currentGame.currentPhase === 'operatives' && !isSpymaster && !currentGame.winner;
+  const currentSelectionContextKey = getPendingSelectionContextKey(currentGame);
+  const pendingIdx = Number(pendingCardSelection);
+  const hasPendingSelection = Number.isInteger(pendingIdx) && pendingIdx >= 0 && pendingIdx < currentGame.cards.length;
+  const pendingCard = hasPendingSelection ? currentGame.cards[pendingIdx] : null;
+  const stalePendingSelection =
+    !canGuess ||
+    !hasPendingSelection ||
+    !!pendingCard?.revealed ||
+    !!(_pendingSelectionContextKey && _pendingSelectionContextKey !== currentSelectionContextKey);
+
+  if (stalePendingSelection) {
+    pendingCardSelection = null;
+    _pendingSelectAnimIndex = null;
+    _pendingSelectionContextKey = null;
+  } else {
+    pendingCardSelection = pendingIdx;
+  }
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
@@ -4054,7 +4072,7 @@ function renderBoard(isSpymaster) {
     }
 
     // Pending selection highlight
-    if (!card.revealed && pendingCardSelection === i) {
+    if (canGuess && !card.revealed && pendingCardSelection === i) {
       classes.push('pending-select');
     }
 
@@ -4603,6 +4621,7 @@ async function handleClueSubmit(e) {
 async function handleCardClick(cardIndex) {
   // Clear any pending selection as soon as a guess is being processed
   pendingCardSelection = null;
+  _pendingSelectionContextKey = null;
   revealedPeekCardIndex = null;
   if (!currentGame || currentGame.currentPhase !== 'operatives') return;
   if (isSpectating()) return;
@@ -5154,6 +5173,7 @@ let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
 let pendingCardSelection = null;
 // Used to run the slow, smooth selection animation exactly once
 let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
+let _pendingSelectionContextKey = null; // turn/clue context at time of selection
 let revealedPeekCardIndex = null; // one revealed card can be "stood up" at a time
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
@@ -5418,6 +5438,7 @@ function tagCard(cardIndex, tag) {
 function clearAllTags() {
   cardTags = {};
   pendingCardSelection = null;
+  _pendingSelectionContextKey = null;
   revealedPeekCardIndex = null;
   renderCardTags();
   saveTagsToLocal();
@@ -5522,6 +5543,23 @@ function loadTagsFromLocal() {
   }
 }
 
+function getPendingSelectionContextKey(game = currentGame) {
+  if (!game) return '';
+  const clueWord = String(game?.currentClue?.word || '').trim().toLowerCase();
+  const clueNumberRaw = game?.currentClue?.number;
+  const clueNumber = Number.isFinite(+clueNumberRaw) ? String(+clueNumberRaw) : '';
+  const guessesRemaining = Number.isFinite(+game?.guessesRemaining) ? String(+game.guessesRemaining) : '';
+  return [
+    String(game?.id || ''),
+    String(game?.currentTeam || ''),
+    String(game?.currentPhase || ''),
+    clueWord,
+    clueNumber,
+    guessesRemaining,
+    String(game?.winner || ''),
+  ].join('|');
+}
+
 /* =========================
    Card Selection Confirmation
 ========================= */
@@ -5549,6 +5587,7 @@ function handleRevealedCardPeek(cardIndex) {
 function clearPendingCardSelection() {
   pendingCardSelection = null;
   _pendingSelectAnimIndex = null;
+  _pendingSelectionContextKey = null;
   revealedPeekCardIndex = null;
   // Clear any OG "peek" state.
   try {
@@ -5559,8 +5598,11 @@ function clearPendingCardSelection() {
 }
 
 function setPendingCardSelection(cardIndex) {
-  pendingCardSelection = cardIndex;
-  _pendingSelectAnimIndex = cardIndex;
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  pendingCardSelection = idx;
+  _pendingSelectAnimIndex = idx;
+  _pendingSelectionContextKey = getPendingSelectionContextKey(currentGame);
   revealedPeekCardIndex = null;
   // Ensure only one card can be in "peek" mode.
   try {
@@ -6742,6 +6784,7 @@ function cleanupAdvancedFeatures() {
 
   cardTags = {};
   pendingCardSelection = null;
+  _pendingSelectionContextKey = null;
   _pendingSelectAnimIndex = null;
   revealedPeekCardIndex = null;
   activeTagMode = null;
