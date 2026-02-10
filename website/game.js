@@ -4090,6 +4090,13 @@ function renderBoard(isSpymaster) {
     pendingCardSelection = pendingIdx;
   }
 
+  // Compute user initials for card selection indicator
+  const _userName = (typeof getUserName === 'function' ? getUserName() : '') || '';
+  const _nameParts = _userName.trim().split(/\s+/);
+  const _userInitials = _nameParts.length >= 2
+    ? (_nameParts[0][0] + _nameParts[_nameParts.length - 1][0]).toUpperCase()
+    : (_nameParts[0] || '?')[0].toUpperCase();
+
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
 
@@ -4110,10 +4117,10 @@ function renderBoard(isSpymaster) {
       classes.push('pending-select');
     }
 
-    // Revealed cards in OG mode can be "peeked" (stand up) one at a time.
-    // Unrevealed cards still use selection -> checkmark confirmation.
+    // Revealed cards can be "peeked" (stand up) one at a time.
+    // Unrevealed cards still use selection -> confirmation.
     let clickHandler = '';
-    if (card.revealed && isOgMode) {
+    if (card.revealed) {
       clickHandler = `onclick="handleRevealedCardPeek(${i})"`;
     } else if (!isSpymaster) {
       clickHandler = `onclick="handleCardSelect(${i})"`;
@@ -4139,7 +4146,7 @@ function renderBoard(isSpymaster) {
           </div>
           ${backFace}
         </div>
-        <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
+        <div class="card-initials" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">${_userInitials}</div>
       </div>
     `;
   }).join('');
