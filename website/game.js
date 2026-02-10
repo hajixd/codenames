@@ -3366,9 +3366,6 @@ function startGameListener(gameId, options = {}) {
         pendingCardSelection = null;
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
-        renderCardTags();
-        saveTagsToLocal();
-        setActiveTagMode(null);
       }
       _prevBoardSignature = sig || _prevBoardSignature;
     } catch (_) {}
@@ -3852,22 +3849,14 @@ function renderAdvancedFeatures() {
     clearPendingCardSelection();
   }
 
-  // Load tags from localStorage for this game
-  loadTagsFromLocal();
-
   // Render advanced UI
-  renderCardTags();
   renderClueHistory();
   renderTeamRoster();
   updateChatPrivacyBadge();
 
-  // Show/hide tag legend based on role
+  // Hide tag legend (tagging disabled)
   const tagLegend = document.getElementById('card-tag-legend');
-  if (tagLegend) {
-    const isSpymaster = isCurrentUserSpymaster();
-    const isSpectator = isSpectating();
-    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner) ? 'flex' : 'none';
-  }
+  if (tagLegend) tagLegend.style.display = 'none';
 
   // Initialize operative chat
   initOperativeChat();
@@ -4154,10 +4143,6 @@ function renderBoard(isSpymaster) {
   // Fit words into their label boxes
   scheduleFitCardWords();
 
-  // Re-render tags and votes after board re-renders
-  setTimeout(() => {
-    renderCardTags();
-  }, 10);
 }
 
 
@@ -5239,19 +5224,8 @@ let gameTimerEnd = null;
 
 // Initialize advanced features
 function initAdvancedFeatures() {
-  // Tag buttons
-  document.querySelectorAll('.tag-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag;
-      if (tag === 'clear') {
-        clearAllTags();
-        return;
   // Mobile swipe gestures: swipe right for Clue History/Log, swipe left for Team Chat
   initMobileSidebarSwipes();
-      }
-      setActiveTagMode(tag === activeTagMode ? null : tag);
-    });
-  });
 
   // Sidebar toggles
   document.getElementById('toggle-left-sidebar')?.addEventListener('click', toggleLeftSidebar);
@@ -6702,12 +6676,6 @@ function canCurrentUserGuess() {
 }
 
 function handleCardSelect(cardIndex) {
-  // Tagging mode: tapping the card tags it (no confirm step)
-  if (activeTagMode) {
-    tagCard(cardIndex, activeTagMode);
-    return;
-  }
-
   if (!canCurrentUserGuess()) return;
 
   // Toggle selection
