@@ -3366,6 +3366,9 @@ function startGameListener(gameId, options = {}) {
         pendingCardSelection = null;
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
+        renderCardTags();
+        saveTagsToLocal();
+        setActiveTagMode(null);
       }
       _prevBoardSignature = sig || _prevBoardSignature;
     } catch (_) {}
@@ -3849,14 +3852,22 @@ function renderAdvancedFeatures() {
     clearPendingCardSelection();
   }
 
+  // Load tags from localStorage for this game
+  loadTagsFromLocal();
+
   // Render advanced UI
+  renderCardTags();
   renderClueHistory();
   renderTeamRoster();
   updateChatPrivacyBadge();
 
-  // Hide tag legend (tagging disabled)
+  // Show/hide tag legend based on role
   const tagLegend = document.getElementById('card-tag-legend');
-  if (tagLegend) tagLegend.style.display = 'none';
+  if (tagLegend) {
+    const isSpymaster = isCurrentUserSpymaster();
+    const isSpectator = isSpectating();
+    tagLegend.style.display = (!isSpymaster && !isSpectator && !currentGame?.winner) ? 'flex' : 'none';
+  }
 
   // Initialize operative chat
   initOperativeChat();
@@ -4079,13 +4090,6 @@ function renderBoard(isSpymaster) {
     pendingCardSelection = pendingIdx;
   }
 
-  // Compute user initials for card selection indicator
-  const _userName = (typeof getUserName === 'function' ? getUserName() : '') || '';
-  const _nameParts = _userName.trim().split(/\s+/);
-  const _userInitials = _nameParts.length >= 2
-    ? (_nameParts[0][0] + _nameParts[_nameParts.length - 1][0]).toUpperCase()
-    : (_nameParts[0] || '?')[0].toUpperCase();
-
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
 
@@ -4106,10 +4110,10 @@ function renderBoard(isSpymaster) {
       classes.push('pending-select');
     }
 
-    // Revealed cards can be "peeked" (stand up) one at a time.
-    // Unrevealed cards still use selection -> confirmation.
+    // Revealed cards in OG mode can be "peeked" (stand up) one at a time.
+    // Unrevealed cards still use selection -> checkmark confirmation.
     let clickHandler = '';
-    if (card.revealed) {
+    if (card.revealed && isOgMode) {
       clickHandler = `onclick="handleRevealedCardPeek(${i})"`;
     } else if (!isSpymaster) {
       clickHandler = `onclick="handleCardSelect(${i})"`;
@@ -4135,7 +4139,7 @@ function renderBoard(isSpymaster) {
           </div>
           ${backFace}
         </div>
-        <div class="card-initials" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">${_userInitials}</div>
+        <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
       </div>
     `;
   }).join('');
@@ -4143,6 +4147,10 @@ function renderBoard(isSpymaster) {
   // Fit words into their label boxes
   scheduleFitCardWords();
 
+  // Re-render tags and votes after board re-renders
+  setTimeout(() => {
+    renderCardTags();
+  }, 10);
 }
 
 
@@ -5224,6 +5232,18 @@ let gameTimerEnd = null;
 
 // Initialize advanced features
 function initAdvancedFeatures() {
+  // Tag buttons
+  document.querySelectorAll('.tag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.tag;
+      if (tag === 'clear') {
+        clearAllTags();
+        return;
+      }
+      setActiveTagMode(tag === activeTagMode ? null : tag);
+    });
+  });
+
   // Mobile swipe gestures: swipe right for Clue History/Log, swipe left for Team Chat
   initMobileSidebarSwipes();
 
@@ -6676,6 +6696,12 @@ function canCurrentUserGuess() {
 }
 
 function handleCardSelect(cardIndex) {
+  // Tagging mode: tapping the card tags it (no confirm step)
+  if (activeTagMode) {
+    tagCard(cardIndex, activeTagMode);
+    return;
+  }
+
   if (!canCurrentUserGuess()) return;
 
   // Toggle selection

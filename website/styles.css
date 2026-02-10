@@ -109,30 +109,29 @@ body.light-mode {
   --tag-shadow: 0 2px 8px rgba(30, 55, 85, 0.14);
 }
 
-.game-card .card-initials{
+.game-card .card-checkmark{
   position:absolute;
-  top:3px;
-  left:3px;
-  width:18px;
-  height:18px;
-  border-radius:5px;
+  top:6px;
+  right:6px;
+  width:22px;
+  height:22px;
+  border-radius:7px;
   display:flex;
   align-items:center;
   justify-content:center;
-  background: rgba(59,130,246,0.85);
+  background: var(--accent);
   color: #fff;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.3px;
+  font-size: 14px;
+  font-weight: 900;
   opacity: 0;
   transform: scale(0.92);
   transition: opacity 0.12s ease, transform 0.12s ease;
+  /* Only clickable when the card is selected (see .pending-select below) */
   pointer-events:none;
   z-index: 14;
-  line-height: 1;
 }
 
-.game-card.pending-select .card-initials{
+.game-card.pending-select .card-checkmark{
   opacity: 1;
   transform: scale(1);
   pointer-events: auto;
@@ -5659,7 +5658,7 @@ body.og-mode .game-card.pending-select:not(.revealed) .card-back::after{
 }
 
 body.og-mode .game-card.revealed .card-front .card-word,
-body.og-mode .game-card.revealed .card-front .card-initials{
+body.og-mode .game-card.revealed .card-front .card-checkmark{
   opacity: 0;
 }
 
@@ -15181,7 +15180,7 @@ body.cozy-mode .game-card.pending-select:not(.revealed):not(.disabled) {
   box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
 }
 
-body.cozy-mode .game-card .card-initials {
+body.cozy-mode .game-card .card-checkmark {
   background: #4CAF50;
   border-radius: 50%;
 }
@@ -16380,7 +16379,7 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled){
   box-shadow: 0 0 0 2px rgba(27,225,198,0.35), 0 4px 14px rgba(0,0,0,0.45);
 }
 
-body.og-mode .game-card .card-initials{
+body.og-mode .game-card .card-checkmark{
   background: var(--green-gradient);
   border-radius: 9px;
 }
@@ -20732,28 +20731,10 @@ body.og-mode .game-card.revealed.revealed-peek {
 
 body.og-mode .game-card.revealed.revealed-peek .card-inner {
   transform-origin: 50% 100%;
-  transform: rotateY(0deg) rotateX(30deg) translateY(-6px);
-}
-
-/* Show the word when peeking at a revealed card */
-body.og-mode .game-card.revealed.revealed-peek .card-front .card-word {
-  opacity: 1;
-  z-index: 5;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
-}
-
-body:not(.og-mode) .game-card.revealed.revealed-peek .card-word {
-  font-weight: 900;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
-}
-
-body:not(.og-mode) .game-card.revealed {
-  transition: transform 350ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 350ms ease;
+  transform: rotateY(0deg) rotateX(-62deg) translateY(-10px);
 }
 
 body:not(.og-mode) .game-card.revealed.revealed-peek {
   z-index: 40;
-  transform: translateY(-8px) scale(1.06);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+  transform: translateY(-6px) scale(1.025);
 }
