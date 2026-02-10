@@ -9908,6 +9908,7 @@ body.tournament.has-team-color .input:focus {
 /* Advanced full-screen layout with sidebars */
 
 .game-container-expanded {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: calc(100dvh - 64px);
@@ -14966,6 +14967,117 @@ body.cozy-mode .og-topbar {
   opacity: 0.7;
 }
 
+/* --- OG Slide-down Game Log --- */
+.og-gamelog-slidedown {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.og-gamelog-slidedown.open {
+  max-height: 60vh;
+  pointer-events: auto;
+}
+
+body.og-mode .og-gamelog-slidedown,
+body.cozy-mode .og-gamelog-slidedown {
+  display: block;
+}
+
+.og-gamelog-slidedown-inner {
+  margin: 8px 16px;
+  max-height: calc(60vh - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.og-gamelog-slidedown-inner .gamelog-header {
+  position: relative;
+  padding: 10px 14px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.og-gamelog-close-btn {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.og-gamelog-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.og-gamelog-close-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.og-gamelog-slidedown-inner .gamelog-entries {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(60vh - 60px);
+}
+
+.og-gamelog-backdrop {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.og-gamelog-backdrop.open {
+  display: block;
+  opacity: 1;
+}
+
+.og-topbar-btn.og-gamelog-active {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+@media (max-width: 768px) {
+  .og-gamelog-slidedown-inner {
+    margin: 4px 8px;
+  }
+
+  .og-gamelog-slidedown.open {
+    max-height: 50vh;
+  }
+
+  .og-gamelog-slidedown-inner .gamelog-entries {
+    max-height: calc(50vh - 50px);
+  }
+}
+
 /* --- OG Phase Banner --- */
 .og-phase-banner {
   display: none;
@@ -15325,8 +15437,8 @@ body.cozy-mode .og-team-panel {
     background: linear-gradient(180deg, rgba(255,82,65,0.92) 0%, rgba(255,131,61,0.70) 100%);
   }
 
-  body.og-mode .og-mobile-box-ops { min-height: 50px; max-height: 60px; }
-  body.og-mode .og-mobile-box-spy { min-height: 40px; max-height: 50px; }
+  body.og-mode .og-mobile-box-ops { min-height: 60px; max-height: 80px; }
+  body.og-mode .og-mobile-box-spy { min-height: 50px; max-height: 65px; }
 
   body.og-mode .og-mobile-box-header {
     position: relative;
@@ -18039,9 +18151,9 @@ body.og-mode .og-team-panel.og-team-red {
   gap: 6px;
 }
 
-/* Give the Operatives block that big empty “stage” feel when no players */
+/* Give the Operatives block that big empty "stage" feel when no players */
 .online-roster-operatives .online-roster-surface {
-  min-height: 150px;
+  min-height: 200px;
   justify-content: flex-end;
 }
 

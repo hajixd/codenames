@@ -1118,6 +1118,45 @@ function setupGamePopovers() {
   // Close popovers when clicking menu items
   document.getElementById('leave-game-btn')?.addEventListener('click', closeAllPopovers);
   document.getElementById('end-game-btn')?.addEventListener('click', closeAllPopovers);
+
+  // OG Mode: Slide-down game log toggle
+  setupOgGamelogSlidedown();
+}
+
+function setupOgGamelogSlidedown() {
+  const toggleBtn = document.getElementById('og-gamelog-toggle-btn');
+  const slidedown = document.getElementById('og-gamelog-slidedown');
+  const closeBtn = document.getElementById('og-gamelog-close-btn');
+  if (!toggleBtn || !slidedown) return;
+
+  function openLog() {
+    slidedown.classList.add('open');
+    toggleBtn.classList.add('og-gamelog-active');
+    // Mirror the sidebar log content into the slidedown
+    const sidebar = document.getElementById('game-log-entries-sidebar');
+    const target = document.getElementById('og-gamelog-slidedown-entries');
+    if (sidebar && target) target.innerHTML = sidebar.innerHTML;
+  }
+
+  function closeLog() {
+    slidedown.classList.remove('open');
+    toggleBtn.classList.remove('og-gamelog-active');
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (slidedown.classList.contains('open')) {
+      closeLog();
+    } else {
+      openLog();
+    }
+  });
+
+  closeBtn?.addEventListener('click', closeLog);
+
+  // Close when clicking outside the slidedown panel
+  slidedown.addEventListener('click', (e) => {
+    if (e.target === slidedown) closeLog();
+  });
 }
 
 /* =========================
@@ -3950,11 +3989,11 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
   if (redOps) redOps.innerHTML = renderSlotHtml(red.operatives);
   if (redSpy) redSpy.innerHTML = renderSlotHtml(red.spymasters);
 
-  // Mirror game log into desktop OG panel
-  const ogLog = document.getElementById('og-game-log');
+  // Mirror game log into slidedown panel
+  const ogSlidedownLog = document.getElementById('og-gamelog-slidedown-entries');
   const existingLog = document.getElementById('game-log-entries-sidebar');
-  if (ogLog && existingLog) {
-    ogLog.innerHTML = existingLog.innerHTML;
+  if (ogSlidedownLog && existingLog) {
+    ogSlidedownLog.innerHTML = existingLog.innerHTML;
   }
 
   // --- Mobile panels ---
@@ -3977,11 +4016,6 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
   if (mBlueSpy) mBlueSpy.innerHTML = renderSlotHtml(blue.spymasters);
   if (mRedSpy) mRedSpy.innerHTML = renderSlotHtml(red.spymasters);
 
-  // Mirror game log into mobile OG panel
-  const mOgLog = document.getElementById('og-mobile-game-log');
-  if (mOgLog && existingLog) {
-    mOgLog.innerHTML = existingLog.innerHTML;
-  }
 
   // --- OG top bar player count ---
   const countEl = document.getElementById('og-player-count');
@@ -4415,6 +4449,13 @@ function renderGameLog() {
     if (sidebarEl) sidebarEl.innerHTML = ogHtml || fallbackHtml;
   } else {
     if (sidebarEl) sidebarEl.innerHTML = fallbackHtml;
+  }
+
+  // Mirror into the OG slidedown game log panel
+  const slidedownEl = document.getElementById('og-gamelog-slidedown-entries');
+  if (slidedownEl && sidebarEl) {
+    slidedownEl.innerHTML = sidebarEl.innerHTML;
+    slidedownEl.scrollTop = slidedownEl.scrollHeight;
   }
 
   // Auto-scroll to bottom (popover container + sidebar scroller)
