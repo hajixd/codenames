@@ -15314,6 +15314,7 @@ body.cozy-mode .og-team-panel {
     border: 2px solid rgba(255,255,255,0.22);
     box-shadow: 0 10px 18px rgba(0,0,0,0.28);
     min-width: 0;
+    flex-shrink: 1;
   }
 
   body.og-mode .og-mobile-blue .og-mobile-box {
@@ -15324,8 +15325,8 @@ body.cozy-mode .og-team-panel {
     background: linear-gradient(180deg, rgba(255,82,65,0.92) 0%, rgba(255,131,61,0.70) 100%);
   }
 
-  body.og-mode .og-mobile-box-ops { min-height: 62px; }
-  body.og-mode .og-mobile-box-spy { min-height: 48px; }
+  body.og-mode .og-mobile-box-ops { min-height: 50px; max-height: 60px; }
+  body.og-mode .og-mobile-box-spy { min-height: 40px; max-height: 50px; }
 
   body.og-mode .og-mobile-box-header {
     position: relative;
@@ -15625,6 +15626,23 @@ body.cozy-mode .og-game-log .game-log-entry {
     gap: 4px;
     padding: 4px 6px;
     flex-shrink: 0;
+    max-height: 155px;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Ensure game board doesn't overflow and overlay panels on mobile */
+  body.cozy-mode .game-center-area,
+  body.cozy-mode .game-board-wrapper {
+    overflow: hidden;
+    position: relative;
+    z-index: 0;
+  }
+
+  body.cozy-mode .game-main-layout {
+    position: relative;
+    z-index: 0;
   }
 
   .og-mobile-team {
@@ -15635,6 +15653,7 @@ body.cozy-mode .og-game-log .game-log-entry {
     padding: 5px;
     border-radius: 8px;
     min-width: 0;
+    max-height: 100%;
   }
 
   .og-mobile-blue {
@@ -15660,6 +15679,7 @@ body.cozy-mode .og-game-log .game-log-entry {
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.25);
     min-width: 0;
+    max-height: 100%;
     overflow: hidden;
   }
 
@@ -17050,6 +17070,23 @@ body.cozy-mode .og-game-log .game-log-entry {
     gap: 4px;
     padding: 4px 6px;
     flex-shrink: 0;
+    max-height: 155px;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Ensure game board doesn't overflow and overlay panels on mobile */
+  body.og-mode .game-center-area,
+  body.og-mode .game-board-wrapper {
+    overflow: hidden;
+    position: relative;
+    z-index: 0;
+  }
+
+  body.og-mode .game-main-layout {
+    position: relative;
+    z-index: 0;
   }
 
   .og-mobile-team {
@@ -17060,6 +17097,7 @@ body.cozy-mode .og-game-log .game-log-entry {
     padding: 5px;
     border-radius: 12px;
     min-width: 0;
+    max-height: 100%;
     box-shadow: 0 8px 18px rgba(0,0,0,0.35);
   }
 
@@ -17089,6 +17127,7 @@ body.cozy-mode .og-game-log .game-log-entry {
     background: rgba(0, 0, 0, 0.35);
     border: 2px solid rgba(255,255,255,0.18);
     min-width: 0;
+    max-height: 100%;
     overflow: hidden;
     box-shadow: 0 8px 18px rgba(0,0,0,0.35);
   }
@@ -17182,6 +17221,28 @@ body.cozy-mode .og-game-log .game-log-entry {
   body.og-mode .og-player-slots-sm .og-player-slot {
     font-size: 9px;
     padding: 2px 4px;
+  }
+
+  /* Compact gamelog header on mobile */
+  body.og-mode .og-mobile-log .gamelog-header {
+    padding: 6px 10px 4px;
+  }
+
+  body.og-mode .og-mobile-log .gamelog-title {
+    font-size: 10px;
+    letter-spacing: 0.8px;
+  }
+
+  body.og-mode .og-mobile-log .gamelog-chevron {
+    width: 16px;
+    height: 16px;
+    top: 6px;
+    right: 8px;
+  }
+
+  body.og-mode .og-mobile-log .gamelog-chevron svg {
+    width: 14px;
+    height: 14px;
   }
 }
 
@@ -20378,7 +20439,8 @@ body.cozy-mode .og-game-log {
 
 body.og-mode .og-game-log-mobile,
 body.cozy-mode .og-game-log-mobile {
-  max-height: 170px;
+  max-height: 100px;
+  overflow-y: auto;
 }
 
 .gamelog-empty {
