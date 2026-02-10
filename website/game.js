@@ -5614,6 +5614,7 @@ function setPendingCardSelection(cardIndex) {
 
 function updatePendingCardSelectionUI() {
   const cards = document.querySelectorAll('.game-card');
+  const isOgMode = isOnlineStyleActive();
   cards.forEach((el) => {
     el.classList.remove('pending-select');
     el.classList.remove('select-animate');
@@ -5622,9 +5623,9 @@ function updatePendingCardSelectionUI() {
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // Run the slow selection animation once (doesn't loop on re-renders)
+    // OG mode keeps selected cards face-up; avoid any pre-guess flip animation.
     if (_pendingSelectAnimIndex === pendingCardSelection) {
-      target.classList.add('select-animate');
+      if (!isOgMode) target.classList.add('select-animate');
       _pendingSelectAnimIndex = null;
     }
   }
@@ -6660,23 +6661,6 @@ function handleCardSelect(cardIndex) {
   }
 
   if (!canCurrentUserGuess()) return;
-
-  // OG (Codenames Online): if the selected card is already face-down, a second click
-  // "peeks" (stands it up) so you can read the word; a third click deselects.
-  const isOgMode = isOnlineStyleActive();
-  if (isOgMode && pendingCardSelection === cardIndex) {
-    const el = document.querySelector(`.game-card[data-index="${cardIndex}"]`);
-    if (el && el.classList.contains('pending-select') && !el.classList.contains('revealed')) {
-      if (el.classList.contains('og-peek')) {
-        clearPendingCardSelection();
-      } else {
-        // Only one peek at a time
-        try { document.querySelectorAll('.game-card.og-peek').forEach(n => n.classList.remove('og-peek')); } catch (_) {}
-        el.classList.add('og-peek');
-      }
-      return;
-    }
-  }
 
   // Toggle selection
   if (pendingCardSelection === cardIndex) {
