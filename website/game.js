@@ -1127,7 +1127,11 @@ function setupOgGamelogSlidedown() {
   const toggleBtn = document.getElementById('og-gamelog-toggle-btn');
   const slidedown = document.getElementById('og-gamelog-slidedown');
   const closeBtn = document.getElementById('og-gamelog-close-btn');
+  const panel = slidedown?.querySelector('.og-gamelog-slidedown-inner');
+  const entries = document.getElementById('og-gamelog-slidedown-entries');
   if (!toggleBtn || !slidedown) return;
+  if (slidedown.dataset.bound === '1') return;
+  slidedown.dataset.bound = '1';
 
   function openLog() {
     slidedown.classList.add('open');
@@ -1142,9 +1146,10 @@ function setupOgGamelogSlidedown() {
     slidedown.classList.remove('open');
     toggleBtn.classList.remove('og-gamelog-active');
   }
+  const isOpen = () => slidedown.classList.contains('open');
 
   toggleBtn.addEventListener('click', () => {
-    if (slidedown.classList.contains('open')) {
+    if (isOpen()) {
       closeLog();
     } else {
       openLog();
@@ -1157,6 +1162,58 @@ function setupOgGamelogSlidedown() {
   slidedown.addEventListener('click', (e) => {
     if (e.target === slidedown) closeLog();
   });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!isOpen()) return;
+    const target = e.target;
+    if (!target) return;
+    if (toggleBtn.contains(target)) return;
+    if (panel && panel.contains(target)) return;
+    closeLog();
+  }, true);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) closeLog();
+  });
+
+  // Keep scroll gestures inside the game-log scroller while open.
+  let touchStartY = 0;
+  const isAtTop = (el) => el.scrollTop <= 0;
+  const isAtBottom = (el) => (el.scrollHeight - el.clientHeight - el.scrollTop) <= 1;
+
+  entries?.addEventListener('wheel', (e) => {
+    if (!isOpen()) return;
+    const maxScroll = entries.scrollHeight - entries.clientHeight;
+    if (maxScroll <= 0) {
+      e.preventDefault();
+      return;
+    }
+
+    if ((e.deltaY < 0 && isAtTop(entries)) || (e.deltaY > 0 && isAtBottom(entries))) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  entries?.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches?.[0]?.clientY ?? 0;
+  }, { passive: true });
+
+  entries?.addEventListener('touchmove', (e) => {
+    if (!isOpen()) return;
+    const y = e.touches?.[0]?.clientY;
+    if (!Number.isFinite(y)) return;
+
+    const dy = touchStartY - y;
+    const maxScroll = entries.scrollHeight - entries.clientHeight;
+    if (maxScroll <= 0) {
+      e.preventDefault();
+      return;
+    }
+
+    if ((dy < 0 && isAtTop(entries)) || (dy > 0 && isAtBottom(entries))) {
+      e.preventDefault();
+    }
+  }, { passive: false });
 }
 
 /* =========================
