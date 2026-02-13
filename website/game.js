@@ -6831,10 +6831,9 @@ async function handleCardConfirm(evt, cardIndex) {
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
 
-  // Only confirm if this card is the selected one.
+  // Force selection to this card, then confirm. This avoids no-op states
+  // when rapid re-renders temporarily drop the pending-select class.
   if (pendingCardSelection !== idx) {
-    const selectedInDom = !!document.querySelector(`.game-card[data-index="${idx}"].pending-select:not(.revealed)`);
-    if (!selectedInDom) return;
     setPendingCardSelection(idx);
   }
 

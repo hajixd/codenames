@@ -20959,18 +20959,24 @@ body.og-mode .game-card .card-back::before{
 body.og-mode .game-card .card-back::after{
   content: "";
   position: absolute;
+  inset: auto;
+  width: auto;
+  height: auto;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: rgba(226, 233, 243, 0.88);
   font-size: clamp(14px, 1.28vw, 18px);
   font-weight: 900;
+  font-family: 'Russo One', 'Space Grotesk', system-ui, sans-serif;
   letter-spacing: 2.2px;
   text-transform: uppercase;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 10px rgba(0, 0, 0, 0.34);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
@@ -21008,23 +21014,59 @@ body.og-mode .game-card.revealed.card-assassin .card-back{
 body.og-mode .game-card.revealed.card-red .card-back::after{
   content: "RED";
   opacity: 1;
-  color: #7e3027;
+  color: #6f2a22;
 }
 
 body.og-mode .game-card.revealed.card-blue .card-back::after{
   content: "BLUE";
   opacity: 1;
-  color: #285479;
+  color: #24486a;
 }
 
 body.og-mode .game-card.revealed.card-neutral .card-back::after{
   content: "NEUTRAL";
   opacity: 1;
-  color: #66533f;
+  color: #5b4a39;
 }
 
 body.og-mode .game-card.revealed.card-assassin .card-back::after{
   content: "ASSASSIN";
   opacity: 1;
   color: #d3dae7;
+}
+
+/* Mobile OG top bar: only show a centered, longer Game Log button. */
+@media (max-width: 768px){
+  body.og-mode #og-refresh-btn,
+  body.cozy-mode #og-refresh-btn,
+  body.og-mode #og-settings-btn,
+  body.cozy-mode #og-settings-btn,
+  body.og-mode .og-topbar-right,
+  body.cozy-mode .og-topbar-right{
+    display: none !important;
+  }
+
+  body.og-mode .og-topbar,
+  body.cozy-mode .og-topbar{
+    justify-content: center;
+    padding: 8px 10px;
+  }
+
+  body.og-mode .og-topbar-left,
+  body.cozy-mode .og-topbar-left{
+    width: 100%;
+    justify-content: center;
+    gap: 0;
+  }
+
+  body.og-mode #og-gamelog-toggle-btn,
+  body.cozy-mode #og-gamelog-toggle-btn{
+    width: min(92vw, 460px);
+    min-height: 42px;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.25px;
+    padding: 10px 16px;
+  }
 }
