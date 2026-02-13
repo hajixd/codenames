@@ -4115,6 +4115,7 @@ function dockChatIntoOgPanels(isOgMode) {
 function renderBoard(isSpymaster) {
   const boardEl = document.getElementById('game-board');
   if (!boardEl || !currentGame?.cards) return;
+  setupBoardCardInteractions();
   const isOgMode = isOnlineStyleActive();
 
   // If the peeked card is no longer revealed (new board / reset), clear stale state.
@@ -4165,16 +4166,8 @@ function renderBoard(isSpymaster) {
       classes.push('pending-select');
     }
 
-    // Revealed cards in OG mode can be "peeked" (stand up) one at a time.
-    // Unrevealed cards still use selection -> checkmark confirmation.
-    let clickHandler = '';
-    if (card.revealed && isOgMode) {
-      clickHandler = `onclick="handleRevealedCardPeek(${i})"`;
-    } else if (!isSpymaster) {
-      clickHandler = `onclick="handleCardSelect(${i})"`;
-    }
-
     const word = escapeHtml(card.word);
+    const confirmLabel = escapeHtml(`Confirm ${card.word}`);
     const backFace = isOgMode
       ? `
           <div class="card-face card-back">
@@ -4183,7 +4176,7 @@ function renderBoard(isSpymaster) {
         `
       : '';
     return `
-      <div class="${classes.join(' ')}" ${clickHandler} data-index="${i}">
+      <div class="${classes.join(' ')}" data-index="${i}">
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
           <div class="card-face card-front">
@@ -4194,7 +4187,7 @@ function renderBoard(isSpymaster) {
           </div>
           ${backFace}
         </div>
-        <div class="card-checkmark" onclick="handleCardConfirm(event, ${i})" aria-hidden="true">✓</div>
+        <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
       </div>
     `;
   }).join('');
@@ -4712,10 +4705,6 @@ async function handleClueSubmit(e) {
    Card Guessing
 ========================= */
 async function handleCardClick(cardIndex) {
-  // Clear any pending selection as soon as a guess is being processed
-  pendingCardSelection = null;
-  _pendingSelectionContextKey = null;
-  revealedPeekCardIndex = null;
   if (!currentGame || currentGame.currentPhase !== 'operatives') return;
   if (isSpectating()) return;
   if (currentGame.winner) return;
@@ -4724,12 +4713,22 @@ async function handleCardClick(cardIndex) {
   if (currentGame.currentTeam !== myTeamColor) return;
   if (isCurrentUserSpymaster()) return;
 
-  const card = currentGame.cards[cardIndex];
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= currentGame.cards.length) return;
+
+  const card = currentGame.cards[idx];
   if (!card || card.revealed) return;
 
   // Prevent concurrent guess processing (double-click / multi-player race)
   if (_processingGuess) return;
   _processingGuess = true;
+  try {
+
+    // Clear pending selection only after we've validated this guess attempt.
+    pendingCardSelection = null;
+    _pendingSelectionContextKey = null;
+    revealedPeekCardIndex = null;
+    updatePendingCardSelectionUI();
 
   // Capture current clue for history logging
   const clueWordAtGuess = currentGame.currentClue?.word || null;
@@ -4738,7 +4737,7 @@ async function handleCardClick(cardIndex) {
 
   // Reveal the card
   const updatedCards = [...currentGame.cards];
-  updatedCards[cardIndex] = { ...card, revealed: true };
+  updatedCards[idx] = { ...card, revealed: true };
 
   const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
   const userName = getUserName() || 'Someone';
@@ -4846,15 +4845,16 @@ async function handleCardClick(cardIndex) {
   // Capture team before Firestore update (snapshot listener may change currentGame.currentTeam)
   const teamAtGuess = currentGame.currentTeam;
 
-  try {
-    await db.collection('games').doc(currentGame.id).update(updates);
+    try {
+      await db.collection('games').doc(currentGame.id).update(updates);
 
-    // Append to clue history (guess order + outcome)
-    if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
-      await addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult);
+      // Append to clue history (guess order + outcome)
+      if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
+        await addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult);
+      }
+    } catch (e) {
+      console.error('Failed to reveal card:', e);
     }
-  } catch (e) {
-    console.error('Failed to reveal card:', e);
   } finally {
     _processingGuess = false;
   }
@@ -5284,6 +5284,10 @@ let gameTimerEnd = null;
 
 // Initialize advanced features
 function initAdvancedFeatures() {
+  // Robust card interaction routing (selection + confirm) via event delegation.
+  // This avoids inline onclick timing/bubbling glitches.
+  setupBoardCardInteractions();
+
   // Tag buttons
   document.querySelectorAll('.tag-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -5330,6 +5334,41 @@ function initAdvancedFeatures() {
 document.addEventListener('DOMContentLoaded', () => {
   initAdvancedFeatures();
 });
+
+let _boardCardInteractionsBound = false;
+function setupBoardCardInteractions() {
+  if (_boardCardInteractionsBound) return;
+  const boardEl = document.getElementById('game-board');
+  if (!boardEl) return;
+  _boardCardInteractionsBound = true;
+
+  boardEl.addEventListener('click', (evt) => {
+    const target = evt.target;
+    if (!target) return;
+
+    const checkmark = target.closest('.card-checkmark');
+    if (checkmark && boardEl.contains(checkmark)) {
+      const ownerCard = checkmark.closest('.game-card');
+      const idx = Number(checkmark.getAttribute('data-card-index') || ownerCard?.dataset?.index);
+      if (!Number.isInteger(idx) || idx < 0) return;
+      void handleCardConfirm(evt, idx);
+      return;
+    }
+
+    const cardEl = target.closest('.game-card');
+    if (!cardEl || !boardEl.contains(cardEl)) return;
+
+    const idx = Number(cardEl.dataset.index);
+    if (!Number.isInteger(idx) || idx < 0) return;
+
+    if (cardEl.classList.contains('revealed') && isOnlineStyleActive()) {
+      handleRevealedCardPeek(idx);
+      return;
+    }
+
+    handleCardSelect(idx);
+  });
+}
 
 /* =========================
    Card Tagging System
@@ -6748,21 +6787,25 @@ function canCurrentUserGuess() {
 }
 
 function handleCardSelect(cardIndex) {
+  if (_processingGuess) return;
   if (!canCurrentUserGuess()) return;
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return;
 
   // Toggle selection
-  if (pendingCardSelection === cardIndex) {
+  if (pendingCardSelection === idx) {
     clearPendingCardSelection();
   } else {
-    setPendingCardSelection(cardIndex);
+    setPendingCardSelection(idx);
   }
 }
 
 async function handleCardConfirm(evt, cardIndex) {
-  // Prevent the card's onclick from firing too.
+  // Prevent parent click handlers from also firing.
   try { evt?.stopPropagation?.(); } catch (_) {}
   try { evt?.preventDefault?.(); } catch (_) {}
 
+  if (_processingGuess) return;
   if (!canCurrentUserGuess()) return;
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
@@ -6771,14 +6814,20 @@ async function handleCardConfirm(evt, cardIndex) {
   if (pendingCardSelection !== idx) {
     const selectedInDom = !!document.querySelector(`.game-card[data-index="${idx}"].pending-select:not(.revealed)`);
     if (!selectedInDom) return;
-    pendingCardSelection = idx;
+    setPendingCardSelection(idx);
   }
 
-  clearPendingCardSelection();
-  await _originalHandleCardClick(idx);
+  const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+  cardEl?.classList.add('confirming-guess');
+
+  try {
+    await _originalHandleCardClick(idx);
+  } finally {
+    cardEl?.classList.remove('confirming-guess');
+  }
 }
 
-// Expose for inline handlers
+// Expose for compatibility (legacy calls / debugging hooks).
 window.handleCardSelect = handleCardSelect;
 window.handleCardConfirm = handleCardConfirm;
 

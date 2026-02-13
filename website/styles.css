@@ -115,17 +115,28 @@ body.light-mode {
   right:6px;
   width:22px;
   height:22px;
+  border: 0;
+  padding: 0;
   border-radius:7px;
   display:flex;
   align-items:center;
   justify-content:center;
+  -webkit-appearance: none;
+  appearance: none;
   background: var(--accent);
   color: #fff;
   font-size: 14px;
   font-weight: 900;
+  line-height: 1;
   opacity: 0;
-  transform: scale(0.92);
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform: translateY(1px) scale(0.9);
+  transition:
+    opacity 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.16s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.16s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28);
+  user-select: none;
+  touch-action: manipulation;
   /* Only clickable when the card is selected (see .pending-select below) */
   pointer-events:none;
   z-index: 14;
@@ -133,9 +144,19 @@ body.light-mode {
 
 .game-card.pending-select .card-checkmark{
   opacity: 1;
-  transform: scale(1);
+  transform: translateY(0) scale(1);
   pointer-events: auto;
   cursor: pointer;
+}
+
+.game-card.pending-select .card-checkmark:hover{
+  filter: brightness(1.07);
+  transform: translateY(0) scale(1.06);
+}
+
+.game-card .card-checkmark:focus-visible{
+  outline: 2px solid rgba(255, 255, 255, 0.92);
+  outline-offset: 1px;
 }
 
 .game-card.pending-select:not(.revealed):not(.disabled){
@@ -20850,16 +20871,39 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   }
 }
 
-/* Make operative checkmark easier to click in online/cozy card layouts. */
-body.og-mode .game-card.pending-select .card-checkmark,
-body.cozy-mode .game-card.pending-select .card-checkmark{
+/* Smooth, larger confirm control in online/cozy card layouts. */
+body.og-mode .game-card .card-checkmark,
+body.cozy-mode .game-card .card-checkmark{
   top: 4px;
   right: 4px;
   width: 30px;
   height: 30px;
   font-size: 17px;
   border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: linear-gradient(180deg, #4fd96b 0%, #2fa24a 100%);
+  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.24);
   z-index: 40;
+}
+
+body.og-mode .game-card.pending-select .card-checkmark,
+body.cozy-mode .game-card.pending-select .card-checkmark{
   pointer-events: auto !important;
-  touch-action: manipulation;
+  transform: translateY(0) scale(1);
+}
+
+body.og-mode .game-card.pending-select .card-checkmark:hover,
+body.cozy-mode .game-card.pending-select .card-checkmark:hover{
+  transform: translateY(-1px) scale(1.08);
+}
+
+body.og-mode .game-card.confirming-guess .card-checkmark,
+body.cozy-mode .game-card.confirming-guess .card-checkmark{
+  pointer-events: none !important;
+  animation: cardConfirmPulse 560ms ease-in-out infinite;
+}
+
+@keyframes cardConfirmPulse {
+  0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+  50% { transform: translateY(-1px) scale(1.1); filter: brightness(1.08); }
 }
