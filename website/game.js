@@ -3923,8 +3923,11 @@ function renderAdvancedFeatures() {
   const spectator = isSpectating();
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuessNow = isMyTurn && currentGame.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame.winner;
-  if (!canGuessNow && (pendingCardSelection !== null || revealedPeekCardIndex !== null)) {
-    clearPendingCardSelection();
+  if (!canGuessNow && pendingCardSelection !== null) {
+    pendingCardSelection = null;
+    _pendingSelectAnimIndex = null;
+    _pendingSelectionContextKey = null;
+    updatePendingCardSelectionUI();
   }
 
   // Load tags from localStorage for this game
@@ -4205,7 +4208,7 @@ function renderBoard(isSpymaster) {
           </div>
           ${backFace}
         </div>
-        <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
+        <button type="button" class="card-checkmark" data-card-index="${i}" onclick="handleCardConfirm(event, ${i})" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
       </div>
     `;
   }).join('');
