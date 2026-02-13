@@ -6626,7 +6626,7 @@ async function requestLogout() {
 let settingsAnimations = true;
 let settingsSounds = true;
 let settingsVolume = 70;
-let settingsStyleMode = 'dark'; // 'dark' | 'light' | 'cozy' | 'online'
+let settingsStyleMode = 'online'; // only supported style
 // Audio context for sound effects
 let audioCtx = null;
 
@@ -6636,22 +6636,14 @@ function initSettings() {
   const savedSounds = safeLSGet(LS_SETTINGS_SOUNDS);
   const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
   const savedStyleMode = safeLSGet(LS_SETTINGS_STYLE_MODE);
-  const savedTheme = safeLSGet(LS_SETTINGS_THEME);
-  const savedOgMode = safeLSGet(LS_SETTINGS_OG_MODE);
 
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
 
+  // Only Codenames Online style is supported.
   settingsStyleMode = normalizeStyleMode(savedStyleMode);
-
-  // Backwards-compatible migration from older keys, if needed
-  if (!savedStyleMode) {
-    const legacyOg = savedOgMode === 'true';
-    const legacyTheme = (savedTheme === 'light') ? 'light' : 'dark';
-    settingsStyleMode = legacyOg ? 'cozy' : legacyTheme;
-    safeLSSet(LS_SETTINGS_STYLE_MODE, settingsStyleMode);
-  }
+  if (savedStyleMode !== 'online') safeLSSet(LS_SETTINGS_STYLE_MODE, 'online');
 
   // Keep legacy keys consistent for older installs
   syncLegacyStyleKeys();
@@ -6681,10 +6673,10 @@ function initSettings() {
 
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
-  const STYLE_MODE_LABELS = { dark: 'Dark Mode', light: 'Light Mode', cozy: 'Cozy Mode', online: 'Codenames Online' };
+  const STYLE_MODE_LABELS = { online: 'Codenames Online' };
   const updateStyleDropdownUI = () => {
     const mode = normalizeStyleMode(settingsStyleMode);
-    if (styleValueEl) styleValueEl.textContent = STYLE_MODE_LABELS[mode] || 'Dark Mode';
+    if (styleValueEl) styleValueEl.textContent = STYLE_MODE_LABELS[mode] || 'Codenames Online';
     styleOptions.forEach(opt => {
       const v = (opt?.dataset?.value || '').toLowerCase();
       opt.setAttribute('aria-selected', (v === mode) ? 'true' : 'false');
@@ -7141,47 +7133,34 @@ function closeSettingsModal() {
   }, 200);
 }
 
-function normalizeStyleMode(mode) {
-  if (mode === 'dark' || mode === 'light' || mode === 'cozy' || mode === 'online') return mode;
+function normalizeStyleMode(_mode) {
+  return 'online';
+}
+
+function legacyThemeFromStyleMode() {
   return 'dark';
 }
 
-function legacyThemeFromStyleMode(mode) {
-  return mode === 'light' ? 'light' : 'dark';
-}
-
-function legacyOgFromStyleMode(mode) {
-  return mode === 'cozy' || mode === 'online';
+function legacyOgFromStyleMode() {
+  return true;
 }
 
 function applyStyleModeSetting() {
-  // Clear all style classes first to ensure only one mode is active
+  // Clear all style classes first to ensure only one mode is active.
   document.body.classList.remove('light-mode', 'cozy-mode', 'og-mode');
 
-  const mode = normalizeStyleMode(settingsStyleMode);
-
-  if (mode === 'light') document.body.classList.add('light-mode');
-  if (mode === 'cozy') document.body.classList.add('cozy-mode');
-  if (mode === 'online') document.body.classList.add('og-mode');
+  settingsStyleMode = 'online';
+  document.body.classList.add('og-mode');
 
   // Update browser theme color if present
   try {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) {
-      const color =
-        mode === 'light' ? '#dfe6ee' :
-        (mode === 'cozy' || mode === 'online') ? '#1B2838' :
-        '#09090b';
-      meta.setAttribute('content', color);
-    }
+    if (meta) meta.setAttribute('content', '#1B2838');
   } catch (_) {}
 
-  // Update clue input placeholder for OG-style modes
+  // Update clue input placeholder for online-style mode.
   const clueInput = document.getElementById('clue-input');
-  if (clueInput) {
-    const isOgStyle = (mode === 'cozy' || mode === 'online');
-    clueInput.placeholder = isOgStyle ? 'YOUR CLUE' : 'Enter your clue...';
-  }
+  if (clueInput) clueInput.placeholder = 'YOUR CLUE';
 
   // Re-render OG panels if game is active
   if (typeof renderOgPanels === 'function') {
@@ -7352,10 +7331,7 @@ const SOUNDS_ONLINE = {
 };
 
 function getActiveStyleMode() {
-  if (document.body.classList.contains('light-mode')) return 'light';
-  if (document.body.classList.contains('cozy-mode')) return 'cozy';
-  if (document.body.classList.contains('og-mode')) return 'online';
-  return 'dark';
+  return 'online';
 }
 
 function getSoundForStyle(soundName) {
