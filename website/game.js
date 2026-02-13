@@ -3381,6 +3381,7 @@ async function rejoinCurrentGame() {
 function startGameListener(gameId, options = {}) {
   if (gameUnsub) gameUnsub();
   currentListenerEphemeral = !!options.ephemeral;
+  let isFirstSnapshot = true;
 
   spectatorMode = !!options.spectator;
   spectatingGameId = spectatorMode ? gameId : null;
@@ -3458,7 +3459,7 @@ function startGameListener(gameId, options = {}) {
     }
     const freshReveals = [];
     for (const idx of newRevealedIndexes) {
-      if (!_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
+      if (isFirstSnapshot || !_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
     }
 
     // Detect new clue for animation
@@ -3477,9 +3478,12 @@ function startGameListener(gameId, options = {}) {
     // Animate newly revealed cards (dramatic reveal)
     if (freshReveals.length > 0) {
       requestAnimationFrame(() => {
-        freshReveals.forEach(idx => {
-          const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-          if (cardEl) {
+        const orderedReveals = [...freshReveals].sort((a, b) => a - b);
+        orderedReveals.forEach((idx, orderIndex) => {
+          const delayMs = orderIndex * 55;
+          setTimeout(() => {
+            const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+            if (!cardEl) return;
             // Make the expansion feel like it bursts OUTWARD from the board center.
             try {
               const boardEl = document.getElementById('game-board');
@@ -3522,7 +3526,7 @@ function startGameListener(gameId, options = {}) {
             // Codenames Online: slow, obvious flip reveal.
             // - Pending selections are already face-down (180deg) showing the patterned back.
             // - On reveal, we flip back to 0deg where the FRONT face becomes the revealed agent.
-            // We drive this in JS so only newly revealed cards flip (no mass flip on initial render).
+            // We drive this in JS so each revealed card can flip with precise timing.
             if (isOgMode) runOnlineRevealFlipAnimation(cardEl);
             let cleaned = false;
             const cleanup = () => {
@@ -3541,7 +3545,7 @@ function startGameListener(gameId, options = {}) {
               // OG flip is shorter; clear lift state quickly so interaction feels snappy.
               setTimeout(cleanup, 1700);
             }
-          }
+          }, delayMs);
         });
       });
     }
@@ -3553,6 +3557,7 @@ function startGameListener(gameId, options = {}) {
 
     _prevRevealedIndexes = newRevealedIndexes;
     _prevClue = newClueWord;
+    isFirstSnapshot = false;
   }, (err) => {
     console.error('Game listener error:', err);
   });
