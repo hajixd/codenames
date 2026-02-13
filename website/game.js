@@ -3473,6 +3473,7 @@ function startGameListener(gameId, options = {}) {
         pendingCardSelection = null;
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
+        void syncTeamConsidering(null);
         renderCardTags();
         saveTagsToLocal();
         setActiveTagMode(null);
@@ -3643,6 +3644,7 @@ window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {
 function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
+  try { syncTeamConsidering(null); } catch (_) {}
   currentGame = null;
   stopPracticeInactivityWatcher();
   const wasEphemeral = !!currentListenerEphemeral;
@@ -3771,14 +3773,25 @@ function runOnlineRevealFlipAnimation(cardEl) {
     try { flipAnim?.cancel?.(); } catch (_) {}
     cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
     inner.style.animation = '';
+    inner.style.transition = '';
     inner.style.transform = '';
   };
+
+  const parseAngle = (raw, fallback = 0) => {
+    const m = String(raw || '').match(/-?\d+(?:\.\d+)?/);
+    if (!m) return fallback;
+    const n = Number(m[0]);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const toDeg = (n) => `${Number(n).toFixed(3)}deg`;
 
   // Use WAAPI so this still runs even if CSS "no-animations" mode was enabled earlier.
   if (typeof cardEl.animate === 'function' && typeof inner.animate === 'function') {
     try {
-      const tiltX = String(cardEl.style.getPropertyValue('--og-flip-tilt-x') || '6deg').trim();
-      const tiltY = String(cardEl.style.getPropertyValue('--og-flip-tilt-y') || '0deg').trim();
+      const tiltXRaw = String(cardEl.style.getPropertyValue('--og-flip-tilt-x') || '6deg').trim();
+      const tiltYRaw = String(cardEl.style.getPropertyValue('--og-flip-tilt-y') || '0deg').trim();
+      const tiltXDeg = parseAngle(tiltXRaw, 6);
+      const tiltYDeg = parseAngle(tiltYRaw, 0);
       liftAnim = cardEl.animate(
         [
           { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
@@ -3792,10 +3805,10 @@ function runOnlineRevealFlipAnimation(cardEl) {
       flipAnim = inner.animate(
         [
           { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' },
-          { transform: `rotateY(32deg) rotateX(calc(${tiltX} * 0.92)) rotateZ(calc(${tiltY} * 0.12))`, offset: 0.2 },
-          { transform: `rotateY(88deg) rotateX(${tiltX}) rotateZ(calc(${tiltY} * 0.2))`, offset: 0.44 },
-          { transform: `rotateY(136deg) rotateX(calc(${tiltX} * 0.45)) rotateZ(calc(${tiltY} * 0.12))`, offset: 0.66 },
-          { transform: `rotateY(168deg) rotateX(calc(${tiltX} * 0.14)) rotateZ(calc(${tiltY} * 0.04))`, offset: 0.84 },
+          { transform: `rotateY(32deg) rotateX(${toDeg(tiltXDeg * 0.92)}) rotateZ(${toDeg(tiltYDeg * 0.12)})`, offset: 0.2 },
+          { transform: `rotateY(88deg) rotateX(${toDeg(tiltXDeg)}) rotateZ(${toDeg(tiltYDeg * 0.2)})`, offset: 0.44 },
+          { transform: `rotateY(136deg) rotateX(${toDeg(tiltXDeg * 0.45)}) rotateZ(${toDeg(tiltYDeg * 0.12)})`, offset: 0.66 },
+          { transform: `rotateY(168deg) rotateX(${toDeg(tiltXDeg * 0.14)}) rotateZ(${toDeg(tiltYDeg * 0.04)})`, offset: 0.84 },
           { transform: 'rotateY(180deg) rotateX(0deg) rotateZ(0deg)' }
         ],
         { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.22, 0.61, 0.2, 1)', fill: 'forwards' }
@@ -3808,7 +3821,14 @@ function runOnlineRevealFlipAnimation(cardEl) {
     }
   }
 
-  inner.addEventListener('animationend', cleanup, { once: true });
+  // Fallback for environments where WAAPI is unavailable/disabled.
+  inner.style.setProperty('transition', `transform ${OG_REVEAL_FLIP_DURATION_MS}ms cubic-bezier(0.22, 0.61, 0.2, 1)`, 'important');
+  inner.style.setProperty('transform', 'rotateY(0deg)', 'important');
+  void inner.offsetWidth;
+  requestAnimationFrame(() => {
+    inner.style.setProperty('transform', 'rotateY(180deg)', 'important');
+  });
+  inner.addEventListener('transitionend', cleanup, { once: true });
   setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
 }
 
@@ -3968,10 +3988,7 @@ function renderAdvancedFeatures() {
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuessNow = isMyTurn && currentGame.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame.winner;
   if (!canGuessNow && pendingCardSelection !== null) {
-    pendingCardSelection = null;
-    _pendingSelectAnimIndex = null;
-    _pendingSelectionContextKey = null;
-    updatePendingCardSelectionUI();
+    clearPendingCardSelection();
   }
 
   // Load tags from localStorage for this game
@@ -4186,12 +4203,22 @@ function renderBoard(isSpymaster) {
     !!(_pendingSelectionContextKey && _pendingSelectionContextKey !== currentSelectionContextKey);
 
   if (stalePendingSelection) {
+    if (hasStoredPendingSelection) {
+      void syncTeamConsidering(null);
+    }
     pendingCardSelection = null;
     _pendingSelectAnimIndex = null;
     _pendingSelectionContextKey = null;
   } else {
     pendingCardSelection = pendingIdx;
   }
+
+  const teamConsidering = (myTeamColor === 'red')
+    ? (currentGame?.redConsidering || {})
+    : (myTeamColor === 'blue')
+      ? (currentGame?.blueConsidering || {})
+      : {};
+  const myOwnerId = getCurrentMarkerOwnerId();
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
@@ -4215,6 +4242,24 @@ function renderBoard(isSpymaster) {
 
     const word = escapeHtml(card.word);
     const confirmLabel = escapeHtml(`Confirm ${card.word}`);
+    const consideringEntries = (!card.revealed)
+      ? getTeamConsideringEntriesForCard(teamConsidering, i, myOwnerId)
+      : [];
+    const visibleConsidering = consideringEntries.slice(0, 4);
+    const consideringHtml = visibleConsidering.length
+      ? `
+          <div class="card-considering-row" aria-hidden="true">
+            ${visibleConsidering.map(entry => {
+              const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
+              const title = escapeHtml(entry.name || 'Teammate');
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''}" title="${title}">${initials}</span>`;
+            }).join('')}
+            ${consideringEntries.length > visibleConsidering.length
+              ? `<span class="card-considering-chip more">+${consideringEntries.length - visibleConsidering.length}</span>`
+              : ''}
+          </div>
+        `
+      : '';
     const backFace = isOgMode
       ? `
           <div class="card-face card-back">
@@ -4224,6 +4269,7 @@ function renderBoard(isSpymaster) {
       : '';
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
+        ${consideringHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
           <div class="card-face card-front">
@@ -4234,7 +4280,7 @@ function renderBoard(isSpymaster) {
           </div>
           ${backFace}
         </div>
-        <button type="button" class="card-checkmark" data-card-index="${i}" onclick="handleCardConfirm(event, ${i})" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
+        <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
       </div>
     `;
   }).join('');
@@ -4772,10 +4818,7 @@ async function handleCardClick(cardIndex) {
   try {
 
     // Clear pending selection only after we've validated this guess attempt.
-    pendingCardSelection = null;
-    _pendingSelectionContextKey = null;
-    revealedPeekCardIndex = null;
-    updatePendingCardSelectionUI();
+    clearPendingCardSelection();
 
   // Capture current clue for history logging
   const clueWordAtGuess = currentGame.currentClue?.word || null;
@@ -5318,9 +5361,12 @@ let revealedPeekCardIndex = null; // one revealed card can be "stood up" at a ti
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
+let _lastCardConfirmAt = 0;
+let _lastCardConfirmIndex = -1;
 let operativeChatUnsub = null;
 let operativeChatTeamViewing = null; // 'red' | 'blue'
 let spectatorChatTeam = 'red';
+let _consideringSyncNonce = 0;
 
 // When Cozy/Online (OG-style) panels are active, we dock the existing chat panel
 // into the left OG panel so it sits bottom-left parallel to the Game Log.
@@ -5375,6 +5421,14 @@ function initAdvancedFeatures() {
       closeMobileSidebars();
     }
   });
+
+  // If the tab was backgrounded during an in-flight guess, avoid a stuck local lock.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) _processingGuess = false;
+  });
+  window.addEventListener('focus', () => {
+    _processingGuess = false;
+  });
 }
 
 // Call init on DOMContentLoaded
@@ -5389,7 +5443,7 @@ function setupBoardCardInteractions() {
   if (!boardEl) return;
   _boardCardInteractionsBound = true;
 
-  boardEl.addEventListener('click', (evt) => {
+  const routeCardInteraction = (evt, source = 'click') => {
     const target = evt.target;
     if (!target) return;
 
@@ -5398,6 +5452,22 @@ function setupBoardCardInteractions() {
       const ownerCard = checkmark.closest('.game-card');
       const idx = Number(checkmark.getAttribute('data-card-index') || ownerCard?.dataset?.index);
       if (!Number.isInteger(idx) || idx < 0) return;
+      // Pointer-based devices often dispatch pointerup + click for the same tap.
+      // Let pointerup win and ignore the duplicate click.
+      const now = Date.now();
+      if (
+        source === 'click' &&
+        setupBoardCardInteractions._lastSource === 'pointerup' &&
+        setupBoardCardInteractions._lastKind === 'confirm' &&
+        setupBoardCardInteractions._lastIdx === idx &&
+        (now - (setupBoardCardInteractions._lastAt || 0)) < 280
+      ) {
+        return;
+      }
+      setupBoardCardInteractions._lastSource = source;
+      setupBoardCardInteractions._lastKind = 'confirm';
+      setupBoardCardInteractions._lastIdx = idx;
+      setupBoardCardInteractions._lastAt = now;
       void handleCardConfirm(evt, idx);
       return;
     }
@@ -5413,9 +5483,43 @@ function setupBoardCardInteractions() {
       return;
     }
 
+    const now = Date.now();
+    if (
+      source === 'click' &&
+      setupBoardCardInteractions._lastSource === 'pointerup' &&
+      setupBoardCardInteractions._lastKind === 'select' &&
+      setupBoardCardInteractions._lastIdx === idx &&
+      (now - (setupBoardCardInteractions._lastAt || 0)) < 280
+    ) {
+      return;
+    }
+    setupBoardCardInteractions._lastSource = source;
+    setupBoardCardInteractions._lastKind = 'select';
+    setupBoardCardInteractions._lastIdx = idx;
+    setupBoardCardInteractions._lastAt = now;
     handleCardSelect(idx);
+  };
+
+  boardEl.addEventListener('pointerup', (evt) => {
+    if (evt.button !== undefined && evt.button !== 0) return;
+    routeCardInteraction(evt, 'pointerup');
+  });
+  boardEl.addEventListener('click', (evt) => {
+    routeCardInteraction(evt, 'click');
+  });
+  boardEl.addEventListener('keydown', (evt) => {
+    if (evt.key !== 'Enter' && evt.key !== ' ') return;
+    const target = evt.target;
+    if (!target) return;
+    if (!target.closest?.('.card-checkmark')) return;
+    evt.preventDefault();
+    routeCardInteraction(evt, 'keyboard');
   });
 }
+setupBoardCardInteractions._lastSource = '';
+setupBoardCardInteractions._lastKind = '';
+setupBoardCardInteractions._lastIdx = -1;
+setupBoardCardInteractions._lastAt = 0;
 
 /* =========================
    Card Tagging System
@@ -5441,6 +5545,118 @@ function getCurrentMarkerOwnerId() {
   } catch (_) {
     return 'u:local';
   }
+}
+
+function getPlayerInitials(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '?';
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    return `${tokens[0][0] || ''}${tokens[1][0] || ''}`.toUpperCase();
+  }
+  const plain = raw.replace(/[^a-zA-Z0-9]/g, '');
+  if (!plain) return '?';
+  return plain.slice(0, 2).toUpperCase();
+}
+
+function normalizeTeamConsideringBucket(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [owner, value] of Object.entries(raw || {})) {
+    const id = String(owner || '').trim();
+    if (!id) continue;
+    if (typeof value === 'string') {
+      const initials = getPlayerInitials(value);
+      out[id] = { initials, name: String(value || ''), ts: Date.now() };
+      continue;
+    }
+    if (!value || typeof value !== 'object') continue;
+    const name = String(value.name || value.n || '').trim();
+    const initialsRaw = String(value.initials || value.i || '').trim();
+    const initials = (initialsRaw ? initialsRaw : getPlayerInitials(name)).slice(0, 3).toUpperCase();
+    const ts = Number(value.ts || value.t || 0);
+    out[id] = {
+      initials: initials || '?',
+      name,
+      ts: Number.isFinite(ts) ? ts : 0
+    };
+  }
+  return out;
+}
+
+function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId = '') {
+  const raw = teamConsidering ? (teamConsidering[String(cardIndex)] ?? teamConsidering[cardIndex]) : null;
+  const bucket = normalizeTeamConsideringBucket(raw);
+  const now = Date.now();
+  const MAX_CONSIDERING_AGE_MS = 3 * 60 * 1000;
+  return Object.entries(bucket)
+    .map(([owner, value]) => {
+      const ts = Number(value?.ts || 0);
+      if (ts > 0 && (now - ts) > MAX_CONSIDERING_AGE_MS) return null;
+      return {
+        owner,
+        initials: String(value?.initials || '?').slice(0, 3).toUpperCase(),
+        name: String(value?.name || '').trim(),
+        ts,
+        isMine: !!(myOwnerId && owner === myOwnerId),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
+      const at = Number(a.ts || 0);
+      const bt = Number(b.ts || 0);
+      return bt - at;
+    });
+}
+
+async function syncTeamConsidering(cardIndexOrNull) {
+  try {
+    if (!currentGame?.id) return;
+    const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
+    if (myTeam !== 'red' && myTeam !== 'blue') return;
+    const ownerId = getCurrentMarkerOwnerId();
+    const userName = String((typeof getUserName === 'function') ? (getUserName() || '') : '').trim();
+    const initials = getPlayerInitials(userName);
+    const nextIdx = Number.isInteger(Number(cardIndexOrNull)) ? Number(cardIndexOrNull) : null;
+    const field = (myTeam === 'red') ? 'redConsidering' : 'blueConsidering';
+    const ref = db.collection('games').doc(currentGame.id);
+    const nonce = ++_consideringSyncNonce;
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const considering = { ...(game?.[field] || {}) };
+
+      // Each user can consider at most one card at a time.
+      for (const key of Object.keys(considering)) {
+        const bucket = normalizeTeamConsideringBucket(considering[key]);
+        delete bucket[ownerId];
+        if (Object.keys(bucket).length) considering[key] = bucket;
+        else delete considering[key];
+      }
+
+      if (nextIdx !== null && nextIdx >= 0) {
+        const key = String(nextIdx);
+        const bucket = normalizeTeamConsideringBucket(considering[key]);
+        bucket[ownerId] = {
+          initials,
+          name: userName || 'Player',
+          ts: Date.now()
+        };
+        considering[key] = bucket;
+      }
+
+      tx.update(ref, {
+        [field]: considering,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // Ignore stale race completions.
+    if (nonce !== _consideringSyncNonce) return;
+  } catch (_) {}
 }
 
 function normalizeTeamMarkerBucket(raw) {
@@ -5617,9 +5833,7 @@ function tagCard(cardIndex, tag) {
 
 function clearAllTags() {
   cardTags = {};
-  pendingCardSelection = null;
-  _pendingSelectionContextKey = null;
-  revealedPeekCardIndex = null;
+  clearPendingCardSelection();
   renderCardTags();
   saveTagsToLocal();
   try { clearTeamMarkers(); } catch (_) {}
@@ -5769,6 +5983,7 @@ function clearPendingCardSelection() {
   _pendingSelectAnimIndex = null;
   _pendingSelectionContextKey = null;
   revealedPeekCardIndex = null;
+  void syncTeamConsidering(null);
   // Clear any OG "peek" state.
   try {
     document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
@@ -5784,6 +5999,7 @@ function setPendingCardSelection(cardIndex) {
   _pendingSelectAnimIndex = idx;
   _pendingSelectionContextKey = getPendingSelectionContextKey(currentGame);
   revealedPeekCardIndex = null;
+  void syncTeamConsidering(idx);
   // Ensure only one card can be in "peek" mode.
   try {
     document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
@@ -6856,6 +7072,10 @@ async function handleCardConfirm(evt, cardIndex) {
   if (!canCurrentUserGuess()) return;
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
+  const now = Date.now();
+  if (_lastCardConfirmIndex === idx && (now - _lastCardConfirmAt) < 240) return;
+  _lastCardConfirmIndex = idx;
+  _lastCardConfirmAt = now;
 
   // Force selection to this card, then confirm. This avoids no-op states
   // when rapid re-renders temporarily drop the pending-select class.
@@ -6865,10 +7085,12 @@ async function handleCardConfirm(evt, cardIndex) {
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   cardEl?.classList.add('confirming-guess');
+  const lockGuard = setTimeout(() => { _processingGuess = false; }, 7000);
 
   try {
     await _originalHandleCardClick(idx);
   } finally {
+    clearTimeout(lockGuard);
     cardEl?.classList.remove('confirming-guess');
   }
 }
@@ -6948,6 +7170,7 @@ async function addGuessToClueHistory(gameId, team, clueWord, clueNumber, guess) 
 // Cleanup on game exit
 function cleanupAdvancedFeatures() {
   stopGameTimer();
+  try { syncTeamConsidering(null); } catch (_) {}
 
   if (operativeChatUnsub) {
     operativeChatUnsub();
