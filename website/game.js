@@ -47,6 +47,9 @@ let currentGame = null;
 let _prevRevealedIndexes = new Set(); // Track previously revealed cards for animation
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
+const OG_REVEAL_FLIP_DURATION_MS = 2300;
+const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 650;
+const OG_REVEAL_STAGGER_MS = 90;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -3480,7 +3483,7 @@ function startGameListener(gameId, options = {}) {
       requestAnimationFrame(() => {
         const orderedReveals = [...freshReveals].sort((a, b) => a - b);
         orderedReveals.forEach((idx, orderIndex) => {
-          const delayMs = orderIndex * 55;
+          const delayMs = orderIndex * OG_REVEAL_STAGGER_MS;
           setTimeout(() => {
             const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
             if (!cardEl) return;
@@ -3542,8 +3545,7 @@ function startGameListener(gameId, options = {}) {
               // Fallback cleanup
               setTimeout(cleanup, 5000);
             } else {
-              // OG flip is shorter; clear lift state quickly so interaction feels snappy.
-              setTimeout(cleanup, 1700);
+              setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
             }
           }, delayMs);
         });
@@ -3731,7 +3733,7 @@ function runOnlineRevealFlipAnimation(cardEl) {
           { transform: 'translateY(-2px) scale(1.03)', filter: 'brightness(1.05)', offset: 0.78 },
           { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' }
         ],
-        { duration: 1320, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
+        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
       );
       flipAnim = inner.animate(
         [
@@ -3741,10 +3743,10 @@ function runOnlineRevealFlipAnimation(cardEl) {
           { transform: `rotateY(26deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.76 },
           { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' }
         ],
-        { duration: 1320, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
+        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
       );
       Promise.allSettled([liftAnim.finished, flipAnim.finished]).then(cleanup);
-      setTimeout(cleanup, 1800);
+      setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
       return;
     } catch (_) {
       // Fall through to CSS animation cleanup.
@@ -3752,7 +3754,7 @@ function runOnlineRevealFlipAnimation(cardEl) {
   }
 
   inner.addEventListener('animationend', cleanup, { once: true });
-  setTimeout(cleanup, 1800);
+  setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
 }
 
 
