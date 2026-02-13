@@ -1655,14 +1655,18 @@ body.tournament #play-mode-select{ display:none !important; }
 }
 
 /* =========================
-   Style-specific loading animations
-   - Dark keeps the existing loader
-   - Light/Cozy/Codenames Online each get their own unique loader (desktop + mobile)
+   Loading animation selection
+   - Always use the card-dealing (Codenames Online) loader
 ========================= */
+.auth-loading-desktop,
+.auth-loading-mobile,
 .auth-loading-light-desktop,
 .auth-loading-light-mobile,
 .auth-loading-cozy-desktop,
-.auth-loading-cozy-mobile,
+.auth-loading-cozy-mobile {
+  display: none !important;
+}
+
 .auth-loading-online-desktop,
 .auth-loading-online-mobile {
   display: none;
@@ -1671,40 +1675,13 @@ body.tournament #play-mode-select{ display:none !important; }
   gap: 28px;
 }
 
-/* Light mode swaps out the default loader */
-body.light-mode .auth-loading-desktop,
-body.light-mode .auth-loading-mobile {
-  display: none !important;
-}
-body.light-mode .auth-loading-light-desktop {
-  display: flex;
-}
-@media (max-width: 768px) {
-  body.light-mode .auth-loading-light-desktop { display: none; }
-  body.light-mode .auth-loading-light-mobile { display: flex; }
-}
-
-body.cozy-mode .auth-loading-desktop,
-body.cozy-mode .auth-loading-mobile,
-body.og-mode .auth-loading-desktop,
-body.og-mode .auth-loading-mobile {
-  display: none !important;
-}
-
-body.cozy-mode .auth-loading-cozy-desktop,
-body.og-mode .auth-loading-online-desktop {
+.auth-loading-online-desktop {
   display: flex;
 }
 
 @media (max-width: 768px) {
-  body.cozy-mode .auth-loading-cozy-desktop,
-  body.og-mode .auth-loading-online-desktop {
-    display: none;
-  }
-  body.cozy-mode .auth-loading-cozy-mobile,
-  body.og-mode .auth-loading-online-mobile {
-    display: flex;
-  }
+  .auth-loading-online-desktop { display: none; }
+  .auth-loading-online-mobile { display: flex; }
 }
 
 /* Cozy: warm tiles that gently "shuffle" */
