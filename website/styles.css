@@ -5607,11 +5607,9 @@ body.og-mode .game-card:not(.revealed).pending-select .card-back::after {
   opacity: 0.35;
 }
 
-/* OG (Codenames Online): revealed cards live on the FRONT face.
-   We flip newly revealed cards in JS by animating from 180deg -> 0deg.
-   This keeps already-revealed boards stable on initial render. */
+/* OG revealed cards settle on the BACK face. */
 body.og-mode .game-card.revealed .card-inner {
-  transform: rotateY(0deg);
+  transform: rotateY(180deg);
 }
 
 body.og-mode .game-card.flip-glow {
@@ -5630,11 +5628,11 @@ body.og-mode .game-card.og-reveal-flip .card-inner{
 }
 
 @keyframes ogCardRevealFlip {
-  0%   { transform: rotateY(180deg) rotateX(10deg) translateZ(0px); }
-  32%  { transform: rotateY(120deg) rotateX(12deg) translateZ(22px); }
-  50%  { transform: rotateY(90deg)  rotateX(12deg) translateZ(26px); }
-  68%  { transform: rotateY(50deg)  rotateX(8deg)  translateZ(18px); }
-  100% { transform: rotateY(0deg)   rotateX(0deg)  translateZ(0px); }
+  0%   { transform: rotateY(0deg)   rotateX(10deg) translateZ(0px); }
+  32%  { transform: rotateY(58deg)  rotateX(12deg) translateZ(22px); }
+  50%  { transform: rotateY(96deg)  rotateX(12deg) translateZ(26px); }
+  68%  { transform: rotateY(138deg) rotateX(8deg)  translateZ(18px); }
+  100% { transform: rotateY(180deg) rotateX(0deg)  translateZ(0px); }
 }
 
 body.og-mode .game-card.pending-select:not(.revealed) .card-back{
@@ -20205,19 +20203,19 @@ body.og-mode .game-card.og-reveal-flip .og-reveal-face::before{
 
 @keyframes ogCardFlipCore {
   0% {
-    transform: rotateY(180deg) rotateX(0deg) rotateZ(0deg);
+    transform: rotateY(0deg) rotateX(0deg) rotateZ(0deg);
   }
   26% {
-    transform: rotateY(140deg) rotateX(var(--og-flip-tilt-x, 6deg)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.18));
+    transform: rotateY(40deg) rotateX(var(--og-flip-tilt-x, 6deg)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.18));
   }
   48% {
-    transform: rotateY(86deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.82)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.24));
+    transform: rotateY(94deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.82)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.24));
   }
   70% {
-    transform: rotateY(28deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.28)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.1));
+    transform: rotateY(152deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.28)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.1));
   }
   100% {
-    transform: rotateY(0deg) rotateX(0deg) rotateZ(0deg);
+    transform: rotateY(180deg) rotateX(0deg) rotateZ(0deg);
   }
 }
 
@@ -20740,7 +20738,7 @@ body.og-mode .game-card.revealed.revealed-peek {
 
 body.og-mode .game-card.revealed.revealed-peek .card-inner {
   transform-origin: 50% 0%;
-  transform: rotateY(0deg) rotateX(62deg) translateY(10px);
+  transform: rotateY(180deg) rotateX(62deg) translateY(10px);
 }
 
 body.og-mode .game-card.revealed.revealed-peek .og-peek-label {
@@ -20918,6 +20916,11 @@ body.og-mode .game-card .card-back{
     linear-gradient(160deg, #2f3d53 0%, #1d2738 48%, #121a26 100%);
 }
 
+body.og-mode .game-card .card-face{
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
 body.og-mode .game-card .card-back .card-word{
   opacity: 0 !important;
 }
@@ -20949,4 +20952,32 @@ body.og-mode .game-card .card-back::after{
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.34);
   pointer-events: none;
+}
+
+body.og-mode .game-card.revealed.card-red .card-back{
+  background:
+    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
+    linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
+}
+
+body.og-mode .game-card.revealed.card-blue .card-back{
+  background:
+    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
+    linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
+}
+
+body.og-mode .game-card.revealed.card-neutral .card-back{
+  background:
+    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
+    linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
+}
+
+body.og-mode .game-card.revealed.card-assassin .card-back{
+  background:
+    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 36%, rgba(0, 0, 0, 0) 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0px, rgba(255, 255, 255, 0.07) 9px, rgba(0, 0, 0, 0.18) 9px, rgba(0, 0, 0, 0.18) 18px),
+    linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
 }

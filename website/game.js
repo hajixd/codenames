@@ -47,6 +47,7 @@ let currentGame = null;
 let _prevRevealedIndexes = new Set(); // Track previously revealed cards for animation
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
+const _animatedInitialRevealKeys = new Set(); // Prevent random replay of initial flip animations
 const OG_REVEAL_FLIP_DURATION_MS = 2300;
 const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 650;
 const OG_REVEAL_STAGGER_MS = 90;
@@ -3417,10 +3418,12 @@ function startGameListener(gameId, options = {}) {
 
     // Reset local per-card tags whenever we detect a brand-new board.
     // This matters especially for Quick Play, where the doc id stays the same across games.
+    let boardSignature = null;
     try {
       const sig = (Array.isArray(currentGame?.cards) && currentGame.cards.length)
         ? currentGame.cards.map(c => `${String(c?.word || '')}::${String(c?.type || '')}`).join('|')
         : null;
+      boardSignature = sig;
       if (sig && _prevBoardSignature && sig !== _prevBoardSignature) {
         // Clear all local tags without writing anything to Firestore (markers are reset server-side).
         cardTags = {};
@@ -3460,9 +3463,16 @@ function startGameListener(gameId, options = {}) {
     if (Array.isArray(currentGame.cards)) {
       currentGame.cards.forEach((c, i) => { if (c.revealed) newRevealedIndexes.add(i); });
     }
+    const initialRevealKey = `${String(gameId || '')}::${String(boardSignature || '')}`;
+    const shouldAnimateInitialReveals =
+      !!(isFirstSnapshot && boardSignature && !_animatedInitialRevealKeys.has(initialRevealKey));
     const freshReveals = [];
     for (const idx of newRevealedIndexes) {
-      if (isFirstSnapshot || !_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
+      if (shouldAnimateInitialReveals) {
+        freshReveals.push(idx);
+        continue;
+      }
+      if (!isFirstSnapshot && !_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
     }
 
     // Detect new clue for animation
@@ -3559,6 +3569,7 @@ function startGameListener(gameId, options = {}) {
 
     _prevRevealedIndexes = newRevealedIndexes;
     _prevClue = newClueWord;
+    if (shouldAnimateInitialReveals) _animatedInitialRevealKeys.add(initialRevealKey);
     isFirstSnapshot = false;
   }, (err) => {
     console.error('Game listener error:', err);
@@ -3700,9 +3711,9 @@ function runOnlineRevealFlipAnimation(cardEl) {
 
   cardEl.classList.add('og-reveal-bump');
 
-  // Start from face-down so the reveal visibly flips into place.
+  // Start face-up and flip to face-down (back side) for revealed cards.
   inner.style.animation = 'none';
-  inner.style.transform = 'rotateY(180deg)';
+  inner.style.transform = 'rotateY(0deg)';
   void inner.offsetWidth;
 
   cardEl.classList.add('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
@@ -3737,11 +3748,11 @@ function runOnlineRevealFlipAnimation(cardEl) {
       );
       flipAnim = inner.animate(
         [
-          { transform: 'rotateY(180deg) rotateX(0deg) rotateZ(0deg)' },
-          { transform: `rotateY(136deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.25 },
-          { transform: `rotateY(84deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.5 },
-          { transform: `rotateY(26deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.76 },
-          { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' }
+          { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' },
+          { transform: `rotateY(44deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.25 },
+          { transform: `rotateY(96deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.5 },
+          { transform: `rotateY(154deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.76 },
+          { transform: 'rotateY(180deg) rotateX(0deg) rotateZ(0deg)' }
         ],
         { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
       );
