@@ -20780,8 +20780,13 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   margin-bottom: 0;
 }
 
-/* Desktop: dock OG/Cozy game log at bottom-right as a tidy floating panel. */
+/* Desktop: remove OG topbar buttons and pin game log bottom-right. */
 @media (min-width: 1024px){
+  body.og-mode .og-topbar,
+  body.cozy-mode .og-topbar{
+    display: none !important;
+  }
+
   body.og-mode .og-gamelog-slidedown,
   body.cozy-mode .og-gamelog-slidedown{
     position: fixed;
@@ -20790,23 +20795,26 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
     right: clamp(14px, 1.8vw, 26px);
     bottom: clamp(14px, 1.8vw, 26px);
     width: min(420px, calc(100vw - 28px));
-    max-height: 0;
+    max-height: min(52vh, 520px);
     z-index: 220;
     overflow: hidden;
     border-radius: 16px;
-    opacity: 0;
-    transform: translateY(10px);
-    transition:
-      max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.18s ease,
-      transform 0.18s ease;
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    transition: none;
   }
 
   body.og-mode .og-gamelog-slidedown.open,
   body.cozy-mode .og-gamelog-slidedown.open{
     max-height: min(52vh, 520px);
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
+  }
+
+  body.og-mode .og-gamelog-close-btn,
+  body.cozy-mode .og-gamelog-close-btn{
+    display: none;
   }
 
   body.og-mode .og-gamelog-slidedown-inner,
