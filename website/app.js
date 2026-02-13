@@ -1882,13 +1882,6 @@ function enterAppFromLaunch(mode, opts = {}) {
       } catch (_) {}
     }
     try { window.bumpPresence?.(); } catch (_) {}
-    try {
-      // Normally Quick Play shows its lobby. But when a live game is in-progress
-      // and the user clicks Quick Play, we skip the lobby and show the 3-button chooser.
-      if (!opts || !opts.skipQuickLobby) {
-        if (typeof window.showQuickPlayLobby === 'function') window.showQuickPlayLobby();
-      }
-    } catch (_) {}
     return;
   }
 

@@ -162,6 +162,9 @@ window.waitForQuickPlayReady = function waitForQuickPlayReady(opts = {}) {
 let quickLobbyUnsub = null;
 let quickLobbyGame = null;
 let quickAutoJoinedSpectator = false;
+let quickLobbyListenerStarting = null;
+let quickLobbyListenerWanted = false;
+let quickPlayEnsurePromise = null;
 
 // Quick Play settings / negotiation
 function readQuickSettingsFromUI() {
@@ -1647,6 +1650,7 @@ function listenToQuickPlayDoc() {
 }
 
 function stopQuickLobbyListener() {
+  quickLobbyListenerWanted = false;
   if (quickLobbyUnsub) quickLobbyUnsub();
   quickLobbyUnsub = null;
   quickLobbyGame = null;
@@ -1654,49 +1658,68 @@ function stopQuickLobbyListener() {
 }
 
 async function startQuickLobbyListener() {
+  quickLobbyListenerWanted = true;
   if (quickLobbyUnsub) return;
-  await ensureQuickPlayGameExists();
-  quickLobbyUnsub = db.collection('games').doc(QUICKPLAY_DOC_ID).onSnapshot((snap) => {
-    if (!snap.exists) {
-      quickLobbyGame = null;
-      renderQuickLobby(null);
-      return;
-    }
-    quickLobbyGame = { id: snap.id, ...snap.data() };
+  if (quickLobbyListenerStarting) return quickLobbyListenerStarting;
 
-    // Check for game inactivity (30+ minutes) - end the game
-    checkAndEndInactiveGame(quickLobbyGame);
+  quickLobbyListenerStarting = (async () => {
+    await ensureQuickPlayGameExists();
+    if (!quickLobbyListenerWanted || quickLobbyUnsub) return;
 
-    // Check for inactive players in lobby and remove them
-    checkAndRemoveInactiveLobbyPlayers(quickLobbyGame);
-
-    // If the game has zero players, end/reset it.
-    checkAndEndEmptyQuickPlayGame(quickLobbyGame);
-
-    // If a Quick Play game is in-progress, jump into it if you're in the lobby
-    // (including spectators).
-    if (quickLobbyGame.currentPhase && quickLobbyGame.currentPhase !== 'waiting' && quickLobbyGame.winner == null) {
-      const odId = getUserId();
-      const inRed = (quickLobbyGame.redPlayers || []).some(p => p.odId === odId);
-      const inBlue = (quickLobbyGame.bluePlayers || []).some(p => p.odId === odId);
-      const inSpec = (quickLobbyGame.spectators || []).some(p => p.odId === odId);
-      if (inRed || inBlue || inSpec) {
-        spectatorMode = !!inSpec && !(inRed || inBlue);
-        spectatingGameId = spectatorMode ? quickLobbyGame.id : null;
-        startGameListener(quickLobbyGame.id, { spectator: spectatorMode });
+    const unsub = db.collection('games').doc(QUICKPLAY_DOC_ID).onSnapshot((snap) => {
+      if (!snap.exists) {
+        quickLobbyGame = null;
+        renderQuickLobby(null);
         return;
       }
-    }
+      quickLobbyGame = { id: snap.id, ...snap.data() };
 
-    if (currentPlayMode === 'quick') {
-      // Keep a shared, doc-derived list of AI players so all clients can render them
-      // and (optionally) act as the AI controller.
-      if (window.syncAIPlayersFromGame) window.syncAIPlayersFromGame(quickLobbyGame);
+      // Check for game inactivity (30+ minutes) - end the game
+      checkAndEndInactiveGame(quickLobbyGame);
 
-      renderQuickLobby(quickLobbyGame);
-      maybeAutoStartQuickPlay(quickLobbyGame);
-    }
-  }, (err) => console.error('Quick Play lobby listener error:', err));
+      // Check for inactive players in lobby and remove them
+      checkAndRemoveInactiveLobbyPlayers(quickLobbyGame);
+
+      // If the game has zero players, end/reset it.
+      checkAndEndEmptyQuickPlayGame(quickLobbyGame);
+
+      // If a Quick Play game is in-progress, jump into it if you're in the lobby
+      // (including spectators).
+      if (quickLobbyGame.currentPhase && quickLobbyGame.currentPhase !== 'waiting' && quickLobbyGame.winner == null) {
+        const odId = getUserId();
+        const inRed = (quickLobbyGame.redPlayers || []).some(p => p.odId === odId);
+        const inBlue = (quickLobbyGame.bluePlayers || []).some(p => p.odId === odId);
+        const inSpec = (quickLobbyGame.spectators || []).some(p => p.odId === odId);
+        if (inRed || inBlue || inSpec) {
+          spectatorMode = !!inSpec && !(inRed || inBlue);
+          spectatingGameId = spectatorMode ? quickLobbyGame.id : null;
+          startGameListener(quickLobbyGame.id, { spectator: spectatorMode });
+          return;
+        }
+      }
+
+      if (currentPlayMode === 'quick') {
+        // Keep a shared, doc-derived list of AI players so all clients can render them
+        // and (optionally) act as the AI controller.
+        if (window.syncAIPlayersFromGame) window.syncAIPlayersFromGame(quickLobbyGame);
+
+        renderQuickLobby(quickLobbyGame);
+        maybeAutoStartQuickPlay(quickLobbyGame);
+      }
+    }, (err) => console.error('Quick Play lobby listener error:', err));
+
+    quickLobbyUnsub = () => {
+      try { unsub(); } catch (_) {}
+    };
+  })()
+    .catch((e) => {
+      console.error('Quick Play lobby listener startup failed:', e);
+    })
+    .finally(() => {
+      quickLobbyListenerStarting = null;
+    });
+
+  return quickLobbyListenerStarting;
 }
 
 // Game inactivity timeout: end games that have been inactive for 30+ minutes
@@ -2004,40 +2027,48 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
 }
 
 async function ensureQuickPlayGameExists() {
-  const uiSettings = readQuickSettingsFromUI();
-  const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
-  const snap = await ref.get();
+  if (quickPlayEnsurePromise) return quickPlayEnsurePromise;
 
-  if (!snap.exists) {
-    await ref.set(await buildQuickPlayGameData(uiSettings));
-    return;
-  }
+  quickPlayEnsurePromise = (async () => {
+    const uiSettings = readQuickSettingsFromUI();
+    const ref = db.collection('games').doc(QUICKPLAY_DOC_ID);
+    const snap = await ref.get();
 
-  const g = snap.data();
-  const shouldReset = !!g.winner || g.currentPhase === 'ended' || !Array.isArray(g.cards) || g.cards.length !== BOARD_SIZE;
-  if (shouldReset) {
-    await ref.set(await buildQuickPlayGameData(uiSettings));
-    return;
-  }
+    if (!snap.exists) {
+      await ref.set(await buildQuickPlayGameData(uiSettings));
+      return;
+    }
 
-  // Backfill settings fields if this doc predates the settings system.
-  const updates = {};
-  if (!g.quickSettings) {
-    updates.quickSettings = {
-      blackCards: 1,
-      clueTimerSeconds: 0,
-      guessTimerSeconds: 0,
-      deckId: 'standard',
-      vibe: '',
-    };
-  }
-  // Remove legacy negotiation fields if present.
-  if (typeof g.settingsAccepted !== 'undefined') updates.settingsAccepted = firebase.firestore.FieldValue.delete();
-  if (typeof g.settingsPending !== 'undefined') updates.settingsPending = firebase.firestore.FieldValue.delete();
-  if (typeof g.activeJoinOn === 'undefined') updates.activeJoinOn = true;
-  if (Object.keys(updates).length) {
-    await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-  }
+    const g = snap.data();
+    const shouldReset = !!g.winner || g.currentPhase === 'ended' || !Array.isArray(g.cards) || g.cards.length !== BOARD_SIZE;
+    if (shouldReset) {
+      await ref.set(await buildQuickPlayGameData(uiSettings));
+      return;
+    }
+
+    // Backfill settings fields if this doc predates the settings system.
+    const updates = {};
+    if (!g.quickSettings) {
+      updates.quickSettings = {
+        blackCards: 1,
+        clueTimerSeconds: 0,
+        guessTimerSeconds: 0,
+        deckId: 'standard',
+        vibe: '',
+      };
+    }
+    // Remove legacy negotiation fields if present.
+    if (typeof g.settingsAccepted !== 'undefined') updates.settingsAccepted = firebase.firestore.FieldValue.delete();
+    if (typeof g.settingsPending !== 'undefined') updates.settingsPending = firebase.firestore.FieldValue.delete();
+    if (typeof g.activeJoinOn === 'undefined') updates.activeJoinOn = true;
+    if (Object.keys(updates).length) {
+      await ref.update({ ...updates, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+  })().finally(() => {
+    quickPlayEnsurePromise = null;
+  });
+
+  return quickPlayEnsurePromise;
 }
 
 function getQuickPlayerRole(game, odId) {
