@@ -3580,6 +3580,14 @@ function renderTeams(teams) {
   if (!container) return;
 
   const st = computeUserState(teams);
+  const adminCreateBtn = document.getElementById('teams-admin-create-team');
+  if (adminCreateBtn) {
+    const show = !!isAdminUser();
+    const disableCreate = !st.name || !!st.teamId;
+    adminCreateBtn.style.display = show ? 'inline-flex' : 'none';
+    adminCreateBtn.disabled = !show || disableCreate;
+    adminCreateBtn.classList.toggle('disabled', !show || disableCreate);
+  }
   const visibleTeams = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
 
   if (visibleTeams.length === 0) {
@@ -4173,6 +4181,11 @@ function initMyTeamControls() {
   });
 
   document.getElementById('open-create-team')?.addEventListener('click', () => {
+    openCreateTeamModal();
+  });
+
+  document.getElementById('teams-admin-create-team')?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
     openCreateTeamModal();
   });
 

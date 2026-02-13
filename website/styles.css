@@ -20781,9 +20781,24 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 #panel-home .panel-inner,
 #panel-teams .panel-inner,
 #panel-players .panel-inner,
-#panel-myteam .panel-inner {
+#panel-myteam .panel-inner,
+#panel-brackets .panel-inner,
+#panel-practice .panel-inner {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
+}
+
+/* Teams header row (title + admin create action). */
+#panel-teams .teams-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+#panel-teams .teams-head h2{
+  margin-bottom: 0;
 }
