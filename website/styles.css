@@ -20766,3 +20766,14 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   z-index: 3;
   white-space: nowrap;
 }
+
+/* Remove the large panel shell on core tournament tabs. */
+#panel-home .panel-inner,
+#panel-teams .panel-inner,
+#panel-players .panel-inner,
+#panel-myteam .panel-inner {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
