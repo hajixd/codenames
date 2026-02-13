@@ -3719,6 +3719,20 @@ function isOgLikeStyleActive() {
   return document.body.classList.contains('og-mode') || document.body.classList.contains('cozy-mode');
 }
 
+function isMobileLayoutLike() {
+  try {
+    const mm = window.matchMedia ? window.matchMedia.bind(window) : null;
+    const narrow = mm ? mm('(max-width: 1024px)').matches : (window.innerWidth <= 1024);
+    const coarse = mm ? mm('(hover: none) and (pointer: coarse)').matches : false;
+    const shortLandscape = mm
+      ? mm('(max-height: 560px) and (orientation: landscape)').matches
+      : (window.innerHeight <= 560 && window.innerWidth > window.innerHeight);
+    return !!(narrow && (coarse || shortLandscape));
+  } catch (_) {
+    return window.innerWidth <= 768;
+  }
+}
+
 function syncClueSubmitButtonAppearance() {
   const form = document.getElementById('clue-form');
   const submitBtn = form?.querySelector('button[type="submit"]');
@@ -3988,7 +4002,11 @@ function renderAdvancedFeatures() {
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuessNow = isMyTurn && currentGame.currentPhase === 'operatives' && !isCurrentUserSpymaster() && !currentGame.winner;
   if (!canGuessNow && pendingCardSelection !== null) {
-    clearPendingCardSelection();
+    pendingCardSelection = null;
+    _pendingSelectAnimIndex = null;
+    _pendingSelectionContextKey = null;
+    void syncTeamConsidering(null);
+    updatePendingCardSelectionUI();
   }
 
   // Load tags from localStorage for this game
@@ -4139,7 +4157,7 @@ function dockChatIntoOgPanels(isOgMode) {
 
   if (!chatPanel) return;
 
-  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  const isMobile = isMobileLayoutLike();
   const mobileChatOpen = !!document.getElementById('og-chat-slidedown')?.classList.contains('open');
 
   // Save original location once
@@ -4245,7 +4263,17 @@ function renderBoard(isSpymaster) {
     const consideringEntries = (!card.revealed)
       ? getTeamConsideringEntriesForCard(teamConsidering, i, myOwnerId)
       : [];
-    const visibleConsidering = consideringEntries.slice(0, 4);
+    let consideringVisible = [...consideringEntries];
+    if (canGuess && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
+      consideringVisible.unshift({
+        owner: myOwnerId,
+        initials: getPlayerInitials(getUserName()),
+        name: getUserName() || 'You',
+        ts: Date.now(),
+        isMine: true
+      });
+    }
+    const visibleConsidering = consideringVisible.slice(0, 4);
     const consideringHtml = visibleConsidering.length
       ? `
           <div class="card-considering-row" aria-hidden="true">
@@ -4254,8 +4282,8 @@ function renderBoard(isSpymaster) {
               const title = escapeHtml(entry.name || 'Teammate');
               return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''}" title="${title}">${initials}</span>`;
             }).join('')}
-            ${consideringEntries.length > visibleConsidering.length
-              ? `<span class="card-considering-chip more">+${consideringEntries.length - visibleConsidering.length}</span>`
+            ${consideringVisible.length > visibleConsidering.length
+              ? `<span class="card-considering-chip more">+${consideringVisible.length - visibleConsidering.length}</span>`
               : ''}
           </div>
         `
@@ -5479,6 +5507,20 @@ function setupBoardCardInteractions() {
     if (!Number.isInteger(idx) || idx < 0) return;
 
     if (cardEl.classList.contains('revealed') && isOnlineStyleActive()) {
+      const now = Date.now();
+      if (
+        source === 'click' &&
+        setupBoardCardInteractions._lastSource === 'pointerup' &&
+        setupBoardCardInteractions._lastKind === 'peek' &&
+        setupBoardCardInteractions._lastIdx === idx &&
+        (now - (setupBoardCardInteractions._lastAt || 0)) < 280
+      ) {
+        return;
+      }
+      setupBoardCardInteractions._lastSource = source;
+      setupBoardCardInteractions._lastKind = 'peek';
+      setupBoardCardInteractions._lastIdx = idx;
+      setupBoardCardInteractions._lastAt = now;
       handleRevealedCardPeek(idx);
       return;
     }
@@ -5618,7 +5660,12 @@ async function syncTeamConsidering(cardIndexOrNull) {
     const ownerId = getCurrentMarkerOwnerId();
     const userName = String((typeof getUserName === 'function') ? (getUserName() || '') : '').trim();
     const initials = getPlayerInitials(userName);
-    const nextIdx = Number.isInteger(Number(cardIndexOrNull)) ? Number(cardIndexOrNull) : null;
+    const hasIndex =
+      cardIndexOrNull !== null &&
+      cardIndexOrNull !== undefined &&
+      String(cardIndexOrNull).trim() !== '' &&
+      Number.isInteger(Number(cardIndexOrNull));
+    const nextIdx = hasIndex ? Number(cardIndexOrNull) : null;
     const field = (myTeam === 'red') ? 'redConsidering' : 'blueConsidering';
     const ref = db.collection('games').doc(currentGame.id);
     const nonce = ++_consideringSyncNonce;
@@ -6784,8 +6831,15 @@ function initMobileSidebarSwipes() {
         active.side = 'right';
         active.mode = 'close';
       } else {
-        active.side = dx > 0 ? 'left' : 'right';
-        active.mode = 'open';
+        // Swipe-open only for the left sidebar (history/log).
+        // Team chat on the right is opened via its button only.
+        if (dx > 0) {
+          active.side = 'left';
+          active.mode = 'open';
+        } else {
+          active = null;
+          return;
+        }
       }
 
       active.dragging = true;

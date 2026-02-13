@@ -1337,7 +1337,7 @@ body.tournament #play-mode-select{ display:none !important; }
 }
 
 /* ==================== MOBILE ==================== */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
   .app{ --header-h: 54px; --tabs-h: 0px; }
   .app-header {
     display: flex;
@@ -21241,7 +21241,7 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
 }
 
 /* Mobile OG top bar: Chat + Game Log split evenly, with Game Log on the right. */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
   body.og-mode #og-refresh-btn,
   body.cozy-mode #og-refresh-btn,
   body.og-mode #og-settings-btn,
