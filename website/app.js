@@ -3612,16 +3612,11 @@ function renderTeams(teams) {
     const pillClass = isOver ? 'pill-overboard' : (isReady ? 'pill-full' : 'pill-incomplete');
     const overSize = isOver;
 
-    const adminDeleteBtn = isAdminUser()
-      ? `<button class="icon-btn danger admin-delete-btn team-list-admin-delete" type="button" data-admin-delete-team="${esc(t.id)}" title="Delete team" aria-label="Delete team">🗑</button>`
-      : '';
-
     return `
       <button class="team-list-item ${isMine ? 'is-mine' : ''} ${isFull ? 'is-full' : ''}" type="button" data-team="${esc(t.id)}" ${itemStyle}>
         <div class="team-list-left">
           <div class="team-list-name ${isMine ? 'team-accent' : ''}">
             <span class="team-list-name-text profile-link" data-profile-type="team" data-profile-id="${esc(t.id)}" ${nameStyle}>${esc(truncateTeamName(t.teamName || 'Unnamed'))}</span>
-            ${adminDeleteBtn}
           </div>
           <div class="team-list-members" ${nameStyle}>${memberNamesHtml}</div>
         </div>
@@ -3636,16 +3631,6 @@ function renderTeams(teams) {
     row.addEventListener('click', () => {
       const teamId = row.getAttribute('data-team');
       if (teamId) openTeamModal(teamId);
-    });
-  });
-
-  container.querySelectorAll('[data-admin-delete-team]')?.forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const tid = btn.getAttribute('data-admin-delete-team');
-      if (!tid) return;
-      await adminDeleteTeam(tid);
     });
   });
 }

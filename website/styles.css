@@ -4892,8 +4892,8 @@ body.tournament #panel-home.panel-info .panel-inner{
 .team-color-dot.sm{ width: 10px; height: 10px; }
 .team-color-dot.muted{ background: rgba(255,255,255,0.14); }
 
-.team-list-name{ display:flex; align-items:center; gap: 8px; min-width: 0; }
-.team-list-name-text{ flex: 1 1 auto; min-width: 0; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-list-name{ display:flex; align-items:center; gap: 8px; }
+.team-list-name-text{ min-width: 0; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .team-title-inline{ display:inline-flex; align-items:center; gap: 10px; }
 
@@ -4940,12 +4940,7 @@ body.tournament.has-team-color .team-list-item.is-mine{
   text-overflow: ellipsis;
 }
 
-.team-list-right{
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.team-list-right{ flex: 0 0 auto; }
 .team-list-count{
   font-size: 12px;
   font-weight: 700;
@@ -4954,17 +4949,6 @@ body.tournament.has-team-color .team-list-item.is-mine{
   border: 1px solid var(--border);
   background: rgba(255,255,255,0.04);
   opacity: 0.9;
-}
-
-.team-list-admin-delete{
-  width: 22px !important;
-  height: 22px !important;
-  min-width: 22px;
-  padding: 0 !important;
-  border-radius: 8px !important;
-  font-size: 11px;
-  line-height: 1;
-  flex: 0 0 auto;
 }
 
 /* Full team (3+ members) green pill */
