@@ -3988,6 +3988,15 @@ function initTeamModal() {
     await requestToJoin(openTeamId);
     renderTeamModal(openTeamId);
   });
+
+  document.getElementById('team-modal-admin-delete')?.addEventListener('click', async () => {
+    if (!openTeamId || !isAdminUser()) return;
+    const tid = String(openTeamId || '').trim();
+    if (!tid) return;
+    await adminDeleteTeam(tid);
+    const stillExists = (teamsCache || []).some(t => String(t?.id || '').trim() === tid && !t?.archived);
+    if (!stillExists) closeTeamModal();
+  });
 }
 
 function openTeamModal(teamId) {
@@ -4010,8 +4019,11 @@ function closeTeamModal() {
 }
 
 function renderTeamModal(teamId) {
-  const team = teamsCache.find(t => t.id === teamId);
-  if (!team) return;
+  const team = teamsCache.find(t => t.id === teamId && !t?.archived);
+  if (!team) {
+    if (openTeamId === teamId) closeTeamModal();
+    return;
+  }
 
   const tc = getDisplayTeamColor(team);
   setHTML('team-modal-title', `<span class="team-title-inline profile-link" data-profile-type="team" data-profile-id="${esc(teamId)}" style="color:${esc(tc)}">${esc(truncateTeamName(team.teamName || 'Team'))}</span>`);
@@ -4075,6 +4087,14 @@ function renderTeamModal(teamId) {
     joinBtn.classList.toggle('danger', variant === 'danger');
     joinBtn.textContent = label;
   }
+
+  const adminDeleteBtn = document.getElementById('team-modal-admin-delete');
+  if (adminDeleteBtn) {
+    const showDelete = !!isAdminUser();
+    adminDeleteBtn.style.display = showDelete ? '' : 'none';
+    adminDeleteBtn.disabled = !showDelete;
+  }
+
   setHint('team-modal-hint', hint);
 }
 

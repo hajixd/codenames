@@ -3454,6 +3454,11 @@ body.light-mode .modal{
   justify-content: center;
 }
 
+#team-modal-admin-delete{
+  width: 100%;
+  justify-content: center;
+}
+
 .desktop-tabs .tab,
 .mobile-tabs .tab,
 .seg-btn{
@@ -4752,6 +4757,11 @@ button:disabled{
 
 /* Team action button should be full width inside the modal */
 #team-modal-join{
+  width: 100%;
+  justify-content: center;
+}
+
+#team-modal-admin-delete{
   width: 100%;
   justify-content: center;
 }
