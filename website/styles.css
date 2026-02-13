@@ -21035,38 +21035,232 @@ body.og-mode .game-card.revealed.card-assassin .card-back::after{
   color: #d3dae7;
 }
 
-/* Mobile OG top bar: only show a centered, longer Game Log button. */
-@media (max-width: 768px){
+/* OG mobile slide-down Team Chat panel (mirrors Game Log behavior). */
+.og-chat-slidedown {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 101;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.og-chat-slidedown.open {
+  max-height: 60vh;
+  pointer-events: auto;
+}
+
+body.og-mode .og-chat-slidedown,
+body.cozy-mode .og-chat-slidedown {
+  display: block;
+}
+
+.og-chat-slidedown-inner {
+  margin: 8px 16px;
+  max-height: calc(60vh - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.og-chat-slidedown-body {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(60vh - 56px);
+  overflow: auto;
+  padding: 8px 10px 10px;
+}
+
+#og-mobile-chat-host {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+body.og-mode #og-mobile-chat-host .operative-chat-panel,
+body.cozy-mode #og-mobile-chat-host .operative-chat-panel {
+  display: flex !important;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+body.og-mode #og-mobile-chat-host .operative-chat-panel .sidebar-panel-header,
+body.cozy-mode #og-mobile-chat-host .operative-chat-panel .sidebar-panel-header {
+  padding: 0 0 8px;
+  border: none;
+  margin: 0;
+}
+
+body.og-mode #og-mobile-chat-host .chat-privacy-badge,
+body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
+  display: none;
+}
+
+/* Desktop: tune docked chat to match the Game Log shell proportions and vibe. */
+@media (min-width: 1024px) {
+  body.og-mode #og-chat-section,
+  body.cozy-mode #og-chat-section {
+    border-top: none;
+    padding-top: 0;
+    margin-top: auto;
+    max-height: clamp(220px, 33vh, 330px);
+    gap: 0;
+  }
+
+  body.og-mode #og-chat-section .og-section-header,
+  body.cozy-mode #og-chat-section .og-section-header {
+    display: none;
+  }
+
+  body.og-mode #og-chat-host,
+  body.cozy-mode #og-chat-host {
+    max-height: clamp(220px, 33vh, 330px);
+    min-height: 0;
+  }
+
+  body.og-mode #og-chat-host .operative-chat-panel,
+  body.cozy-mode #og-chat-host .operative-chat-panel {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(56, 59, 65, 0.96) 0%, rgba(36, 39, 44, 0.96) 100%);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    overflow: hidden;
+    padding: 0;
+  }
+
+  body.og-mode #og-chat-host .operative-chat-panel .sidebar-panel-header,
+  body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-header {
+    margin: 0;
+    padding: 9px 12px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    justify-content: space-between;
+  }
+
+  body.og-mode #og-chat-host .operative-chat-panel .sidebar-panel-title,
+  body.cozy-mode #og-chat-host .operative-chat-panel .sidebar-panel-title {
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 1.25px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+  }
+
+  body.og-mode #og-chat-host .operative-chat-messages,
+  body.cozy-mode #og-chat-host .operative-chat-messages {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 8px 10px 10px;
+  }
+
+  body.og-mode #og-chat-host .operative-chat-form,
+  body.cozy-mode #og-chat-host .operative-chat-form {
+    margin-top: 0;
+    border-radius: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    box-shadow: none;
+  }
+
+  body.og-mode .og-chat-slidedown,
+  body.cozy-mode .og-chat-slidedown {
+    display: none !important;
+  }
+}
+
+/* Mobile OG top bar: Chat + Game Log split evenly, with Game Log on the right. */
+@media (max-width: 768px) {
   body.og-mode #og-refresh-btn,
   body.cozy-mode #og-refresh-btn,
   body.og-mode #og-settings-btn,
   body.cozy-mode #og-settings-btn,
   body.og-mode .og-topbar-right,
-  body.cozy-mode .og-topbar-right{
+  body.cozy-mode .og-topbar-right {
     display: none !important;
   }
 
   body.og-mode .og-topbar,
-  body.cozy-mode .og-topbar{
+  body.cozy-mode .og-topbar {
     justify-content: center;
     padding: 8px 10px;
   }
 
   body.og-mode .og-topbar-left,
-  body.cozy-mode .og-topbar-left{
-    width: 100%;
-    justify-content: center;
-    gap: 0;
+  body.cozy-mode .og-topbar-left {
+    width: min(96vw, 520px);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    justify-content: stretch;
+    align-items: center;
+  }
+
+  body.og-mode #og-chat-toggle-btn,
+  body.cozy-mode #og-chat-toggle-btn {
+    order: 1;
   }
 
   body.og-mode #og-gamelog-toggle-btn,
-  body.cozy-mode #og-gamelog-toggle-btn{
-    width: min(92vw, 460px);
-    min-height: 42px;
+  body.cozy-mode #og-gamelog-toggle-btn {
+    order: 2;
+  }
+
+  body.og-mode #og-chat-toggle-btn,
+  body.cozy-mode #og-chat-toggle-btn,
+  body.og-mode #og-gamelog-toggle-btn,
+  body.cozy-mode #og-gamelog-toggle-btn {
+    width: 100%;
+    min-height: 40px;
     justify-content: center;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.25px;
-    padding: 10px 16px;
+    letter-spacing: 0.2px;
+    padding: 8px 10px;
+  }
+
+  body.og-mode #og-chat-toggle-btn .og-topbar-svg,
+  body.cozy-mode #og-chat-toggle-btn .og-topbar-svg,
+  body.og-mode #og-gamelog-toggle-btn .og-topbar-svg,
+  body.cozy-mode #og-gamelog-toggle-btn .og-topbar-svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .og-gamelog-slidedown-inner,
+  .og-chat-slidedown-inner {
+    margin: 4px 8px;
+  }
+
+  .og-gamelog-slidedown.open,
+  .og-chat-slidedown.open {
+    max-height: 50vh;
+  }
+
+  .og-gamelog-slidedown-inner .gamelog-entries {
+    max-height: calc(50vh - 50px);
+  }
+
+  .og-chat-slidedown-body {
+    max-height: calc(50vh - 52px);
+  }
+
+  body.og-mode .game-card .card-back::after,
+  body.cozy-mode .game-card .card-back::after {
+    font-size: clamp(10px, 3.2vw, 12px);
+    letter-spacing: 1.1px;
   }
 }

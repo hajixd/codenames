@@ -48,8 +48,8 @@ let _prevRevealedIndexes = new Set(); // Track previously revealed cards for ani
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 const _animatedInitialRevealKeys = new Set(); // Prevent random replay of initial flip animations
-const OG_REVEAL_FLIP_DURATION_MS = 2300;
-const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 650;
+const OG_REVEAL_FLIP_DURATION_MS = 3000;
+const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 760;
 const OG_REVEAL_STAGGER_MS = 90;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
@@ -1133,11 +1133,17 @@ function setupOgGamelogSlidedown() {
   const closeBtn = document.getElementById('og-gamelog-close-btn');
   const panel = slidedown?.querySelector('.og-gamelog-slidedown-inner');
   const entries = document.getElementById('og-gamelog-slidedown-entries');
+  const chatToggleBtn = document.getElementById('og-chat-toggle-btn');
+  const chatSlidedown = document.getElementById('og-chat-slidedown');
+  const chatCloseBtn = document.getElementById('og-chat-close-btn');
+  const chatPanel = chatSlidedown?.querySelector('.og-chat-slidedown-inner');
+  const chatBody = document.getElementById('og-chat-slidedown-body');
   if (!toggleBtn || !slidedown) return;
   if (slidedown.dataset.bound === '1') return;
   slidedown.dataset.bound = '1';
 
   function openLog() {
+    closeChat();
     slidedown.classList.add('open');
     toggleBtn.classList.add('og-gamelog-active');
     // Mirror the sidebar log content into the slidedown
@@ -1150,7 +1156,21 @@ function setupOgGamelogSlidedown() {
     slidedown.classList.remove('open');
     toggleBtn.classList.remove('og-gamelog-active');
   }
+  function openChat() {
+    if (!chatSlidedown) return;
+    closeLog();
+    chatSlidedown.classList.add('open');
+    chatToggleBtn?.classList.add('og-gamelog-active');
+    try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
+  }
+  function closeChat() {
+    if (!chatSlidedown) return;
+    chatSlidedown.classList.remove('open');
+    chatToggleBtn?.classList.remove('og-gamelog-active');
+    try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
+  }
   const isOpen = () => slidedown.classList.contains('open');
+  const isChatOpen = () => !!chatSlidedown?.classList.contains('open');
 
   toggleBtn.addEventListener('click', () => {
     if (isOpen()) {
@@ -1159,65 +1179,88 @@ function setupOgGamelogSlidedown() {
       openLog();
     }
   });
+  chatToggleBtn?.addEventListener('click', () => {
+    if (isChatOpen()) {
+      closeChat();
+    } else {
+      openChat();
+    }
+  });
 
   closeBtn?.addEventListener('click', closeLog);
+  chatCloseBtn?.addEventListener('click', closeChat);
 
   // Close when clicking outside the slidedown panel
   slidedown.addEventListener('click', (e) => {
     if (e.target === slidedown) closeLog();
   });
+  chatSlidedown?.addEventListener('click', (e) => {
+    if (e.target === chatSlidedown) closeChat();
+  });
 
   document.addEventListener('pointerdown', (e) => {
-    if (!isOpen()) return;
     const target = e.target;
     if (!target) return;
-    if (toggleBtn.contains(target)) return;
-    if (panel && panel.contains(target)) return;
-    closeLog();
+    if (isOpen()) {
+      if (!toggleBtn.contains(target) && !(panel && panel.contains(target))) {
+        closeLog();
+      }
+    }
+    if (isChatOpen()) {
+      const clickedChatToggle = !!chatToggleBtn?.contains?.(target);
+      if (!clickedChatToggle && !(chatPanel && chatPanel.contains(target))) {
+        closeChat();
+      }
+    }
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isOpen()) closeLog();
+    if (e.key !== 'Escape') return;
+    if (isOpen()) closeLog();
+    if (isChatOpen()) closeChat();
   });
 
-  // Keep scroll gestures inside the game-log scroller while open.
-  let touchStartY = 0;
+  // Keep scroll gestures inside slidedown scrollers while open.
   const isAtTop = (el) => el.scrollTop <= 0;
   const isAtBottom = (el) => (el.scrollHeight - el.clientHeight - el.scrollTop) <= 1;
 
-  entries?.addEventListener('wheel', (e) => {
-    if (!isOpen()) return;
-    const maxScroll = entries.scrollHeight - entries.clientHeight;
-    if (maxScroll <= 0) {
-      e.preventDefault();
-      return;
-    }
+  const bindScrollBoundaryLock = (el, isPanelOpen) => {
+    if (!el) return;
+    let touchStartY = 0;
+    el.addEventListener('wheel', (e) => {
+      if (!isPanelOpen()) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 0) {
+        e.preventDefault();
+        return;
+      }
+      if ((e.deltaY < 0 && isAtTop(el)) || (e.deltaY > 0 && isAtBottom(el))) {
+        e.preventDefault();
+      }
+    }, { passive: false });
 
-    if ((e.deltaY < 0 && isAtTop(entries)) || (e.deltaY > 0 && isAtBottom(entries))) {
-      e.preventDefault();
-    }
-  }, { passive: false });
+    el.addEventListener('touchstart', (e) => {
+      touchStartY = e.touches?.[0]?.clientY ?? 0;
+    }, { passive: true });
 
-  entries?.addEventListener('touchstart', (e) => {
-    touchStartY = e.touches?.[0]?.clientY ?? 0;
-  }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (!isPanelOpen()) return;
+      const y = e.touches?.[0]?.clientY;
+      if (!Number.isFinite(y)) return;
+      const dy = touchStartY - y;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 0) {
+        e.preventDefault();
+        return;
+      }
+      if ((dy < 0 && isAtTop(el)) || (dy > 0 && isAtBottom(el))) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+  };
 
-  entries?.addEventListener('touchmove', (e) => {
-    if (!isOpen()) return;
-    const y = e.touches?.[0]?.clientY;
-    if (!Number.isFinite(y)) return;
-
-    const dy = touchStartY - y;
-    const maxScroll = entries.scrollHeight - entries.clientHeight;
-    if (maxScroll <= 0) {
-      e.preventDefault();
-      return;
-    }
-
-    if ((dy < 0 && isAtTop(entries)) || (dy > 0 && isAtBottom(entries))) {
-      e.preventDefault();
-    }
-  }, { passive: false });
+  bindScrollBoundaryLock(entries, isOpen);
+  bindScrollBoundaryLock(chatBody, isChatOpen);
 }
 
 /* =========================
@@ -3739,22 +3782,23 @@ function runOnlineRevealFlipAnimation(cardEl) {
       liftAnim = cardEl.animate(
         [
           { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
-          { transform: 'translateY(-16px) scale(1.04)', filter: 'brightness(1.08)', offset: 0.24 },
-          { transform: 'translateY(-10px) scale(1.08)', filter: 'brightness(1.12)', offset: 0.52 },
-          { transform: 'translateY(-2px) scale(1.03)', filter: 'brightness(1.05)', offset: 0.78 },
+          { transform: 'translateY(-18px) scale(1.035)', filter: 'brightness(1.08)', offset: 0.22 },
+          { transform: 'translateY(-34px) scale(1.09)', filter: 'brightness(1.14)', offset: 0.47 },
+          { transform: 'translateY(-16px) scale(1.045)', filter: 'brightness(1.08)', offset: 0.74 },
           { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' }
         ],
-        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
+        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.22, 0.61, 0.2, 1)', fill: 'forwards' }
       );
       flipAnim = inner.animate(
         [
           { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' },
-          { transform: `rotateY(44deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.25 },
-          { transform: `rotateY(96deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.5 },
-          { transform: `rotateY(154deg) rotateX(${tiltX}) rotateZ(${tiltY})`, offset: 0.76 },
+          { transform: `rotateY(32deg) rotateX(calc(${tiltX} * 0.92)) rotateZ(calc(${tiltY} * 0.12))`, offset: 0.2 },
+          { transform: `rotateY(88deg) rotateX(${tiltX}) rotateZ(calc(${tiltY} * 0.2))`, offset: 0.44 },
+          { transform: `rotateY(136deg) rotateX(calc(${tiltX} * 0.45)) rotateZ(calc(${tiltY} * 0.12))`, offset: 0.66 },
+          { transform: `rotateY(168deg) rotateX(calc(${tiltX} * 0.14)) rotateZ(calc(${tiltY} * 0.04))`, offset: 0.84 },
           { transform: 'rotateY(180deg) rotateX(0deg) rotateZ(0deg)' }
         ],
-        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)', fill: 'forwards' }
+        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.22, 0.61, 0.2, 1)', fill: 'forwards' }
       );
       Promise.allSettled([liftAnim.finished, flipAnim.finished]).then(cleanup);
       setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
@@ -3959,36 +4003,6 @@ function renderAdvancedFeatures() {
   renderOgPanels();
 }
 
-function dockChatIntoOgPanels(isOgMode) {
-  const host = document.getElementById('og-chat-host');
-  const chatPanel = document.querySelector('.operative-chat-panel');
-  if (!chatPanel) return;
-
-  // Only dock on desktop; on mobile, keep the standard sidebar chat available.
-  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
-
-  if (isOgMode && host && !isMobile) {
-    if (!ogChatOriginalParent) {
-      ogChatOriginalParent = chatPanel.parentElement;
-      ogChatOriginalNextSibling = chatPanel.nextElementSibling;
-    }
-    if (chatPanel.parentElement !== host) {
-      host.appendChild(chatPanel);
-    }
-    chatPanel.classList.add('og-docked-chat');
-  } else {
-    // Restore if we previously moved it.
-    if (host && chatPanel.parentElement === host && ogChatOriginalParent) {
-      if (ogChatOriginalNextSibling && ogChatOriginalParent.contains(ogChatOriginalNextSibling)) {
-        ogChatOriginalParent.insertBefore(chatPanel, ogChatOriginalNextSibling);
-      } else {
-        ogChatOriginalParent.appendChild(chatPanel);
-      }
-    }
-    chatPanel.classList.remove('og-docked-chat');
-  }
-}
-
 function renderOgPanels() {
   const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
   const ogPanelBlue = document.getElementById('og-panel-blue');
@@ -4103,11 +4117,13 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
 
 function dockChatIntoOgPanels(isOgMode) {
   const chatPanel = document.querySelector('.operative-chat-panel');
-  const host = document.getElementById('og-chat-host');
+  const hostDesktop = document.getElementById('og-chat-host');
+  const hostMobile = document.getElementById('og-mobile-chat-host');
 
   if (!chatPanel) return;
 
   const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  const mobileChatOpen = !!document.getElementById('og-chat-slidedown')?.classList.contains('open');
 
   // Save original location once
   if (!ogChatOriginalParent) {
@@ -4115,13 +4131,18 @@ function dockChatIntoOgPanels(isOgMode) {
     ogChatOriginalNextSibling = chatPanel.nextElementSibling;
   }
 
-  if (isOgMode && !isMobile && host) {
-    if (chatPanel.parentElement !== host) {
-      host.appendChild(chatPanel);
+  const targetHost = isOgMode
+    ? (isMobile ? (mobileChatOpen ? hostMobile : null) : hostDesktop)
+    : null;
+
+  if (targetHost) {
+    if (chatPanel.parentElement !== targetHost) {
+      targetHost.appendChild(chatPanel);
     }
     chatPanel.classList.add('og-docked-chat');
+    chatPanel.classList.toggle('og-docked-chat-mobile', !!isMobile);
   } else {
-    // Restore to original container when leaving OG panels, or on mobile
+    // Restore to original container when leaving OG panels.
     if (ogChatOriginalParent && chatPanel.parentElement !== ogChatOriginalParent) {
       if (ogChatOriginalNextSibling && ogChatOriginalParent.contains(ogChatOriginalNextSibling)) {
         ogChatOriginalParent.insertBefore(chatPanel, ogChatOriginalNextSibling);
@@ -4130,6 +4151,7 @@ function dockChatIntoOgPanels(isOgMode) {
       }
     }
     chatPanel.classList.remove('og-docked-chat');
+    chatPanel.classList.remove('og-docked-chat-mobile');
   }
 }
 
@@ -4150,8 +4172,12 @@ function renderBoard(isSpymaster) {
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuess = isMyTurn && currentGame.currentPhase === 'operatives' && !isSpymaster && !currentGame.winner;
   const currentSelectionContextKey = getPendingSelectionContextKey(currentGame);
-  const pendingIdx = Number(pendingCardSelection);
-  const hasPendingSelection = Number.isInteger(pendingIdx) && pendingIdx >= 0 && pendingIdx < currentGame.cards.length;
+  const hasStoredPendingSelection =
+    pendingCardSelection !== null &&
+    pendingCardSelection !== undefined &&
+    String(pendingCardSelection).trim() !== '';
+  const pendingIdx = hasStoredPendingSelection ? Number(pendingCardSelection) : NaN;
+  const hasPendingSelection = hasStoredPendingSelection && Number.isInteger(pendingIdx) && pendingIdx >= 0 && pendingIdx < currentGame.cards.length;
   const pendingCard = hasPendingSelection ? currentGame.cards[pendingIdx] : null;
   const stalePendingSelection =
     !canGuess ||
