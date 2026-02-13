@@ -3768,82 +3768,54 @@ function runOnlineRevealFlipAnimation(cardEl) {
   const inner = cardEl?.querySelector?.('.card-inner');
   if (!cardEl || !inner) return;
 
-  cardEl.classList.add('og-reveal-bump');
+  // Fully rebuilt reveal animation:
+  // - Always starts from front-facing
+  // - Slow, deterministic flip to the back face
+  // - No WAAPI dependency (avoids browser/visibility quirks)
+  try {
+    if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
+  } catch (_) {}
+  cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
 
-  // Start face-up and flip to face-down (back side) for revealed cards.
-  inner.style.animation = 'none';
-  inner.style.transform = 'rotateY(0deg)';
-  void inner.offsetWidth;
+  const durationMs = OG_REVEAL_FLIP_DURATION_MS;
+  const durationText = `${durationMs}ms`;
+  const easing = 'cubic-bezier(0.18, 0.82, 0.2, 1)';
+  let done = false;
+  let timeoutId = null;
 
-  cardEl.classList.add('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
-
-  let liftAnim = null;
-  let flipAnim = null;
-  let finished = false;
-  const cleanup = () => {
-    if (finished) return;
-    finished = true;
-    try { liftAnim?.cancel?.(); } catch (_) {}
-    try { flipAnim?.cancel?.(); } catch (_) {}
+  function cleanup() {
+    if (done) return;
+    done = true;
+    if (timeoutId) clearTimeout(timeoutId);
+    inner.removeEventListener('animationend', handleInnerAnimationEnd);
+    cardEl.classList.remove('og-reveal-flip-active');
     cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
     inner.style.animation = '';
     inner.style.transition = '';
     inner.style.transform = '';
-  };
-
-  const parseAngle = (raw, fallback = 0) => {
-    const m = String(raw || '').match(/-?\d+(?:\.\d+)?/);
-    if (!m) return fallback;
-    const n = Number(m[0]);
-    return Number.isFinite(n) ? n : fallback;
-  };
-  const toDeg = (n) => `${Number(n).toFixed(3)}deg`;
-
-  // Use WAAPI so this still runs even if CSS "no-animations" mode was enabled earlier.
-  if (typeof cardEl.animate === 'function' && typeof inner.animate === 'function') {
-    try {
-      const tiltXRaw = String(cardEl.style.getPropertyValue('--og-flip-tilt-x') || '6deg').trim();
-      const tiltYRaw = String(cardEl.style.getPropertyValue('--og-flip-tilt-y') || '0deg').trim();
-      const tiltXDeg = parseAngle(tiltXRaw, 6);
-      const tiltYDeg = parseAngle(tiltYRaw, 0);
-      liftAnim = cardEl.animate(
-        [
-          { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
-          { transform: 'translateY(-18px) scale(1.035)', filter: 'brightness(1.08)', offset: 0.22 },
-          { transform: 'translateY(-34px) scale(1.09)', filter: 'brightness(1.14)', offset: 0.47 },
-          { transform: 'translateY(-16px) scale(1.045)', filter: 'brightness(1.08)', offset: 0.74 },
-          { transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' }
-        ],
-        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.22, 0.61, 0.2, 1)', fill: 'forwards' }
-      );
-      flipAnim = inner.animate(
-        [
-          { transform: 'rotateY(0deg) rotateX(0deg) rotateZ(0deg)' },
-          { transform: `rotateY(32deg) rotateX(${toDeg(tiltXDeg * 0.92)}) rotateZ(${toDeg(tiltYDeg * 0.12)})`, offset: 0.2 },
-          { transform: `rotateY(88deg) rotateX(${toDeg(tiltXDeg)}) rotateZ(${toDeg(tiltYDeg * 0.2)})`, offset: 0.44 },
-          { transform: `rotateY(136deg) rotateX(${toDeg(tiltXDeg * 0.45)}) rotateZ(${toDeg(tiltYDeg * 0.12)})`, offset: 0.66 },
-          { transform: `rotateY(168deg) rotateX(${toDeg(tiltXDeg * 0.14)}) rotateZ(${toDeg(tiltYDeg * 0.04)})`, offset: 0.84 },
-          { transform: 'rotateY(180deg) rotateX(0deg) rotateZ(0deg)' }
-        ],
-        { duration: OG_REVEAL_FLIP_DURATION_MS, easing: 'cubic-bezier(0.22, 0.61, 0.2, 1)', fill: 'forwards' }
-      );
-      Promise.allSettled([liftAnim.finished, flipAnim.finished]).then(cleanup);
-      setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
-      return;
-    } catch (_) {
-      // Fall through to CSS animation cleanup.
-    }
+    cardEl.style.animation = '';
+    cardEl.style.removeProperty('--og-reveal-flip-duration');
+    try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
   }
 
-  // Fallback for environments where WAAPI is unavailable/disabled.
-  inner.style.setProperty('transition', `transform ${OG_REVEAL_FLIP_DURATION_MS}ms cubic-bezier(0.22, 0.61, 0.2, 1)`, 'important');
-  inner.style.setProperty('transform', 'rotateY(0deg)', 'important');
+  function handleInnerAnimationEnd(evt) {
+    if (evt && evt.target !== inner) return;
+    cleanup();
+  }
+
+  cardEl.classList.add('og-reveal-bump', 'og-reveal-flip-active');
+  cardEl.style.setProperty('--og-reveal-flip-duration', durationText);
+  cardEl.style.animation = 'none';
+  inner.style.animation = 'none';
+  inner.style.transition = 'none';
+  inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0)';
   void inner.offsetWidth;
-  requestAnimationFrame(() => {
-    inner.style.setProperty('transform', 'rotateY(180deg)', 'important');
-  });
-  inner.addEventListener('transitionend', cleanup, { once: true });
-  setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
+  cardEl.style.animation = `ogRevealLiftRebuilt ${durationText} ${easing} forwards`;
+  inner.style.animation = `ogRevealFlipRebuilt ${durationText} ${easing} forwards`;
+  inner.addEventListener('animationend', handleInnerAnimationEnd);
+
+  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS + 220);
+  cardEl.__ogFlipCleanup = cleanup;
 }
 
 
@@ -6439,6 +6411,12 @@ function renderTopbarTeamNames() {
     topbar.classList.toggle('turn-red', activeTeam === 'red');
     topbar.classList.toggle('turn-blue', activeTeam === 'blue');
     topbar.classList.toggle('turn-none', !activeTeam);
+  }
+  const boardContainer = document.getElementById('game-board-container');
+  if (boardContainer) {
+    boardContainer.classList.toggle('turn-red', activeTeam === 'red');
+    boardContainer.classList.toggle('turn-blue', activeTeam === 'blue');
+    boardContainer.classList.toggle('turn-none', !activeTeam);
   }
   if (redTop) redTop.classList.toggle('is-active', activeTeam === 'red');
   if (blueTop) blueTop.classList.toggle('is-active', activeTeam === 'blue');

@@ -21328,3 +21328,107 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
     letter-spacing: 0.72px;
   }
 }
+
+/* ==================== OG LAYERING + TURN CLARITY + REBUILT REVEAL FLIP ==================== */
+
+/* Desktop: keep top-row card reveals above the phase title area. */
+@media (min-width: 769px) {
+  body.og-mode .og-phase-banner,
+  body.cozy-mode .og-phase-banner {
+    position: relative;
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  body.og-mode .game-center-area,
+  body.cozy-mode .game-center-area,
+  body.og-mode .game-center-area .game-board-wrapper,
+  body.cozy-mode .game-center-area .game-board-wrapper,
+  body.og-mode .game-center-area .game-board,
+  body.cozy-mode .game-center-area .game-board {
+    overflow: visible !important;
+  }
+
+  body.og-mode .game-center-area .game-board-wrapper,
+  body.cozy-mode .game-center-area .game-board-wrapper,
+  body.og-mode .game-center-area .game-board,
+  body.cozy-mode .game-center-area .game-board {
+    position: relative;
+    z-index: 7;
+  }
+}
+
+/* Slightly mute inactive team roster boxes so turns are easier to scan. */
+body.og-mode #game-board-container .online-roster-block,
+body.cozy-mode #game-board-container .online-roster-block,
+body.og-mode #game-board-container .og-mobile-box,
+body.cozy-mode #game-board-container .og-mobile-box {
+  transition: filter 300ms ease, opacity 300ms ease;
+}
+
+body.og-mode #game-board-container.turn-red #og-panel-blue .online-roster-block,
+body.og-mode #game-board-container.turn-blue #og-panel-red .online-roster-block,
+body.cozy-mode #game-board-container.turn-red #og-panel-blue .online-roster-block,
+body.cozy-mode #game-board-container.turn-blue #og-panel-red .online-roster-block,
+body.og-mode #game-board-container.turn-red #og-mobile-blue .og-mobile-box,
+body.og-mode #game-board-container.turn-blue #og-mobile-red .og-mobile-box,
+body.cozy-mode #game-board-container.turn-red #og-mobile-blue .og-mobile-box,
+body.cozy-mode #game-board-container.turn-blue #og-mobile-red .og-mobile-box {
+  filter: grayscale(0.18) saturate(0.88) brightness(0.94);
+  opacity: 0.9;
+}
+
+/* Rebuilt, deterministic OG reveal animation (slow front -> up -> back). */
+body.og-mode .game-card.og-reveal-flip-active {
+  animation: ogRevealLiftRebuilt var(--og-reveal-flip-duration, 3000ms) cubic-bezier(0.18, 0.82, 0.2, 1) forwards !important;
+  will-change: transform, filter;
+  z-index: 140;
+  pointer-events: none;
+}
+
+body.og-mode .game-card.og-reveal-flip-active .card-inner {
+  animation: ogRevealFlipRebuilt var(--og-reveal-flip-duration, 3000ms) cubic-bezier(0.18, 0.82, 0.2, 1) forwards !important;
+  transition: none !important;
+  will-change: transform;
+}
+
+@keyframes ogRevealLiftRebuilt {
+  0% {
+    transform: translateY(0px) scale(1);
+    filter: brightness(1);
+  }
+  22% {
+    transform: translateY(-8px) scale(1.02);
+    filter: brightness(1.03);
+  }
+  54% {
+    transform: translateY(-14px) scale(1.05);
+    filter: brightness(1.08);
+  }
+  78% {
+    transform: translateY(-6px) scale(1.02);
+    filter: brightness(1.03);
+  }
+  100% {
+    transform: translateY(0px) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes ogRevealFlipRebuilt {
+  0% {
+    transform: rotateY(0deg) rotateX(0deg) translateZ(0px);
+  }
+  18% {
+    transform: rotateY(16deg) rotateX(9deg) translateZ(8px);
+  }
+  44% {
+    transform: rotateY(88deg) rotateX(15deg) translateZ(20px);
+  }
+  72% {
+    transform: rotateY(148deg) rotateX(8deg) translateZ(12px);
+  }
+  100% {
+    transform: rotateY(180deg) rotateX(0deg) translateZ(0px);
+  }
+}
