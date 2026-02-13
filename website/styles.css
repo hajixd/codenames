@@ -20779,3 +20779,57 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 #panel-teams .teams-head h2{
   margin-bottom: 0;
 }
+
+/* Desktop: dock OG/Cozy game log at bottom-right as a tidy floating panel. */
+@media (min-width: 1024px){
+  body.og-mode .og-gamelog-slidedown,
+  body.cozy-mode .og-gamelog-slidedown{
+    position: fixed;
+    top: auto;
+    left: auto;
+    right: clamp(14px, 1.8vw, 26px);
+    bottom: clamp(14px, 1.8vw, 26px);
+    width: min(420px, calc(100vw - 28px));
+    max-height: 0;
+    z-index: 220;
+    overflow: hidden;
+    border-radius: 16px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition:
+      max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  body.og-mode .og-gamelog-slidedown.open,
+  body.cozy-mode .og-gamelog-slidedown.open{
+    max-height: min(52vh, 520px);
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  body.og-mode .og-gamelog-slidedown-inner,
+  body.cozy-mode .og-gamelog-slidedown-inner{
+    margin: 0;
+    max-height: min(52vh, 520px);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: linear-gradient(180deg, rgba(56, 59, 65, 0.96) 0%, rgba(36, 39, 44, 0.96) 100%);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  body.og-mode .og-gamelog-slidedown-inner .gamelog-header,
+  body.cozy-mode .og-gamelog-slidedown-inner .gamelog-header{
+    padding: 11px 14px 9px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  body.og-mode .og-gamelog-slidedown-inner .gamelog-entries,
+  body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries{
+    max-height: calc(min(52vh, 520px) - 54px);
+    padding: 10px 12px 12px;
+  }
+}
