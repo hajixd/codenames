@@ -20737,13 +20737,14 @@ body.og-mode .game-card.revealed.revealed-peek {
 }
 
 body.og-mode .game-card.revealed.revealed-peek .card-inner {
-  transform-origin: 50% 0%;
-  transform: rotateY(180deg) rotateX(62deg) translateY(10px);
+  /* Open toward the player and show the card word on the face (not below). */
+  transform-origin: 50% 100%;
+  transform: rotateY(0deg) rotateX(-56deg) translateY(-8px);
 }
 
 body.og-mode .game-card.revealed.revealed-peek .og-peek-label {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0px);
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
 }
 
 body:not(.og-mode) .game-card.revealed.revealed-peek {
