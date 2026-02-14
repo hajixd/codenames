@@ -21450,14 +21450,39 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
 
   body.og-mode .game-card .card-back::after,
   body.cozy-mode .game-card .card-back::after {
-    font-size: clamp(10px, 3.2vw, 12px);
-    letter-spacing: 1.1px;
+    font-size: clamp(9px, 2.9vw, 11px);
+    letter-spacing: 0.9px;
   }
 
   body.og-mode .game-card.revealed.card-neutral .card-back::after,
   body.cozy-mode .game-card.revealed.card-neutral .card-back::after {
-    font-size: clamp(8px, 2.45vw, 10px);
-    letter-spacing: 0.72px;
+    font-size: clamp(7px, 2.2vw, 9px);
+    letter-spacing: 0.6px;
+  }
+
+  body.og-mode .game-card .card-checkmark,
+  body.cozy-mode .game-card .card-checkmark {
+    top: 3px;
+    right: 3px;
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  body.og-mode .game-card,
+  body.cozy-mode .game-card {
+    aspect-ratio: 1.2;
+    border-radius: 4px;
+  }
+
+  body.og-mode .game-card::before {
+    border-radius: 3px;
+  }
+
+  body.og-mode .game-card .card-back,
+  body.cozy-mode .game-card .card-back {
+    border-radius: 4px;
   }
 }
 
@@ -21472,6 +21497,26 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
     pointer-events: none;
   }
 
+  body.og-mode .game-center-area,
+  body.cozy-mode .game-center-area,
+  body.og-mode .game-center-area .game-board-wrapper,
+  body.cozy-mode .game-center-area .game-board-wrapper,
+  body.og-mode .game-center-area .game-board,
+  body.cozy-mode .game-center-area .game-board {
+    overflow: visible !important;
+  }
+
+  body.og-mode .game-center-area .game-board-wrapper,
+  body.cozy-mode .game-center-area .game-board-wrapper,
+  body.og-mode .game-center-area .game-board,
+  body.cozy-mode .game-center-area .game-board {
+    position: relative;
+    z-index: 7;
+  }
+}
+
+/* Mobile: mirror desktop reveal staging so card flip/confirm motion is not clipped. */
+@media (max-width: 768px) {
   body.og-mode .game-center-area,
   body.cozy-mode .game-center-area,
   body.og-mode .game-center-area .game-board-wrapper,
@@ -21532,8 +21577,8 @@ body.og-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-m
 body.og-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-spy,
 body.cozy-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-mobile-box-spy,
 body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-spy {
-  filter: grayscale(1) saturate(0.04) brightness(0.52);
-  opacity: 0.32;
+  filter: grayscale(0.82) saturate(0.18) brightness(0.66);
+  opacity: 0.44;
 }
 
 /* Active section: slight team-colored glow. */
