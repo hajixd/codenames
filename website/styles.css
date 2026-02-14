@@ -20216,24 +20216,24 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-anim
 }
 
 /* OG/Cozy confirmed guess animation: whole card rises, flips, then lands face-down. */
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) {
   z-index: 96;
   transform-style: preserve-3d;
   pointer-events: none;
   animation: ogConfirmWholeCard var(--card-confirm-duration) cubic-bezier(0.2, 0.94, 0.2, 1) both;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) .card-inner {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner {
   animation: none;
   transform: rotateY(0deg);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) .card-back .card-word {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back .card-word {
   opacity: 0 !important;
   visibility: hidden;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back::after {
   content: attr(data-confirm-back-label);
   opacity: 1;
 }
