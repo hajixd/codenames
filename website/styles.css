@@ -20215,70 +20215,70 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-anim
   transform: rotateY(0deg);
 }
 
-/* OG confirmed guess animation: whole card rises, flips, then lands face-down. */
-body.og-mode .game-card.confirm-animate:not(.revealed):not(.disabled) {
+/* OG/Cozy confirmed guess animation: whole card rises, flips, then lands face-down. */
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) {
   z-index: 96;
   transform-style: preserve-3d;
   pointer-events: none;
   animation: ogConfirmWholeCard var(--card-confirm-duration) cubic-bezier(0.2, 0.94, 0.2, 1) both;
 }
 
-body.og-mode .game-card.confirm-animate:not(.revealed):not(.disabled) .card-inner {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) .card-inner {
   animation: none;
   transform: rotateY(0deg);
 }
 
-body.og-mode .game-card.confirm-animate:not(.revealed):not(.disabled) .card-back .card-word {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) .card-back .card-word {
   opacity: 0 !important;
   visibility: hidden;
 }
 
-body.og-mode .game-card.confirm-animate:not(.revealed):not(.disabled) .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed):not(.disabled) .card-back::after {
   content: attr(data-confirm-back-label);
   opacity: 1;
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-red .card-back {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-red .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-blue .card-back {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-blue .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-neutral .card-back {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-neutral .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-assassin .card-back {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0px, rgba(255, 255, 255, 0.07) 9px, rgba(0, 0, 0, 0.18) 9px, rgba(0, 0, 0, 0.18) 18px),
     linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-red .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-red .card-back::after {
   color: #6f2a22;
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-blue .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-blue .card-back::after {
   color: #24486a;
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-neutral .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-neutral .card-back::after {
   color: #5b4a39;
 }
 
-body.og-mode .game-card.confirm-animate.confirm-back-assassin .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .card-back::after {
   color: #d3dae7;
 }
 

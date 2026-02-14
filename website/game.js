@@ -46,12 +46,11 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const REMOTE_REVEAL_ANIM_CLEANUP_MS = 2100;
-const REMOTE_REVEAL_FLIP_MS = 1480;
-const REMOTE_REVEAL_FLIP_EASE = 'cubic-bezier(0.16, 0.92, 0.24, 1)';
-const REMOTE_REVEAL_KEYFRAME_MS = 1820;
+const CARD_CONFIRM_ANIM_MS = 1850;
+const REMOTE_REVEAL_ANIM_CLEANUP_MS = CARD_CONFIRM_ANIM_MS + 120;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
+const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -101,36 +100,45 @@ function animateNewlyRevealedCards(cardIndices = []) {
     const revealType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
       ? cardTypeRaw
       : '';
-    if (revealType) cardEl.classList.add(`card-${revealType}`);
+    const ogLike = isOgLikeStyleActive();
+    if (ogLike) {
+      const confirmBackType = revealType || 'neutral';
+      const confirmBackLabel = confirmBackType === 'assassin' ? 'ASSASSIN' : confirmBackType.toUpperCase();
 
-    // Restart animation classes in case snapshots arrive quickly.
-    cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-    void cardEl.offsetWidth;
-    cardEl.classList.add('guess-animate');
+      cardEl.classList.remove('revealed', 'guess-animate', 'revealing', 'flip-glow', 'confirming-guess', 'confirm-animate');
+      cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map(t => `card-${t}`));
+      cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map(t => `confirm-back-${t}`));
+      cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${confirmBackType}`);
+      cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
 
-    cardEl.style.setProperty('--card-reveal-duration', `${REMOTE_REVEAL_KEYFRAME_MS}ms`);
-    cardEl.style.setProperty('--card-reveal-ease', REMOTE_REVEAL_FLIP_EASE);
-
-    if (isOgLikeStyleActive()) {
-      const cardInner = cardEl.querySelector('.card-inner');
-      if (cardInner) {
-        cardEl.classList.add('flip-glow');
-        cardInner.style.transition = 'none';
-        cardInner.style.transform = 'rotateY(0deg)';
-        void cardInner.offsetWidth;
-        requestAnimationFrame(() => {
-          cardInner.style.transition = `transform ${REMOTE_REVEAL_FLIP_MS}ms ${REMOTE_REVEAL_FLIP_EASE}`;
-          cardInner.style.transform = 'rotateY(180deg)';
-        });
-      }
+      window.setTimeout(() => {
+        if (!cardEl.isConnected) return;
+        cardEl.classList.remove('confirm-animate', 'confirming-guess');
+        cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map(t => `confirm-back-${t}`));
+        cardEl.removeAttribute('data-confirm-back-label');
+        cardEl.classList.add('revealed', `card-${confirmBackType}`);
+      }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
     } else {
+      if (revealType) cardEl.classList.add(`card-${revealType}`);
+      // Restart animation classes in case snapshots arrive quickly.
+      cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
+      void cardEl.offsetWidth;
+      cardEl.classList.add('guess-animate');
       cardEl.classList.add('revealing');
+
+      window.setTimeout(() => {
+        if (!cardEl.isConnected) return;
+        cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
+      }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
+    }
+
+    if (!ogLike) {
+      return;
     }
 
     window.setTimeout(() => {
-      cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-      cardEl.style.removeProperty('--card-reveal-duration');
-      cardEl.style.removeProperty('--card-reveal-ease');
+      if (!cardEl.isConnected) return;
+      // Keep OG/Cozy card inner fully controlled by stylesheet after replay.
       const cardInner = cardEl.querySelector('.card-inner');
       if (cardInner) {
         cardInner.style.transition = '';
@@ -7045,7 +7053,6 @@ function showClueAnimation(word, number, teamColor) {
    - Tap checkmark: confirm the guess
 ========================= */
 const _originalHandleCardClick = handleCardClick;
-const CARD_CONFIRM_ANIM_MS = 1850;
 
 function canCurrentUserGuess() {
   const myTeamColor = getMyTeamColor();
@@ -7093,7 +7100,7 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!(cardEl && isOnlineStyleActive());
+  const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
     ? cardTypeRaw
