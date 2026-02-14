@@ -6987,8 +6987,16 @@ async function handleCardConfirm(evt, cardIndex) {
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   const runPhysicalConfirmAnim = !!(cardEl && isOnlineStyleActive());
+  const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
+  const confirmBackType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
+    ? cardTypeRaw
+    : 'neutral';
+  const confirmBackLabel = confirmBackType === 'assassin' ? 'ASSASSIN' : confirmBackType.toUpperCase();
   cardEl?.classList.add('confirming-guess');
-  if (runPhysicalConfirmAnim) cardEl.classList.add('confirm-animate');
+  if (runPhysicalConfirmAnim) {
+    cardEl.classList.add('confirm-animate', `confirm-back-${confirmBackType}`);
+    cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
+  }
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
 
   try {
@@ -6998,7 +7006,14 @@ async function handleCardConfirm(evt, cardIndex) {
     await _originalHandleCardClick(idx);
   } finally {
     clearTimeout(lockGuard);
-    cardEl?.classList.remove('confirm-animate');
+    cardEl?.classList.remove(
+      'confirm-animate',
+      'confirm-back-red',
+      'confirm-back-blue',
+      'confirm-back-neutral',
+      'confirm-back-assassin'
+    );
+    cardEl?.removeAttribute('data-confirm-back-label');
     cardEl?.classList.remove('confirming-guess');
   }
 }
