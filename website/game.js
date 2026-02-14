@@ -46,8 +46,86 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
+const REMOTE_REVEAL_ANIM_CLEANUP_MS = 1400;
+const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
+const _suppressRevealAnimByIndexUntil = new Map();
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
+
+function markRevealAnimationSuppressed(cardIndex) {
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  _suppressRevealAnimByIndexUntil.set(idx, Date.now() + LOCAL_REVEAL_ANIM_SUPPRESS_MS);
+}
+
+function consumeRevealAnimationSuppressed(cardIndex) {
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return false;
+  const until = Number(_suppressRevealAnimByIndexUntil.get(idx) || 0);
+  if (!until) return false;
+  _suppressRevealAnimByIndexUntil.delete(idx);
+  return until > Date.now();
+}
+
+function clearRevealAnimationSuppressions() {
+  _suppressRevealAnimByIndexUntil.clear();
+}
+
+function collectNewlyRevealedCardIndices(prevCards, nextCards) {
+  if (!Array.isArray(prevCards) || !Array.isArray(nextCards)) return [];
+  if (prevCards.length !== nextCards.length) return [];
+  const out = [];
+  for (let i = 0; i < nextCards.length; i++) {
+    const wasRevealed = !!prevCards[i]?.revealed;
+    const isRevealed = !!nextCards[i]?.revealed;
+    if (!wasRevealed && isRevealed) out.push(i);
+  }
+  return out;
+}
+
+function animateNewlyRevealedCards(cardIndices = []) {
+  if (!Array.isArray(cardIndices) || !cardIndices.length) return;
+  const seen = new Set();
+  cardIndices.forEach((rawIdx) => {
+    const idx = Number(rawIdx);
+    if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
+    seen.add(idx);
+
+    const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+    if (!cardEl || !cardEl.classList.contains('revealed')) return;
+
+    const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
+    const revealType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
+      ? cardTypeRaw
+      : '';
+    if (revealType) cardEl.classList.add(`card-${revealType}`);
+
+    // Restart animation classes in case snapshots arrive quickly.
+    cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
+    void cardEl.offsetWidth;
+    cardEl.classList.add('guess-animate');
+
+    if (isOnlineStyleActive()) {
+      const cardInner = cardEl.querySelector('.card-inner');
+      if (cardInner) {
+        cardEl.classList.add('flip-glow');
+        cardInner.style.transition = 'none';
+        cardInner.style.transform = 'rotateY(0deg)';
+        void cardInner.offsetWidth;
+        requestAnimationFrame(() => {
+          cardInner.style.transition = '';
+          cardInner.style.transform = '';
+        });
+      }
+    } else {
+      cardEl.classList.add('revealing');
+    }
+
+    window.setTimeout(() => {
+      cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
+    }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
+  });
+}
 
 // Best-effort local resume: remember the last active game so a page refresh can jump straight back in.
 // NOTE: This is purely device-local (localStorage) and does not write anything to Firestore.
@@ -3452,7 +3530,9 @@ function startGameListener(gameId, options = {}) {
   }
 
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
+    const prevCards = Array.isArray(currentGame?.cards) ? currentGame.cards : null;
     if (!snap.exists) {
+      clearRevealAnimationSuppressions();
       currentGame = null;
       stopPracticeInactivityWatcher();
       showGameLobby();
@@ -3467,12 +3547,14 @@ function startGameListener(gameId, options = {}) {
     // Reset local per-card tags whenever we detect a brand-new board.
     // This matters especially for Quick Play, where the doc id stays the same across games.
     let boardSignature = null;
+    let boardChanged = false;
     try {
       const sig = (Array.isArray(currentGame?.cards) && currentGame.cards.length)
         ? currentGame.cards.map(c => `${String(c?.word || '')}::${String(c?.type || '')}`).join('|')
         : null;
       boardSignature = sig;
       if (sig && _prevBoardSignature && sig !== _prevBoardSignature) {
+        boardChanged = true;
         // Clear all local tags without writing anything to Firestore (markers are reset server-side).
         cardTags = {};
         pendingCardSelection = null;
@@ -3482,6 +3564,7 @@ function startGameListener(gameId, options = {}) {
         renderCardTags();
         saveTagsToLocal();
         setActiveTagMode(null);
+        clearRevealAnimationSuppressions();
       }
       _prevBoardSignature = sig || _prevBoardSignature;
     } catch (_) {}
@@ -3511,8 +3594,18 @@ function startGameListener(gameId, options = {}) {
     const newClueWord = currentGame.currentClue?.word || null;
     const newClueNumber = currentGame.currentClue?.number ?? null;
     const clueChanged = newClueWord && (newClueWord !== _prevClue);
+    let newlyRevealedIndices = [];
+    if (!isFirstSnapshot && !boardChanged) {
+      newlyRevealedIndices = collectNewlyRevealedCardIndices(prevCards, currentGame.cards)
+        .filter((idx) => !consumeRevealAnimationSuppressed(idx));
+    } else {
+      clearRevealAnimationSuppressions();
+    }
 
     renderGame();
+    if (newlyRevealedIndices.length) {
+      animateNewlyRevealedCards(newlyRevealedIndices);
+    }
 
     // If the app is entering Quick Play directly into an in-progress game,
     // keep the loader up until we have rendered at least once.
@@ -3557,6 +3650,7 @@ function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
   try { syncTeamConsidering(null); } catch (_) {}
+  clearRevealAnimationSuppressions();
   currentGame = null;
   stopPracticeInactivityWatcher();
   const wasEphemeral = !!currentListenerEphemeral;
@@ -6994,6 +7088,8 @@ async function handleCardConfirm(evt, cardIndex) {
   const confirmBackLabel = confirmBackType === 'assassin' ? 'ASSASSIN' : confirmBackType.toUpperCase();
   cardEl?.classList.add('confirming-guess');
   if (runPhysicalConfirmAnim) {
+    // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
+    markRevealAnimationSuppressed(idx);
     cardEl.classList.add('confirm-animate', `confirm-back-${confirmBackType}`);
     cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
   }
