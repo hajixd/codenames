@@ -20141,17 +20141,14 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   --card-reveal-duration: 1180ms;
   --card-select-duration: 360ms;
   --card-confirm-duration: 1850ms;
-  --card-confirm-ease: cubic-bezier(0.22, 0.86, 0.24, 1);
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (max-width: 820px){
-  /* Keep card motion timings identical across devices. */
   :root{
-    --card-reveal-duration: 1180ms;
-    --card-select-duration: 360ms;
-    --card-confirm-duration: 1850ms;
-    --card-confirm-ease: cubic-bezier(0.22, 0.86, 0.24, 1);
+    --card-reveal-duration: 980ms;
+    --card-select-duration: 320ms;
+    --card-confirm-duration: 1650ms;
   }
 }
 
@@ -20218,52 +20215,17 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-anim
   transform: rotateY(0deg);
 }
 
-/* OG/Cozy confirmed guess animation:
-   - outer card handles lift/tilt
-   - inner wrapper handles Y flip so we see the real back face (not mirrored front text) */
+/* OG/Cozy confirmed guess animation: whole card rises, flips, then lands face-down. */
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) {
   z-index: 96;
-  -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
   pointer-events: none;
-  outline: none !important;
-  box-shadow: none !important;
-  animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
+  animation: ogConfirmWholeCard var(--card-confirm-duration) cubic-bezier(0.2, 0.94, 0.2, 1) both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner {
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  transition: none;
-  will-change: transform;
-  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
+  animation: none;
   transform: rotateY(0deg);
-}
-
-/* OG shell layers are drawn on .game-card (not .card-inner), so flip them with
-   the same Y timeline to keep the frame/plate visually attached to the card face. */
-body.og-mode .game-card.confirm-animate:not(.revealed) {
-  background: transparent;
-  border-color: transparent;
-}
-
-body.og-mode .game-card.confirm-animate:not(.revealed)::before,
-body.og-mode .game-card.confirm-animate:not(.revealed)::after {
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
-}
-
-/* Remove pending-selection ring immediately when confirm animation starts. */
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.pending-select:not(.revealed):not(.disabled) {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-body.cozy-mode .game-card.confirm-animate.pending-select:not(.revealed):not(.disabled) {
-  border-color: #c4b494;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back .card-word {
@@ -20322,40 +20284,19 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
 
 @keyframes ogConfirmWholeCard {
   0% {
-    transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
+    transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1);
   }
-  24% {
-    transform: translate3d(0, -22px, 22px) rotateX(10deg) rotateZ(-0.9deg) scale(1.04);
+  22% {
+    transform: translate3d(0, -12px, 16px) rotateX(8deg) rotateY(0deg) rotateZ(-1deg) scale(1.03);
   }
-  34% {
-    transform: translate3d(0, -34px, 34px) rotateX(14deg) rotateZ(-0.4deg) scale(1.065);
+  46% {
+    transform: translate3d(0, -38px, 34px) rotateX(13deg) rotateY(116deg) rotateZ(0deg) scale(1.07);
   }
-  70% {
-    transform: translate3d(0, -34px, 34px) rotateX(12deg) rotateZ(0.45deg) scale(1.065);
-  }
-  84% {
-    transform: translate3d(0, -14px, 16px) rotateX(6deg) rotateZ(0.2deg) scale(1.028);
+  72% {
+    transform: translate3d(0, -14px, 14px) rotateX(7deg) rotateY(196deg) rotateZ(0.7deg) scale(1.03);
   }
   100% {
-    transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
-  }
-}
-
-@keyframes ogConfirmInnerFlip {
-  0% {
-    transform: rotateY(0deg);
-  }
-  34% {
-    transform: rotateY(0deg);
-  }
-  66% {
-    transform: rotateY(192deg);
-  }
-  78% {
-    transform: rotateY(176deg);
-  }
-  100% {
-    transform: rotateY(180deg);
+    transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(180deg) rotateZ(0deg) scale(1);
   }
 }
 
