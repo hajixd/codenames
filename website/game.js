@@ -7170,6 +7170,8 @@ async function handleCardConfirm(evt, cardIndex) {
   const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
+  // Drop pending-selection outline immediately when confirm starts.
+  clearPendingCardSelection();
   if (runPhysicalConfirmAnim) {
     // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
     _localConfirmAnimUntil = Date.now() + CARD_CONFIRM_ANIM_MS;
