@@ -52,6 +52,8 @@ const _animatedInitialRevealKeys = new Set(); // Prevent random replay of initia
 const OG_REVEAL_FLIP_DURATION_MS = 4000;
 const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 320;
 const OG_REVEAL_STAGGER_MS = 90;
+const FORCED_REVEAL_ANIMATION_TTL_MS = 10000;
+const _forcedRevealAnimations = new Map(); // index -> expiresAt (ms)
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -3505,6 +3507,7 @@ function startGameListener(gameId, options = {}) {
         pendingCardSelection = null;
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
+        _forcedRevealAnimations.clear();
         void syncTeamConsidering(null);
         renderCardTags();
         saveTagsToLocal();
@@ -3549,6 +3552,27 @@ function startGameListener(gameId, options = {}) {
         continue;
       }
       if (!isFirstSnapshot && !_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
+    }
+
+    // Fallback for local confirms: if Firestore snapshot timing skips the delta check,
+    // still animate the card the user just confirmed once it becomes revealed.
+    if (Array.isArray(currentGame.cards) && _forcedRevealAnimations.size > 0) {
+      const nowMs = Date.now();
+      for (const [forcedIdxRaw, expiresAt] of _forcedRevealAnimations.entries()) {
+        const forcedIdx = Number(forcedIdxRaw);
+        if (!Number.isInteger(forcedIdx) || forcedIdx < 0 || forcedIdx >= currentGame.cards.length) {
+          _forcedRevealAnimations.delete(forcedIdxRaw);
+          continue;
+        }
+        if (!Number.isFinite(expiresAt) || expiresAt < nowMs) {
+          _forcedRevealAnimations.delete(forcedIdxRaw);
+          continue;
+        }
+        if (currentGame.cards[forcedIdx]?.revealed) {
+          if (!freshReveals.includes(forcedIdx)) freshReveals.push(forcedIdx);
+          _forcedRevealAnimations.delete(forcedIdxRaw);
+        }
+      }
     }
 
     // Detect new clue for animation
@@ -3685,6 +3709,7 @@ function stopGameListener() {
   _prevClue = null;
   revealedPeekCardIndex = null;
   pendingCardSelection = null;
+  _forcedRevealAnimations.clear();
   _pendingSelectionContextKey = null;
   spectatorMode = false;
   spectatingGameId = null;
@@ -3800,18 +3825,19 @@ function runOnlineRevealFlipAnimation(cardEl) {
   const inner = cardEl?.querySelector?.('.card-inner');
   if (!cardEl || !inner) return;
 
-  // Fully rebuilt reveal animation:
-  // - Always starts from front-facing
-  // - Slow, deterministic flip to the back face
-  // - No WAAPI dependency (avoids browser/visibility quirks)
+  // Deterministic one-shot flip:
+  // - Start face-up (front at 0deg)
+  // - Smoothly rotate to face-down/back (180deg) over 4s
+  // We drive transform via inline transitions so this still works when
+  // a revealed re-render would otherwise "snap" to the final state.
   try {
     if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
   } catch (_) {}
-  cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
+  cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
 
   const durationMs = OG_REVEAL_FLIP_DURATION_MS;
   const durationText = `${durationMs}ms`;
-  const easing = 'cubic-bezier(0.18, 0.82, 0.2, 1)';
+  const easing = 'cubic-bezier(0.2, 0.86, 0.2, 1)';
   let done = false;
   let timeoutId = null;
 
@@ -3819,34 +3845,42 @@ function runOnlineRevealFlipAnimation(cardEl) {
     if (done) return;
     done = true;
     if (timeoutId) clearTimeout(timeoutId);
-    inner.removeEventListener('animationend', handleInnerAnimationEnd);
-    cardEl.classList.remove('og-reveal-flip-active');
+    inner.removeEventListener('transitionend', handleInnerTransitionEnd);
+    cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-active');
     cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
-    inner.style.animation = '';
     inner.style.transition = '';
     inner.style.transform = '';
-    cardEl.style.animation = '';
+    cardEl.style.transition = '';
+    cardEl.style.transform = '';
+    cardEl.style.filter = '';
     cardEl.style.removeProperty('--og-reveal-flip-duration');
     try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
   }
 
-  function handleInnerAnimationEnd(evt) {
-    if (evt && evt.target !== inner) return;
+  function handleInnerTransitionEnd(evt) {
+    if (!evt || evt.target !== inner) return;
+    if (evt.propertyName !== 'transform') return;
     cleanup();
   }
 
-  cardEl.classList.add('og-reveal-bump', 'og-reveal-flip-active');
+  cardEl.classList.add('og-reveal-bump');
   cardEl.style.setProperty('--og-reveal-flip-duration', durationText);
-  cardEl.style.animation = 'none';
-  inner.style.animation = 'none';
+  cardEl.style.transition = `transform ${durationText} ${easing}, filter ${durationText} ${easing}`;
+  cardEl.style.transform = 'translateY(-6px) scale(1.02)';
+  cardEl.style.filter = 'brightness(1.04)';
   inner.style.transition = 'none';
   inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0)';
   void inner.offsetWidth;
-  cardEl.style.animation = `ogRevealLiftRebuilt ${durationText} ${easing} forwards`;
-  inner.style.animation = `ogRevealFlipRebuilt ${durationText} ${easing} forwards`;
-  inner.addEventListener('animationend', handleInnerAnimationEnd);
+  requestAnimationFrame(() => {
+    if (done) return;
+    inner.style.transition = `transform ${durationText} ${easing}`;
+    inner.style.transform = 'rotateY(180deg) rotateX(0deg) translateZ(0)';
+    cardEl.style.transform = 'translateY(0px) scale(1)';
+    cardEl.style.filter = 'brightness(1)';
+  });
+  inner.addEventListener('transitionend', handleInnerTransitionEnd);
 
-  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
+  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS + 200);
   cardEl.__ogFlipCleanup = cleanup;
 }
 
@@ -7149,6 +7183,7 @@ async function handleCardConfirm(evt, cardIndex) {
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   cardEl?.classList.add('confirming-guess');
+  _forcedRevealAnimations.set(idx, Date.now() + FORCED_REVEAL_ANIMATION_TTL_MS);
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 7000);
 
   try {
