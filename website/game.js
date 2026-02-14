@@ -70,28 +70,19 @@ function clearConfirmAnimationClasses(cardEl) {
   cardEl.classList.remove('confirming-guess', 'confirm-animate');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
-  try {
-    cardEl.querySelector('.card-front')?.removeAttribute('data-confirm-back-label');
-    cardEl.querySelector('.card-back')?.removeAttribute('data-confirm-back-label');
-  } catch (_) {}
 }
 
 function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
   if (!cardEl) return;
   const replay = !!opts.replay;
   const type = normalizeConfirmBackType(confirmBackType);
-  const label = getConfirmBackLabel(type);
   if (replay) {
     // For snapshot replays, briefly restore the unrevealed presentation first.
     cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
   }
   clearConfirmAnimationClasses(cardEl);
   cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
-  cardEl.setAttribute('data-confirm-back-label', label);
-  try {
-    cardEl.querySelector('.card-front')?.setAttribute('data-confirm-back-label', label);
-    cardEl.querySelector('.card-back')?.setAttribute('data-confirm-back-label', label);
-  } catch (_) {}
+  cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
 }
 
 function flushDeferredSnapshotRender() {
