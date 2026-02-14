@@ -5908,9 +5908,8 @@ function updatePendingCardSelectionUI() {
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // Run a one-shot selection animation when a new card is chosen.
+    // Selection should only show an outline; no motion until confirmation.
     if (_pendingSelectAnimIndex === pendingCardSelection) {
-      target.classList.add('select-animate');
       _pendingSelectAnimIndex = null;
     }
   }
@@ -6939,6 +6938,7 @@ function showClueAnimation(word, number, teamColor) {
    - Tap checkmark: confirm the guess
 ========================= */
 const _originalHandleCardClick = handleCardClick;
+const CARD_CONFIRM_ANIM_MS = 1850;
 
 function canCurrentUserGuess() {
   const myTeamColor = getMyTeamColor();
@@ -6986,13 +6986,19 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+  const runPhysicalConfirmAnim = !!(cardEl && isOnlineStyleActive());
   cardEl?.classList.add('confirming-guess');
-  const lockGuard = setTimeout(() => { _processingGuess = false; }, 7000);
+  if (runPhysicalConfirmAnim) cardEl.classList.add('confirm-animate');
+  const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
 
   try {
+    if (runPhysicalConfirmAnim) {
+      await new Promise((resolve) => setTimeout(resolve, CARD_CONFIRM_ANIM_MS));
+    }
     await _originalHandleCardClick(idx);
   } finally {
     clearTimeout(lockGuard);
+    cardEl?.classList.remove('confirm-animate');
     cardEl?.classList.remove('confirming-guess');
   }
 }

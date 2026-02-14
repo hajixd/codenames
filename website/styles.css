@@ -20140,6 +20140,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
 :root{
   --card-reveal-duration: 1180ms;
   --card-select-duration: 360ms;
+  --card-confirm-duration: 1850ms;
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -20147,6 +20148,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   :root{
     --card-reveal-duration: 980ms;
     --card-select-duration: 320ms;
+    --card-confirm-duration: 1650ms;
   }
 }
 
@@ -20190,58 +20192,66 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   100% { transform: translateY(0) scale(1); filter: brightness(1); }
 }
 
-/* OG selection animation: rigid card lift + in-air flip + land face-down. */
+/* OG selection state: selected cards are only outlined until confirmed. */
 body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
   z-index: 88;
-  transform-style: preserve-3d;
 }
 
-body.og-mode .game-card.pending-select:not(.revealed):not(.disabled):not(.select-animate) {
-  transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
+body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) .card-inner {
+  transform: rotateY(0deg);
 }
 
-body.og-mode .game-card.pending-select:not(.revealed):not(.disabled):not(.select-animate) .card-inner {
-  transform: rotateY(180deg);
-}
-
-body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-animate {
-  animation: ogSelectPhysicalLift 840ms cubic-bezier(0.22, 1, 0.36, 1) both;
+body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-animate,
+body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-inner {
+  animation: none;
 }
 
 body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-inner {
-  animation: ogSelectPhysicalFlip 840ms cubic-bezier(0.2, 0.9, 0.15, 1) both;
+  transform: rotateY(0deg);
 }
 
-@keyframes ogSelectPhysicalLift {
+/* OG confirmed guess animation: whole card rises, flips, then lands face-down. */
+body.og-mode .game-card.confirm-animate:not(.revealed):not(.disabled) {
+  z-index: 96;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  animation: ogConfirmPhysicalLift var(--card-confirm-duration) cubic-bezier(0.2, 0.94, 0.2, 1) both;
+}
+
+body.og-mode .game-card.confirm-animate:not(.revealed):not(.disabled) .card-inner {
+  animation: ogConfirmPhysicalFlip var(--card-confirm-duration) cubic-bezier(0.17, 0.84, 0.2, 1) both;
+}
+
+@keyframes ogConfirmPhysicalLift {
   0% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
-  26% {
-    transform: translate3d(0, -14px, 22px) rotateX(11deg) rotateZ(-1.2deg) scale(1.035);
+  22% {
+    transform: translate3d(0, -12px, 16px) rotateX(8deg) rotateZ(-1deg) scale(1.03);
   }
-  50% {
-    transform: translate3d(0, -30px, 34px) rotateX(14deg) rotateZ(0deg) scale(1.06);
+  46% {
+    transform: translate3d(0, -38px, 34px) rotateX(13deg) rotateZ(0deg) scale(1.07);
   }
-  74% {
-    transform: translate3d(0, -12px, 16px) rotateX(7deg) rotateZ(0.8deg) scale(1.03);
+  72% {
+    transform: translate3d(0, -14px, 14px) rotateX(7deg) rotateZ(0.7deg) scale(1.03);
   }
   100% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
 }
 
-@keyframes ogSelectPhysicalFlip {
+@keyframes ogConfirmPhysicalFlip {
   0% {
     transform: rotateY(0deg);
   }
-  16% {
+  14% {
     transform: rotateY(0deg);
   }
-  46% {
-    transform: rotateY(112deg);
+  44% {
+    transform: rotateY(108deg);
   }
   72% {
-    transform: rotateY(192deg);
+    transform: rotateY(196deg);
   }
   100% {
     transform: rotateY(180deg);
