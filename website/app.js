@@ -1378,7 +1378,15 @@ function showLaunchScreen() {
   try { refreshNameUI?.(); } catch (_) {}
 }
 
-function returnToLaunchScreen() {
+function returnToLaunchScreen(opts = {}) {
+  const skipPracticeCleanup = !!opts.skipPracticeCleanup;
+  if (!skipPracticeCleanup) {
+    try {
+      if (typeof window.isPracticeGameActive === 'function' && window.isPracticeGameActive()) {
+        void window.handleLeaveGame?.({ skipConfirm: true, skipReturn: true });
+      }
+    } catch (_) {}
+  }
   // Logo = start over. Clear any device-local resume state so refresh doesn't jump back into the previous mode.
   clearLastNavigation();
   showAuthLoadingScreen();

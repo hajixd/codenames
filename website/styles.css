@@ -21970,3 +21970,14 @@ body.light-mode .brx-pop-card{
   #launch-practice{ grid-area: practice; }
   #launch-brackets{ grid-area: brackets; }
 }
+
+@media (max-width: 560px), (max-width: 768px) and (max-height: 760px){
+  .launch-mode-row{
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "quick"
+      "practice"
+      "teams"
+      "brackets";
+  }
+}

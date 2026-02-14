@@ -312,6 +312,404 @@ let quickLobbyListenerStarting = null;
 let quickLobbyListenerWanted = false;
 let quickPlayEnsurePromise = null;
 
+// Practice is fully local-only (no Firestore reads/writes).
+const LOCAL_PRACTICE_ID_PREFIX = 'practice_local_';
+const localPracticeGames = new Map();
+let localPracticeAiTimer = null;
+let localPracticeAiBusy = false;
+let localPracticeAiGameId = null;
+
+function cloneLocalValue(value) {
+  if (typeof structuredClone === 'function') {
+    try { return structuredClone(value); } catch (_) {}
+  }
+  try { return JSON.parse(JSON.stringify(value)); } catch (_) {}
+  return value;
+}
+
+function isLocalPracticeGameId(gameId) {
+  return String(gameId || '').trim().startsWith(LOCAL_PRACTICE_ID_PREFIX);
+}
+
+function isCurrentLocalPracticeGame() {
+  return !!(currentGame?.type === 'practice' && isLocalPracticeGameId(currentGame?.id));
+}
+
+function createLocalPracticeId() {
+  return `${LOCAL_PRACTICE_ID_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getLocalPracticeGame(gameId) {
+  const key = String(gameId || '').trim();
+  if (!key) return null;
+  const raw = localPracticeGames.get(key);
+  return raw ? cloneLocalValue(raw) : null;
+}
+
+function setLocalPracticeGame(gameId, gameData, opts = {}) {
+  const key = String(gameId || '').trim();
+  if (!key || !isLocalPracticeGameId(key) || !gameData) return null;
+
+  const next = cloneLocalValue(gameData) || {};
+  next.id = key;
+  next.updatedAtMs = Date.now();
+  localPracticeGames.set(key, next);
+
+  if (!opts.skipRender && currentGame?.id === key) {
+    currentGame = cloneLocalValue(next);
+    if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
+    else stopPracticeInactivityWatcher();
+    try { renderGame(); } catch (_) {}
+    try { window.bumpPresence?.(); } catch (_) {}
+  }
+
+  return cloneLocalValue(next);
+}
+
+function mutateLocalPracticeGame(gameId, mutator, opts = {}) {
+  const base = getLocalPracticeGame(gameId);
+  if (!base) return null;
+  if (typeof mutator === 'function') {
+    try { mutator(base); } catch (_) {}
+  }
+  return setLocalPracticeGame(gameId, base, opts);
+}
+
+function deleteLocalPracticeGame(gameId) {
+  const key = String(gameId || '').trim();
+  if (!key) return;
+  localPracticeGames.delete(key);
+}
+
+function appendGuessToClueHistoryLocal(game, team, clueWord, clueNumber, guess) {
+  if (!game || !team || !clueWord) return;
+  const history = Array.isArray(game.clueHistory) ? [...game.clueHistory] : [];
+  let idx = -1;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const c = history[i];
+    if (!c) continue;
+    if (
+      String(c.team) === String(team) &&
+      String(c.word) === String(clueWord) &&
+      Number(c.number) === Number(clueNumber)
+    ) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) {
+    game.clueHistory = history;
+    return;
+  }
+  const entry = { ...history[idx] };
+  const results = Array.isArray(entry.results) ? [...entry.results] : [];
+  const guessWord = String(guess?.word || '').toUpperCase();
+  if (guessWord && results.some(r => String(r?.word || '').toUpperCase() === guessWord)) {
+    game.clueHistory = history;
+    return;
+  }
+  results.push(guess);
+  entry.results = results;
+  history[idx] = entry;
+  game.clueHistory = history;
+}
+
+function applyLocalPracticeGuessState(game, idx, actorName) {
+  if (!game || !Array.isArray(game.cards)) return null;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= game.cards.length) return null;
+  const card = game.cards[idx];
+  if (!card || card.revealed) return null;
+
+  const updatedCards = [...game.cards];
+  updatedCards[idx] = { ...card, revealed: true };
+
+  const team = game.currentTeam === 'blue' ? 'blue' : 'red';
+  const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+  const guessByName = String(actorName || 'Someone');
+  const clueWordAtGuess = game.currentClue?.word || null;
+  const clueNumberAtGuess = (game.currentClue && typeof game.currentClue.number !== 'undefined') ? game.currentClue.number : null;
+
+  game.cards = updatedCards;
+  game.updatedAtMs = Date.now();
+  game.lastMoveAtMs = Date.now();
+
+  const redCardsLeftNow = getCardsLeft(game, 'red');
+  const blueCardsLeftNow = getCardsLeft(game, 'blue');
+
+  let logEntry = `${guessByName} (${teamName}) guessed "${card.word}" - `;
+  let winner = null;
+  let endTurn = false;
+
+  if (card.type === 'assassin') {
+    winner = team === 'red' ? 'blue' : 'red';
+    logEntry += 'ASSASSIN! Game over.';
+  } else if (card.type === team) {
+    logEntry += 'Correct!';
+    if (team === 'red') {
+      game.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
+      if (game.redCardsLeft === 0) winner = 'red';
+    } else {
+      game.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
+      if (game.blueCardsLeft === 0) winner = 'blue';
+    }
+  } else if (card.type === 'neutral') {
+    logEntry += 'Neutral. Turn ends.';
+    endTurn = true;
+  } else {
+    const ownerTeamName = card.type === 'red'
+      ? (game.redTeamName || 'Red Team')
+      : (game.blueTeamName || 'Blue Team');
+    logEntry += `Wrong! (${ownerTeamName}'s card)`;
+    if (card.type === 'red') {
+      game.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
+      if (game.redCardsLeft === 0) winner = 'red';
+    } else {
+      game.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
+      if (game.blueCardsLeft === 0) winner = 'blue';
+    }
+    endTurn = true;
+  }
+
+  const currentGuesses = Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : 0;
+  const nextGuesses = Math.max(0, currentGuesses - 1);
+  if (game.currentClue) {
+    game.guessesRemaining = nextGuesses;
+    if (!winner && !endTurn && card.type === team && nextGuesses <= 0) {
+      endTurn = true;
+    }
+    if (winner || endTurn) game.guessesRemaining = 0;
+  }
+
+  game.log = Array.isArray(game.log) ? [...game.log] : [];
+  game.log.push(logEntry);
+
+  const guessResult = {
+    word: card.word,
+    result: (card.type === 'assassin')
+      ? 'assassin'
+      : (card.type === team ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
+    type: card.type,
+    by: guessByName,
+    timestamp: new Date().toISOString()
+  };
+
+  if (winner) {
+    game.winner = winner;
+    game.currentPhase = 'ended';
+    const winnerName = truncateTeamNameGame(winner === 'red' ? game.redTeamName : game.blueTeamName);
+    game.log.push(`${winnerName} wins!`);
+  } else if (endTurn) {
+    game.currentTeam = team === 'red' ? 'blue' : 'red';
+    game.currentPhase = 'spymaster';
+    game.currentClue = null;
+    game.guessesRemaining = 0;
+  }
+
+  if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
+    appendGuessToClueHistoryLocal(game, team, clueWordAtGuess, clueNumberAtGuess, guessResult);
+  }
+  return { winner, endTurn, guessResult };
+}
+
+function pickLocalPracticeClueWord(game) {
+  const boardWords = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+  const pool = ['THREAD', 'NEXUS', 'VECTOR', 'SPARK', 'ORBIT', 'SHADOW', 'PULSE', 'ECHO', 'ANCHOR', 'BEACON', 'FOCUS', 'RHYTHM'];
+  for (const word of pool) {
+    if (!boardWords.has(word)) return word;
+  }
+  return `CLUE${Math.floor(Math.random() * 90) + 10}`;
+}
+
+function canLocalPracticeAIActAsOperatives(game, team) {
+  const roster = team === 'red' ? (game?.redPlayers || []) : (game?.bluePlayers || []);
+  const myId = String(getUserId?.() || '').trim();
+  if (!myId) return true;
+  return !roster.some((p) => {
+    if (!p || p.isAI) return false;
+    const pid = String(p.odId || '').trim();
+    const isMine = pid && pid === myId;
+    return isMine && !isSpymasterPlayerForTeam(p, team, game);
+  });
+}
+
+function localPracticeNeedsAIAction(game) {
+  if (!game || game.winner || game.currentPhase === 'ended') return false;
+  const team = game.currentTeam === 'blue' ? 'blue' : 'red';
+  const roster = team === 'red' ? (game.redPlayers || []) : (game.bluePlayers || []);
+  if (game.currentPhase === 'spymaster') {
+    return roster.some(p => p?.isAI && isSpymasterPlayerForTeam(p, team, game));
+  }
+  if (game.currentPhase === 'operatives') {
+    const hasAIOps = roster.some(p => p?.isAI && !isSpymasterPlayerForTeam(p, team, game));
+    if (!hasAIOps) return false;
+    return canLocalPracticeAIActAsOperatives(game, team);
+  }
+  return false;
+}
+
+function pickLocalPracticeAIGuessIndex(game, team) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const hidden = cards.map((c, i) => ({ c, i })).filter(x => x?.c && !x.c.revealed);
+  if (!hidden.length) return null;
+
+  const own = hidden.filter(x => x.c.type === team);
+  const others = hidden.filter(x => x.c.type !== team);
+  const shouldMiss = Math.random() < 0.2;
+
+  if (!shouldMiss && own.length) {
+    return own[Math.floor(Math.random() * own.length)].i;
+  }
+  if (others.length) return others[Math.floor(Math.random() * others.length)].i;
+  if (own.length) return own[Math.floor(Math.random() * own.length)].i;
+  return hidden[0].i;
+}
+
+function stopLocalPracticeAI() {
+  if (localPracticeAiTimer) clearTimeout(localPracticeAiTimer);
+  localPracticeAiTimer = null;
+  localPracticeAiBusy = false;
+  localPracticeAiGameId = null;
+}
+
+function scheduleLocalPracticeAI(delayMs = 0) {
+  if (!isCurrentLocalPracticeGame()) {
+    stopLocalPracticeAI();
+    return;
+  }
+  const gid = String(currentGame.id || '').trim();
+  if (!gid) return;
+  localPracticeAiGameId = gid;
+  if (localPracticeAiTimer) clearTimeout(localPracticeAiTimer);
+  localPracticeAiTimer = setTimeout(() => {
+    localPracticeAiTimer = null;
+    if (!isCurrentLocalPracticeGame()) return;
+    if (String(currentGame?.id || '').trim() !== gid) return;
+    void runLocalPracticeAIOnce();
+  }, Math.max(0, Number(delayMs) || 0));
+}
+
+async function runLocalPracticeAIOnce() {
+  if (localPracticeAiBusy) return;
+  if (!isCurrentLocalPracticeGame()) {
+    stopLocalPracticeAI();
+    return;
+  }
+
+  const gid = String(currentGame?.id || '').trim();
+  if (!gid) return;
+
+  localPracticeAiBusy = true;
+  try {
+    const game = getLocalPracticeGame(gid);
+    if (!game) {
+      stopLocalPracticeAI();
+      return;
+    }
+    if (game.winner || game.currentPhase === 'ended') {
+      stopLocalPracticeAI();
+      return;
+    }
+
+    const team = game.currentTeam === 'blue' ? 'blue' : 'red';
+    const roster = team === 'red' ? (game.redPlayers || []) : (game.bluePlayers || []);
+    const aiSpy = roster.find(p => p?.isAI && isSpymasterPlayerForTeam(p, team, game)) || null;
+    const aiOps = roster.filter(p => p?.isAI && !isSpymasterPlayerForTeam(p, team, game));
+
+    if (game.currentPhase === 'spymaster') {
+      if (!aiSpy) return;
+      mutateLocalPracticeGame(gid, (draft) => {
+        const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
+        const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
+        const ownLeft = draftTeam === 'red' ? getCardsLeft(draft, 'red') : getCardsLeft(draft, 'blue');
+        const clueNumber = Math.max(1, Math.min(3, ownLeft >= 4 ? 2 : 1));
+        const clueWord = pickLocalPracticeClueWord(draft);
+        draft.currentClue = { word: clueWord, number: clueNumber };
+        draft.guessesRemaining = clueNumber + 1;
+        draft.currentPhase = 'operatives';
+        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+        draft.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
+        draft.clueHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
+        draft.clueHistory.push({
+          team: draftTeam,
+          word: clueWord,
+          number: clueNumber,
+          results: [],
+          timestamp: new Date().toISOString()
+        });
+        draft.lastMoveAtMs = Date.now();
+      });
+      return;
+    }
+
+    if (game.currentPhase !== 'operatives') return;
+    if (!aiOps.length) return;
+    if (!canLocalPracticeAIActAsOperatives(game, team)) return;
+
+    const actor = aiOps[Math.floor(Math.random() * aiOps.length)];
+    const actorName = `AI ${String(actor?.name || 'Player')}`.trim();
+    const guessesRemaining = Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : 0;
+    if (!game.currentClue || guessesRemaining <= 0) {
+      mutateLocalPracticeGame(gid, (draft) => {
+        const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
+        const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
+        draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
+        draft.currentPhase = 'spymaster';
+        draft.currentClue = null;
+        draft.guessesRemaining = 0;
+        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+        draft.log.push(`${actorName} (${teamName}) ended their turn.`);
+        draft.lastMoveAtMs = Date.now();
+      });
+      return;
+    }
+
+    const guessIndex = pickLocalPracticeAIGuessIndex(game, team);
+    if (!Number.isInteger(guessIndex) || guessIndex < 0) {
+      mutateLocalPracticeGame(gid, (draft) => {
+        const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
+        const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
+        draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
+        draft.currentPhase = 'spymaster';
+        draft.currentClue = null;
+        draft.guessesRemaining = 0;
+        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+        draft.log.push(`${actorName} (${teamName}) ended their turn.`);
+        draft.lastMoveAtMs = Date.now();
+      });
+      return;
+    }
+
+    mutateLocalPracticeGame(gid, (draft) => {
+      applyLocalPracticeGuessState(draft, guessIndex, actorName);
+    });
+  } finally {
+    localPracticeAiBusy = false;
+    if (!isCurrentLocalPracticeGame()) return;
+    const live = getLocalPracticeGame(currentGame?.id);
+    if (!live || !localPracticeNeedsAIAction(live)) {
+      stopLocalPracticeAI();
+      return;
+    }
+    scheduleLocalPracticeAI(520 + Math.floor(Math.random() * 520));
+  }
+}
+
+function maybeStartLocalPracticeAI() {
+  if (!isCurrentLocalPracticeGame()) {
+    stopLocalPracticeAI();
+    return;
+  }
+  const g = getLocalPracticeGame(currentGame.id);
+  if (!g || !localPracticeNeedsAIAction(g)) {
+    stopLocalPracticeAI();
+    return;
+  }
+  scheduleLocalPracticeAI(300 + Math.floor(Math.random() * 220));
+}
+
+window.isLocalPracticeGameId = isLocalPracticeGameId;
+window.isPracticeGameActive = () => !!(currentGame && currentGame.type === 'practice');
+
 // Quick Play settings / negotiation
 function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
@@ -945,10 +1343,11 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const blueSpy = bluePlayers.find(p => p.role === 'spymaster') || null;
 
   const gameData = {
+    id: createLocalPracticeId(),
     type: 'practice',
     redTeamName: 'Red Team',
     blueTeamName: 'Blue Team',
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdAt: new Date().toISOString(),
     createdAtMs: Date.now(),
     createdBy: uid,
     createdByName: userName,
@@ -980,11 +1379,11 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     },
     // tracking for inactivity logic
     lastMoveAtMs: Date.now(),
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAtMs: Date.now(),
   };
 
-  const ref = await db.collection('games').add(gameData);
-  return ref.id;
+  setLocalPracticeGame(gameData.id, gameData, { skipRender: true });
+  return gameData.id;
 };
 
 
@@ -3583,11 +3982,44 @@ async function rejoinCurrentGame() {
 ========================= */
 function startGameListener(gameId, options = {}) {
   if (gameUnsub) gameUnsub();
-  currentListenerEphemeral = !!options.ephemeral;
+  const localPractice = isLocalPracticeGameId(gameId);
+  currentListenerEphemeral = !!(options.ephemeral || localPractice);
   let isFirstSnapshot = true;
 
   spectatorMode = !!options.spectator;
   spectatingGameId = spectatorMode ? gameId : null;
+
+  if (localPractice) {
+    gameUnsub = () => {};
+    clearRevealAnimationSuppressions();
+    const localGame = getLocalPracticeGame(gameId);
+    if (!localGame) {
+      currentGame = null;
+      stopPracticeInactivityWatcher();
+      stopLocalPracticeAI();
+      showGameLobby();
+      try { window.bumpPresence?.(); } catch (_) {}
+      return;
+    }
+
+    currentGame = localGame;
+    if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
+    else stopPracticeInactivityWatcher();
+
+    try {
+      const sig = (Array.isArray(currentGame?.cards) && currentGame.cards.length)
+        ? currentGame.cards.map(c => `${String(c?.word || '')}::${String(c?.type || '')}`).join('|')
+        : null;
+      if (sig) _prevBoardSignature = sig;
+    } catch (_) {}
+
+    _prevClue = currentGame.currentClue?.word || null;
+    try { renderGame(); } catch (_) {}
+    maybeStartLocalPracticeAI();
+    try { window.bumpPresence?.(); } catch (_) {}
+    return;
+  }
+
   // Persist last active game (device-local) for refresh resume.
   // Skip this for ephemeral listeners (Practice tabs) so they don't steal your resume slot.
   if (!currentListenerEphemeral) {
@@ -3736,6 +4168,7 @@ window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {
 function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
+  stopLocalPracticeAI();
   if (_pendingRevealRenderTimer) {
     clearTimeout(_pendingRevealRenderTimer);
     _pendingRevealRenderTimer = null;
@@ -3872,6 +4305,7 @@ function updateSettingsInGameActions(isInGame) {
 
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
+  const isPractice = !!(currentGame && currentGame.type === 'practice');
 
   // End Game permissions:
   // - Tournament games: only your team's spymaster can end.
@@ -3884,15 +4318,22 @@ function updateSettingsInGameActions(isInGame) {
 
   if (leaveBtn) {
     // Label updated in renderGame (Leave vs Stop Spectating)
-    leaveBtn.disabled = !isInGame;
-    leaveBtn.title = leaveBtn.disabled ? 'Join a game to use this' : '';
+    if (isPractice) {
+      leaveBtn.disabled = true;
+      leaveBtn.title = 'Practice ends automatically when you leave the page.';
+    } else {
+      leaveBtn.disabled = !isInGame;
+      leaveBtn.title = leaveBtn.disabled ? 'Join a game to use this' : '';
+    }
   }
 
   if (endBtn) {
-    const canUse = isInGame && canEnd;
+    const canUse = !isPractice && isInGame && canEnd;
     endBtn.disabled = !canUse;
     if (!isInGame) {
       endBtn.title = 'Join a game to use this';
+    } else if (isPractice) {
+      endBtn.title = 'Practice games are local and end when you leave.';
     } else {
       endBtn.title = canUse ? '' : (spectator ? 'Spectators cannot end tournament games' : 'Only spymasters can end tournament games');
     }
@@ -4745,6 +5186,28 @@ async function selectRole(role) {
 
   if (!myTeamColor || !userName) return;
 
+  if (isCurrentLocalPracticeGame()) {
+    mutateLocalPracticeGame(currentGame.id, (draft) => {
+      if (role === 'spymaster') {
+        if (myTeamColor === 'red') {
+          if (draft.redSpymaster) return;
+          draft.redSpymaster = userName;
+        } else {
+          if (draft.blueSpymaster) return;
+          draft.blueSpymaster = userName;
+        }
+      }
+      if (draft.redSpymaster && draft.blueSpymaster) {
+        draft.currentPhase = 'spymaster';
+        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+        draft.log.push('Game started! Red team goes first.');
+      }
+      draft.updatedAtMs = Date.now();
+    });
+    maybeStartLocalPracticeAI();
+    return;
+  }
+
   const updates = {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
@@ -4830,6 +5293,25 @@ async function handleClueSubmit(e) {
       timestamp: new Date().toISOString()
     };
 
+    if (isCurrentLocalPracticeGame()) {
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        draft.currentClue = { word, number };
+        draft.guessesRemaining = (number === 0 ? 0 : (number + 1));
+        draft.currentPhase = 'operatives';
+        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+        draft.log.push(`${teamName} Spymaster: "${word}" for ${number}`);
+        draft.clueHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
+        draft.clueHistory.push(clueEntry);
+        draft.updatedAtMs = Date.now();
+        draft.lastMoveAtMs = Date.now();
+      });
+      wordInput.value = '';
+      numInput.value = '';
+      if (window.playSound) window.playSound('clueGiven');
+      maybeStartLocalPracticeAI();
+      return;
+    }
+
     await db.collection('games').doc(currentGame.id).update({
       currentClue: { word, number },
       guessesRemaining: (number === 0 ? 0 : (number + 1)), // guesses = number + 1 (0 means no guesses)
@@ -4877,6 +5359,16 @@ async function handleCardClick(cardIndex) {
 
     // Clear pending selection only after we've validated this guess attempt.
     clearPendingCardSelection();
+
+    if (isCurrentLocalPracticeGame()) {
+      const guessByName = getUserName() || 'Someone';
+      if (window.playSound) window.playSound('cardReveal');
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        applyLocalPracticeGuessState(draft, idx, guessByName);
+      });
+      maybeStartLocalPracticeAI();
+      return;
+    }
 
   // Capture current clue for history logging
   const clueWordAtGuess = currentGame.currentClue?.word || null;
@@ -5022,6 +5514,23 @@ async function handleEndTurn() {
   // Play end turn sound
   if (window.playSound) window.playSound('endTurn');
 
+  if (isCurrentLocalPracticeGame()) {
+    mutateLocalPracticeGame(currentGame.id, (draft) => {
+      const draftTeam = draft.currentTeam === 'red' ? 'red' : 'blue';
+      const draftTeamName = draftTeam === 'red' ? draft.redTeamName : draft.blueTeamName;
+      draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
+      draft.currentPhase = 'spymaster';
+      draft.currentClue = null;
+      draft.guessesRemaining = 0;
+      draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+      draft.log.push(`${userName} (${draftTeamName}) ended their turn.`);
+      draft.updatedAtMs = Date.now();
+      draft.lastMoveAtMs = Date.now();
+    });
+    maybeStartLocalPracticeAI();
+    return;
+  }
+
   try {
     await db.collection('games').doc(currentGame.id).update({
       currentTeam: currentGame.currentTeam === 'red' ? 'blue' : 'red',
@@ -5040,9 +5549,13 @@ async function handleLeaveGame(opts = {}) {
   // Handles both "Leave Game" (participant) and "Stop Spectating" (spectator).
   const skipConfirm = !!opts.skipConfirm;
   const closePracticeWindow = !!opts.closePracticeWindow;
+  const skipReturn = !!opts.skipReturn;
   if (!currentGame) {
     try { stopGameListener(); } catch (_) {}
-    try { window.returnToLaunchScreen?.(); } catch (_) { try { showGameLobby(); } catch (_) {} }
+    if (!skipReturn) {
+      try { window.returnToLaunchScreen?.({ skipPracticeCleanup: true }); }
+      catch (_) { try { showGameLobby(); } catch (_) {} }
+    }
     return;
   }
 
@@ -5096,9 +5609,11 @@ async function handleLeaveGame(opts = {}) {
     }
   }
 
+  const isLocalPractice = wasPractice && isLocalPracticeGameId(gameId);
+
   // Practice should always terminate when the player leaves.
   // This avoids orphan practice docs and stale "in progress" sessions.
-  if (wasPractice && gameId) {
+  if (wasPractice && gameId && !isLocalPractice) {
     try {
       const ref = db.collection('games').doc(gameId);
       await db.runTransaction(async (tx) => {
@@ -5125,6 +5640,11 @@ async function handleLeaveGame(opts = {}) {
     }
   }
 
+  if (isLocalPractice) {
+    try { deleteLocalPracticeGame(gameId); } catch (_) {}
+    try { stopLocalPracticeAI(); } catch (_) {}
+  }
+
   // Local cleanup
   try { cleanupAdvancedFeatures?.(); } catch (_) {}
   try { window.cleanupAllAI && window.cleanupAllAI(); } catch (_) {}
@@ -5145,8 +5665,10 @@ async function handleLeaveGame(opts = {}) {
   if (closePracticeWindow && wasPractice) {
     try { window.close(); } catch (_) {}
   }
-  try { window.returnToLaunchScreen?.(); }
-  catch (_) { try { showGameLobby(); } catch (_) {} }
+  if (!skipReturn) {
+    try { window.returnToLaunchScreen?.({ skipPracticeCleanup: true }); }
+    catch (_) { try { showGameLobby(); } catch (_) {} }
+  }
 }
 
 async function handleEndGame() {
@@ -5154,6 +5676,10 @@ async function handleEndGame() {
 
   const gameId = currentGame.id;
   const userName = getUserName() || 'Someone';
+  if (isCurrentLocalPracticeGame()) {
+    await handleLeaveGame({ skipConfirm: true });
+    return;
+  }
 
   // Use the in-app confirm dialog (no browser confirm).
   const ok = await showCustomConfirm({
@@ -5258,7 +5784,14 @@ async function handleBackToHomepageAfterGame() {
   try { window.cleanupAllAI && window.cleanupAllAI(); } catch (_) {}
   try { window.stopAIGameLoop && window.stopAIGameLoop(); } catch (_) {}
 
+  const wasLocalPractice = isCurrentLocalPracticeGame();
+  const localPracticeId = currentGame?.id;
   const wasQuick = (currentGame?.type === 'quick') || (currentGame?.id === QUICKPLAY_DOC_ID);
+
+  if (wasLocalPractice && localPracticeId) {
+    try { deleteLocalPracticeGame(localPracticeId); } catch (_) {}
+    try { stopLocalPracticeAI(); } catch (_) {}
+  }
 
   stopGameListener();
 
@@ -5685,6 +6218,7 @@ function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId 
 async function syncTeamConsidering(cardIndexOrNull) {
   try {
     if (!currentGame?.id) return;
+    if (isCurrentLocalPracticeGame()) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const ownerId = getCurrentMarkerOwnerId();
@@ -5794,6 +6328,7 @@ function buildCardTagElement(tag, opts = {}) {
 async function syncTeamMarker(cardIndex, tag) {
   try {
     if (!currentGame?.id) return;
+    if (isCurrentLocalPracticeGame()) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const idx = Number(cardIndex);
@@ -5832,6 +6367,7 @@ async function syncTeamMarker(cardIndex, tag) {
 async function clearTeamMarkers() {
   try {
     if (!currentGame?.id) return;
+    if (isCurrentLocalPracticeGame()) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const ownerId = getCurrentMarkerOwnerId();
@@ -6116,6 +6652,20 @@ function initOperativeChat() {
     operativeChatUnsub = null;
   }
 
+  if (isCurrentLocalPracticeGame()) {
+    const toggleBtn = document.getElementById('spectator-chat-toggle');
+    const input = document.getElementById('operative-chat-input');
+    const form = document.getElementById('operative-chat-form');
+    if (toggleBtn) toggleBtn.style.display = 'none';
+    if (input) {
+      input.disabled = true;
+      input.placeholder = 'Team chat is disabled in Practice.';
+    }
+    if (form) form.classList.add('spectator-readonly');
+    renderOperativeChat([]);
+    return;
+  }
+
   let teamForChat = getMyTeamColor();
   const isSpectatorChat = !teamForChat && !!spectatorMode;
 
@@ -6207,6 +6757,8 @@ function formatTime(date) {
 
 async function handleOperativeChatSubmit(e) {
   e.preventDefault();
+
+  if (isCurrentLocalPracticeGame()) return;
 
   const input = document.getElementById('operative-chat-input');
   const text = input?.value?.trim();
@@ -7242,6 +7794,21 @@ window.handleCardConfirm = handleCardConfirm;
 async function addClueToHistory(gameId, team, word, number) {
   if (!gameId) return;
 
+  if (isLocalPracticeGameId(gameId)) {
+    mutateLocalPracticeGame(gameId, (draft) => {
+      draft.clueHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
+      draft.clueHistory.push({
+        team,
+        word,
+        number,
+        results: [],
+        timestamp: new Date().toISOString()
+      });
+      draft.updatedAtMs = Date.now();
+    });
+    return;
+  }
+
   const clueEntry = {
     team,
     word,
@@ -7262,6 +7829,14 @@ async function addClueToHistory(gameId, team, word, number) {
 // Helper to append a guess result to the latest clue entry
 async function addGuessToClueHistory(gameId, team, clueWord, clueNumber, guess) {
   if (!gameId || !team || !clueWord) return;
+
+  if (isLocalPracticeGameId(gameId)) {
+    mutateLocalPracticeGame(gameId, (draft) => {
+      appendGuessToClueHistoryLocal(draft, team, clueWord, clueNumber, guess);
+      draft.updatedAtMs = Date.now();
+    });
+    return;
+  }
 
   const gameRef = db.collection('games').doc(gameId);
 
@@ -7476,6 +8051,15 @@ renderGame = function renderGameWithAI() {
   _origRenderGame();
 
   if (!currentGame) return;
+
+  if (isCurrentLocalPracticeGame()) {
+    try { window.stopAIGameLoop?.(); } catch (_) {}
+    maybeStartLocalPracticeAI();
+    lastObservedPhase = currentGame.currentPhase || null;
+    return;
+  } else {
+    stopLocalPracticeAI();
+  }
 
   // Ensure AI list is synced even on spectator/observer clients (prevents a chicken-and-egg where
   // the AI loop never starts because aiPlayers hasn't been populated locally yet).
