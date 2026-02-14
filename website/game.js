@@ -47,12 +47,40 @@ let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 const CARD_CONFIRM_ANIM_MS = 1850;
-const REMOTE_REVEAL_ANIM_CLEANUP_MS = CARD_CONFIRM_ANIM_MS + 120;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
+
+function normalizeConfirmBackType(rawType) {
+  const t = String(rawType || '').toLowerCase();
+  return _CONFIRM_BACK_TYPES.includes(t) ? t : 'neutral';
+}
+
+function getConfirmBackLabel(confirmBackType) {
+  return confirmBackType === 'assassin' ? 'ASSASSIN' : String(confirmBackType || '').toUpperCase();
+}
+
+function clearConfirmAnimationClasses(cardEl) {
+  if (!cardEl) return;
+  cardEl.classList.remove('confirming-guess', 'confirm-animate');
+  cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
+  cardEl.removeAttribute('data-confirm-back-label');
+}
+
+function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
+  if (!cardEl) return;
+  const replay = !!opts.replay;
+  const type = normalizeConfirmBackType(confirmBackType);
+  if (replay) {
+    // For snapshot replays, briefly restore the unrevealed presentation first.
+    cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
+  }
+  clearConfirmAnimationClasses(cardEl);
+  cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
+  cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
+}
 
 function markRevealAnimationSuppressed(cardIndex) {
   const idx = Number(cardIndex);
@@ -97,27 +125,16 @@ function animateNewlyRevealedCards(cardIndices = []) {
     if (!cardEl || !cardEl.classList.contains('revealed')) return;
 
     const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
-    const revealType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
-      ? cardTypeRaw
-      : '';
+    const revealType = normalizeConfirmBackType(cardTypeRaw);
     const ogLike = isOgLikeStyleActive();
     if (ogLike) {
-      const confirmBackType = revealType || 'neutral';
-      const confirmBackLabel = confirmBackType === 'assassin' ? 'ASSASSIN' : confirmBackType.toUpperCase();
-
-      cardEl.classList.remove('revealed', 'guess-animate', 'revealing', 'flip-glow', 'confirming-guess', 'confirm-animate');
-      cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map(t => `card-${t}`));
-      cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map(t => `confirm-back-${t}`));
-      cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${confirmBackType}`);
-      cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
+      applyConfirmAnimationClasses(cardEl, revealType, { replay: true });
 
       window.setTimeout(() => {
         if (!cardEl.isConnected) return;
-        cardEl.classList.remove('confirm-animate', 'confirming-guess');
-        cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map(t => `confirm-back-${t}`));
-        cardEl.removeAttribute('data-confirm-back-label');
-        cardEl.classList.add('revealed', `card-${confirmBackType}`);
-      }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
+        clearConfirmAnimationClasses(cardEl);
+        cardEl.classList.add('revealed', `card-${revealType}`);
+      }, CARD_CONFIRM_ANIM_MS);
     } else {
       if (revealType) cardEl.classList.add(`card-${revealType}`);
       // Restart animation classes in case snapshots arrive quickly.
@@ -129,7 +146,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
       window.setTimeout(() => {
         if (!cardEl.isConnected) return;
         cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-      }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
+      }, CARD_CONFIRM_ANIM_MS);
     }
 
     if (!ogLike) {
@@ -144,7 +161,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
         cardInner.style.transition = '';
         cardInner.style.transform = '';
       }
-    }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
+    }, CARD_CONFIRM_ANIM_MS);
   });
 }
 
@@ -7102,16 +7119,13 @@ async function handleCardConfirm(evt, cardIndex) {
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
-  const confirmBackType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
-    ? cardTypeRaw
-    : 'neutral';
-  const confirmBackLabel = confirmBackType === 'assassin' ? 'ASSASSIN' : confirmBackType.toUpperCase();
-  cardEl?.classList.add('confirming-guess');
+  const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   if (runPhysicalConfirmAnim) {
     // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
     markRevealAnimationSuppressed(idx);
-    cardEl.classList.add('confirm-animate', `confirm-back-${confirmBackType}`);
-    cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
+    applyConfirmAnimationClasses(cardEl, confirmBackType);
+  } else {
+    cardEl?.classList.add('confirming-guess');
   }
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
 
@@ -7122,15 +7136,7 @@ async function handleCardConfirm(evt, cardIndex) {
     await _originalHandleCardClick(idx);
   } finally {
     clearTimeout(lockGuard);
-    cardEl?.classList.remove(
-      'confirm-animate',
-      'confirm-back-red',
-      'confirm-back-blue',
-      'confirm-back-neutral',
-      'confirm-back-assassin'
-    );
-    cardEl?.removeAttribute('data-confirm-back-label');
-    cardEl?.classList.remove('confirming-guess');
+    clearConfirmAnimationClasses(cardEl);
   }
 }
 
