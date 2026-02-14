@@ -4300,13 +4300,11 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
-    const backFace = isOgMode
-      ? `
+    const backFace = `
           <div class="card-face card-back">
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
-        `
-      : '';
+        `;
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
         ${consideringHtml}
