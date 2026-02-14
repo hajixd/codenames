@@ -1336,6 +1336,40 @@ body.tournament #play-mode-select{ display:none !important; }
   }
 }
 
+/* Mobile: revealed cards must overlay the phase text during lift/flip. */
+@media (max-width: 768px) {
+  body.og-mode .og-phase-banner,
+  body.cozy-mode .og-phase-banner {
+    position: relative;
+    z-index: 6;
+    pointer-events: none;
+  }
+
+  body.og-mode .game-center-area,
+  body.cozy-mode .game-center-area,
+  body.og-mode .game-center-area .game-board-wrapper,
+  body.cozy-mode .game-center-area .game-board-wrapper,
+  body.og-mode .game-center-area .game-board,
+  body.cozy-mode .game-center-area .game-board {
+    overflow: visible !important;
+  }
+
+  body.og-mode .game-center-area .game-board-wrapper,
+  body.cozy-mode .game-center-area .game-board-wrapper,
+  body.og-mode .game-center-area .game-board,
+  body.cozy-mode .game-center-area .game-board {
+    position: relative !important;
+    z-index: 20 !important;
+  }
+
+  body.og-mode .game-card.og-reveal-bump,
+  body.cozy-mode .game-card.og-reveal-bump,
+  body.og-mode .game-card.og-reveal-flip-active,
+  body.cozy-mode .game-card.og-reveal-flip-active {
+    z-index: 260 !important;
+  }
+}
+
 /* ==================== MOBILE ==================== */
 @media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
   .app{ --header-h: 54px; --tabs-h: 0px; }

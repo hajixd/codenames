@@ -2590,7 +2590,6 @@ const renderTeamList = (players) => {
   if (!players.length) return '<div class="quick-empty">No one yet</div>';
   return players.map(p => {
     const isYou = p.odId === odId;
-    const ready = !!p.ready;
     const playerId = p.odId || '';
     const isAI = !!p.isAI;
 
@@ -2620,9 +2619,8 @@ const renderTeamList = (players) => {
       : '';
 
     return `
-      <div class="quick-player ${ready ? 'ready' : ''} ${isAI ? 'is-ai' : ''}">
+      <div class="quick-player ${isAI ? 'is-ai' : ''}">
         <span class="${nameClass}" ${nameAttrs}>${escapeHtml(displayPlayerName(p))}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
-        <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         ${removeBtn}
       </div>
     `;
@@ -2660,27 +2658,6 @@ const renderSpecList = (players) => {
   blueSpyList.innerHTML = renderTeamList(blueSplit.spymasters);
   blueOpList.innerHTML = renderTeamList(blueSplit.operatives);
   specList.innerHTML = renderSpecList(specs);
-
-  // Update team status indicators
-  const redStatus = document.getElementById('quick-red-status');
-  const blueStatus = document.getElementById('quick-blue-status');
-
-  const renderTeamStatus = (team, players) => {
-    const chips = [];
-    const allReady = teamIsFullyReady(game, team);
-
-    // Ready status (more prominent when all ready)
-    if (players.length > 0) {
-      if (allReady) {
-        chips.push('<span class="quick-status-chip all-ready">All Ready</span>');
-      }
-    }
-
-    return chips.join('');
-  };
-
-  if (redStatus) redStatus.innerHTML = renderTeamStatus('red', red);
-  if (blueStatus) blueStatus.innerHTML = renderTeamStatus('blue', blue);
 
   // Update role selector UI (highlight the selected column)
   const effectiveRole = role || selectedQuickTeam || 'spectator';
@@ -3829,28 +3806,25 @@ function runOnlineRevealFlipAnimation(cardEl) {
   const inner = cardEl?.querySelector?.('.card-inner');
   if (!cardEl || !inner) return;
 
-  // Physical one-shot reveal:
-  // - Entire card lifts off the board
-  // - Card flips in mid-air as a rigid body (front/back stay attached)
-  // - Card settles back into the same slot, face-down at 180deg
-  // Total motion time is fixed at 5s; phase timing is controlled by:
-  //   1) OG_REVEAL_FLIP_LIFT_RATIO
-  //   2) OG_REVEAL_FLIP_HOLD_MS
-  //   3) OG_REVEAL_FLIP_SETTLE_MS
+  // Physical one-shot reveal (rebuilt from scratch):
+  // - The whole card rises off the board
+  // - It flips as one rigid body (front/back stay attached)
+  // - It settles back in the same slot face-down (180deg)
   try {
     if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
   } catch (_) {}
-  cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
-  cardEl.classList.remove('og-reveal-bump');
+  cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'og-reveal-flip-js', 'flip-glow', 'og-reveal-bump');
 
   const totalMs = OG_REVEAL_FLIP_DURATION_MS;
   const holdMs = Math.max(300, Math.min(totalMs - 1300, OG_REVEAL_FLIP_HOLD_MS));
   const settleMs = Math.max(600, Math.min(totalMs - holdMs - 600, OG_REVEAL_FLIP_SETTLE_MS));
   const launchMs = Math.max(700, totalMs - holdMs - settleMs);
-  const durationText = `${totalMs}ms`;
+  const launchOffset = launchMs / totalMs;
+  const holdOffset = (launchMs + holdMs) / totalMs;
   let done = false;
-  let timers = [];
-  let settlePhaseActive = false;
+  let timeoutId = null;
+  let cardAnim = null;
+  let innerAnim = null;
   let liftPx = 24;
   try {
     const rect = cardEl.getBoundingClientRect();
@@ -3859,33 +3833,12 @@ function runOnlineRevealFlipAnimation(cardEl) {
     }
   } catch (_) {}
 
-  function schedule(fn, ms) {
-    const id = setTimeout(() => {
-      timers = timers.filter(t => t !== id);
-      fn();
-    }, ms);
-    timers.push(id);
-    return id;
-  }
-
-  function clearTimers() {
-    for (const id of timers) clearTimeout(id);
-    timers = [];
-  }
-
-  function handleInnerTransitionEnd(evt) {
-    if (!evt || evt.target !== inner) return;
-    if (evt.propertyName !== 'transform') return;
-    if (!settlePhaseActive) return;
-    cleanup();
-  }
-
   function cleanup() {
     if (done) return;
     done = true;
-    settlePhaseActive = false;
-    clearTimers();
-    inner.removeEventListener('transitionend', handleInnerTransitionEnd);
+    if (timeoutId) clearTimeout(timeoutId);
+    try { cardAnim?.cancel?.(); } catch (_) {}
+    try { innerAnim?.cancel?.(); } catch (_) {}
     cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-active');
     cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
     inner.style.animation = '';
@@ -3895,12 +3848,13 @@ function runOnlineRevealFlipAnimation(cardEl) {
     cardEl.style.transition = '';
     cardEl.style.transform = '';
     cardEl.style.filter = '';
-    cardEl.style.removeProperty('--og-lift-amount');
-    cardEl.style.removeProperty('--og-reveal-flip-duration');
+    cardEl.style.removeProperty('z-index');
+    cardEl.style.removeProperty('will-change');
+    inner.style.removeProperty('will-change');
     try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
   }
 
-  // Clear any left-over inline motion from previous runs before forcing a new one.
+  // Reset any inline motion before starting a fresh rigid-body animation.
   inner.style.animation = '';
   inner.style.transition = '';
   inner.style.transform = '';
@@ -3909,54 +3863,66 @@ function runOnlineRevealFlipAnimation(cardEl) {
   cardEl.style.transform = '';
   cardEl.style.filter = '';
 
-  cardEl.classList.add('og-reveal-bump');
-  cardEl.style.setProperty('--og-reveal-flip-duration', durationText);
-  cardEl.style.setProperty('--og-lift-amount', `${liftPx}px`);
-  inner.addEventListener('transitionend', handleInnerTransitionEnd);
-
-  // Base physical pose (on board, face-up).
-  cardEl.style.transition = 'none';
+  // Base pose before running keyframes.
   cardEl.style.transform = 'translateY(0px) scale(1)';
   cardEl.style.filter = 'brightness(1)';
-  inner.style.transition = 'none';
   inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0px)';
-  void cardEl.offsetWidth;
+  cardEl.classList.add('og-reveal-bump');
+  cardEl.style.setProperty('z-index', '260');
+  cardEl.style.setProperty('will-change', 'transform, filter');
+  inner.style.setProperty('will-change', 'transform');
 
-  // Phase 1: lift + flip into air.
+  // Prefer WAAPI so animation still runs when CSS transitions are disabled globally.
+  const canAnimate = (typeof cardEl.animate === 'function') && (typeof inner.animate === 'function');
+  if (canAnimate) {
+    cardAnim = cardEl.animate([
+      { offset: 0, transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
+      { offset: launchOffset, transform: `translateY(${-liftPx}px) scale(1.055)`, filter: 'brightness(1.08)' },
+      { offset: holdOffset, transform: `translateY(${-liftPx}px) scale(1.055)`, filter: 'brightness(1.08)' },
+      { offset: 1, transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
+    ], {
+      duration: totalMs,
+      easing: 'linear',
+      fill: 'forwards'
+    });
+
+    innerAnim = inner.animate([
+      { offset: 0, transform: 'rotateY(0deg) rotateX(0deg) translateZ(0px)' },
+      { offset: launchOffset, transform: 'rotateY(108deg) rotateX(15deg) translateZ(20px)' },
+      { offset: holdOffset, transform: 'rotateY(108deg) rotateX(15deg) translateZ(20px)' },
+      { offset: 1, transform: 'rotateY(180deg) rotateX(0deg) translateZ(0px)' },
+    ], {
+      duration: totalMs,
+      easing: 'linear',
+      fill: 'forwards'
+    });
+
+    innerAnim.onfinish = cleanup;
+    timeoutId = setTimeout(cleanup, totalMs + 220);
+    cardEl.__ogFlipCleanup = cleanup;
+    return;
+  }
+
+  // Fallback path for browsers without WAAPI support.
+  const liftEase = 'cubic-bezier(0.22, 0.88, 0.24, 1)';
+  const settleEase = 'cubic-bezier(0.14, 0.78, 0.2, 1)';
+  cardEl.style.transition = `transform ${launchMs}ms ${liftEase}, filter ${launchMs}ms ${liftEase}`;
+  inner.style.transition = `transform ${launchMs}ms ${liftEase}`;
   requestAnimationFrame(() => {
     if (done) return;
-    const launchEase = 'cubic-bezier(0.24, 0.88, 0.3, 1)';
-    cardEl.style.transition = `transform ${launchMs}ms ${launchEase}, filter ${launchMs}ms ${launchEase}`;
-    inner.style.transition = `transform ${launchMs}ms ${launchEase}`;
     cardEl.style.transform = `translateY(${-liftPx}px) scale(1.055)`;
     cardEl.style.filter = 'brightness(1.08)';
     inner.style.transform = 'rotateY(108deg) rotateX(15deg) translateZ(20px)';
   });
-
-  // Phase 2: hold near midpoint in air.
-  schedule(() => {
+  setTimeout(() => {
     if (done) return;
-    cardEl.style.transition = 'none';
-    inner.style.transition = 'none';
-    cardEl.style.transform = `translateY(${-liftPx}px) scale(1.055)`;
-    cardEl.style.filter = 'brightness(1.08)';
-    inner.style.transform = 'rotateY(108deg) rotateX(15deg) translateZ(20px)';
-  }, launchMs);
-
-  // Phase 3: settle down and complete to face-down.
-  schedule(() => {
-    if (done) return;
-    settlePhaseActive = true;
-    const settleEase = 'cubic-bezier(0.14, 0.78, 0.2, 1)';
     cardEl.style.transition = `transform ${settleMs}ms ${settleEase}, filter ${settleMs}ms ${settleEase}`;
     inner.style.transition = `transform ${settleMs}ms ${settleEase}`;
     cardEl.style.transform = 'translateY(0px) scale(1)';
     cardEl.style.filter = 'brightness(1)';
     inner.style.transform = 'rotateY(180deg) rotateX(0deg) translateZ(0px)';
   }, launchMs + holdMs);
-
-  // Fallback cleanup guard.
-  schedule(cleanup, totalMs + 120);
+  timeoutId = setTimeout(cleanup, totalMs + 260);
   cardEl.__ogFlipCleanup = cleanup;
 }
 
@@ -7484,23 +7450,6 @@ function renderQuickLobbyWithAI(game) {
         el.appendChild(removeBtn);
       }
 
-      // Replace the READY/NOT READY badge with AI status color
-      const badgeEl = el.querySelector('.quick-player-badge');
-      if (badgeEl) {
-        if (ai.statusColor === 'green') {
-          badgeEl.textContent = 'READY';
-          badgeEl.classList.add('ai-ready-green');
-        } else if (ai.statusColor === 'yellow') {
-          badgeEl.textContent = 'PARTIAL';
-          badgeEl.classList.add('ai-ready-yellow');
-        } else if (ai.statusColor === 'red') {
-          badgeEl.textContent = 'ERROR';
-          badgeEl.classList.add('ai-ready-red');
-        } else {
-          badgeEl.textContent = 'CHECKING';
-          badgeEl.classList.add('ai-ready-none');
-        }
-      }
     });
   }
 }
