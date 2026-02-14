@@ -20234,11 +20234,11 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-in
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-front {
-  animation: ogConfirmFrontVisibility var(--card-confirm-duration) linear both;
+  animation: ogConfirmFrontVisibility var(--card-confirm-duration) steps(1, end) both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back {
-  animation: ogConfirmBackVisibility var(--card-confirm-duration) linear both;
+  animation: ogConfirmBackVisibility var(--card-confirm-duration) steps(1, end) both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back .card-word {
@@ -20314,19 +20314,23 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
 }
 
 @keyframes ogConfirmFrontVisibility {
-  0%, 44% {
+  0%, 38% {
+    opacity: 1;
     visibility: visible;
   }
-  45%, 100% {
+  39%, 100% {
+    opacity: 0;
     visibility: hidden;
   }
 }
 
 @keyframes ogConfirmBackVisibility {
-  0%, 44% {
+  0%, 38% {
+    opacity: 0;
     visibility: hidden;
   }
-  45%, 100% {
+  39%, 100% {
+    opacity: 1;
     visibility: visible;
   }
 }
