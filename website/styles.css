@@ -20235,6 +20235,22 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-in
   transform: rotateY(0deg);
 }
 
+/* OG shell layers are drawn on .game-card (not .card-inner), so flip them with
+   the same Y timeline to keep the frame/plate visually attached to the card face. */
+body.og-mode .game-card.confirm-animate:not(.revealed) {
+  background: transparent;
+  border-color: transparent;
+}
+
+body.og-mode .game-card.confirm-animate:not(.revealed)::before,
+body.og-mode .game-card.confirm-animate:not(.revealed)::after {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  animation: ogConfirmInnerFlip var(--card-confirm-duration) cubic-bezier(0.2, 0.94, 0.2, 1) both;
+}
+
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back .card-word {
   opacity: 0 !important;
   visibility: hidden;
