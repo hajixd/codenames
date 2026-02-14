@@ -57,7 +57,22 @@ const OG_REVEAL_FLIP_SETTLE_MS = 1560;       // Return/settle segment duration.
 const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 220;
 const OG_REVEAL_STAGGER_MS = 90;
 const FORCED_REVEAL_ANIMATION_TTL_MS = 10000;
-const _forcedRevealAnimations = new Map(); // index -> expiresAt (ms)
+const _forcedRevealAnimations = new Map(); // index -> { expiresAt, retriesLeft }
+
+function normalizeForcedRevealEntry(rawEntry) {
+  if (typeof rawEntry === 'number') {
+    // Backward-compatible with older map values.
+    return { expiresAt: rawEntry, retriesLeft: 0 };
+  }
+  if (!rawEntry || typeof rawEntry !== 'object') return null;
+  const expiresAt = Number(rawEntry.expiresAt);
+  const retriesLeftRaw = Number(rawEntry.retriesLeft);
+  if (!Number.isFinite(expiresAt)) return null;
+  return {
+    expiresAt,
+    retriesLeft: Number.isFinite(retriesLeftRaw) ? Math.max(0, Math.floor(retriesLeftRaw)) : 0
+  };
+}
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -755,7 +770,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const userName = (getUserName() || u.displayName || 'Player').trim();
   if (!userName) throw new Error('Set a name first.');
 
-  const size = Math.max(2, Math.min(3, parseInt(opts.size, 10) || 2)); // 2 or 3
+  const size = Math.max(2, Math.min(4, parseInt(opts.size, 10) || 2)); // 2, 3, or 4
   const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
   const vibe = String(opts.vibe || '').trim();
   const deckId = normalizeDeckId(opts.deckId || 'standard');
@@ -784,7 +799,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     isAI: false,
   };
 
-  const needOps = (size === 2) ? 1 : 2;
+  const needOps = Math.max(1, size - 1);
 
   if (human.role === 'spymaster') {
     // You are red spymaster
@@ -2590,6 +2605,7 @@ const renderTeamList = (players) => {
   if (!players.length) return '<div class="quick-empty">No one yet</div>';
   return players.map(p => {
     const isYou = p.odId === odId;
+    const ready = !!p.ready;
     const playerId = p.odId || '';
     const isAI = !!p.isAI;
 
@@ -2619,8 +2635,9 @@ const renderTeamList = (players) => {
       : '';
 
     return `
-      <div class="quick-player ${isAI ? 'is-ai' : ''}">
+      <div class="quick-player ${ready ? 'ready' : ''} ${isAI ? 'is-ai' : ''}">
         <span class="${nameClass}" ${nameAttrs}>${escapeHtml(displayPlayerName(p))}${isYou ? ' <span class="quick-you">(you)</span>' : ''}</span>
+        <span class="quick-player-badge">${ready ? 'READY' : 'NOT READY'}</span>
         ${removeBtn}
       </div>
     `;
@@ -3539,19 +3556,28 @@ function startGameListener(gameId, options = {}) {
     // still animate the card the user just confirmed once it becomes revealed.
     if (Array.isArray(currentGame.cards) && _forcedRevealAnimations.size > 0) {
       const nowMs = Date.now();
-      for (const [forcedIdxRaw, expiresAt] of _forcedRevealAnimations.entries()) {
+      for (const [forcedIdxRaw, forcedEntryRaw] of _forcedRevealAnimations.entries()) {
         const forcedIdx = Number(forcedIdxRaw);
+        const forcedEntry = normalizeForcedRevealEntry(forcedEntryRaw);
         if (!Number.isInteger(forcedIdx) || forcedIdx < 0 || forcedIdx >= currentGame.cards.length) {
           _forcedRevealAnimations.delete(forcedIdxRaw);
           continue;
         }
-        if (!Number.isFinite(expiresAt) || expiresAt < nowMs) {
+        if (!forcedEntry || forcedEntry.expiresAt < nowMs) {
           _forcedRevealAnimations.delete(forcedIdxRaw);
           continue;
         }
         if (currentGame.cards[forcedIdx]?.revealed) {
           if (!freshReveals.includes(forcedIdx)) freshReveals.push(forcedIdx);
-          _forcedRevealAnimations.delete(forcedIdxRaw);
+          if (forcedEntry.retriesLeft > 0) {
+            forcedEntry.retriesLeft -= 1;
+            // Keep a short retry window to survive immediate ack snapshots
+            // that can replace DOM right after the first animation starts.
+            forcedEntry.expiresAt = Math.min(forcedEntry.expiresAt, nowMs + 1400);
+            _forcedRevealAnimations.set(forcedIdxRaw, forcedEntry);
+          } else {
+            _forcedRevealAnimations.delete(forcedIdxRaw);
+          }
         }
       }
     }
@@ -3619,7 +3645,7 @@ function startGameListener(gameId, options = {}) {
 
             // Codenames Online: one-shot physical reveal flip.
             // - Card starts face-up (front at 0deg).
-            // - On reveal, it flips to face-down/back (180deg) over 4 seconds.
+            // - On reveal, it flips to face-down/back (180deg) over 5 seconds.
             // We drive this in JS so each revealed card flips with deterministic timing.
             if (isOgMode) runOnlineRevealFlipAnimation(cardEl);
             let cleaned = false;
@@ -3806,14 +3832,14 @@ function runOnlineRevealFlipAnimation(cardEl) {
   const inner = cardEl?.querySelector?.('.card-inner');
   if (!cardEl || !inner) return;
 
-  // Physical one-shot reveal (rebuilt from scratch):
-  // - The whole card rises off the board
-  // - It flips as one rigid body (front/back stay attached)
-  // - It settles back in the same slot face-down (180deg)
+  // Physical one-shot reveal from scratch:
+  // - entire card lifts as one rigid object
+  // - front/back stay attached while flipping in the air
+  // - card settles back to its slot face-down
   try {
     if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
   } catch (_) {}
-  cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'og-reveal-flip-js', 'flip-glow', 'og-reveal-bump');
+  cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'flip-glow');
 
   const totalMs = OG_REVEAL_FLIP_DURATION_MS;
   const holdMs = Math.max(300, Math.min(totalMs - 1300, OG_REVEAL_FLIP_HOLD_MS));
@@ -3821,10 +3847,6 @@ function runOnlineRevealFlipAnimation(cardEl) {
   const launchMs = Math.max(700, totalMs - holdMs - settleMs);
   const launchOffset = launchMs / totalMs;
   const holdOffset = (launchMs + holdMs) / totalMs;
-  let done = false;
-  let timeoutId = null;
-  let cardAnim = null;
-  let innerAnim = null;
   let liftPx = 24;
   try {
     const rect = cardEl.getBoundingClientRect();
@@ -3833,14 +3855,22 @@ function runOnlineRevealFlipAnimation(cardEl) {
     }
   } catch (_) {}
 
+  let done = false;
+  let rafId = null;
+  let startTs = null;
+  let timeoutId = null;
+
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+  const easeInOutCubic = (t) => (t < 0.5)
+    ? (4 * t * t * t)
+    : (1 - Math.pow(-2 * t + 2, 3) / 2);
+
   function cleanup() {
     if (done) return;
     done = true;
+    if (rafId) cancelAnimationFrame(rafId);
     if (timeoutId) clearTimeout(timeoutId);
-    try { cardAnim?.cancel?.(); } catch (_) {}
-    try { innerAnim?.cancel?.(); } catch (_) {}
-    cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-active');
-    cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
+    cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-js');
     inner.style.animation = '';
     inner.style.transition = '';
     inner.style.transform = '';
@@ -3854,76 +3884,67 @@ function runOnlineRevealFlipAnimation(cardEl) {
     try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
   }
 
-  // Reset any inline motion before starting a fresh rigid-body animation.
-  inner.style.animation = '';
-  inner.style.transition = '';
-  inner.style.transform = '';
-  cardEl.style.animation = '';
-  cardEl.style.transition = '';
-  cardEl.style.transform = '';
-  cardEl.style.filter = '';
-
-  // Base pose before running keyframes.
-  cardEl.style.transform = 'translateY(0px) scale(1)';
-  cardEl.style.filter = 'brightness(1)';
-  inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0px)';
-  cardEl.classList.add('og-reveal-bump');
+  // Freeze old transitions/animations so only this rigid-body motion drives the reveal.
+  cardEl.classList.add('og-reveal-bump', 'og-reveal-flip-js');
   cardEl.style.setProperty('z-index', '260');
   cardEl.style.setProperty('will-change', 'transform, filter');
   inner.style.setProperty('will-change', 'transform');
+  cardEl.style.animation = 'none';
+  inner.style.animation = 'none';
+  cardEl.style.transition = 'none';
+  inner.style.transition = 'none';
+  cardEl.style.transform = 'translate3d(0, 0, 0) scale(1)';
+  cardEl.style.filter = 'brightness(1)';
+  inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0px)';
 
-  // Prefer WAAPI so animation still runs when CSS transitions are disabled globally.
-  const canAnimate = (typeof cardEl.animate === 'function') && (typeof inner.animate === 'function');
-  if (canAnimate) {
-    cardAnim = cardEl.animate([
-      { offset: 0, transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
-      { offset: launchOffset, transform: `translateY(${-liftPx}px) scale(1.055)`, filter: 'brightness(1.08)' },
-      { offset: holdOffset, transform: `translateY(${-liftPx}px) scale(1.055)`, filter: 'brightness(1.08)' },
-      { offset: 1, transform: 'translateY(0px) scale(1)', filter: 'brightness(1)' },
-    ], {
-      duration: totalMs,
-      easing: 'linear',
-      fill: 'forwards'
-    });
+  function applyPose(normT) {
+    const t = Math.max(0, Math.min(1, normT));
+    let liftProgress = 0;
+    let turnDeg = 0;
+    let pitchDeg = 0;
 
-    innerAnim = inner.animate([
-      { offset: 0, transform: 'rotateY(0deg) rotateX(0deg) translateZ(0px)' },
-      { offset: launchOffset, transform: 'rotateY(108deg) rotateX(15deg) translateZ(20px)' },
-      { offset: holdOffset, transform: 'rotateY(108deg) rotateX(15deg) translateZ(20px)' },
-      { offset: 1, transform: 'rotateY(180deg) rotateX(0deg) translateZ(0px)' },
-    ], {
-      duration: totalMs,
-      easing: 'linear',
-      fill: 'forwards'
-    });
+    if (t < launchOffset) {
+      const p = easeOutCubic(t / Math.max(0.0001, launchOffset));
+      liftProgress = p;
+      turnDeg = 108 * p;
+      pitchDeg = 15 * p;
+    } else if (t < holdOffset) {
+      liftProgress = 1;
+      turnDeg = 108;
+      pitchDeg = 15;
+    } else {
+      const p = easeInOutCubic((t - holdOffset) / Math.max(0.0001, 1 - holdOffset));
+      liftProgress = 1 - p;
+      turnDeg = 108 + (72 * p);
+      pitchDeg = 15 * (1 - p);
+    }
 
-    innerAnim.onfinish = cleanup;
-    timeoutId = setTimeout(cleanup, totalMs + 220);
-    cardEl.__ogFlipCleanup = cleanup;
-    return;
+    const y = -liftPx * liftProgress;
+    const scale = 1 + (0.055 * liftProgress);
+    const bright = 1 + (0.08 * liftProgress);
+    const depth = 20 * liftProgress;
+
+    cardEl.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+    cardEl.style.filter = `brightness(${bright.toFixed(4)})`;
+    inner.style.transform = `rotateY(${turnDeg.toFixed(3)}deg) rotateX(${pitchDeg.toFixed(3)}deg) translateZ(${depth.toFixed(3)}px)`;
   }
 
-  // Fallback path for browsers without WAAPI support.
-  const liftEase = 'cubic-bezier(0.22, 0.88, 0.24, 1)';
-  const settleEase = 'cubic-bezier(0.14, 0.78, 0.2, 1)';
-  cardEl.style.transition = `transform ${launchMs}ms ${liftEase}, filter ${launchMs}ms ${liftEase}`;
-  inner.style.transition = `transform ${launchMs}ms ${liftEase}`;
-  requestAnimationFrame(() => {
+  function tick(ts) {
     if (done) return;
-    cardEl.style.transform = `translateY(${-liftPx}px) scale(1.055)`;
-    cardEl.style.filter = 'brightness(1.08)';
-    inner.style.transform = 'rotateY(108deg) rotateX(15deg) translateZ(20px)';
-  });
-  setTimeout(() => {
-    if (done) return;
-    cardEl.style.transition = `transform ${settleMs}ms ${settleEase}, filter ${settleMs}ms ${settleEase}`;
-    inner.style.transition = `transform ${settleMs}ms ${settleEase}`;
-    cardEl.style.transform = 'translateY(0px) scale(1)';
-    cardEl.style.filter = 'brightness(1)';
-    inner.style.transform = 'rotateY(180deg) rotateX(0deg) translateZ(0px)';
-  }, launchMs + holdMs);
-  timeoutId = setTimeout(cleanup, totalMs + 260);
+    if (startTs === null) startTs = ts;
+    const elapsed = ts - startTs;
+    const normT = elapsed / totalMs;
+    applyPose(normT);
+    if (normT < 1) {
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+    cleanup();
+  }
+
+  timeoutId = setTimeout(cleanup, totalMs + 250);
   cardEl.__ogFlipCleanup = cleanup;
+  rafId = requestAnimationFrame(tick);
 }
 
 
@@ -4275,6 +4296,8 @@ function renderBoard(isSpymaster) {
   if (!boardEl || !currentGame?.cards) return;
   setupBoardCardInteractions();
   const isOgMode = isOnlineStyleActive();
+  const boardWordFitKey = currentGame.cards.map((c) => `${String(c?.word || '')}:${c?.revealed ? 1 : 0}`).join('|');
+  const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
 
   // If the peeked card is no longer revealed (new board / reset), clear stale state.
   if (revealedPeekCardIndex !== null && revealedPeekCardIndex !== undefined) {
@@ -4393,14 +4416,24 @@ function renderBoard(isSpymaster) {
     `;
   }).join('');
 
-  // Fit words into their label boxes
-  scheduleFitCardWords();
+  // Fit words only when board/reveal state or viewport changed.
+  const shouldRefitWords =
+    boardWordFitKey !== _lastWordFitBoardKey ||
+    boardWordFitViewportKey !== _lastWordFitViewportKey;
+  if (shouldRefitWords) {
+    _lastWordFitBoardKey = boardWordFitKey;
+    _lastWordFitViewportKey = boardWordFitViewportKey;
+    scheduleFitCardWords();
+  }
 
   // Tags removed – no longer rendering card tags
 }
 
 
 // --- Card word fitting (prevents overflow and reduces eye strain) ---
+let _lastWordFitBoardKey = '';
+let _lastWordFitViewportKey = '';
+
 function fitAllCardWords() {
   const containers = document.querySelectorAll('.game-card .card-word');
   containers.forEach(container => {
@@ -4462,7 +4495,10 @@ function scheduleFitCardWords() {
   });
 }
 
-window.addEventListener('resize', scheduleFitCardWords);
+window.addEventListener('resize', () => {
+  _lastWordFitViewportKey = '';
+  scheduleFitCardWords();
+});
 
 // Fonts can load after the board renders, changing text metrics.
 // Re-fit once fonts are ready to prevent overflow (especially in OG mode).
@@ -5046,9 +5082,13 @@ async function handleCardClick(cardIndex) {
     try {
       await db.collection('games').doc(currentGame.id).update(updates);
 
-      // Append to clue history (guess order + outcome)
+      // Append to clue history after the reveal animation window so we don't
+      // trigger an immediate board re-render that can visually cancel the flip.
       if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
-        await addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult);
+        setTimeout(() => {
+          addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult)
+            .catch((e) => console.warn('Delayed clue-history append failed (best-effort):', e));
+        }, OG_REVEAL_FLIP_DURATION_MS + 120);
       }
     } catch (e) {
       console.error('Failed to reveal card:', e);
@@ -7225,7 +7265,10 @@ async function handleCardConfirm(evt, cardIndex) {
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   cardEl?.classList.add('confirming-guess');
-  _forcedRevealAnimations.set(idx, Date.now() + FORCED_REVEAL_ANIMATION_TTL_MS);
+  _forcedRevealAnimations.set(idx, {
+    expiresAt: Date.now() + FORCED_REVEAL_ANIMATION_TTL_MS,
+    retriesLeft: 1
+  });
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 7000);
 
   try {
@@ -7448,6 +7491,21 @@ function renderQuickLobbyWithAI(game) {
           removeAIPlayer(ai.id);
         };
         el.appendChild(removeBtn);
+      }
+
+      // Keep the READY/NOT READY badge and tint it by AI health.
+      const badgeEl = el.querySelector('.quick-player-badge');
+      if (badgeEl) {
+        badgeEl.classList.remove('ai-ready-green', 'ai-ready-yellow', 'ai-ready-red', 'ai-ready-none');
+        if (ai.statusColor === 'green') {
+          badgeEl.classList.add('ai-ready-green');
+        } else if (ai.statusColor === 'yellow') {
+          badgeEl.classList.add('ai-ready-yellow');
+        } else if (ai.statusColor === 'red') {
+          badgeEl.classList.add('ai-ready-red');
+        } else {
+          badgeEl.classList.add('ai-ready-none');
+        }
       }
 
     });

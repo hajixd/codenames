@@ -225,6 +225,12 @@
               <div class="mode-card-desc">Jump into a casual live game.</div>
             </button>
 
+            <button class="mode-card" id="launch-practice" type="button">
+              <div class="mode-card-icon">🤖</div>
+              <div class="mode-card-title">Practice</div>
+              <div class="mode-card-desc">Pick a vibe, pick a role, scrim with AIs.</div>
+            </button>
+
             <button class="mode-card" id="launch-tournament" type="button">
               <div class="mode-card-icon">👥</div>
               <div class="mode-card-title">Teams</div>
@@ -235,12 +241,6 @@
               <div class="mode-card-icon">🗂️</div>
               <div class="mode-card-title">Brackets</div>
               <div class="mode-card-desc">Browse all teams and standings.</div>
-            </button>
-
-            <button class="mode-card" id="launch-practice" type="button">
-              <div class="mode-card-icon">🤖</div>
-              <div class="mode-card-title">Practice</div>
-              <div class="mode-card-desc">Pick a vibe, pick a role, scrim with AIs.</div>
             </button>
             </div>
         </div>
@@ -430,6 +430,11 @@
                     <div class="mode-card-icon">3️⃣</div>
                     <div class="mode-card-title">3v3</div>
                     <div class="mode-card-desc">Two teammates AIs + two opponent AIs.</div>
+                  </button>
+                  <button class="mode-card practice-choice" type="button" data-practice-size="4">
+                    <div class="mode-card-icon">4️⃣</div>
+                    <div class="mode-card-title">4v4</div>
+                    <div class="mode-card-desc">Three teammate AIs + three opponent AIs.</div>
                   </button>
                 </div>
               </div>
@@ -1141,6 +1146,7 @@
                 <select class="input setting-select" id="practice-size">
                   <option value="2" selected>2v2</option>
                   <option value="3">3v3</option>
+                  <option value="4">4v4</option>
                 </select>
               </label>
 

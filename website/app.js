@@ -3775,12 +3775,28 @@ function renderBracketMatchCard(m, opts = {}) {
   const match = m || { id: '', label: 'Match', round: '', bestOf: 3, slots: [null, null] };
   const a = match.slots?.[0] || null;
   const b = match.slots?.[1] || null;
+  const aId = (a && a.kind === 'team' && a.id) ? String(a.id) : '';
+  const bId = (b && b.kind === 'team' && b.id) ? String(b.id) : '';
+  const aName = (a && a.kind === 'team')
+    ? String(a.fullName || a.name || 'TBD')
+    : String(a?.name || 'TBD');
+  const bName = (b && b.kind === 'team')
+    ? String(b.fullName || b.name || 'TBD')
+    : String(b?.name || 'TBD');
+  const aSeed = (a && a.kind === 'team' && Number.isFinite(Number(a.seed))) ? String(a.seed) : '';
+  const bSeed = (b && b.kind === 'team' && Number.isFinite(Number(b.seed))) ? String(b.seed) : '';
   const attrs = [
     `data-brx-match-id="${esc(match.id || '')}"`,
     `data-brx-round="${esc(match.round || '')}"`,
     `data-brx-bestof="${esc(String(match.bestOf || 3))}"`,
     `data-brx-a="${esc(bracketSlotLabel(a))}"`,
     `data-brx-b="${esc(bracketSlotLabel(b))}"`,
+    `data-brx-a-id="${esc(aId)}"`,
+    `data-brx-b-id="${esc(bId)}"`,
+    `data-brx-a-name="${esc(aName)}"`,
+    `data-brx-b-name="${esc(bName)}"`,
+    `data-brx-a-seed="${esc(aSeed)}"`,
+    `data-brx-b-seed="${esc(bSeed)}"`,
   ];
 
   return `
@@ -3867,8 +3883,12 @@ function renderBrackets(teams) {
         matchId: el.getAttribute('data-brx-match-id') || '',
         round: el.getAttribute('data-brx-round') || '',
         bestOf: el.getAttribute('data-brx-bestof') || '3',
-        aName: el.getAttribute('data-brx-a') || 'TBD',
-        bName: el.getAttribute('data-brx-b') || 'TBD',
+        aName: el.getAttribute('data-brx-a-name') || el.getAttribute('data-brx-a') || 'TBD',
+        bName: el.getAttribute('data-brx-b-name') || el.getAttribute('data-brx-b') || 'TBD',
+        aTeamId: el.getAttribute('data-brx-a-id') || '',
+        bTeamId: el.getAttribute('data-brx-b-id') || '',
+        aSeed: el.getAttribute('data-brx-a-seed') || '',
+        bSeed: el.getAttribute('data-brx-b-seed') || '',
       });
     };
     el.addEventListener('click', open);
@@ -3913,7 +3933,43 @@ function closeBracketMatchPopup() {
   if (_bracketsPopupEl) _bracketsPopupEl.style.display = 'none';
 }
 
-function showBracketMatchPopup({ matchId, round, bestOf, aName, bName }) {
+function getBracketPopupTeam(teamId, fallbackName, fallbackSeed = '') {
+  const tid = String(teamId || '').trim();
+  const seedText = String(fallbackSeed || '').trim();
+  const fallback = String(fallbackName || 'TBD').trim() || 'TBD';
+  const fallbackData = { id: tid, name: fallback, seed: seedText, color: '', players: [] };
+  if (!tid) return fallbackData;
+
+  const team = (teamsCache || []).find(t => String(t?.id || '').trim() === tid && !t?.archived);
+  if (!team) return fallbackData;
+
+  const members = getMembers(team);
+  const players = members
+    .map((m, i) => {
+      const accountId = entryAccountId(m);
+      const byMember = String(m?.name || '').trim();
+      const byKnown = accountId ? String(findKnownUserName(accountId) || '').trim() : '';
+      const name = byMember || byKnown || `Player ${i + 1}`;
+      return name;
+    })
+    .filter(Boolean);
+
+  return {
+    id: tid,
+    name: String(team.teamName || fallback).trim() || fallback,
+    seed: seedText,
+    color: getDisplayTeamColor(team) || '',
+    players
+  };
+}
+
+function renderBracketPopupRosterItems(players) {
+  const list = Array.isArray(players) ? players : [];
+  if (!list.length) return '<li class="is-empty">Roster TBD</li>';
+  return list.map((name) => `<li>${esc(name)}</li>`).join('');
+}
+
+function showBracketMatchPopup({ matchId, round, bestOf, aName, bName, aTeamId, bTeamId, aSeed, bSeed }) {
   try {
     closeBracketMatchPopup();
 
@@ -3924,17 +3980,40 @@ function showBracketMatchPopup({ matchId, round, bestOf, aName, bName }) {
       document.body.appendChild(_bracketsPopupEl);
     }
 
-    const title = `${String(aName || 'TBD')} vs ${String(bName || 'TBD')}`;
+    const sideA = getBracketPopupTeam(aTeamId, aName, aSeed);
+    const sideB = getBracketPopupTeam(bTeamId, bName, bSeed);
+    const roundLabel = String(round || 'Match').trim() || 'Match';
+    const bo = String(bestOf || '3').trim() || '3';
+    const idLabel = String(matchId || '').trim() || '—';
+    const aDisplay = sideA.seed ? `#${sideA.seed} ${sideA.name}` : sideA.name;
+    const bDisplay = sideB.seed ? `#${sideB.seed} ${sideB.name}` : sideB.name;
+
     _bracketsPopupEl.innerHTML = `
       <div class="brx-pop-card" role="dialog" aria-modal="true" aria-label="Bracket match details">
         <div class="brx-pop-top">
-          <div class="brx-pop-title">${esc(title)}</div>
+          <div class="brx-pop-kicker">Game Day Matchup</div>
           <button class="icon-btn small" type="button" data-brx-pop-close aria-label="Close">✕</button>
         </div>
-        <div class="brx-pop-meta">
-          <div><span>Round</span><strong>${esc(round || 'Match')}</strong></div>
-          <div><span>Best Of</span><strong>${esc(String(bestOf || 3))}</strong></div>
-          <div><span>Match ID</span><strong class="mono">${esc(matchId || '')}</strong></div>
+        <div class="brx-pop-title">${esc(aDisplay)} <span class="brx-pop-vs">vs</span> ${esc(bDisplay)}</div>
+        <div class="brx-pop-subline">
+          <span>${esc(roundLabel)}</span>
+          <span>BO${esc(bo)}</span>
+          <span class="mono">${esc(idLabel)}</span>
+        </div>
+        <div class="brx-pop-lineup">
+          <section class="brx-pop-team" style="${sideA.color ? `--brx-team-accent:${esc(sideA.color)};` : ''}">
+            <div class="brx-pop-team-name">${esc(aDisplay)}</div>
+            <ol class="brx-pop-roster">
+              ${renderBracketPopupRosterItems(sideA.players)}
+            </ol>
+          </section>
+          <div class="brx-pop-lineup-vs">VS</div>
+          <section class="brx-pop-team" style="${sideB.color ? `--brx-team-accent:${esc(sideB.color)};` : ''}">
+            <div class="brx-pop-team-name">${esc(bDisplay)}</div>
+            <ol class="brx-pop-roster">
+              ${renderBracketPopupRosterItems(sideB.players)}
+            </ol>
+          </section>
         </div>
       </div>
     `;
@@ -6664,7 +6743,6 @@ function initSettings() {
   // Apply initial state
   applyStyleModeSetting();
   applyAnimationsSetting();
-  applyStyleModeSetting();
 
   // Get UI elements
   const gearBtn = document.getElementById('settings-gear-btn');
@@ -10874,7 +10952,7 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   if (typeof createFn !== 'function') throw new Error('Practice not available');
 
   const sizeNum = parseInt(opts?.size, 10);
-  const size = (sizeNum === 3) ? 3 : 2;
+  const size = (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
   const role = String(opts?.role || 'operative');
   const vibe = String(opts?.vibe || '').trim();
   const deckId = String(opts?.deckId || 'standard');
@@ -10928,7 +11006,7 @@ function initPracticePage() {
   sizeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const n = parseInt(btn.getAttribute('data-practice-size') || '0', 10);
-      state.size = (n === 2 || n === 3) ? n : null;
+      state.size = (n === 2 || n === 3 || n === 4) ? n : null;
       setSelected(sizeBtns, btn);
       refresh();
       try { vibeInput?.focus?.(); } catch (_) {}

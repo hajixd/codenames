@@ -4347,7 +4347,7 @@ body.light-mode .chat-meta{ color: var(--text); }
   /* Make player rows slightly tighter on phones */
   body.quickplay .quick-player{ padding: 8px 9px; border-radius: 12px; }
   body.quickplay .quick-player-name{ font-size: 12px; }
-  body.quickplay .quick-player-badge{ font-size: 10px; padding: 3px 7px; }
+  body.quickplay .quick-player-badge{ font-size: 9px; letter-spacing: 0.55px; padding: 2px 6px; }
 
   /* Let the lists scroll internally if needed; keep the overall lobby fixed. */
   body.quickplay .quick-team-list{
@@ -4429,6 +4429,15 @@ body.quickplay .main-content {
 
 /* Quick Play also hides the tab bar */
 body.quickplay .app{ --tabs-h: 0px; }
+
+/* Practice mode: hide primary tabs (desktop + mobile), including bottom tabs. */
+body.practice .desktop-tabs,
+body.practice .mobile-tabs {
+  display: none !important;
+}
+body.practice .app{
+  --tabs-h: 0px;
+}
 
 /* Auth screen (sign in / create account) */
 .auth-screen{
@@ -4802,9 +4811,11 @@ body.light-mode .auth-card{
 
 @media (max-width: 640px){
   .launch-card{ padding: 0; }
-  .launch-mode-row{ grid-template-columns: 1fr; }
-  .launch-screen .mode-card{ min-height: 140px; padding: 22px 18px; }
-  .launch-screen .mode-card-icon{ font-size: 44px; }
+  .launch-mode-row{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .launch-screen .mode-card{ min-height: 126px; padding: 16px 12px; }
+  .launch-screen .mode-card-icon{ font-size: 34px; }
+  .launch-screen .mode-card-title{ font-size: 15px; }
+  .launch-screen .mode-card-desc{ font-size: 11px; }
   .launch-h1{ font-size: 28px; }
 }
 
@@ -18994,7 +19005,8 @@ body.light-mode .practice-choice.is-selected {
 
 @media (max-width: 720px) {
   .launch-mode-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 
@@ -20797,6 +20809,12 @@ body.cozy-mode .clue-form-expanded .btn.primary.clue-submit-check::after {
 }
 
 /* JS-driven reveal flip takes precedence over older CSS animation blocks. */
+body.og-mode .game-card.og-reveal-flip-js {
+  animation: none !important;
+  transition: none !important;
+  transform-style: preserve-3d;
+}
+
 body.og-mode .game-card.og-reveal-flip-js .card-inner {
   animation: none !important;
   transition: none !important;
@@ -21491,5 +21509,338 @@ body.og-mode .game-card.og-reveal-flip-active .card-back {
   }
   100% {
     transform: rotateY(180deg) rotateX(0deg) translateZ(0px);
+  }
+}
+
+/* ==================== Bracket Compact Pass ==================== */
+#panel-brackets .panel-inner{
+  max-width: min(980px, 100%);
+  padding: clamp(14px, 1.8vw, 22px);
+}
+
+#brackets-board .brx-shell{
+  border-radius: 14px;
+  padding: 10px 10px 12px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+}
+
+#brackets-board .brx-status{
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+#brackets-board .brx-grid{
+  grid-template-columns: minmax(230px, 1.08fr) minmax(205px, 0.96fr) minmax(188px, 0.84fr);
+  gap: 10px;
+  min-width: 700px;
+}
+
+#brackets-board .brx-round{
+  border-radius: 12px;
+  padding: 8px;
+}
+
+#brackets-board .brx-round-title{
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  margin-bottom: 7px;
+}
+
+#brackets-board .brx-match-stack{
+  gap: 7px;
+}
+
+#brackets-board .brx-round-sf .brx-match:first-child{ margin-bottom: 24px; }
+#brackets-board .brx-round-f .brx-match.is-final{ margin-top: 44px; }
+
+#brackets-board .brx-match{
+  border-radius: 10px;
+  padding: 7px;
+}
+
+#brackets-board .brx-match-head{
+  margin-bottom: 5px;
+}
+
+#brackets-board .brx-match-title{
+  font-size: 10px;
+  letter-spacing: 0.65px;
+}
+
+#brackets-board .brx-match-badge{
+  min-width: 40px;
+  padding: 2px 6px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+}
+
+#brackets-board .brx-match-slots{
+  gap: 6px;
+}
+
+#brackets-board .brx-slot{
+  min-height: 34px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  gap: 7px;
+}
+
+#brackets-board .brx-slot-seed,
+#brackets-board .brx-slot-meta{
+  font-size: 10px;
+}
+
+#brackets-board .brx-slot-name{
+  font-size: 12px;
+}
+
+#brackets-board .brx-slot.is-team{
+  padding-left: 12px;
+}
+
+#brackets-board .brx-slot.is-team::before{
+  left: 6px;
+  top: 7px;
+  bottom: 7px;
+}
+
+#brackets-board .brx-slot-you{
+  top: -6px;
+  font-size: 9px;
+  padding: 1px 6px;
+}
+
+#brackets-board .brx-champion{
+  margin-top: 8px;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+#brackets-board .brx-champion-label{
+  font-size: 9px;
+}
+
+#brackets-board .brx-champion-value{
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.brx-pop-card{
+  width: min(430px, 100%);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.brx-pop-title{
+  font-size: 15px;
+}
+
+.brx-pop-meta{
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.brx-pop-meta > div{
+  border-radius: 10px;
+  padding: 7px;
+}
+
+.brx-pop-meta strong{
+  font-size: 12px;
+}
+
+@media (max-width: 720px){
+  #panel-brackets .panel-inner{
+    padding: 12px;
+  }
+
+  #brackets-board .brx-shell{
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  #brackets-board .brx-grid{
+    min-width: 640px;
+    grid-template-columns: minmax(214px, 1.08fr) minmax(186px, 0.94fr) minmax(166px, 0.82fr);
+    gap: 8px;
+  }
+
+  #brackets-board .brx-round{
+    padding: 7px;
+  }
+
+  #brackets-board .brx-round-sf .brx-match:first-child{ margin-bottom: 20px; }
+  #brackets-board .brx-round-f .brx-match.is-final{ margin-top: 36px; }
+}
+
+/* Brackets match popup: fully opaque, centered, game-day detail layout. */
+.brx-popup{
+  background: rgba(6, 10, 18, 0.84) !important;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+body.light-mode .brx-popup{
+  background: rgba(24, 34, 48, 0.70) !important;
+}
+
+.brx-pop-card{
+  width: min(760px, calc(100vw - 24px));
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, #222a35 0%, #171d26 100%) !important;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.58);
+  padding: 14px 16px 16px;
+}
+
+body.light-mode .brx-pop-card{
+  border-color: rgba(18, 34, 56, 0.20);
+  background: linear-gradient(180deg, #f8fbff 0%, #edf3fb 100%) !important;
+}
+
+.brx-pop-top{
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.brx-pop-kicker{
+  font-size: 11px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  font-weight: 900;
+  color: var(--text-dim);
+}
+
+.brx-pop-title{
+  text-align: center;
+  font-size: clamp(18px, 2.6vw, 28px);
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+
+.brx-pop-vs{
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 0.82em;
+  color: var(--text-dim);
+}
+
+.brx-pop-subline{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.brx-pop-subline span{
+  display: inline-flex;
+  align-items: center;
+}
+
+.brx-pop-subline span:not(:last-child)::after{
+  content: "•";
+  margin-left: 10px;
+  color: color-mix(in srgb, var(--text-dim) 70%, transparent);
+}
+
+.brx-pop-lineup{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.brx-pop-lineup-vs{
+  align-self: center;
+  justify-self: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--surface2) 84%, transparent 16%);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brx-pop-team{
+  --brx-team-accent: color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brx-team-accent) 58%, var(--border-soft));
+  background: color-mix(in srgb, var(--surface2) 92%, transparent 8%);
+  padding: 10px 11px;
+}
+
+.brx-pop-team-name{
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.brx-pop-roster{
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.brx-pop-roster li{
+  border-radius: 9px;
+  border: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--surface) 88%, transparent 12%);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: left;
+}
+
+.brx-pop-roster li.is-empty{
+  font-style: italic;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+@media (max-width: 720px){
+  .brx-pop-card{
+    width: min(560px, calc(100vw - 20px));
+    padding: 12px;
+  }
+
+  .brx-pop-title{
+    font-size: 20px;
+  }
+
+  .brx-pop-subline{
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .brx-pop-subline span:not(:last-child)::after{
+    margin-left: 8px;
+  }
+
+  .brx-pop-lineup{
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .brx-pop-lineup-vs{
+    width: 36px;
+    height: 36px;
+    font-size: 10px;
   }
 }
