@@ -20141,7 +20141,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   --card-reveal-duration: 1180ms;
   --card-select-duration: 360ms;
   --card-confirm-duration: 1850ms;
-  --card-confirm-ease: cubic-bezier(0.22, 0.86, 0.24, 1);
+  --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -20151,7 +20151,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
     --card-reveal-duration: 1180ms;
     --card-select-duration: 360ms;
     --card-confirm-duration: 1850ms;
-    --card-confirm-ease: cubic-bezier(0.22, 0.86, 0.24, 1);
+    --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   }
 }
 
@@ -20305,18 +20305,22 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-red .card-back::after {
+  content: "RED";
   color: #6f2a22;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-blue .card-back::after {
+  content: "BLUE";
   color: #24486a;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-neutral .card-back::after {
+  content: "NEUTRAL";
   color: #5b4a39;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .card-back::after {
+  content: "ASSASSIN";
   color: #d3dae7;
 }
 
@@ -20324,17 +20328,23 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
   0% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
-  24% {
-    transform: translate3d(0, -22px, 22px) rotateX(10deg) rotateZ(-0.9deg) scale(1.04);
+  10% {
+    transform: translate3d(0, -4px, 8px) rotateX(2deg) rotateZ(-0.3deg) scale(1.018);
   }
-  34% {
-    transform: translate3d(0, -34px, 34px) rotateX(14deg) rotateZ(-0.4deg) scale(1.065);
+  28% {
+    transform: translate3d(0, -30px, 30px) rotateX(11deg) rotateZ(-1deg) scale(1.055);
   }
-  70% {
-    transform: translate3d(0, -34px, 34px) rotateX(12deg) rotateZ(0.45deg) scale(1.065);
+  40% {
+    transform: translate3d(0, -48px, 52px) rotateX(16deg) rotateZ(-0.45deg) scale(1.082);
+  }
+  68% {
+    transform: translate3d(0, -48px, 52px) rotateX(14deg) rotateZ(0.45deg) scale(1.082);
   }
   84% {
-    transform: translate3d(0, -14px, 16px) rotateX(6deg) rotateZ(0.2deg) scale(1.028);
+    transform: translate3d(0, -16px, 18px) rotateX(7deg) rotateZ(0.24deg) scale(1.03);
+  }
+  92% {
+    transform: translate3d(0, 10px, -6px) rotateX(-4deg) rotateZ(-0.22deg) scale(0.984);
   }
   100% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
@@ -20345,14 +20355,17 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
   0% {
     transform: rotateY(0deg);
   }
-  34% {
+  38% {
     transform: rotateY(0deg);
   }
-  66% {
-    transform: rotateY(192deg);
+  64% {
+    transform: rotateY(205deg);
   }
   78% {
-    transform: rotateY(176deg);
+    transform: rotateY(170deg);
+  }
+  90% {
+    transform: rotateY(184deg);
   }
   100% {
     transform: rotateY(180deg);
@@ -21037,12 +21050,35 @@ body.cozy-mode .game-card.pending-select .card-checkmark:hover{
 body.og-mode .game-card.confirming-guess .card-checkmark,
 body.cozy-mode .game-card.confirming-guess .card-checkmark{
   pointer-events: none !important;
-  animation: cardConfirmPulse 560ms ease-in-out infinite;
+  transform-origin: 50% 50%;
+  animation: cardConfirmPulse 380ms cubic-bezier(0.2, 0.9, 0.24, 1) 1 both;
 }
 
 @keyframes cardConfirmPulse {
-  0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
-  50% { transform: translateY(-1px) scale(1.1); filter: brightness(1.08); }
+  0% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1) saturate(1);
+    box-shadow: 0 7px 16px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  }
+  28% {
+    transform: translateY(1px) scale(0.9);
+    filter: brightness(0.98) saturate(1.02);
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  62% {
+    transform: translateY(-2px) scale(1.12);
+    filter: brightness(1.14) saturate(1.18);
+    box-shadow:
+      0 0 0 1px rgba(143, 255, 165, 0.62),
+      0 0 16px rgba(67, 219, 108, 0.5),
+      0 8px 18px rgba(0, 0, 0, 0.32),
+      inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1.04) saturate(1.1);
+    box-shadow: 0 7px 16px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  }
 }
 
 /* OG reveal: make the card back clearly visible during the flip. */

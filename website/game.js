@@ -62,7 +62,12 @@ function normalizeConfirmBackType(rawType) {
 }
 
 function getConfirmBackLabel(confirmBackType) {
-  return confirmBackType === 'assassin' ? 'ASSASSIN' : String(confirmBackType || '').toUpperCase();
+  const type = normalizeConfirmBackType(confirmBackType);
+  if (type === 'red') return 'RED';
+  if (type === 'blue') return 'BLUE';
+  if (type === 'neutral') return 'NEUTRAL';
+  if (type === 'assassin') return 'ASSASSIN';
+  return 'NEUTRAL';
 }
 
 function clearConfirmAnimationClasses(cardEl) {
