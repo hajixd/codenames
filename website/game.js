@@ -48,8 +48,9 @@ let _prevRevealedIndexes = new Set(); // Track previously revealed cards for ani
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 const _animatedInitialRevealKeys = new Set(); // Prevent random replay of initial flip animations
-const OG_REVEAL_FLIP_DURATION_MS = 3000;
-const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 760;
+// One-shot guessed-card reveal flip (face-up -> face-down).
+const OG_REVEAL_FLIP_DURATION_MS = 4000;
+const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 320;
 const OG_REVEAL_STAGGER_MS = 90;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
@@ -3611,10 +3612,10 @@ function startGameListener(gameId, options = {}) {
               cardEl.classList.add('guess-animate');
             }
 
-            // Codenames Online: slow, obvious flip reveal.
-            // - Pending selections are already face-down (180deg) showing the patterned back.
-            // - On reveal, we flip back to 0deg where the FRONT face becomes the revealed agent.
-            // We drive this in JS so each revealed card can flip with precise timing.
+            // Codenames Online: one-shot physical reveal flip.
+            // - Card starts face-up (front at 0deg).
+            // - On reveal, it flips to face-down/back (180deg) over 4 seconds.
+            // We drive this in JS so each revealed card flips with deterministic timing.
             if (isOgMode) runOnlineRevealFlipAnimation(cardEl);
             let cleaned = false;
             const cleanup = () => {
@@ -3845,7 +3846,7 @@ function runOnlineRevealFlipAnimation(cardEl) {
   inner.style.animation = `ogRevealFlipRebuilt ${durationText} ${easing} forwards`;
   inner.addEventListener('animationend', handleInnerAnimationEnd);
 
-  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS + 220);
+  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
   cardEl.__ogFlipCleanup = cleanup;
 }
 
