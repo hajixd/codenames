@@ -5900,7 +5900,6 @@ function setPendingCardSelection(cardIndex) {
 
 function updatePendingCardSelectionUI() {
   const cards = document.querySelectorAll('.game-card');
-  const isOgMode = isOnlineStyleActive();
   cards.forEach((el) => {
     el.classList.remove('pending-select');
     el.classList.remove('select-animate');
@@ -5909,9 +5908,9 @@ function updatePendingCardSelectionUI() {
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // OG mode keeps selected cards face-up; avoid any pre-guess flip animation.
+    // Run a one-shot selection animation when a new card is chosen.
     if (_pendingSelectAnimIndex === pendingCardSelection) {
-      if (!isOgMode) target.classList.add('select-animate');
+      target.classList.add('select-animate');
       _pendingSelectAnimIndex = null;
     }
   }
