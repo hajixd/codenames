@@ -3825,62 +3825,71 @@ function runOnlineRevealFlipAnimation(cardEl) {
   const inner = cardEl?.querySelector?.('.card-inner');
   if (!cardEl || !inner) return;
 
-  // Deterministic one-shot flip:
-  // - Start face-up (front at 0deg)
-  // - Smoothly rotate to face-down/back (180deg) over 4s
-  // We drive transform via inline transitions so this still works when
-  // a revealed re-render would otherwise "snap" to the final state.
+  // Physical one-shot reveal:
+  // - Entire card lifts off the board
+  // - Card flips in mid-air as a rigid body (front/back stay attached)
+  // - Card settles back into the same slot, face-down at 180deg
   try {
     if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
   } catch (_) {}
   cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
+  cardEl.classList.remove('og-reveal-bump');
 
   const durationMs = OG_REVEAL_FLIP_DURATION_MS;
   const durationText = `${durationMs}ms`;
-  const easing = 'cubic-bezier(0.2, 0.86, 0.2, 1)';
   let done = false;
   let timeoutId = null;
+  let liftPx = 24;
+  try {
+    const rect = cardEl.getBoundingClientRect();
+    if (rect && Number.isFinite(rect.height) && rect.height > 0) {
+      liftPx = Math.max(16, Math.min(36, Math.round(rect.height * 0.24)));
+    }
+  } catch (_) {}
 
   function cleanup() {
     if (done) return;
     done = true;
     if (timeoutId) clearTimeout(timeoutId);
-    inner.removeEventListener('transitionend', handleInnerTransitionEnd);
+    inner.removeEventListener('animationend', handleInnerAnimationEnd);
     cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-active');
     cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
+    inner.style.animation = '';
     inner.style.transition = '';
     inner.style.transform = '';
+    cardEl.style.animation = '';
     cardEl.style.transition = '';
     cardEl.style.transform = '';
     cardEl.style.filter = '';
+    cardEl.style.removeProperty('--og-lift-amount');
     cardEl.style.removeProperty('--og-reveal-flip-duration');
     try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
   }
 
-  function handleInnerTransitionEnd(evt) {
+  function handleInnerAnimationEnd(evt) {
     if (!evt || evt.target !== inner) return;
-    if (evt.propertyName !== 'transform') return;
     cleanup();
   }
 
+  // Clear any left-over inline motion from previous runs before forcing a new one.
+  inner.style.animation = '';
+  inner.style.transition = '';
+  inner.style.transform = '';
+  cardEl.style.animation = '';
+  cardEl.style.transition = '';
+  cardEl.style.transform = '';
+  cardEl.style.filter = '';
+
   cardEl.classList.add('og-reveal-bump');
   cardEl.style.setProperty('--og-reveal-flip-duration', durationText);
-  cardEl.style.transition = `transform ${durationText} ${easing}, filter ${durationText} ${easing}`;
-  cardEl.style.transform = 'translateY(-6px) scale(1.02)';
-  cardEl.style.filter = 'brightness(1.04)';
-  inner.style.transition = 'none';
-  inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0)';
-  void inner.offsetWidth;
-  requestAnimationFrame(() => {
-    if (done) return;
-    inner.style.transition = `transform ${durationText} ${easing}`;
-    inner.style.transform = 'rotateY(180deg) rotateX(0deg) translateZ(0)';
-    cardEl.style.transform = 'translateY(0px) scale(1)';
-    cardEl.style.filter = 'brightness(1)';
-  });
-  inner.addEventListener('transitionend', handleInnerTransitionEnd);
+  cardEl.style.setProperty('--og-lift-amount', `${liftPx}px`);
 
-  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS + 200);
+  // Restart keyframes deterministically.
+  void cardEl.offsetWidth;
+  cardEl.classList.add('og-reveal-flip-active');
+  inner.addEventListener('animationend', handleInnerAnimationEnd);
+
+  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS + 140);
   cardEl.__ogFlipCleanup = cleanup;
 }
 
