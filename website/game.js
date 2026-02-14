@@ -7201,10 +7201,26 @@ async function handleCardConfirm(evt, cardIndex) {
       // Keep the card on its back face until the reveal snapshot lands.
       cardEl.classList.remove('confirm-animate');
       cardEl.classList.add('confirm-hold');
-      window.setTimeout(() => {
-        if (!cardEl.isConnected || cardEl.classList.contains('revealed')) return;
-        clearConfirmAnimationClasses(cardEl);
-      }, 900);
+      const holdStartedAt = Date.now();
+      const maxHoldMs = 5000;
+      const releaseHoldWhenReady = () => {
+        if (!cardEl.isConnected) return;
+        if (cardEl.classList.contains('revealed')) {
+          clearConfirmAnimationClasses(cardEl);
+          return;
+        }
+        const liveIsRevealed = !!currentGame?.cards?.[idx]?.revealed;
+        if (liveIsRevealed) {
+          clearConfirmAnimationClasses(cardEl);
+          return;
+        }
+        if ((Date.now() - holdStartedAt) >= maxHoldMs) {
+          clearConfirmAnimationClasses(cardEl);
+          return;
+        }
+        window.setTimeout(releaseHoldWhenReady, 120);
+      };
+      window.setTimeout(releaseHoldWhenReady, 120);
     } else {
       clearConfirmAnimationClasses(cardEl);
     }

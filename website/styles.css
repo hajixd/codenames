@@ -20248,6 +20248,12 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-hold:not(.revealed) .card-inner
   transform: rotateY(180deg);
 }
 
+body.og-mode .game-card.confirm-hold:not(.revealed)::before,
+body.og-mode .game-card.confirm-hold:not(.revealed)::after {
+  animation: none;
+  transform: rotateY(180deg);
+}
+
 /* OG shell layers are drawn on .game-card (not .card-inner), so flip them with
    the same Y timeline to keep the frame/plate visually attached to the card face. */
 body.og-mode .game-card.confirm-animate:not(.revealed) {
@@ -20370,10 +20376,10 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).con
     transform: rotateY(206deg);
   }
   84% {
-    transform: rotateY(171deg);
+    transform: rotateY(186deg);
   }
   94% {
-    transform: rotateY(184deg);
+    transform: rotateY(181deg);
   }
   100% {
     transform: rotateY(180deg);
