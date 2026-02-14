@@ -20187,7 +20187,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
 :root{
   --card-reveal-duration: 920ms;
   --card-select-duration: 280ms;
-  --card-confirm-duration: 1700ms;
+  --card-confirm-duration: 1100ms;
   --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -20197,7 +20197,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   :root{
     --card-reveal-duration: 920ms;
     --card-select-duration: 280ms;
-    --card-confirm-duration: 1700ms;
+    --card-confirm-duration: 1100ms;
     --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   }
 }
@@ -21493,7 +21493,7 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
   }
 
   .og-chat-slidedown-body {
-    max-height: calc(50vh - 52px);
+    max-height: calc(50vh - 50px);
   }
 
   body.og-mode .game-card .card-back::after,
@@ -21600,6 +21600,41 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
   }
 }
 
+/* Mobile team boxes: tap anywhere on Operatives/Spymasters box to expand. */
+@media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box {
+    cursor: pointer;
+    transition: max-height 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box .og-player-slots {
+    max-height: 42px;
+    overflow: hidden;
+    transition: max-height 220ms ease;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.og-mobile-box-spy .og-player-slots {
+    max-height: 34px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.is-expanded {
+    max-height: 190px;
+    transform: translateY(-1px);
+    box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.is-expanded .og-player-slots {
+    max-height: 140px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.78);
+    outline-offset: 1px;
+  }
+}
+
 /* Strongly grey out non-active roster sections so the active turn stands out. */
 body.og-mode #game-board-container .online-roster-block,
 body.cozy-mode #game-board-container .online-roster-block,
@@ -21642,8 +21677,8 @@ body.og-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-m
 body.og-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-spy,
 body.cozy-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-mobile-box-spy,
 body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-spy {
-  filter: grayscale(0.82) saturate(0.18) brightness(0.66);
-  opacity: 0.44;
+  filter: grayscale(0.55) saturate(0.42) brightness(0.82);
+  opacity: 0.66;
 }
 
 /* Active section: slight team-colored glow. */

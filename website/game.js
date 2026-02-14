@@ -46,7 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 1700;
+const CARD_CONFIRM_ANIM_MS = 1100;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
@@ -191,10 +191,11 @@ function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
     if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
     seen.add(idx);
     const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-    if (!cardEl || cardEl.classList.contains('revealed')) return;
+    if (!cardEl) return;
     const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
     const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
-    applyConfirmAnimationClasses(cardEl, confirmBackType);
+    const replay = cardEl.classList.contains('revealed');
+    applyConfirmAnimationClasses(cardEl, confirmBackType, { replay });
     animatedAny = true;
   });
   return animatedAny;
@@ -575,7 +576,7 @@ function applyLocalPracticeGuessState(game, idx, actorName) {
 function pickLocalPracticeClueWord(game) {
   const boardWords = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
   const usedClues = new Set((game?.clueHistory || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
-  const pool = ['THREAD', 'NEXUS', 'VECTOR', 'SPARK', 'ORBIT', 'SHADOW', 'PULSE', 'ECHO', 'ANCHOR', 'BEACON', 'FOCUS', 'RHYTHM'];
+  const pool = ['NEXUS', 'VECTOR', 'SPARK', 'ORBIT', 'SHADOW', 'PULSE', 'ECHO', 'ANCHOR', 'BEACON', 'FOCUS', 'RHYTHM', 'SIGNAL', 'GLINT', 'AXIS'];
   _shuffleInPlace(pool);
   for (const word of pool) {
     if (!boardWords.has(word) && !usedClues.has(word)) return word;
@@ -660,7 +661,9 @@ async function generateLocalPracticeAICluePlan(game, team, aiSpy = null) {
         { role: 'user', content: userPrompt },
       ],
       {
-        temperature: Number.isFinite(+aiSpy?.aiTemperature) ? +aiSpy.aiTemperature : 0.72,
+        temperature: Number.isFinite(+aiSpy?.aiTemperature)
+          ? +aiSpy.aiTemperature
+          : (Number.isFinite(+aiSpy?.temperature) ? +aiSpy.temperature : 0.72),
         max_tokens: 220,
         response_format: { type: 'json_object' },
       }
@@ -676,16 +679,269 @@ async function generateLocalPracticeAICluePlan(game, team, aiSpy = null) {
   return { word: fallbackWord, number: fallbackNumber };
 }
 
-function canLocalPracticeAIActAsOperatives(game, team) {
-  const roster = team === 'red' ? (game?.redPlayers || []) : (game?.bluePlayers || []);
-  const myId = String(getUserId?.() || '').trim();
-  if (!myId) return true;
-  return !roster.some((p) => {
-    if (!p || p.isAI) return false;
-    const pid = String(p.odId || '').trim();
-    const isMine = pid && pid === myId;
-    return isMine && !isSpymasterPlayerForTeam(p, team, game);
+function getLocalPracticeSeqField(team, role) {
+  const t = team === 'blue' ? 'blue' : 'red';
+  const r = role === 'spy' ? 'spy' : 'op';
+  return `aiSeq_${t}_${r}`;
+}
+
+function pickLocalPracticeRotatingAI(game, team, role, aiList) {
+  const list = Array.isArray(aiList) ? aiList.filter(Boolean) : [];
+  if (!list.length) return null;
+  const seqField = getLocalPracticeSeqField(team, role);
+  const seq = Number.isFinite(+game?.[seqField]) ? +game[seqField] : 0;
+  return list[seq % list.length] || list[0] || null;
+}
+
+function bumpLocalPracticeAISeq(game, team, role) {
+  if (!game || !team) return;
+  const seqField = getLocalPracticeSeqField(team, role);
+  const cur = Number.isFinite(+game?.[seqField]) ? +game[seqField] : 0;
+  game[seqField] = cur + 1;
+}
+
+function toLocalPracticeRuntimeAI(player, team) {
+  if (!player?.isAI) return null;
+  const seatRole = String(player.role || '').trim() === 'spymaster' ? 'spymaster' : 'operative';
+  const id = String(player.aiId || player.odId || '').trim() || `practice_ai_${team}_${seatRole}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id,
+    odId: String(player.odId || id).trim(),
+    name: String(player.name || 'AI').trim() || 'AI',
+    team: team === 'blue' ? 'blue' : 'red',
+    seatRole,
+    mode: 'autonomous',
+    isAI: true,
+    temperature: Number.isFinite(+player.aiTemperature) ? +player.aiTemperature : undefined,
+    personality: (player.aiPersonality && typeof player.aiPersonality === 'object') ? player.aiPersonality : undefined,
+  };
+}
+
+function getLocalPracticeRuntimeAIs(game, team, seatRole) {
+  const roster = team === 'blue' ? (game?.bluePlayers || []) : (game?.redPlayers || []);
+  const targetRole = seatRole === 'spymaster' ? 'spymaster' : 'operative';
+  return roster
+    .map((p) => toLocalPracticeRuntimeAI(p, team))
+    .filter((ai) => ai && ai.seatRole === targetRole);
+}
+
+function getLocalPracticeChatField(team) {
+  return team === 'blue' ? 'blueChat' : 'redChat';
+}
+
+function getLocalPracticeTeamChatDocs(game, team, limit = 16) {
+  const chatField = getLocalPracticeChatField(team);
+  const msgs = Array.isArray(game?.[chatField]) ? game[chatField] : [];
+  return msgs.slice(-Math.max(1, limit)).map((m) => ({
+    senderId: String(m?.senderId || '').trim(),
+    senderName: String(m?.senderName || '').trim(),
+    text: String(m?.text || '').trim(),
+    createdAtMs: Number(m?.createdAtMs || 0),
+  })).filter((m) => m.text);
+}
+
+function sanitizeLocalPracticeChatText(raw, maxLen = 180) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.slice(0, Math.max(1, Number(maxLen) || 180));
+}
+
+function appendLocalPracticeTeamChat(gameId, team, ai, rawText) {
+  const text = sanitizeLocalPracticeChatText(rawText, 180);
+  if (!text) return false;
+  const senderNameBase = String(ai?.name || 'AI').trim() || 'AI';
+  const senderId = String(ai?.odId || ai?.id || `ai_local_${senderNameBase}`).trim();
+  const nowMs = Date.now();
+  const chatField = getLocalPracticeChatField(team);
+  mutateLocalPracticeGame(gameId, (draft) => {
+    const list = Array.isArray(draft?.[chatField]) ? [...draft[chatField]] : [];
+    list.push({
+      id: `local_chat_${nowMs}_${Math.random().toString(36).slice(2, 7)}`,
+      senderId,
+      senderName: `AI ${senderNameBase}`,
+      text,
+      createdAtMs: nowMs,
+    });
+    draft[chatField] = list.length > LOCAL_PRACTICE_CHAT_LIMIT
+      ? list.slice(-LOCAL_PRACTICE_CHAT_LIMIT)
+      : list;
+    draft.updatedAtMs = nowMs;
+    draft.lastMoveAtMs = nowMs;
+  }, { skipAnimation: true });
+  return true;
+}
+
+function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) {
+  if (!game) return;
+  const actingTeam = team === 'blue' ? 'blue' : 'red';
+  const teamName = actingTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+  game.currentClue = { word: clueWord, number: clueNumber };
+  game.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
+  game.currentPhase = 'operatives';
+  game.log = Array.isArray(game.log) ? [...game.log] : [];
+  game.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
+  game.clueHistory = Array.isArray(game.clueHistory) ? [...game.clueHistory] : [];
+  game.clueHistory.push({
+    team: actingTeam,
+    word: clueWord,
+    number: clueNumber,
+    results: [],
+    timestamp: new Date().toISOString()
   });
+  game.updatedAtMs = Date.now();
+  game.lastMoveAtMs = Date.now();
+}
+
+function applyLocalPracticeOperativeEndTurnState(game, actorName) {
+  if (!game) return;
+  const actingTeam = game.currentTeam === 'blue' ? 'blue' : 'red';
+  const teamName = actingTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+  game.currentTeam = actingTeam === 'red' ? 'blue' : 'red';
+  game.currentPhase = 'spymaster';
+  game.currentClue = null;
+  game.guessesRemaining = 0;
+  game.log = Array.isArray(game.log) ? [...game.log] : [];
+  game.log.push(`${actorName} (${teamName}) ended their turn.`);
+  game.updatedAtMs = Date.now();
+  game.lastMoveAtMs = Date.now();
+}
+
+const LOCAL_PRACTICE_COUNCIL_PACE = {
+  betweenSpeakersMs: 180,
+  beforeDecisionMs: 260,
+};
+
+function localPracticePause(ms) {
+  const delay = Math.max(0, Number(ms) || 0);
+  if (!delay) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+async function runLocalPracticeSpymasterTurn(gameId, game, team) {
+  const aiSpies = getLocalPracticeRuntimeAIs(game, team, 'spymaster');
+  if (!aiSpies.length) return false;
+
+  const proposeClue = window.aiSpymasterPropose;
+  const followupClue = window.aiSpymasterFollowup;
+  const chooseClue = window.chooseSpymasterClue;
+  const summarizeCouncil = window.aiSpymasterCouncilSummary;
+  const useRealCouncil = (typeof proposeClue === 'function' && typeof chooseClue === 'function');
+
+  // Fallback if AI council helpers are unavailable.
+  if (!useRealCouncil) {
+    const fallbackPlan = await generateLocalPracticeAICluePlan(game, team, aiSpies[0]);
+    mutateLocalPracticeGame(gameId, (draft) => {
+      const boardWordSet = new Set((draft?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+      const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(draft);
+      const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
+      applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
+      bumpLocalPracticeAISeq(draft, team, 'spy');
+    });
+    return true;
+  }
+
+  const proposalsByAi = new Map();
+  for (const ai of aiSpies) {
+    const live = getLocalPracticeGame(gameId);
+    if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) return false;
+    const chatDocs = getLocalPracticeTeamChatDocs(live, team, 14);
+    let proposal = null;
+    try {
+      proposal = await proposeClue(ai, live, { chatDocs });
+    } catch (_) {
+      proposal = null;
+    }
+    if (!proposal) continue;
+    proposalsByAi.set(ai.id, proposal);
+    if (proposal.chat && appendLocalPracticeTeamChat(gameId, team, ai, proposal.chat)) {
+      await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
+    }
+  }
+
+  if (aiSpies.length >= 2 && typeof followupClue === 'function' && proposalsByAi.size) {
+    let rounds = 0;
+    while (rounds < 2) {
+      rounds += 1;
+      let anySpoke = false;
+      for (const ai of aiSpies) {
+        const live = getLocalPracticeGame(gameId);
+        if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) return false;
+        const chatDocs = getLocalPracticeTeamChatDocs(live, team, 16);
+        let follow = null;
+        try {
+          follow = await followupClue(ai, live, proposalsByAi, { chatDocs });
+        } catch (_) {
+          follow = null;
+        }
+        if (!follow) continue;
+        if (follow.clue) {
+          const prev = proposalsByAi.get(ai.id) || { ai };
+          proposalsByAi.set(ai.id, { ...prev, ...follow });
+        }
+        if (follow.chat && appendLocalPracticeTeamChat(gameId, team, ai, follow.chat)) {
+          anySpoke = true;
+          await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
+        }
+      }
+      if (!anySpoke) break;
+    }
+  }
+
+  if (!proposalsByAi.size) {
+    const fallbackPlan = await generateLocalPracticeAICluePlan(game, team, aiSpies[0]);
+    mutateLocalPracticeGame(gameId, (draft) => {
+      const boardWordSet = new Set((draft?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+      const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(draft);
+      const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
+      applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
+      bumpLocalPracticeAISeq(draft, team, 'spy');
+    });
+    return true;
+  }
+
+  await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.beforeDecisionMs);
+  const finalState = getLocalPracticeGame(gameId) || game;
+  if (finalState.winner || finalState.currentPhase !== 'spymaster' || finalState.currentTeam !== team) return false;
+
+  const proposals = Array.from(proposalsByAi.values()).filter(Boolean);
+  let chosen = null;
+  try {
+    chosen = chooseClue(proposals);
+  } catch (_) {
+    chosen = null;
+  }
+
+  const boardWordSet = new Set((finalState?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+  let clueWord = sanitizeLocalPracticeClueWord(chosen?.clue, boardWordSet);
+  let clueNumber = clampLocalPracticeClueNumber(chosen?.number, 1);
+  if (!clueWord) {
+    const fallbackPlan = await generateLocalPracticeAICluePlan(finalState, team, aiSpies[0]);
+    clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(finalState);
+    clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, clueNumber);
+  }
+
+  const executor = pickLocalPracticeRotatingAI(finalState, team, 'spy', aiSpies) || aiSpies[0];
+  if (executor && proposals.length >= 2 && typeof summarizeCouncil === 'function') {
+    try {
+      const chatDocs = getLocalPracticeTeamChatDocs(finalState, team, 10);
+      const wrapUp = await summarizeCouncil(executor, finalState, proposals, { clue: clueWord, number: clueNumber }, { chatDocs });
+      if (wrapUp) {
+        appendLocalPracticeTeamChat(gameId, team, executor, wrapUp);
+        await localPracticePause(Math.min(240, LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs));
+      }
+    } catch (_) {}
+  }
+
+  mutateLocalPracticeGame(gameId, (draft) => {
+    if (!draft || draft.winner || draft.currentPhase !== 'spymaster' || draft.currentTeam !== team) return;
+    applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
+    bumpLocalPracticeAISeq(draft, team, 'spy');
+  });
+  return true;
+}
+
+function canLocalPracticeAIActAsOperatives(game, team) {
+  return true;
 }
 
 function localPracticeNeedsAIAction(game) {
@@ -705,19 +961,160 @@ function localPracticeNeedsAIAction(game) {
 
 function pickLocalPracticeAIGuessIndex(game, team) {
   const cards = Array.isArray(game?.cards) ? game.cards : [];
-  const hidden = cards.map((c, i) => ({ c, i })).filter(x => x?.c && !x.c.revealed);
+  const hidden = cards.map((c, i) => ({ c, i })).filter((x) => x?.c && !x.c.revealed);
   if (!hidden.length) return null;
 
-  const own = hidden.filter(x => x.c.type === team);
-  const others = hidden.filter(x => x.c.type !== team);
-  const shouldMiss = Math.random() < 0.2;
-
-  if (!shouldMiss && own.length) {
-    return own[Math.floor(Math.random() * own.length)].i;
-  }
-  if (others.length) return others[Math.floor(Math.random() * others.length)].i;
+  const own = hidden.filter((x) => x.c.type === team);
   if (own.length) return own[Math.floor(Math.random() * own.length)].i;
-  return hidden[0].i;
+  return hidden[Math.floor(Math.random() * hidden.length)].i;
+}
+
+async function runLocalPracticeOperativesTurn(gameId, game, team) {
+  const aiOps = getLocalPracticeRuntimeAIs(game, team, 'operative');
+  if (!aiOps.length) return false;
+  if (!canLocalPracticeAIActAsOperatives(game, team)) return false;
+
+  const proposeAction = window.aiOperativePropose;
+  const followupAction = window.aiOperativeFollowup;
+  const chooseAction = window.chooseOperativeAction;
+  const summarizeCouncil = window.aiOperativeCouncilSummary;
+  const useRealCouncil = (typeof proposeAction === 'function' && typeof chooseAction === 'function');
+
+  const firstActor = pickLocalPracticeRotatingAI(game, team, 'op', aiOps) || aiOps[0];
+  const firstActorName = `AI ${String(firstActor?.name || 'Player')}`.trim();
+
+  if (!game.currentClue || !Number.isFinite(+game.guessesRemaining) || +game.guessesRemaining <= 0) {
+    mutateLocalPracticeGame(gameId, (draft) => {
+      if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
+      applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
+      bumpLocalPracticeAISeq(draft, team, 'op');
+    });
+    return true;
+  }
+
+  // Fallback if council helpers are unavailable.
+  if (!useRealCouncil) {
+    const idx = pickLocalPracticeAIGuessIndex(game, team);
+    mutateLocalPracticeGame(gameId, (draft) => {
+      if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
+      if (Number.isInteger(idx) && idx >= 0) {
+        const applied = applyLocalPracticeGuessState(draft, idx, firstActorName);
+        if (!applied) applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
+      } else {
+        applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
+      }
+      bumpLocalPracticeAISeq(draft, team, 'op');
+    });
+    return true;
+  }
+
+  const proposalsByAi = new Map();
+  for (const ai of aiOps) {
+    const live = getLocalPracticeGame(gameId);
+    if (!live || live.winner || live.currentPhase !== 'operatives' || live.currentTeam !== team) return false;
+    const chatDocs = getLocalPracticeTeamChatDocs(live, team, 14);
+    let proposal = null;
+    try {
+      proposal = await proposeAction(ai, live, {
+        requireMarks: aiOps.length >= 2,
+        councilSize: aiOps.length,
+        chatDocs
+      });
+    } catch (_) {
+      proposal = null;
+    }
+    if (!proposal) continue;
+    proposalsByAi.set(ai.id, proposal);
+    if (proposal.chat && appendLocalPracticeTeamChat(gameId, team, ai, proposal.chat)) {
+      await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
+    }
+  }
+
+  if (aiOps.length >= 2 && typeof followupAction === 'function' && proposalsByAi.size) {
+    let rounds = 0;
+    while (rounds < 2) {
+      rounds += 1;
+      let anySpoke = false;
+      for (const ai of aiOps) {
+        const live = getLocalPracticeGame(gameId);
+        if (!live || live.winner || live.currentPhase !== 'operatives' || live.currentTeam !== team) return false;
+        const chatDocs = getLocalPracticeTeamChatDocs(live, team, 16);
+        let follow = null;
+        try {
+          follow = await followupAction(ai, live, proposalsByAi, { chatDocs });
+        } catch (_) {
+          follow = null;
+        }
+        if (!follow) continue;
+        if (follow.action === 'guess' || follow.action === 'end_turn') {
+          const prev = proposalsByAi.get(ai.id) || { ai };
+          proposalsByAi.set(ai.id, { ...prev, ...follow });
+        }
+        if (follow.chat && appendLocalPracticeTeamChat(gameId, team, ai, follow.chat)) {
+          anySpoke = true;
+          await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
+        }
+      }
+      if (!anySpoke) break;
+    }
+  }
+
+  if (!proposalsByAi.size) {
+    mutateLocalPracticeGame(gameId, (draft) => {
+      if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
+      applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
+      bumpLocalPracticeAISeq(draft, team, 'op');
+    });
+    return true;
+  }
+
+  await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.beforeDecisionMs);
+  const finalState = getLocalPracticeGame(gameId) || game;
+  if (finalState.winner || finalState.currentPhase !== 'operatives' || finalState.currentTeam !== team) return false;
+
+  const proposals = Array.from(proposalsByAi.values()).filter(Boolean);
+  let decision = null;
+  if (aiOps.length === 1) {
+    const only = proposals[0] || {};
+    if (only.action === 'guess' && Number.isInteger(+only.index)) decision = { action: 'guess', index: Number(only.index) };
+    else decision = { action: 'end_turn', index: null };
+  } else {
+    try {
+      decision = chooseAction(proposals, finalState, aiOps.length);
+    } catch (_) {
+      decision = null;
+    }
+  }
+  if (!decision || (decision.action !== 'guess' && decision.action !== 'end_turn')) {
+    decision = { action: 'end_turn', index: null };
+  }
+
+  const executor = pickLocalPracticeRotatingAI(finalState, team, 'op', aiOps) || firstActor;
+  const actorName = `AI ${String(executor?.name || 'Player')}`.trim();
+
+  if (executor && proposals.length >= 2 && typeof summarizeCouncil === 'function') {
+    try {
+      const chatDocs = getLocalPracticeTeamChatDocs(finalState, team, 10);
+      const wrapUp = await summarizeCouncil(executor, finalState, proposals, decision, { chatDocs });
+      if (wrapUp) {
+        appendLocalPracticeTeamChat(gameId, team, executor, wrapUp);
+        await localPracticePause(Math.min(240, LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs));
+      }
+    } catch (_) {}
+  }
+
+  mutateLocalPracticeGame(gameId, (draft) => {
+    if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
+    bumpLocalPracticeAISeq(draft, team, 'op');
+    if (decision.action === 'guess' && Number.isInteger(+decision.index)) {
+      const idx = Number(decision.index);
+      const applied = applyLocalPracticeGuessState(draft, idx, actorName);
+      if (!applied) applyLocalPracticeOperativeEndTurnState(draft, actorName);
+    } else {
+      applyLocalPracticeOperativeEndTurnState(draft, actorName);
+    }
+  });
+  return true;
 }
 
 function stopLocalPracticeAI() {
@@ -767,79 +1164,15 @@ async function runLocalPracticeAIOnce() {
     }
 
     const team = game.currentTeam === 'blue' ? 'blue' : 'red';
-    const roster = team === 'red' ? (game.redPlayers || []) : (game.bluePlayers || []);
-    const aiSpy = roster.find(p => p?.isAI && isSpymasterPlayerForTeam(p, team, game)) || null;
-    const aiOps = roster.filter(p => p?.isAI && !isSpymasterPlayerForTeam(p, team, game));
-
     if (game.currentPhase === 'spymaster') {
-      if (!aiSpy) return;
-      const cluePlan = await generateLocalPracticeAICluePlan(game, team, aiSpy);
-      mutateLocalPracticeGame(gid, (draft) => {
-        const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
-        const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
-        const clueWordRaw = String(cluePlan?.word || '').trim().toUpperCase();
-        const boardWordSet = new Set((draft?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
-        const clueWord = sanitizeLocalPracticeClueWord(clueWordRaw, boardWordSet) || pickLocalPracticeClueWord(draft);
-        const clueNumber = clampLocalPracticeClueNumber(cluePlan?.number, 1);
-        draft.currentClue = { word: clueWord, number: clueNumber };
-        draft.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
-        draft.currentPhase = 'operatives';
-        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
-        draft.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
-        draft.clueHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
-        draft.clueHistory.push({
-          team: draftTeam,
-          word: clueWord,
-          number: clueNumber,
-          results: [],
-          timestamp: new Date().toISOString()
-        });
-        draft.lastMoveAtMs = Date.now();
-      });
+      await runLocalPracticeSpymasterTurn(gid, game, team);
       return;
     }
 
-    if (game.currentPhase !== 'operatives') return;
-    if (!aiOps.length) return;
-    if (!canLocalPracticeAIActAsOperatives(game, team)) return;
-
-    const actor = aiOps[Math.floor(Math.random() * aiOps.length)];
-    const actorName = `AI ${String(actor?.name || 'Player')}`.trim();
-    const guessesRemaining = Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : 0;
-    if (!game.currentClue || guessesRemaining <= 0) {
-      mutateLocalPracticeGame(gid, (draft) => {
-        const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
-        const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
-        draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
-        draft.currentPhase = 'spymaster';
-        draft.currentClue = null;
-        draft.guessesRemaining = 0;
-        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
-        draft.log.push(`${actorName} (${teamName}) ended their turn.`);
-        draft.lastMoveAtMs = Date.now();
-      });
+    if (game.currentPhase === 'operatives') {
+      await runLocalPracticeOperativesTurn(gid, game, team);
       return;
     }
-
-    const guessIndex = pickLocalPracticeAIGuessIndex(game, team);
-    if (!Number.isInteger(guessIndex) || guessIndex < 0) {
-      mutateLocalPracticeGame(gid, (draft) => {
-        const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
-        const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
-        draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
-        draft.currentPhase = 'spymaster';
-        draft.currentClue = null;
-        draft.guessesRemaining = 0;
-        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
-        draft.log.push(`${actorName} (${teamName}) ended their turn.`);
-        draft.lastMoveAtMs = Date.now();
-      });
-      return;
-    }
-
-    mutateLocalPracticeGame(gid, (draft) => {
-      applyLocalPracticeGuessState(draft, guessIndex, actorName);
-    });
   } finally {
     localPracticeAiBusy = false;
     if (!isCurrentLocalPracticeGame()) return;
@@ -848,8 +1181,8 @@ async function runLocalPracticeAIOnce() {
       stopLocalPracticeAI();
       return;
     }
-    const minDelay = isOgLikeStyleActive() ? (CARD_CONFIRM_ANIM_MS + 140) : 620;
-    const jitter = isOgLikeStyleActive() ? 420 : 520;
+    const minDelay = isOgLikeStyleActive() ? (CARD_CONFIRM_ANIM_MS + 40) : 480;
+    const jitter = isOgLikeStyleActive() ? 180 : 240;
     scheduleLocalPracticeAI(minDelay + Math.floor(Math.random() * jitter));
   }
 }
@@ -864,7 +1197,7 @@ function maybeStartLocalPracticeAI() {
     stopLocalPracticeAI();
     return;
   }
-  scheduleLocalPracticeAI(300 + Math.floor(Math.random() * 220));
+  scheduleLocalPracticeAI(180 + Math.floor(Math.random() * 120));
 }
 
 window.isLocalPracticeGameId = isLocalPracticeGameId;
@@ -4656,6 +4989,54 @@ function renderAdvancedFeatures() {
   renderOgPanels();
 }
 
+function bindOgMobileBoxExpanders() {
+  const panels = document.getElementById('og-mobile-panels');
+  if (!panels) return;
+
+  const boxes = Array.from(panels.querySelectorAll('.og-mobile-box'));
+  boxes.forEach((box) => {
+    if (!box.dataset.expandKey) {
+      const teamId = box.closest('.og-mobile-team')?.id || 'og-mobile-team';
+      const role = box.classList.contains('og-mobile-box-spy') ? 'spy' : 'ops';
+      box.dataset.expandKey = `${teamId}:${role}`;
+    }
+    box.setAttribute('role', 'button');
+    box.setAttribute('tabindex', '0');
+    if (!box.hasAttribute('aria-expanded')) box.setAttribute('aria-expanded', 'false');
+  });
+
+  const toggleBox = (box) => {
+    if (!box) return;
+    const willExpand = !box.classList.contains('is-expanded');
+    const teamHost = box.closest('.og-mobile-team');
+    if (teamHost) {
+      teamHost.querySelectorAll('.og-mobile-box.is-expanded').forEach((el) => {
+        if (el === box) return;
+        el.classList.remove('is-expanded');
+        el.setAttribute('aria-expanded', 'false');
+      });
+    }
+    box.classList.toggle('is-expanded', willExpand);
+    box.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
+  };
+
+  if (panels.dataset.expandBound !== '1') {
+    panels.dataset.expandBound = '1';
+    panels.addEventListener('click', (e) => {
+      const box = e.target?.closest?.('.og-mobile-box');
+      if (!box || !panels.contains(box)) return;
+      toggleBox(box);
+    });
+    panels.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const box = e.target?.closest?.('.og-mobile-box');
+      if (!box || !panels.contains(box)) return;
+      e.preventDefault();
+      toggleBox(box);
+    });
+  }
+}
+
 function renderOgPanels() {
   const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
   const ogPanelBlue = document.getElementById('og-panel-blue');
@@ -4766,6 +5147,8 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
     const total = (currentGame.bluePlayers?.length || 0) + (currentGame.redPlayers?.length || 0);
     countEl.textContent = total;
   }
+
+  bindOgMobileBoxExpanders();
 }
 
 function dockChatIntoOgPanels(isOgMode) {
