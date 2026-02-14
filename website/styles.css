@@ -21490,7 +21490,7 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
   }
 }
 
-/* Slightly mute inactive team roster boxes so turns are easier to scan. */
+/* Strongly grey out non-active roster sections so the active turn stands out. */
 body.og-mode #game-board-container .online-roster-block,
 body.cozy-mode #game-board-container .online-roster-block,
 body.og-mode #game-board-container .og-mobile-box,
@@ -21498,16 +21498,67 @@ body.cozy-mode #game-board-container .og-mobile-box {
   transition: filter 300ms ease, opacity 300ms ease;
 }
 
-body.og-mode #game-board-container.turn-red #og-panel-blue .online-roster-block,
-body.og-mode #game-board-container.turn-blue #og-panel-red .online-roster-block,
-body.cozy-mode #game-board-container.turn-red #og-panel-blue .online-roster-block,
-body.cozy-mode #game-board-container.turn-blue #og-panel-red .online-roster-block,
-body.og-mode #game-board-container.turn-red #og-mobile-blue .og-mobile-box,
-body.og-mode #game-board-container.turn-blue #og-mobile-red .og-mobile-box,
-body.cozy-mode #game-board-container.turn-red #og-mobile-blue .og-mobile-box,
-body.cozy-mode #game-board-container.turn-blue #og-mobile-red .og-mobile-box {
-  filter: grayscale(0.18) saturate(0.88) brightness(0.94);
-  opacity: 0.9;
+/* Opposing team: always dim both role boxes during an active turn phase. */
+body.og-mode #game-board-container.turn-red.turn-spymaster #og-panel-blue .online-roster-block,
+body.og-mode #game-board-container.turn-red.turn-operatives #og-panel-blue .online-roster-block,
+body.og-mode #game-board-container.turn-blue.turn-spymaster #og-panel-red .online-roster-block,
+body.og-mode #game-board-container.turn-blue.turn-operatives #og-panel-red .online-roster-block,
+body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-panel-blue .online-roster-block,
+body.cozy-mode #game-board-container.turn-red.turn-operatives #og-panel-blue .online-roster-block,
+body.cozy-mode #game-board-container.turn-blue.turn-spymaster #og-panel-red .online-roster-block,
+body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-panel-red .online-roster-block,
+body.og-mode #game-board-container.turn-red.turn-spymaster #og-mobile-blue .og-mobile-box,
+body.og-mode #game-board-container.turn-red.turn-operatives #og-mobile-blue .og-mobile-box,
+body.og-mode #game-board-container.turn-blue.turn-spymaster #og-mobile-red .og-mobile-box,
+body.og-mode #game-board-container.turn-blue.turn-operatives #og-mobile-red .og-mobile-box,
+body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-blue .og-mobile-box,
+body.cozy-mode #game-board-container.turn-red.turn-operatives #og-mobile-blue .og-mobile-box,
+body.cozy-mode #game-board-container.turn-blue.turn-spymaster #og-mobile-red .og-mobile-box,
+body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-mobile-red .og-mobile-box,
+/* Same team, wrong role: dim spymaster box during operative phase and vice versa. */
+body.og-mode #game-board-container.turn-red.turn-spymaster #og-panel-red .online-roster-operatives,
+body.og-mode #game-board-container.turn-blue.turn-spymaster #og-panel-blue .online-roster-operatives,
+body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-panel-red .online-roster-operatives,
+body.cozy-mode #game-board-container.turn-blue.turn-spymaster #og-panel-blue .online-roster-operatives,
+body.og-mode #game-board-container.turn-red.turn-operatives #og-panel-red .online-roster-spymasters,
+body.og-mode #game-board-container.turn-blue.turn-operatives #og-panel-blue .online-roster-spymasters,
+body.cozy-mode #game-board-container.turn-red.turn-operatives #og-panel-red .online-roster-spymasters,
+body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-panel-blue .online-roster-spymasters,
+body.og-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-mobile-box-ops,
+body.og-mode #game-board-container.turn-blue.turn-spymaster #og-mobile-blue .og-mobile-box-ops,
+body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-mobile-box-ops,
+body.cozy-mode #game-board-container.turn-blue.turn-spymaster #og-mobile-blue .og-mobile-box-ops,
+body.og-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-mobile-box-spy,
+body.og-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-spy,
+body.cozy-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-mobile-box-spy,
+body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-spy {
+  filter: grayscale(1) saturate(0.04) brightness(0.52);
+  opacity: 0.32;
+}
+
+/* Active section: slight team-colored glow. */
+body.og-mode #game-board-container.turn-blue.turn-operatives #og-panel-blue .online-roster-operatives,
+body.og-mode #game-board-container.turn-blue.turn-spymaster #og-panel-blue .online-roster-spymasters,
+body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-panel-blue .online-roster-operatives,
+body.cozy-mode #game-board-container.turn-blue.turn-spymaster #og-panel-blue .online-roster-spymasters,
+body.og-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-ops,
+body.og-mode #game-board-container.turn-blue.turn-spymaster #og-mobile-blue .og-mobile-box-spy,
+body.cozy-mode #game-board-container.turn-blue.turn-operatives #og-mobile-blue .og-mobile-box-ops,
+body.cozy-mode #game-board-container.turn-blue.turn-spymaster #og-mobile-blue .og-mobile-box-spy {
+  filter: saturate(1.04) brightness(1.03) drop-shadow(0 0 10px rgba(120, 205, 255, 0.30));
+  opacity: 1;
+}
+
+body.og-mode #game-board-container.turn-red.turn-operatives #og-panel-red .online-roster-operatives,
+body.og-mode #game-board-container.turn-red.turn-spymaster #og-panel-red .online-roster-spymasters,
+body.cozy-mode #game-board-container.turn-red.turn-operatives #og-panel-red .online-roster-operatives,
+body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-panel-red .online-roster-spymasters,
+body.og-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-mobile-box-ops,
+body.og-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-mobile-box-spy,
+body.cozy-mode #game-board-container.turn-red.turn-operatives #og-mobile-red .og-mobile-box-ops,
+body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-mobile-box-spy {
+  filter: saturate(1.04) brightness(1.03) drop-shadow(0 0 10px rgba(255, 170, 125, 0.28));
+  opacity: 1;
 }
 
 /* ==================== Bracket Compact Pass ==================== */

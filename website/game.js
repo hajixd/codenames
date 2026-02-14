@@ -6470,9 +6470,12 @@ function renderTopbarTeamNames() {
   }
   const boardContainer = document.getElementById('game-board-container');
   if (boardContainer) {
+    const isTurnPhase = activeTeam && (currentGame.currentPhase === 'spymaster' || currentGame.currentPhase === 'operatives');
     boardContainer.classList.toggle('turn-red', activeTeam === 'red');
     boardContainer.classList.toggle('turn-blue', activeTeam === 'blue');
     boardContainer.classList.toggle('turn-none', !activeTeam);
+    boardContainer.classList.toggle('turn-spymaster', !!(isTurnPhase && currentGame.currentPhase === 'spymaster'));
+    boardContainer.classList.toggle('turn-operatives', !!(isTurnPhase && currentGame.currentPhase === 'operatives'));
   }
   if (redTop) redTop.classList.toggle('is-active', activeTeam === 'red');
   if (blueTop) blueTop.classList.toggle('is-active', activeTeam === 'blue');
