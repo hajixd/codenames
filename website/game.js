@@ -50,6 +50,7 @@ const CARD_CONFIRM_ANIM_MS = 1850;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
+let _pendingRevealRenderTimer = null;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -114,6 +115,9 @@ function collectNewlyRevealedCardIndices(prevCards, nextCards) {
 }
 
 function animateNewlyRevealedCards(cardIndices = []) {
+  // OG/Cozy use the local confirm replay path before render. This function is
+  // kept for non-OG styles that still use reveal keyframe classes.
+  if (isOgLikeStyleActive()) return;
   if (!Array.isArray(cardIndices) || !cardIndices.length) return;
   const seen = new Set();
   cardIndices.forEach((rawIdx) => {
@@ -126,43 +130,37 @@ function animateNewlyRevealedCards(cardIndices = []) {
 
     const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
     const revealType = normalizeConfirmBackType(cardTypeRaw);
-    const ogLike = isOgLikeStyleActive();
-    if (ogLike) {
-      applyConfirmAnimationClasses(cardEl, revealType, { replay: true });
-
-      window.setTimeout(() => {
-        if (!cardEl.isConnected) return;
-        clearConfirmAnimationClasses(cardEl);
-        cardEl.classList.add('revealed', `card-${revealType}`);
-      }, CARD_CONFIRM_ANIM_MS);
-    } else {
-      if (revealType) cardEl.classList.add(`card-${revealType}`);
-      // Restart animation classes in case snapshots arrive quickly.
-      cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-      void cardEl.offsetWidth;
-      cardEl.classList.add('guess-animate');
-      cardEl.classList.add('revealing');
-
-      window.setTimeout(() => {
-        if (!cardEl.isConnected) return;
-        cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-      }, CARD_CONFIRM_ANIM_MS);
-    }
-
-    if (!ogLike) {
-      return;
-    }
+    if (revealType) cardEl.classList.add(`card-${revealType}`);
+    // Restart animation classes in case snapshots arrive quickly.
+    cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
+    void cardEl.offsetWidth;
+    cardEl.classList.add('guess-animate');
+    cardEl.classList.add('revealing');
 
     window.setTimeout(() => {
       if (!cardEl.isConnected) return;
-      // Keep OG/Cozy card inner fully controlled by stylesheet after replay.
-      const cardInner = cardEl.querySelector('.card-inner');
-      if (cardInner) {
-        cardInner.style.transition = '';
-        cardInner.style.transform = '';
-      }
+      cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
     }, CARD_CONFIRM_ANIM_MS);
   });
+}
+
+function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
+  if (!isOgLikeStyleActive()) return false;
+  if (!Array.isArray(cardIndices) || !cardIndices.length) return false;
+  let animatedAny = false;
+  const seen = new Set();
+  cardIndices.forEach((rawIdx) => {
+    const idx = Number(rawIdx);
+    if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
+    seen.add(idx);
+    const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+    if (!cardEl || cardEl.classList.contains('revealed')) return;
+    const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
+    const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
+    applyConfirmAnimationClasses(cardEl, confirmBackType);
+    animatedAny = true;
+  });
+  return animatedAny;
 }
 
 // Best-effort local resume: remember the last active game so a page refresh can jump straight back in.
@@ -3640,24 +3638,41 @@ function startGameListener(gameId, options = {}) {
       clearRevealAnimationSuppressions();
     }
 
-    renderGame();
-    if (newlyRevealedIndices.length) {
-      animateNewlyRevealedCards(newlyRevealedIndices);
+    const replayedPreRenderConfirm = replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, currentGame.cards);
+    const finishSnapshotRender = () => {
+      renderGame();
+      if (newlyRevealedIndices.length && !replayedPreRenderConfirm) {
+        animateNewlyRevealedCards(newlyRevealedIndices);
+      }
+
+      // If the app is entering Quick Play directly into an in-progress game,
+      // keep the loader up until we have rendered at least once.
+      if (document.body.classList.contains('quickplay')) {
+        _signalQuickPlayReady();
+      }
+
+      // Animate new clue (center screen overlay)
+      if (clueChanged && newClueWord) {
+        showClueAnimation(newClueWord, newClueNumber, currentGame.currentTeam);
+      }
+
+      _prevClue = newClueWord;
+      isFirstSnapshot = false;
+    };
+
+    if (_pendingRevealRenderTimer) {
+      clearTimeout(_pendingRevealRenderTimer);
+      _pendingRevealRenderTimer = null;
     }
 
-    // If the app is entering Quick Play directly into an in-progress game,
-    // keep the loader up until we have rendered at least once.
-    if (document.body.classList.contains('quickplay')) {
-      _signalQuickPlayReady();
+    if (replayedPreRenderConfirm) {
+      _pendingRevealRenderTimer = window.setTimeout(() => {
+        _pendingRevealRenderTimer = null;
+        finishSnapshotRender();
+      }, CARD_CONFIRM_ANIM_MS);
+    } else {
+      finishSnapshotRender();
     }
-
-    // Animate new clue (center screen overlay)
-    if (clueChanged && newClueWord) {
-      showClueAnimation(newClueWord, newClueNumber, currentGame.currentTeam);
-    }
-
-    _prevClue = newClueWord;
-    isFirstSnapshot = false;
   }, (err) => {
     console.error('Game listener error:', err);
   });
@@ -3687,6 +3702,10 @@ window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {
 function stopGameListener() {
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
+  if (_pendingRevealRenderTimer) {
+    clearTimeout(_pendingRevealRenderTimer);
+    _pendingRevealRenderTimer = null;
+  }
   try { syncTeamConsidering(null); } catch (_) {}
   clearRevealAnimationSuppressions();
   currentGame = null;
