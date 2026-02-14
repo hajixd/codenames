@@ -49,34 +49,40 @@ let _prevBoardSignature = null; // Track board identity so we can reset per-game
 const CARD_CONFIRM_ANIM_MS = 1850;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
-const _CARD_TYPES = ['red', 'blue', 'neutral', 'assassin'];
+const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _pendingRevealRenderTimer = null;
 let _deferredSnapshotRender = null;
 let _localConfirmAnimUntil = 0;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
-function normalizeCardType(rawType, fallback = 'neutral') {
+function normalizeConfirmBackType(rawType) {
   const t = String(rawType || '').toLowerCase();
-  return _CARD_TYPES.includes(t) ? t : fallback;
+  return _CONFIRM_BACK_TYPES.includes(t) ? t : 'neutral';
+}
+
+function getConfirmBackLabel(confirmBackType) {
+  return confirmBackType === 'assassin' ? 'ASSASSIN' : String(confirmBackType || '').toUpperCase();
 }
 
 function clearConfirmAnimationClasses(cardEl) {
   if (!cardEl) return;
   cardEl.classList.remove('confirming-guess', 'confirm-animate');
-  cardEl.classList.remove('confirm-back-red', 'confirm-back-blue', 'confirm-back-neutral', 'confirm-back-assassin');
+  cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
 }
 
-function applyConfirmAnimationClasses(cardEl, opts = {}) {
+function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
   if (!cardEl) return;
   const replay = !!opts.replay;
+  const type = normalizeConfirmBackType(confirmBackType);
   if (replay) {
     // For snapshot replays, briefly restore the unrevealed presentation first.
-    cardEl.classList.remove('revealed', ..._CARD_TYPES.map((t) => `card-${t}`));
+    cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
   }
   clearConfirmAnimationClasses(cardEl);
-  cardEl.classList.add('confirming-guess', 'confirm-animate');
+  cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
+  cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
 }
 
 function flushDeferredSnapshotRender() {
@@ -155,7 +161,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
     if (!cardEl || !cardEl.classList.contains('revealed')) return;
 
     const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
-    const revealType = normalizeCardType(cardTypeRaw, '');
+    const revealType = normalizeConfirmBackType(cardTypeRaw);
     if (revealType) cardEl.classList.add(`card-${revealType}`);
     // Restart animation classes in case snapshots arrive quickly.
     cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
@@ -181,7 +187,9 @@ function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
     seen.add(idx);
     const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
     if (!cardEl || cardEl.classList.contains('revealed')) return;
-    applyConfirmAnimationClasses(cardEl);
+    const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
+    const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
+    applyConfirmAnimationClasses(cardEl, confirmBackType);
     animatedAny = true;
   });
   return animatedAny;
@@ -4244,15 +4252,14 @@ function renderBoard(isSpymaster) {
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
-    const cardType = normalizeCardType(card?.type);
 
     if (card.revealed) {
       classes.push('revealed');
-      classes.push(`card-${cardType}`);
+      classes.push(`card-${card.type}`);
       if (isOgMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
-      classes.push(`card-${cardType}`);
+      classes.push(`card-${card.type}`);
       classes.push('disabled');
     } else if (!canGuess) {
       classes.push('disabled');
@@ -4293,13 +4300,15 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
-    const backFace = `
-      <div class="card-face card-back" aria-hidden="true">
-        <span class="card-back-core" aria-hidden="true"></span>
-      </div>
-    `;
+    const backFace = isOgMode
+      ? `
+          <div class="card-face card-back">
+            <span class="card-word"><span class="word-text">${word}</span></span>
+          </div>
+        `
+      : '';
     return `
-      <div class="${classes.join(' ')}" data-index="${i}" data-back-type="${cardType}">
+      <div class="${classes.join(' ')}" data-index="${i}">
         ${consideringHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
@@ -7159,11 +7168,13 @@ async function handleCardConfirm(evt, cardIndex) {
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
+  const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
+  const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   if (runPhysicalConfirmAnim) {
     // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
     _localConfirmAnimUntil = Date.now() + CARD_CONFIRM_ANIM_MS;
     markRevealAnimationSuppressed(idx);
-    applyConfirmAnimationClasses(cardEl);
+    applyConfirmAnimationClasses(cardEl, confirmBackType);
   } else {
     cardEl?.classList.add('confirming-guess');
   }
