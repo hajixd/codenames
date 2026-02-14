@@ -46,7 +46,10 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const REMOTE_REVEAL_ANIM_CLEANUP_MS = 1400;
+const REMOTE_REVEAL_ANIM_CLEANUP_MS = 2100;
+const REMOTE_REVEAL_FLIP_MS = 1480;
+const REMOTE_REVEAL_FLIP_EASE = 'cubic-bezier(0.16, 0.92, 0.24, 1)';
+const REMOTE_REVEAL_KEYFRAME_MS = 1820;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
 // Expose current game phase for presence (app.js)
@@ -105,7 +108,10 @@ function animateNewlyRevealedCards(cardIndices = []) {
     void cardEl.offsetWidth;
     cardEl.classList.add('guess-animate');
 
-    if (isOnlineStyleActive()) {
+    cardEl.style.setProperty('--card-reveal-duration', `${REMOTE_REVEAL_KEYFRAME_MS}ms`);
+    cardEl.style.setProperty('--card-reveal-ease', REMOTE_REVEAL_FLIP_EASE);
+
+    if (isOgLikeStyleActive()) {
       const cardInner = cardEl.querySelector('.card-inner');
       if (cardInner) {
         cardEl.classList.add('flip-glow');
@@ -113,8 +119,8 @@ function animateNewlyRevealedCards(cardIndices = []) {
         cardInner.style.transform = 'rotateY(0deg)';
         void cardInner.offsetWidth;
         requestAnimationFrame(() => {
-          cardInner.style.transition = '';
-          cardInner.style.transform = '';
+          cardInner.style.transition = `transform ${REMOTE_REVEAL_FLIP_MS}ms ${REMOTE_REVEAL_FLIP_EASE}`;
+          cardInner.style.transform = 'rotateY(180deg)';
         });
       }
     } else {
@@ -123,6 +129,13 @@ function animateNewlyRevealedCards(cardIndices = []) {
 
     window.setTimeout(() => {
       cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
+      cardEl.style.removeProperty('--card-reveal-duration');
+      cardEl.style.removeProperty('--card-reveal-ease');
+      const cardInner = cardEl.querySelector('.card-inner');
+      if (cardInner) {
+        cardInner.style.transition = '';
+        cardInner.style.transform = '';
+      }
     }, REMOTE_REVEAL_ANIM_CLEANUP_MS);
   });
 }
