@@ -21002,11 +21002,6 @@ body:is(.og-mode, .cozy-mode) .game-card .card-face{
   backface-visibility: hidden;
 }
 
-/* Keep front/back as explicit 3D faces so Safari/WebKit culls mirrored text. */
-body:is(.og-mode, .cozy-mode) .game-card .card-front{
-  transform: rotateY(0deg);
-}
-
 body:is(.og-mode, .cozy-mode) .game-card.revealed .card-front,
 body:is(.og-mode, .cozy-mode) .game-card.revealed .card-back{
   transition:

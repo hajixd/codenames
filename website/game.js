@@ -4205,7 +4205,6 @@ function renderBoard(isSpymaster) {
   if (!boardEl || !currentGame?.cards) return;
   setupBoardCardInteractions();
   const isOgMode = isOnlineStyleActive();
-  const isOgLikeMode = isOgLikeStyleActive();
   const boardWordFitKey = currentGame.cards.map((c) => `${String(c?.word || '')}:${c?.revealed ? 1 : 0}`).join('|');
   const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
 
@@ -4301,7 +4300,7 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
-    const backFace = isOgLikeMode
+    const backFace = isOgMode
       ? `
           <div class="card-face card-back">
             <span class="card-word"><span class="word-text">${word}</span></span>
