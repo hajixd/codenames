@@ -3460,15 +3460,7 @@ function startGameListener(gameId, options = {}) {
       return;
     }
 
-    const prevCards = Array.isArray(currentGame?.cards) ? currentGame.cards : null;
     currentGame = { id: snap.id, ...snap.data() };
-    if (!isFirstSnapshot && prevCards && Array.isArray(currentGame?.cards) && prevCards.length === currentGame.cards.length) {
-      for (let i = 0; i < currentGame.cards.length; i++) {
-        const wasRevealed = !!prevCards[i]?.revealed;
-        const isRevealedNow = !!currentGame.cards[i]?.revealed;
-        if (!wasRevealed && isRevealedNow) _pendingRevealAnimIndices.add(i);
-      }
-    }
     if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
     else stopPracticeInactivityWatcher();
 
@@ -3486,7 +3478,6 @@ function startGameListener(gameId, options = {}) {
         pendingCardSelection = null;
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
-        _pendingRevealAnimIndices.clear();
         void syncTeamConsidering(null);
         renderCardTags();
         saveTagsToLocal();
@@ -3574,7 +3565,6 @@ function stopGameListener() {
   revealedPeekCardIndex = null;
   pendingCardSelection = null;
   _pendingSelectionContextKey = null;
-  _pendingRevealAnimIndices.clear();
   spectatorMode = false;
   spectatingGameId = null;
 
@@ -4161,22 +4151,6 @@ function renderBoard(isSpymaster) {
     _lastWordFitBoardKey = boardWordFitKey;
     _lastWordFitViewportKey = boardWordFitViewportKey;
     scheduleFitCardWords();
-  }
-
-  // Animate any newly revealed cards for all players (human + AI + remote guesses).
-  if (_pendingRevealAnimIndices.size) {
-    const indices = [..._pendingRevealAnimIndices];
-    _pendingRevealAnimIndices.clear();
-    requestAnimationFrame(() => {
-      indices.forEach((idx) => {
-        const cardEl = boardEl.querySelector(`.game-card[data-index="${idx}"]`);
-        if (!cardEl || !cardEl.classList.contains('revealed')) return;
-        cardEl.classList.add('reveal-animate');
-        setTimeout(() => {
-          cardEl.classList.remove('reveal-animate');
-        }, CARD_PHYSICAL_FLIP_MS + 120);
-      });
-    });
   }
 
   // Tags removed – no longer rendering card tags
@@ -5260,8 +5234,6 @@ let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
 let _lastCardConfirmAt = 0;
 let _lastCardConfirmIndex = -1;
-const CARD_PHYSICAL_FLIP_MS = 1850;
-let _pendingRevealAnimIndices = new Set();
 let operativeChatUnsub = null;
 let operativeChatTeamViewing = null; // 'red' | 'blue'
 let spectatorChatTeam = 'red';
@@ -6966,6 +6938,7 @@ function showClueAnimation(word, number, teamColor) {
    - Tap checkmark: confirm the guess
 ========================= */
 const _originalHandleCardClick = handleCardClick;
+const CARD_CONFIRM_ANIM_MS = 1850;
 
 function canCurrentUserGuess() {
   const myTeamColor = getMyTeamColor();
@@ -7013,13 +6986,34 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+  const runPhysicalConfirmAnim = !!(cardEl && isOnlineStyleActive());
+  const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
+  const confirmBackType = (cardTypeRaw === 'red' || cardTypeRaw === 'blue' || cardTypeRaw === 'neutral' || cardTypeRaw === 'assassin')
+    ? cardTypeRaw
+    : 'neutral';
+  const confirmBackLabel = confirmBackType === 'assassin' ? 'ASSASSIN' : confirmBackType.toUpperCase();
   cardEl?.classList.add('confirming-guess');
+  if (runPhysicalConfirmAnim) {
+    cardEl.classList.add('confirm-animate', `confirm-back-${confirmBackType}`);
+    cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
+  }
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
 
   try {
+    if (runPhysicalConfirmAnim) {
+      await new Promise((resolve) => setTimeout(resolve, CARD_CONFIRM_ANIM_MS));
+    }
     await _originalHandleCardClick(idx);
   } finally {
     clearTimeout(lockGuard);
+    cardEl?.classList.remove(
+      'confirm-animate',
+      'confirm-back-red',
+      'confirm-back-blue',
+      'confirm-back-neutral',
+      'confirm-back-assassin'
+    );
+    cardEl?.removeAttribute('data-confirm-back-label');
     cardEl?.classList.remove('confirming-guess');
   }
 }
