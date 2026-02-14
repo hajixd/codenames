@@ -5668,7 +5668,7 @@ body.og-mode .game-card.og-reveal-bump{
 
 /* OG (Codenames Online): newly revealed cards do a very obvious slow flip. */
 body.og-mode .game-card.og-reveal-flip .card-inner{
-  animation: ogCardRevealFlip 4000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: ogCardRevealFlip 5000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes ogCardRevealFlip {
@@ -21380,7 +21380,7 @@ body.cozy-mode #game-board-container.turn-blue #og-mobile-red .og-mobile-box {
 
 /* Rebuilt, deterministic OG reveal animation (slow front -> up -> back). */
 body.og-mode .game-card.og-reveal-flip-active {
-  animation: ogRevealLiftRebuilt var(--og-reveal-flip-duration, 4000ms) cubic-bezier(0.22, 0.88, 0.24, 1) forwards !important;
+  animation: ogRevealLiftRebuilt var(--og-reveal-flip-duration, 5000ms) cubic-bezier(0.22, 0.88, 0.24, 1) forwards !important;
   transform-origin: 50% 62%;
   transform-style: preserve-3d;
   will-change: transform, filter, box-shadow;
@@ -21389,7 +21389,7 @@ body.og-mode .game-card.og-reveal-flip-active {
 }
 
 body.og-mode .game-card.og-reveal-flip-active .card-inner {
-  animation: ogRevealFlipRebuilt var(--og-reveal-flip-duration, 4000ms) cubic-bezier(0.22, 0.88, 0.24, 1) forwards !important;
+  animation: ogRevealFlipRebuilt var(--og-reveal-flip-duration, 5000ms) cubic-bezier(0.22, 0.88, 0.24, 1) forwards !important;
   transform-origin: 50% 52%;
   transition: none !important;
   will-change: transform;

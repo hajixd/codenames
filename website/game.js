@@ -49,8 +49,12 @@ let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 const _animatedInitialRevealKeys = new Set(); // Prevent random replay of initial flip animations
 // One-shot guessed-card reveal flip (face-up -> face-down).
-const OG_REVEAL_FLIP_DURATION_MS = 4000;
-const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 320;
+const OG_REVEAL_FLIP_DURATION_MS = 5000;
+// Tunable motion controls (next pass can tune only these three).
+const OG_REVEAL_FLIP_LIFT_RATIO = 0.24;      // Lift height as fraction of card height.
+const OG_REVEAL_FLIP_HOLD_MS = 980;          // Midpoint hold duration while airborne.
+const OG_REVEAL_FLIP_SETTLE_MS = 1560;       // Return/settle segment duration.
+const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 220;
 const OG_REVEAL_STAGGER_MS = 90;
 const FORCED_REVEAL_ANIMATION_TTL_MS = 10000;
 const _forcedRevealAnimations = new Map(); // index -> expiresAt (ms)
@@ -3829,29 +3833,59 @@ function runOnlineRevealFlipAnimation(cardEl) {
   // - Entire card lifts off the board
   // - Card flips in mid-air as a rigid body (front/back stay attached)
   // - Card settles back into the same slot, face-down at 180deg
+  // Total motion time is fixed at 5s; phase timing is controlled by:
+  //   1) OG_REVEAL_FLIP_LIFT_RATIO
+  //   2) OG_REVEAL_FLIP_HOLD_MS
+  //   3) OG_REVEAL_FLIP_SETTLE_MS
   try {
     if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
   } catch (_) {}
   cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
   cardEl.classList.remove('og-reveal-bump');
 
-  const durationMs = OG_REVEAL_FLIP_DURATION_MS;
-  const durationText = `${durationMs}ms`;
+  const totalMs = OG_REVEAL_FLIP_DURATION_MS;
+  const holdMs = Math.max(300, Math.min(totalMs - 1300, OG_REVEAL_FLIP_HOLD_MS));
+  const settleMs = Math.max(600, Math.min(totalMs - holdMs - 600, OG_REVEAL_FLIP_SETTLE_MS));
+  const launchMs = Math.max(700, totalMs - holdMs - settleMs);
+  const durationText = `${totalMs}ms`;
   let done = false;
-  let timeoutId = null;
+  let timers = [];
+  let settlePhaseActive = false;
   let liftPx = 24;
   try {
     const rect = cardEl.getBoundingClientRect();
     if (rect && Number.isFinite(rect.height) && rect.height > 0) {
-      liftPx = Math.max(16, Math.min(36, Math.round(rect.height * 0.24)));
+      liftPx = Math.max(14, Math.min(44, Math.round(rect.height * OG_REVEAL_FLIP_LIFT_RATIO)));
     }
   } catch (_) {}
+
+  function schedule(fn, ms) {
+    const id = setTimeout(() => {
+      timers = timers.filter(t => t !== id);
+      fn();
+    }, ms);
+    timers.push(id);
+    return id;
+  }
+
+  function clearTimers() {
+    for (const id of timers) clearTimeout(id);
+    timers = [];
+  }
+
+  function handleInnerTransitionEnd(evt) {
+    if (!evt || evt.target !== inner) return;
+    if (evt.propertyName !== 'transform') return;
+    if (!settlePhaseActive) return;
+    cleanup();
+  }
 
   function cleanup() {
     if (done) return;
     done = true;
-    if (timeoutId) clearTimeout(timeoutId);
-    inner.removeEventListener('animationend', handleInnerAnimationEnd);
+    settlePhaseActive = false;
+    clearTimers();
+    inner.removeEventListener('transitionend', handleInnerTransitionEnd);
     cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-active');
     cardEl.classList.remove('og-reveal-flip', 'og-reveal-flip-js', 'flip-glow');
     inner.style.animation = '';
@@ -3866,11 +3900,6 @@ function runOnlineRevealFlipAnimation(cardEl) {
     try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
   }
 
-  function handleInnerAnimationEnd(evt) {
-    if (!evt || evt.target !== inner) return;
-    cleanup();
-  }
-
   // Clear any left-over inline motion from previous runs before forcing a new one.
   inner.style.animation = '';
   inner.style.transition = '';
@@ -3883,13 +3912,51 @@ function runOnlineRevealFlipAnimation(cardEl) {
   cardEl.classList.add('og-reveal-bump');
   cardEl.style.setProperty('--og-reveal-flip-duration', durationText);
   cardEl.style.setProperty('--og-lift-amount', `${liftPx}px`);
+  inner.addEventListener('transitionend', handleInnerTransitionEnd);
 
-  // Restart keyframes deterministically.
+  // Base physical pose (on board, face-up).
+  cardEl.style.transition = 'none';
+  cardEl.style.transform = 'translateY(0px) scale(1)';
+  cardEl.style.filter = 'brightness(1)';
+  inner.style.transition = 'none';
+  inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0px)';
   void cardEl.offsetWidth;
-  cardEl.classList.add('og-reveal-flip-active');
-  inner.addEventListener('animationend', handleInnerAnimationEnd);
 
-  timeoutId = setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS + 140);
+  // Phase 1: lift + flip into air.
+  requestAnimationFrame(() => {
+    if (done) return;
+    const launchEase = 'cubic-bezier(0.24, 0.88, 0.3, 1)';
+    cardEl.style.transition = `transform ${launchMs}ms ${launchEase}, filter ${launchMs}ms ${launchEase}`;
+    inner.style.transition = `transform ${launchMs}ms ${launchEase}`;
+    cardEl.style.transform = `translateY(${-liftPx}px) scale(1.055)`;
+    cardEl.style.filter = 'brightness(1.08)';
+    inner.style.transform = 'rotateY(108deg) rotateX(15deg) translateZ(20px)';
+  });
+
+  // Phase 2: hold near midpoint in air.
+  schedule(() => {
+    if (done) return;
+    cardEl.style.transition = 'none';
+    inner.style.transition = 'none';
+    cardEl.style.transform = `translateY(${-liftPx}px) scale(1.055)`;
+    cardEl.style.filter = 'brightness(1.08)';
+    inner.style.transform = 'rotateY(108deg) rotateX(15deg) translateZ(20px)';
+  }, launchMs);
+
+  // Phase 3: settle down and complete to face-down.
+  schedule(() => {
+    if (done) return;
+    settlePhaseActive = true;
+    const settleEase = 'cubic-bezier(0.14, 0.78, 0.2, 1)';
+    cardEl.style.transition = `transform ${settleMs}ms ${settleEase}, filter ${settleMs}ms ${settleEase}`;
+    inner.style.transition = `transform ${settleMs}ms ${settleEase}`;
+    cardEl.style.transform = 'translateY(0px) scale(1)';
+    cardEl.style.filter = 'brightness(1)';
+    inner.style.transform = 'rotateY(180deg) rotateX(0deg) translateZ(0px)';
+  }, launchMs + holdMs);
+
+  // Fallback cleanup guard.
+  schedule(cleanup, totalMs + 120);
   cardEl.__ogFlipCleanup = cleanup;
 }
 
