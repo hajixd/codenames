@@ -318,6 +318,7 @@ const localPracticeGames = new Map();
 let localPracticeAiTimer = null;
 let localPracticeAiBusy = false;
 let localPracticeAiGameId = null;
+const LOCAL_PRACTICE_CHAT_LIMIT = 80;
 
 function cloneLocalValue(value) {
   if (typeof structuredClone === 'function') {
@@ -350,17 +351,77 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
   const key = String(gameId || '').trim();
   if (!key || !isLocalPracticeGameId(key) || !gameData) return null;
 
+  const prevLiveGame = (currentGame?.id === key) ? cloneLocalValue(currentGame) : null;
   const next = cloneLocalValue(gameData) || {};
   next.id = key;
   next.updatedAtMs = Date.now();
   localPracticeGames.set(key, next);
 
   if (!opts.skipRender && currentGame?.id === key) {
-    currentGame = cloneLocalValue(next);
-    if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
-    else stopPracticeInactivityWatcher();
-    try { renderGame(); } catch (_) {}
-    try { window.bumpPresence?.(); } catch (_) {}
+    const prevCards = Array.isArray(prevLiveGame?.cards) ? prevLiveGame.cards : null;
+
+    let boardChanged = false;
+    try {
+      const sig = (Array.isArray(next?.cards) && next.cards.length)
+        ? next.cards.map(c => `${String(c?.word || '')}::${String(c?.type || '')}`).join('|')
+        : null;
+      if (sig && _prevBoardSignature && sig !== _prevBoardSignature) {
+        boardChanged = true;
+        cardTags = {};
+        pendingCardSelection = null;
+        _pendingSelectionContextKey = null;
+        revealedPeekCardIndex = null;
+        void syncTeamConsidering(null);
+        renderCardTags();
+        saveTagsToLocal();
+        setActiveTagMode(null);
+        clearRevealAnimationSuppressions();
+      }
+      _prevBoardSignature = sig || _prevBoardSignature;
+    } catch (_) {}
+
+    const newClueWord = next.currentClue?.word || null;
+    const newClueNumber = next.currentClue?.number ?? null;
+    const clueChanged = !!(newClueWord && newClueWord !== _prevClue);
+    let newlyRevealedIndices = [];
+    if (!opts.skipAnimation && prevCards && !boardChanged) {
+      newlyRevealedIndices = collectNewlyRevealedCardIndices(prevCards, next.cards)
+        .filter((idx) => !consumeRevealAnimationSuppressed(idx));
+    } else {
+      clearRevealAnimationSuppressions();
+    }
+
+    const replayedPreRenderConfirm = (!opts.skipAnimation)
+      ? replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, next.cards)
+      : false;
+
+    const finishLocalRender = () => {
+      currentGame = cloneLocalValue(next);
+      if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
+      else stopPracticeInactivityWatcher();
+      try { renderGame(); } catch (_) {}
+      if (!opts.skipAnimation && newlyRevealedIndices.length && !replayedPreRenderConfirm) {
+        animateNewlyRevealedCards(newlyRevealedIndices);
+      }
+      if (clueChanged && newClueWord) {
+        showClueAnimation(newClueWord, newClueNumber, currentGame.currentTeam);
+      }
+      _prevClue = newClueWord;
+      try { window.bumpPresence?.(); } catch (_) {}
+    };
+
+    if (opts.skipAnimation) {
+      finishLocalRender();
+    } else if (replayedPreRenderConfirm) {
+      scheduleSnapshotRender(finishLocalRender, CARD_CONFIRM_ANIM_MS, { extend: true });
+    } else {
+      const holdForLocalConfirmMs = Math.max(0, _localConfirmAnimUntil - Date.now());
+      if (holdForLocalConfirmMs > 0) {
+        scheduleSnapshotRender(finishLocalRender, holdForLocalConfirmMs, { extend: true });
+      } else {
+        scheduleSnapshotRender(finishLocalRender, 0);
+      }
+    }
   }
 
   return cloneLocalValue(next);
@@ -513,11 +574,106 @@ function applyLocalPracticeGuessState(game, idx, actorName) {
 
 function pickLocalPracticeClueWord(game) {
   const boardWords = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+  const usedClues = new Set((game?.clueHistory || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
   const pool = ['THREAD', 'NEXUS', 'VECTOR', 'SPARK', 'ORBIT', 'SHADOW', 'PULSE', 'ECHO', 'ANCHOR', 'BEACON', 'FOCUS', 'RHYTHM'];
+  _shuffleInPlace(pool);
+  for (const word of pool) {
+    if (!boardWords.has(word) && !usedClues.has(word)) return word;
+  }
   for (const word of pool) {
     if (!boardWords.has(word)) return word;
   }
   return `CLUE${Math.floor(Math.random() * 90) + 10}`;
+}
+
+function clampLocalPracticeClueNumber(value, fallback = 1) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return Math.max(0, Math.min(9, parseInt(fallback, 10) || 1));
+  return Math.max(0, Math.min(9, n));
+}
+
+function sanitizeLocalPracticeClueWord(raw, boardWordsSet) {
+  let word = String(raw || '').trim().toUpperCase();
+  if (!word) return '';
+  if (word.includes(' ') || word.includes('-')) return '';
+  if (!/^[A-Z0-9]+$/.test(word)) return '';
+  if (word.length < 2 || word.length > 14) return '';
+  if (boardWordsSet?.has(word)) return '';
+  return word;
+}
+
+async function generateLocalPracticeAICluePlan(game, team, aiSpy = null) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const boardWords = cards.map((c) => String(c?.word || '').trim().toUpperCase()).filter(Boolean);
+  const boardWordSet = new Set(boardWords);
+  const hidden = cards.filter((c) => c && !c.revealed);
+  const ownWords = hidden
+    .filter((c) => String(c.type || '') === team)
+    .map((c) => String(c.word || '').trim().toUpperCase())
+    .filter(Boolean);
+  const oppTeam = team === 'red' ? 'blue' : 'red';
+  const oppWords = hidden
+    .filter((c) => String(c.type || '') === oppTeam)
+    .map((c) => String(c.word || '').trim().toUpperCase())
+    .filter(Boolean);
+  const neutralWords = hidden
+    .filter((c) => String(c.type || '') === 'neutral')
+    .map((c) => String(c.word || '').trim().toUpperCase())
+    .filter(Boolean);
+  const assassinWords = hidden
+    .filter((c) => String(c.type || '') === 'assassin')
+    .map((c) => String(c.word || '').trim().toUpperCase())
+    .filter(Boolean);
+
+  const fallbackNumber = Math.max(1, Math.min(3, ownWords.length >= 5 ? 3 : (ownWords.length >= 3 ? 2 : 1)));
+  const fallbackWord = pickLocalPracticeClueWord(game);
+  if (!ownWords.length) return { word: fallbackWord, number: fallbackNumber };
+
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') return { word: fallbackWord, number: fallbackNumber };
+
+  const teamLabel = team === 'red' ? 'RED' : 'BLUE';
+  const systemPrompt = [
+    `You are a Codenames spymaster for team ${teamLabel}.`,
+    `Choose ONE safe clue for the current board.`,
+    `Return JSON only: {"clue":"ONEWORD","number":N}`,
+    `Rules:`,
+    `- clue must be one word (A-Z or digits only, no spaces, no hyphens)`,
+    `- clue must NOT be any board word`,
+    `- prefer clues that connect 2-4 own words when safe; otherwise lower number`,
+    `- avoid clues that pull toward opponent, neutral, or assassin words`,
+    `- number must be an integer 0-9`,
+  ].join('\n');
+
+  const userPrompt = [
+    `TEAM WORDS LEFT (${ownWords.length}): ${ownWords.join(', ')}`,
+    `OPPONENT WORDS LEFT (${oppWords.length}): ${oppWords.join(', ') || 'NONE'}`,
+    `NEUTRAL WORDS LEFT (${neutralWords.length}): ${neutralWords.join(', ') || 'NONE'}`,
+    `ASSASSIN WORDS LEFT (${assassinWords.length}): ${assassinWords.join(', ') || 'NONE'}`,
+    `BOARD WORDS (cannot use as clue): ${boardWords.join(', ')}`,
+  ].join('\n');
+
+  try {
+    const raw = await chatFn(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      {
+        temperature: Number.isFinite(+aiSpy?.aiTemperature) ? +aiSpy.aiTemperature : 0.72,
+        max_tokens: 220,
+        response_format: { type: 'json_object' },
+      }
+    );
+
+    const parsed = safeJsonParse(raw);
+    const clueWord = sanitizeLocalPracticeClueWord(parsed?.clue, boardWordSet);
+    const clueNumber = clampLocalPracticeClueNumber(parsed?.number, fallbackNumber);
+    if (clueWord) return { word: clueWord, number: clueNumber };
+  } catch (err) {
+    console.warn('Local practice AI clue generation failed, using fallback:', err);
+  }
+  return { word: fallbackWord, number: fallbackNumber };
 }
 
 function canLocalPracticeAIActAsOperatives(game, team) {
@@ -617,14 +773,16 @@ async function runLocalPracticeAIOnce() {
 
     if (game.currentPhase === 'spymaster') {
       if (!aiSpy) return;
+      const cluePlan = await generateLocalPracticeAICluePlan(game, team, aiSpy);
       mutateLocalPracticeGame(gid, (draft) => {
         const draftTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
         const teamName = draftTeam === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
-        const ownLeft = draftTeam === 'red' ? getCardsLeft(draft, 'red') : getCardsLeft(draft, 'blue');
-        const clueNumber = Math.max(1, Math.min(3, ownLeft >= 4 ? 2 : 1));
-        const clueWord = pickLocalPracticeClueWord(draft);
+        const clueWordRaw = String(cluePlan?.word || '').trim().toUpperCase();
+        const boardWordSet = new Set((draft?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+        const clueWord = sanitizeLocalPracticeClueWord(clueWordRaw, boardWordSet) || pickLocalPracticeClueWord(draft);
+        const clueNumber = clampLocalPracticeClueNumber(cluePlan?.number, 1);
         draft.currentClue = { word: clueWord, number: clueNumber };
-        draft.guessesRemaining = clueNumber + 1;
+        draft.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
         draft.currentPhase = 'operatives';
         draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
         draft.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
@@ -690,7 +848,9 @@ async function runLocalPracticeAIOnce() {
       stopLocalPracticeAI();
       return;
     }
-    scheduleLocalPracticeAI(520 + Math.floor(Math.random() * 520));
+    const minDelay = isOgLikeStyleActive() ? (CARD_CONFIRM_ANIM_MS + 140) : 620;
+    const jitter = isOgLikeStyleActive() ? 420 : 520;
+    scheduleLocalPracticeAI(minDelay + Math.floor(Math.random() * jitter));
   }
 }
 
@@ -1370,6 +1530,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     redSpymaster: redSpy ? String(redSpy.name || '').trim() : null,
     blueSpymaster: blueSpy ? String(blueSpy.name || '').trim() : null,
     log: ['Practice game started.'],
+    redChat: [],
+    blueChat: [],
     clueHistory: [],
     // practice knobs
     practice: {
@@ -6653,16 +6815,42 @@ function initOperativeChat() {
   }
 
   if (isCurrentLocalPracticeGame()) {
+    let teamForChat = getMyTeamColor();
+    const isSpectatorChat = !teamForChat && !!spectatorMode;
+    if (isSpectatorChat) teamForChat = spectatorChatTeam || 'red';
+    if (!teamForChat) {
+      renderOperativeChat([]);
+      return;
+    }
+    operativeChatTeamViewing = teamForChat;
+
+    try {
+      const panel = document.querySelector('.operative-chat-panel');
+      if (panel) {
+        panel.classList.toggle('chat-team-red', teamForChat === 'red');
+        panel.classList.toggle('chat-team-blue', teamForChat === 'blue');
+      }
+    } catch (_) {}
+
     const toggleBtn = document.getElementById('spectator-chat-toggle');
     const input = document.getElementById('operative-chat-input');
     const form = document.getElementById('operative-chat-form');
-    if (toggleBtn) toggleBtn.style.display = 'none';
-    if (input) {
-      input.disabled = true;
-      input.placeholder = 'Team chat is disabled in Practice.';
+    if (toggleBtn) {
+      toggleBtn.style.display = isSpectatorChat ? 'inline-flex' : 'none';
+      toggleBtn.textContent = isSpectatorChat
+        ? `View ${teamForChat === 'red' ? 'Blue' : 'Red'} Chat`
+        : '';
     }
-    if (form) form.classList.add('spectator-readonly');
-    renderOperativeChat([]);
+    if (input) {
+      input.disabled = isSpectatorChat;
+      input.placeholder = isSpectatorChat ? `Spectating ${teamForChat.toUpperCase()} chat…` : 'Message your team...';
+    }
+    if (form) {
+      form.classList.toggle('spectator-readonly', isSpectatorChat);
+    }
+    const chatField = teamForChat === 'blue' ? 'blueChat' : 'redChat';
+    const messages = Array.isArray(currentGame?.[chatField]) ? currentGame[chatField] : [];
+    renderOperativeChat(messages);
     return;
   }
 
@@ -6728,7 +6916,7 @@ function renderOperativeChat(messages) {
 
   container.innerHTML = messages.map(msg => {
     const isMe = msg.senderId === odId;
-    const time = msg.createdAt?.toDate?.() ? formatTime(msg.createdAt.toDate()) : '';
+    const time = formatTime(resolveChatMessageDate(msg));
     const teamColor = operativeChatTeamViewing || getMyTeamColor() || 'red';
 
     return `
@@ -6746,6 +6934,26 @@ function renderOperativeChat(messages) {
   container.scrollTop = container.scrollHeight;
 }
 
+function resolveChatMessageDate(msg) {
+  if (!msg || typeof msg !== 'object') return null;
+  try {
+    if (msg.createdAt?.toDate && typeof msg.createdAt.toDate === 'function') {
+      const d = msg.createdAt.toDate();
+      if (d instanceof Date && !Number.isNaN(d.getTime())) return d;
+    }
+  } catch (_) {}
+  if (msg.createdAt instanceof Date && !Number.isNaN(msg.createdAt.getTime())) return msg.createdAt;
+  if (Number.isFinite(+msg.createdAtMs)) {
+    const d = new Date(+msg.createdAtMs);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  if (msg.createdAt) {
+    const d = new Date(msg.createdAt);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
 function formatTime(date) {
   if (!date) return '';
   const h = date.getHours();
@@ -6758,11 +6966,40 @@ function formatTime(date) {
 async function handleOperativeChatSubmit(e) {
   e.preventDefault();
 
-  if (isCurrentLocalPracticeGame()) return;
-
   const input = document.getElementById('operative-chat-input');
   const text = input?.value?.trim();
   if (!text || !currentGame?.id) return;
+
+  if (isCurrentLocalPracticeGame()) {
+    const myTeamColor = getMyTeamColor();
+    if (!myTeamColor) return;
+    const userName = getUserName();
+    const odId = getUserId();
+    if (!userName || !odId) return;
+
+    input.value = '';
+    const nowMs = Date.now();
+    const chatField = myTeamColor === 'blue' ? 'blueChat' : 'redChat';
+
+    mutateLocalPracticeGame(currentGame.id, (draft) => {
+      const list = Array.isArray(draft?.[chatField]) ? [...draft[chatField]] : [];
+      list.push({
+        id: `local_chat_${nowMs}_${Math.random().toString(36).slice(2, 7)}`,
+        senderId: odId,
+        senderName: userName,
+        text: text,
+        createdAtMs: nowMs,
+      });
+      if (list.length > LOCAL_PRACTICE_CHAT_LIMIT) {
+        draft[chatField] = list.slice(-LOCAL_PRACTICE_CHAT_LIMIT);
+      } else {
+        draft[chatField] = list;
+      }
+      draft.updatedAtMs = nowMs;
+      draft.lastMoveAtMs = nowMs;
+    });
+    return;
+  }
 
   const myTeamColor = getMyTeamColor();
   if (!myTeamColor) return;
@@ -6956,6 +7193,33 @@ function renderTeamRoster() {
 /* =========================
    Top Bar Turn Strip + Team Popovers
 ========================= */
+const localPracticePopoverSections = {
+  red: { spymaster: true, operatives: true },
+  blue: { spymaster: true, operatives: true },
+};
+
+function isPracticePopoverSectionOpen(team, role) {
+  const t = (team === 'blue') ? 'blue' : 'red';
+  const r = (role === 'spymaster') ? 'spymaster' : 'operatives';
+  const byTeam = localPracticePopoverSections[t];
+  if (!byTeam || typeof byTeam[r] !== 'boolean') return true;
+  return byTeam[r];
+}
+
+function togglePracticePopoverSection(team, role, evt) {
+  try { evt?.preventDefault?.(); } catch (_) {}
+  try { evt?.stopPropagation?.(); } catch (_) {}
+  if (!isCurrentLocalPracticeGame()) return;
+  const t = (team === 'blue') ? 'blue' : 'red';
+  const r = (role === 'spymaster') ? 'spymaster' : 'operatives';
+  if (!localPracticePopoverSections[t]) localPracticePopoverSections[t] = { spymaster: true, operatives: true };
+  localPracticePopoverSections[t][r] = !isPracticePopoverSectionOpen(t, r);
+  renderTopbarTeamNames();
+  const host = document.getElementById(t === 'red' ? 'topbar-red' : 'topbar-blue');
+  host?.classList?.add('popover-open');
+}
+window.togglePracticePopoverSection = togglePracticePopoverSection;
+
 function renderTopbarTeamNames() {
   if (!currentGame) return;
 
@@ -7050,6 +7314,7 @@ function renderTopbarTeamNames() {
 
   const buildTeamPopover = (team) => {
     const isRed = team === 'red';
+    const allowCollapsible = isCurrentLocalPracticeGame();
     const teamName = truncateTeamNameGame(isRed ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team'));
     const roster = isRed ? (currentGame.redPlayers || []) : (currentGame.bluePlayers || []);
     const spymasterEntry = roster.find(p => isSpymasterPlayerForTeam(p, team, currentGame)) || null;
@@ -7093,6 +7358,29 @@ function renderTopbarTeamNames() {
            <div class="team-popover-badge">Operative</div>
          </div>`;
 
+    const buildSection = (label, role, contentHtml) => {
+      const open = !allowCollapsible || isPracticePopoverSectionOpen(team, role);
+      const sectionClasses = [
+        'team-popover-section',
+        allowCollapsible ? 'is-collapsible' : '',
+        open ? 'is-expanded' : 'is-collapsed',
+      ].filter(Boolean).join(' ');
+      const headerHtml = allowCollapsible
+        ? `<button class="team-popover-role team-popover-role-toggle" type="button" aria-expanded="${open ? 'true' : 'false'}" onclick="window.togglePracticePopoverSection('${team}','${role}', event)">
+             <span>${label}</span>
+             <span class="team-popover-role-caret" aria-hidden="true"></span>
+           </button>`
+        : `<div class="team-popover-role">${label}</div>`;
+      return `
+        <div class="${sectionClasses}">
+          ${headerHtml}
+          <div class="team-popover-section-body">
+            ${contentHtml}
+          </div>
+        </div>
+      `;
+    };
+
     return `
       <div class="team-popover-header">
         <div>
@@ -7102,15 +7390,8 @@ function renderTopbarTeamNames() {
         <button class="team-popover-close" type="button" aria-label="Close" onclick="event.stopPropagation(); document.querySelectorAll('.topbar-team.popover-open').forEach(el => el.classList.remove('popover-open'))">✕</button>
       </div>
 
-      <div class="team-popover-section">
-        <div class="team-popover-role">Spymaster</div>
-        ${spymasterHtml}
-      </div>
-
-      <div class="team-popover-section">
-        <div class="team-popover-role">Operatives</div>
-        ${opsHtml}
-      </div>
+      ${buildSection('Spymaster', 'spymaster', spymasterHtml)}
+      ${buildSection('Operatives', 'operatives', opsHtml)}
     `;
   };
 

@@ -10330,6 +10330,49 @@ body.tournament.has-team-color .input:focus {
   color: rgba(255, 255, 255, 0.82);
 }
 
+.team-popover-role-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.team-popover-role-caret {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(255, 255, 255, 0.75);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.75);
+  transform: rotate(45deg);
+  transition: transform 0.16s ease;
+  margin-left: 8px;
+}
+
+.team-popover-section.is-collapsible .team-popover-role {
+  margin-bottom: 6px;
+}
+
+.team-popover-section-body {
+  max-height: 420px;
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+  opacity: 1;
+}
+
+.team-popover-section.is-collapsed .team-popover-role {
+  margin-bottom: 0;
+}
+
+.team-popover-section.is-collapsed .team-popover-section-body {
+  max-height: 0;
+  opacity: 0;
+}
+
+.team-popover-section.is-collapsed .team-popover-role-caret {
+  transform: rotate(-45deg);
+}
+
 .team-popover-player {
   display: flex;
   align-items: center;
@@ -14416,6 +14459,10 @@ body.light-mode .team-popover {
   background: rgba(237,241,246,0.92);
   backdrop-filter: blur(16px);
   box-shadow: 0 16px 48px rgba(30,55,85,0.18);
+}
+body.light-mode .team-popover-role-caret {
+  border-right-color: rgba(40, 70, 100, 0.64);
+  border-bottom-color: rgba(40, 70, 100, 0.64);
 }
 
 /* --- Clue Chip & Guess Chip --- */
