@@ -5584,12 +5584,7 @@ button.player-tag.pill-action:disabled{
   align-items: center;
   justify-content: center;
   padding: 6px;
-  -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
-}
-
-.game-card .card-front {
-  transform: rotateY(0deg);
 }
 
 .game-card .card-back {
@@ -20305,9 +20300,9 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
   }
 }
 
-/* Word-ghosting fallback for non-OG/non-cozy styles that don't use card backs. */
+/* Keep both card faces mounted in every mode so cards remain physical two-sided objects. */
 body:not(.og-mode):not(.cozy-mode) .game-card .card-back {
-  display: none !important;
+  display: block !important;
 }
 
 body:not(.og-mode):not(.cozy-mode) .game-card .card-inner {
@@ -21751,4 +21746,43 @@ body.light-mode .brx-pop-card{
   #launch-tournament{ grid-area: teams; }
   #launch-practice{ grid-area: practice; }
   #launch-brackets{ grid-area: brackets; }
+}
+
+/* In-game physical card model: one permanent striped back, always attached to the card body. */
+:root {
+  --game-card-back-pattern:
+    radial-gradient(120% 100% at 14% 10%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 34%, rgba(0, 0, 0, 0) 72%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(213, 74, 64, 0.94) 0px,
+      rgba(213, 74, 64, 0.94) 10px,
+      rgba(242, 236, 226, 0.9) 10px,
+      rgba(242, 236, 226, 0.9) 20px,
+      rgba(64, 136, 207, 0.94) 20px,
+      rgba(64, 136, 207, 0.94) 30px,
+      rgba(242, 236, 226, 0.9) 30px,
+      rgba(242, 236, 226, 0.9) 40px
+    ),
+    linear-gradient(160deg, #2a354a 0%, #1a2437 52%, #101827 100%);
+}
+
+body:is(.og-mode, .cozy-mode) .game-card .card-back,
+body:is(.og-mode, .cozy-mode) .game-card.pending-select:not(.revealed) .card-back,
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-red .card-back,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-blue .card-back,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-neutral .card-back,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-assassin .card-back {
+  background: var(--game-card-back-pattern) !important;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.pending-select:not(.revealed) .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-red .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-blue .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-neutral .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.revealed.card-assassin .card-back::after {
+  content: "";
+  opacity: 0 !important;
 }
