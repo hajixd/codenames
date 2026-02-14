@@ -44,35 +44,8 @@ function getWordsForDeck(deckId) {
 }
 
 let currentGame = null;
-let _prevRevealedIndexes = new Set(); // Track previously revealed cards for animation
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const _animatedInitialRevealKeys = new Set(); // Prevent random replay of initial flip animations
-// One-shot guessed-card reveal flip (face-up -> face-down).
-const OG_REVEAL_FLIP_DURATION_MS = 5000;
-// Tunable motion controls (next pass can tune only these three).
-const OG_REVEAL_FLIP_LIFT_RATIO = 0.24;      // Lift height as fraction of card height.
-const OG_REVEAL_FLIP_HOLD_MS = 980;          // Midpoint hold duration while airborne.
-const OG_REVEAL_FLIP_SETTLE_MS = 1560;       // Return/settle segment duration.
-const OG_REVEAL_FLIP_CLEANUP_MS = OG_REVEAL_FLIP_DURATION_MS + 220;
-const OG_REVEAL_STAGGER_MS = 90;
-const FORCED_REVEAL_ANIMATION_TTL_MS = 10000;
-const _forcedRevealAnimations = new Map(); // index -> { expiresAt, retriesLeft }
-
-function normalizeForcedRevealEntry(rawEntry) {
-  if (typeof rawEntry === 'number') {
-    // Backward-compatible with older map values.
-    return { expiresAt: rawEntry, retriesLeft: 0 };
-  }
-  if (!rawEntry || typeof rawEntry !== 'object') return null;
-  const expiresAt = Number(rawEntry.expiresAt);
-  const retriesLeftRaw = Number(rawEntry.retriesLeft);
-  if (!Number.isFinite(expiresAt)) return null;
-  return {
-    expiresAt,
-    retriesLeft: Number.isFinite(retriesLeftRaw) ? Math.max(0, Math.floor(retriesLeftRaw)) : 0
-  };
-}
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -3505,7 +3478,6 @@ function startGameListener(gameId, options = {}) {
         pendingCardSelection = null;
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
-        _forcedRevealAnimations.clear();
         void syncTeamConsidering(null);
         renderCardTags();
         saveTagsToLocal();
@@ -3535,53 +3507,6 @@ function startGameListener(gameId, options = {}) {
       checkAndEndEmptyQuickPlayGame(currentGame);
     }
 
-    // Detect newly revealed cards for animation
-    const newRevealedIndexes = new Set();
-    if (Array.isArray(currentGame.cards)) {
-      currentGame.cards.forEach((c, i) => { if (c.revealed) newRevealedIndexes.add(i); });
-    }
-    const initialRevealKey = `${String(gameId || '')}::${String(boardSignature || '')}`;
-    const shouldAnimateInitialReveals =
-      !!(isFirstSnapshot && boardSignature && !_animatedInitialRevealKeys.has(initialRevealKey));
-    const freshReveals = [];
-    for (const idx of newRevealedIndexes) {
-      if (shouldAnimateInitialReveals) {
-        freshReveals.push(idx);
-        continue;
-      }
-      if (!isFirstSnapshot && !_prevRevealedIndexes.has(idx)) freshReveals.push(idx);
-    }
-
-    // Fallback for local confirms: if Firestore snapshot timing skips the delta check,
-    // still animate the card the user just confirmed once it becomes revealed.
-    if (Array.isArray(currentGame.cards) && _forcedRevealAnimations.size > 0) {
-      const nowMs = Date.now();
-      for (const [forcedIdxRaw, forcedEntryRaw] of _forcedRevealAnimations.entries()) {
-        const forcedIdx = Number(forcedIdxRaw);
-        const forcedEntry = normalizeForcedRevealEntry(forcedEntryRaw);
-        if (!Number.isInteger(forcedIdx) || forcedIdx < 0 || forcedIdx >= currentGame.cards.length) {
-          _forcedRevealAnimations.delete(forcedIdxRaw);
-          continue;
-        }
-        if (!forcedEntry || forcedEntry.expiresAt < nowMs) {
-          _forcedRevealAnimations.delete(forcedIdxRaw);
-          continue;
-        }
-        if (currentGame.cards[forcedIdx]?.revealed) {
-          if (!freshReveals.includes(forcedIdx)) freshReveals.push(forcedIdx);
-          if (forcedEntry.retriesLeft > 0) {
-            forcedEntry.retriesLeft -= 1;
-            // Keep a short retry window to survive immediate ack snapshots
-            // that can replace DOM right after the first animation starts.
-            forcedEntry.expiresAt = Math.min(forcedEntry.expiresAt, nowMs + 1400);
-            _forcedRevealAnimations.set(forcedIdxRaw, forcedEntry);
-          } else {
-            _forcedRevealAnimations.delete(forcedIdxRaw);
-          }
-        }
-      }
-    }
-
     // Detect new clue for animation
     const newClueWord = currentGame.currentClue?.word || null;
     const newClueNumber = currentGame.currentClue?.number ?? null;
@@ -3595,88 +3520,12 @@ function startGameListener(gameId, options = {}) {
       _signalQuickPlayReady();
     }
 
-    // Animate newly revealed cards (dramatic reveal)
-    if (freshReveals.length > 0) {
-      requestAnimationFrame(() => {
-        const orderedReveals = [...freshReveals].sort((a, b) => a - b);
-        orderedReveals.forEach((idx, orderIndex) => {
-          const delayMs = orderIndex * OG_REVEAL_STAGGER_MS;
-          setTimeout(() => {
-            const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-            if (!cardEl) return;
-            // Make the expansion feel like it bursts OUTWARD from the board center.
-            try {
-              const boardEl = document.getElementById('game-board');
-              const boardRect = boardEl ? boardEl.getBoundingClientRect() : null;
-              const r = cardEl.getBoundingClientRect();
-              if (boardRect) {
-                const cx = boardRect.left + boardRect.width / 2;
-                const cy = boardRect.top + boardRect.height / 2;
-                const dx = (r.left + r.width / 2) - cx;
-                const dy = (r.top + r.height / 2) - cy;
-
-                const sx = Math.abs(dx) < 6 ? 0 : (dx > 0 ? 1 : -1);
-                const sy = Math.abs(dy) < 6 ? 0 : (dy > 0 ? 1 : -1);
-
-                // Tune these for a big outward "pop".
-                const tx = sx * 42;
-                const ty = sy * 34;
-
-                cardEl.style.setProperty('--guess-tx', `${tx}px`);
-                cardEl.style.setProperty('--guess-ty', `${ty}px`);
-                cardEl.style.setProperty('--og-flip-tilt-x', `${sy ? (-sy * 8) : 5}deg`);
-                cardEl.style.setProperty('--og-flip-tilt-y', `${sx ? (sx * 9) : 0}deg`);
-              } else {
-                cardEl.style.setProperty('--guess-tx', `0px`);
-                cardEl.style.setProperty('--guess-ty', `0px`);
-                cardEl.style.setProperty('--og-flip-tilt-x', `6deg`);
-                cardEl.style.setProperty('--og-flip-tilt-y', `0deg`);
-              }
-            } catch (_) {}
-
-            const isOgMode = isOnlineStyleActive();
-            if (isOgMode) {
-              // In Codenames Online style, the flip IS the reveal. Avoid stacking the universal
-              // "lift" animation on top of it (it reads as a subtle hover instead of a flip).
-              cardEl.classList.add('og-reveal-bump');
-            } else {
-              cardEl.classList.add('guess-animate');
-            }
-
-            // Codenames Online: one-shot physical reveal flip.
-            // - Card starts face-up (front at 0deg).
-            // - On reveal, it flips to face-down/back (180deg) over 5 seconds.
-            // We drive this in JS so each revealed card flips with deterministic timing.
-            if (isOgMode) runOnlineRevealFlipAnimation(cardEl);
-            let cleaned = false;
-            const cleanup = () => {
-              if (cleaned) return;
-              cleaned = true;
-              cardEl.classList.remove('guess-animate');
-              cardEl.classList.remove('og-reveal-bump');
-              cardEl.style.removeProperty('--og-flip-tilt-x');
-              cardEl.style.removeProperty('--og-flip-tilt-y');
-            };
-            if (!isOgMode) {
-              cardEl.addEventListener('animationend', cleanup, { once: true });
-              // Fallback cleanup
-              setTimeout(cleanup, 5000);
-            } else {
-              setTimeout(cleanup, OG_REVEAL_FLIP_CLEANUP_MS);
-            }
-          }, delayMs);
-        });
-      });
-    }
-
     // Animate new clue (center screen overlay)
     if (clueChanged && newClueWord) {
       showClueAnimation(newClueWord, newClueNumber, currentGame.currentTeam);
     }
 
-    _prevRevealedIndexes = newRevealedIndexes;
     _prevClue = newClueWord;
-    if (shouldAnimateInitialReveals) _animatedInitialRevealKeys.add(initialRevealKey);
     isFirstSnapshot = false;
   }, (err) => {
     console.error('Game listener error:', err);
@@ -3712,11 +3561,9 @@ function stopGameListener() {
   stopPracticeInactivityWatcher();
   const wasEphemeral = !!currentListenerEphemeral;
   currentListenerEphemeral = false;
-  _prevRevealedIndexes = new Set();
   _prevClue = null;
   revealedPeekCardIndex = null;
   pendingCardSelection = null;
-  _forcedRevealAnimations.clear();
   _pendingSelectionContextKey = null;
   spectatorMode = false;
   spectatingGameId = null;
@@ -3827,126 +3674,6 @@ function syncClueSubmitButtonAppearance() {
     submitBtn.dataset.iconMode = '0';
   }
 }
-
-function runOnlineRevealFlipAnimation(cardEl) {
-  const inner = cardEl?.querySelector?.('.card-inner');
-  if (!cardEl || !inner) return;
-
-  // Physical one-shot reveal from scratch:
-  // - entire card lifts as one rigid object
-  // - front/back stay attached while flipping in the air
-  // - card settles back to its slot face-down
-  try {
-    if (typeof cardEl.__ogFlipCleanup === 'function') cardEl.__ogFlipCleanup();
-  } catch (_) {}
-  cardEl.classList.remove('og-reveal-flip-active', 'og-reveal-flip', 'flip-glow');
-
-  const totalMs = OG_REVEAL_FLIP_DURATION_MS;
-  const holdMs = Math.max(300, Math.min(totalMs - 1300, OG_REVEAL_FLIP_HOLD_MS));
-  const settleMs = Math.max(600, Math.min(totalMs - holdMs - 600, OG_REVEAL_FLIP_SETTLE_MS));
-  const launchMs = Math.max(700, totalMs - holdMs - settleMs);
-  const launchOffset = launchMs / totalMs;
-  const holdOffset = (launchMs + holdMs) / totalMs;
-  let liftPx = 24;
-  try {
-    const rect = cardEl.getBoundingClientRect();
-    if (rect && Number.isFinite(rect.height) && rect.height > 0) {
-      liftPx = Math.max(14, Math.min(44, Math.round(rect.height * OG_REVEAL_FLIP_LIFT_RATIO)));
-    }
-  } catch (_) {}
-
-  let done = false;
-  let rafId = null;
-  let startTs = null;
-  let timeoutId = null;
-
-  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-  const easeInOutCubic = (t) => (t < 0.5)
-    ? (4 * t * t * t)
-    : (1 - Math.pow(-2 * t + 2, 3) / 2);
-
-  function cleanup() {
-    if (done) return;
-    done = true;
-    if (rafId) cancelAnimationFrame(rafId);
-    if (timeoutId) clearTimeout(timeoutId);
-    cardEl.classList.remove('og-reveal-bump', 'og-reveal-flip-js');
-    inner.style.animation = '';
-    inner.style.transition = '';
-    inner.style.transform = '';
-    cardEl.style.animation = '';
-    cardEl.style.transition = '';
-    cardEl.style.transform = '';
-    cardEl.style.filter = '';
-    cardEl.style.removeProperty('z-index');
-    cardEl.style.removeProperty('will-change');
-    inner.style.removeProperty('will-change');
-    try { delete cardEl.__ogFlipCleanup; } catch (_) { cardEl.__ogFlipCleanup = null; }
-  }
-
-  // Freeze old transitions/animations so only this rigid-body motion drives the reveal.
-  cardEl.classList.add('og-reveal-bump', 'og-reveal-flip-js');
-  cardEl.style.setProperty('z-index', '260');
-  cardEl.style.setProperty('will-change', 'transform, filter');
-  inner.style.setProperty('will-change', 'transform');
-  cardEl.style.animation = 'none';
-  inner.style.animation = 'none';
-  cardEl.style.transition = 'none';
-  inner.style.transition = 'none';
-  cardEl.style.transform = 'translate3d(0, 0, 0) scale(1)';
-  cardEl.style.filter = 'brightness(1)';
-  inner.style.transform = 'rotateY(0deg) rotateX(0deg) translateZ(0px)';
-
-  function applyPose(normT) {
-    const t = Math.max(0, Math.min(1, normT));
-    let liftProgress = 0;
-    let turnDeg = 0;
-    let pitchDeg = 0;
-
-    if (t < launchOffset) {
-      const p = easeOutCubic(t / Math.max(0.0001, launchOffset));
-      liftProgress = p;
-      turnDeg = 108 * p;
-      pitchDeg = 15 * p;
-    } else if (t < holdOffset) {
-      liftProgress = 1;
-      turnDeg = 108;
-      pitchDeg = 15;
-    } else {
-      const p = easeInOutCubic((t - holdOffset) / Math.max(0.0001, 1 - holdOffset));
-      liftProgress = 1 - p;
-      turnDeg = 108 + (72 * p);
-      pitchDeg = 15 * (1 - p);
-    }
-
-    const y = -liftPx * liftProgress;
-    const scale = 1 + (0.055 * liftProgress);
-    const bright = 1 + (0.08 * liftProgress);
-    const depth = 20 * liftProgress;
-
-    cardEl.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
-    cardEl.style.filter = `brightness(${bright.toFixed(4)})`;
-    inner.style.transform = `rotateY(${turnDeg.toFixed(3)}deg) rotateX(${pitchDeg.toFixed(3)}deg) translateZ(${depth.toFixed(3)}px)`;
-  }
-
-  function tick(ts) {
-    if (done) return;
-    if (startTs === null) startTs = ts;
-    const elapsed = ts - startTs;
-    const normT = elapsed / totalMs;
-    applyPose(normT);
-    if (normT < 1) {
-      rafId = requestAnimationFrame(tick);
-      return;
-    }
-    cleanup();
-  }
-
-  timeoutId = setTimeout(cleanup, totalMs + 250);
-  cardEl.__ogFlipCleanup = cleanup;
-  rafId = requestAnimationFrame(tick);
-}
-
 
 // Settings modal: show/hide in-game actions when a user is inside a game.
 function updateSettingsInGameActions(isInGame) {
@@ -5082,13 +4809,9 @@ async function handleCardClick(cardIndex) {
     try {
       await db.collection('games').doc(currentGame.id).update(updates);
 
-      // Append to clue history after the reveal animation window so we don't
-      // trigger an immediate board re-render that can visually cancel the flip.
       if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
-        setTimeout(() => {
-          addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult)
-            .catch((e) => console.warn('Delayed clue-history append failed (best-effort):', e));
-        }, OG_REVEAL_FLIP_DURATION_MS + 120);
+        addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult)
+          .catch((e) => console.warn('Clue-history append failed (best-effort):', e));
       }
     } catch (e) {
       console.error('Failed to reveal card:', e);
@@ -7265,10 +6988,6 @@ async function handleCardConfirm(evt, cardIndex) {
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
   cardEl?.classList.add('confirming-guess');
-  _forcedRevealAnimations.set(idx, {
-    expiresAt: Date.now() + FORCED_REVEAL_ANIMATION_TTL_MS,
-    retriesLeft: 1
-  });
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 7000);
 
   try {

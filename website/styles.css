@@ -1362,12 +1362,6 @@ body.tournament #play-mode-select{ display:none !important; }
     z-index: 20 !important;
   }
 
-  body.og-mode .game-card.og-reveal-bump,
-  body.cozy-mode .game-card.og-reveal-bump,
-  body.og-mode .game-card.og-reveal-flip-active,
-  body.cozy-mode .game-card.og-reveal-flip-active {
-    z-index: 260 !important;
-  }
 }
 
 /* ==================== MOBILE ==================== */
@@ -5703,25 +5697,6 @@ body.og-mode .game-card.revealed .card-inner {
 
 body.og-mode .game-card.flip-glow {
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.08) inset;
-}
-
-/* OG reveal helper: keep the revealed card above neighbors while it flips */
-body.og-mode .game-card.og-reveal-bump{
-  position: relative;
-  z-index: 60;
-}
-
-/* OG (Codenames Online): newly revealed cards do a very obvious slow flip. */
-body.og-mode .game-card.og-reveal-flip .card-inner{
-  animation: ogCardRevealFlip 5000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes ogCardRevealFlip {
-  0%   { transform: rotateY(0deg)   rotateX(10deg) translateZ(0px); }
-  32%  { transform: rotateY(58deg)  rotateX(12deg) translateZ(22px); }
-  50%  { transform: rotateY(96deg)  rotateX(12deg) translateZ(26px); }
-  68%  { transform: rotateY(138deg) rotateX(8deg)  translateZ(18px); }
-  100% { transform: rotateY(180deg) rotateX(0deg)  translateZ(0px); }
 }
 
 body.og-mode .game-card.pending-select:not(.revealed) .card-back{
@@ -20258,75 +20233,6 @@ body:not(.og-mode) .game-card .card-inner {
   transform: none !important;
 }
 
-/* Fully revamped OG flip reveal animation */
-body.og-mode .game-card.og-reveal-flip {
-  z-index: 95;
-  transform-style: preserve-3d;
-  will-change: transform, filter, box-shadow;
-  animation: ogCardFlipLift 2300ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
-}
-
-body.og-mode .game-card.og-reveal-flip .card-inner{
-  transform-origin: 50% 52%;
-  will-change: transform;
-  animation: ogCardFlipCore 2300ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
-}
-
-body.og-mode .game-card.og-reveal-flip .og-reveal-face::before{
-  content: "";
-  position: absolute;
-  inset: -14% -34%;
-  background: linear-gradient(112deg, transparent 18%, rgba(255,255,255,0.76) 50%, transparent 82%);
-  opacity: 0;
-  transform: translateX(-85%) rotate(9deg);
-  animation: ogCardFlipSheen 2300ms ease-out forwards;
-  pointer-events: none;
-}
-
-@keyframes ogCardFlipLift {
-  0%   { transform: translateY(0) scale(1); filter: brightness(1); }
-  24%  { transform: translateY(-14px) scale(1.03); filter: brightness(1.08); }
-  52%  { transform: translateY(-10px) scale(1.06); filter: brightness(1.13); }
-  76%  { transform: translateY(-2px) scale(1.02); filter: brightness(1.05); }
-  100% { transform: translateY(0) scale(1); filter: brightness(1); }
-}
-
-@keyframes ogCardFlipCore {
-  0% {
-    transform: rotateY(0deg) rotateX(0deg) rotateZ(0deg);
-  }
-  26% {
-    transform: rotateY(40deg) rotateX(var(--og-flip-tilt-x, 6deg)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.18));
-  }
-  48% {
-    transform: rotateY(94deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.82)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.24));
-  }
-  70% {
-    transform: rotateY(152deg) rotateX(calc(var(--og-flip-tilt-x, 6deg) * 0.28)) rotateZ(calc(var(--og-flip-tilt-y, 0deg) * 0.1));
-  }
-  100% {
-    transform: rotateY(180deg) rotateX(0deg) rotateZ(0deg);
-  }
-}
-
-@keyframes ogCardFlipSheen {
-  0% {
-    opacity: 0;
-    transform: translateX(-85%) rotate(9deg);
-  }
-  28% {
-    opacity: 0.68;
-  }
-  58% {
-    opacity: 0.86;
-    transform: translateX(10%) rotate(9deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(95%) rotate(9deg);
-  }
-}
-
 .clue-variant-og .clue-announcement-backdrop.clue-og-backdrop{
   position: absolute;
   inset: 0;
@@ -20806,18 +20712,6 @@ body.cozy-mode .clue-form-expanded .btn.primary.clue-submit-check::after {
     min-width: 40px !important;
     max-width: 40px !important;
   }
-}
-
-/* JS-driven reveal flip takes precedence over older CSS animation blocks. */
-body.og-mode .game-card.og-reveal-flip-js {
-  animation: none !important;
-  transition: none !important;
-  transform-style: preserve-3d;
-}
-
-body.og-mode .game-card.og-reveal-flip-js .card-inner {
-  animation: none !important;
-  transition: none !important;
 }
 
 /* Click revealed cards to stand them up; only one is active at a time (JS-controlled). */
@@ -21430,88 +21324,6 @@ body.cozy-mode #game-board-container.turn-blue #og-mobile-red .og-mobile-box {
   opacity: 0.9;
 }
 
-/* Rebuilt, deterministic OG reveal animation (slow front -> up -> back). */
-body.og-mode .game-card.og-reveal-flip-active {
-  animation: ogRevealLiftRebuilt var(--og-reveal-flip-duration, 5000ms) cubic-bezier(0.22, 0.88, 0.24, 1) forwards !important;
-  transform-origin: 50% 62%;
-  transform-style: preserve-3d;
-  will-change: transform, filter, box-shadow;
-  z-index: 140;
-  pointer-events: none;
-}
-
-body.og-mode .game-card.og-reveal-flip-active .card-inner {
-  animation: ogRevealFlipRebuilt var(--og-reveal-flip-duration, 5000ms) cubic-bezier(0.22, 0.88, 0.24, 1) forwards !important;
-  transform-origin: 50% 52%;
-  transition: none !important;
-  will-change: transform;
-  transform-style: preserve-3d;
-}
-
-body.og-mode .game-card.og-reveal-flip-active .card-front,
-body.og-mode .game-card.og-reveal-flip-active .card-back {
-  transition: none !important;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-}
-
-@keyframes ogRevealLiftRebuilt {
-  0% {
-    transform: translateY(0px) scale(1);
-    filter: brightness(1);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
-  }
-  18% {
-    transform: translateY(calc(var(--og-lift-amount, 24px) * -0.58)) scale(1.02);
-    filter: brightness(1.02);
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42);
-  }
-  40% {
-    transform: translateY(calc(var(--og-lift-amount, 24px) * -1)) scale(1.055);
-    filter: brightness(1.07);
-    box-shadow: 0 26px 44px rgba(0, 0, 0, 0.5);
-  }
-  66% {
-    transform: translateY(calc(var(--og-lift-amount, 24px) * -0.96)) scale(1.05);
-    filter: brightness(1.08);
-    box-shadow: 0 30px 48px rgba(0, 0, 0, 0.52);
-  }
-  86% {
-    transform: translateY(calc(var(--og-lift-amount, 24px) * -0.42)) scale(1.02);
-    filter: brightness(1.03);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.42);
-  }
-  100% {
-    transform: translateY(0px) scale(1);
-    filter: brightness(1);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
-  }
-}
-
-@keyframes ogRevealFlipRebuilt {
-  0% {
-    transform: rotateY(0deg) rotateX(0deg) translateZ(0px);
-  }
-  16% {
-    transform: rotateY(16deg) rotateX(8deg) translateZ(8px);
-  }
-  36% {
-    transform: rotateY(72deg) rotateX(15deg) translateZ(18px);
-  }
-  52% {
-    transform: rotateY(108deg) rotateX(15deg) translateZ(20px);
-  }
-  70% {
-    transform: rotateY(148deg) rotateX(9deg) translateZ(12px);
-  }
-  86% {
-    transform: rotateY(173deg) rotateX(3deg) translateZ(4px);
-  }
-  100% {
-    transform: rotateY(180deg) rotateX(0deg) translateZ(0px);
-  }
-}
-
 /* ==================== Bracket Compact Pass ==================== */
 #panel-brackets .panel-inner{
   max-width: min(980px, 100%);
@@ -21843,4 +21655,18 @@ body.light-mode .brx-pop-card{
     height: 36px;
     font-size: 10px;
   }
+}
+
+/* Mobile launch layout: restore previous button placement. */
+@media (max-width: 768px){
+  .launch-mode-row{
+    grid-template-areas:
+      "quick teams"
+      "practice brackets";
+  }
+
+  #launch-quick-play{ grid-area: quick; }
+  #launch-tournament{ grid-area: teams; }
+  #launch-practice{ grid-area: practice; }
+  #launch-brackets{ grid-area: brackets; }
 }
