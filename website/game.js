@@ -46,7 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 1850;
+const CARD_CONFIRM_ANIM_MS = 2400;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
@@ -72,7 +72,7 @@ function getConfirmBackLabel(confirmBackType) {
 
 function clearConfirmAnimationClasses(cardEl) {
   if (!cardEl) return;
-  cardEl.classList.remove('confirming-guess', 'confirm-animate');
+  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
 }
@@ -7186,16 +7186,28 @@ async function handleCardConfirm(evt, cardIndex) {
     cardEl?.classList.add('confirming-guess');
   }
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
+  let confirmCommitted = false;
 
   try {
     if (runPhysicalConfirmAnim) {
       await new Promise((resolve) => setTimeout(resolve, CARD_CONFIRM_ANIM_MS));
     }
     await _originalHandleCardClick(idx);
+    confirmCommitted = true;
   } finally {
     clearTimeout(lockGuard);
     _localConfirmAnimUntil = 0;
-    clearConfirmAnimationClasses(cardEl);
+    if (runPhysicalConfirmAnim && confirmCommitted && cardEl?.isConnected && !cardEl.classList.contains('revealed')) {
+      // Keep the card on its back face until the reveal snapshot lands.
+      cardEl.classList.remove('confirm-animate');
+      cardEl.classList.add('confirm-hold');
+      window.setTimeout(() => {
+        if (!cardEl.isConnected || cardEl.classList.contains('revealed')) return;
+        clearConfirmAnimationClasses(cardEl);
+      }, 900);
+    } else {
+      clearConfirmAnimationClasses(cardEl);
+    }
   }
 }
 
