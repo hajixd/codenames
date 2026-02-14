@@ -49,31 +49,29 @@ let _prevBoardSignature = null; // Track board identity so we can reset per-game
 const CARD_CONFIRM_ANIM_MS = 1850;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
-const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
+const CARD_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _pendingRevealRenderTimer = null;
 let _deferredSnapshotRender = null;
 let _localConfirmAnimUntil = 0;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
-function normalizeConfirmBackType(rawType) {
+function normalizeCardType(rawType) {
   const t = String(rawType || '').toLowerCase();
-  return _CONFIRM_BACK_TYPES.includes(t) ? t : 'neutral';
+  return CARD_TYPES.includes(t) ? t : 'neutral';
 }
 
 function clearConfirmAnimationClasses(cardEl) {
   if (!cardEl) return;
   cardEl.classList.remove('confirming-guess', 'confirm-animate');
-  cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
-  cardEl.removeAttribute('data-confirm-back-label');
 }
 
 function applyConfirmAnimationClasses(cardEl, opts = {}) {
   if (!cardEl) return;
   const replay = !!opts.replay;
   if (replay) {
-    // For snapshot replays, briefly restore the unrevealed presentation first.
-    cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
+    // For snapshot replays, briefly restore the unrevealed presentation.
+    cardEl.classList.remove('revealed');
   }
   clearConfirmAnimationClasses(cardEl);
   cardEl.classList.add('confirming-guess', 'confirm-animate');
@@ -155,7 +153,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
     if (!cardEl || !cardEl.classList.contains('revealed')) return;
 
     const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
-    const revealType = normalizeConfirmBackType(cardTypeRaw);
+    const revealType = normalizeCardType(cardTypeRaw);
     if (revealType) cardEl.classList.add(`card-${revealType}`);
     // Restart animation classes in case snapshots arrive quickly.
     cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
@@ -4196,7 +4194,8 @@ function renderBoard(isSpymaster) {
   const boardEl = document.getElementById('game-board');
   if (!boardEl || !currentGame?.cards) return;
   setupBoardCardInteractions();
-  const isOgMode = isOnlineStyleActive();
+  const isOnlineMode = isOnlineStyleActive();
+  const isOgLikeMode = isOgLikeStyleActive();
   const boardWordFitKey = currentGame.cards.map((c) => `${String(c?.word || '')}:${c?.revealed ? 1 : 0}`).join('|');
   const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
 
@@ -4244,14 +4243,15 @@ function renderBoard(isSpymaster) {
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
+    const cardType = normalizeCardType(card.type);
 
     if (card.revealed) {
       classes.push('revealed');
-      classes.push(`card-${card.type}`);
-      if (isOgMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
+      classes.push(`card-${cardType}`);
+      if (isOnlineMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
-      classes.push(`card-${card.type}`);
+      classes.push(`card-${cardType}`);
       classes.push('disabled');
     } else if (!canGuess) {
       classes.push('disabled');
@@ -4292,13 +4292,15 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
-    const backFace = `
-      <div class="card-face card-back">
-        <span class="card-word"><span class="word-text">${word}</span></span>
-      </div>
-    `;
+    const backFace = isOgLikeMode
+      ? `
+          <div class="card-face card-back">
+            <span class="card-word"><span class="word-text">${word}</span></span>
+          </div>
+        `
+      : '';
     return `
-      <div class="${classes.join(' ')}" data-index="${i}">
+      <div class="${classes.join(' ')}" data-index="${i}" data-card-type="${cardType}">
         ${consideringHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
