@@ -20235,11 +20235,6 @@ body.og-mode .game-card.reveal-animate.revealed .card-front {
   animation: ogRevealFrontVisibility var(--card-confirm-duration) linear both;
 }
 
-/* Extra guard: front word label fades out right before the half-turn. */
-body.og-mode .game-card.reveal-animate.revealed .card-front .card-word {
-  animation: ogRevealFrontWordVisibility var(--card-confirm-duration) linear both;
-}
-
 body.og-mode .game-card.reveal-animate.revealed .card-back {
   animation: ogRevealBackVisibility var(--card-confirm-duration) linear both;
 }
@@ -20263,18 +20258,13 @@ body.og-mode .game-card.reveal-animate.revealed .card-back {
 }
 
 @keyframes ogRevealFrontVisibility {
-  0%, 38% { opacity: 1; }
-  40%, 100% { opacity: 0; }
+  0%, 48% { opacity: 1; }
+  52%, 100% { opacity: 0; }
 }
 
 @keyframes ogRevealBackVisibility {
-  0%, 38% { opacity: 0; }
-  40%, 100% { opacity: 1; }
-}
-
-@keyframes ogRevealFrontWordVisibility {
-  0%, 36% { opacity: 1; visibility: visible; }
-  40%, 100% { opacity: 0; visibility: hidden; }
+  0%, 48% { opacity: 0; }
+  52%, 100% { opacity: 1; }
 }
 
 /* Cozy/Dark word ghosting fix: only OG uses the back face. */
