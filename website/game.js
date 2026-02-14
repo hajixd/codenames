@@ -51,6 +51,8 @@ const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _pendingRevealRenderTimer = null;
+let _deferredSnapshotRender = null;
+let _localConfirmAnimUntil = 0;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -81,6 +83,36 @@ function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
   clearConfirmAnimationClasses(cardEl);
   cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
   cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
+}
+
+function flushDeferredSnapshotRender() {
+  const fn = _deferredSnapshotRender;
+  _deferredSnapshotRender = null;
+  if (typeof fn === 'function') fn();
+}
+
+function scheduleSnapshotRender(fn, delayMs = 0, opts = {}) {
+  _deferredSnapshotRender = fn;
+  const delay = Number.isFinite(delayMs) ? Math.max(0, Math.floor(delayMs)) : 0;
+  const extend = !!opts.extend;
+
+  if (delay <= 0) {
+    // Keep latest callback queued if an animation hold is already active.
+    if (_pendingRevealRenderTimer) return;
+    flushDeferredSnapshotRender();
+    return;
+  }
+
+  if (_pendingRevealRenderTimer) {
+    if (!extend) return;
+    clearTimeout(_pendingRevealRenderTimer);
+    _pendingRevealRenderTimer = null;
+  }
+
+  _pendingRevealRenderTimer = window.setTimeout(() => {
+    _pendingRevealRenderTimer = null;
+    flushDeferredSnapshotRender();
+  }, delay);
 }
 
 function markRevealAnimationSuppressed(cardIndex) {
@@ -3660,18 +3692,15 @@ function startGameListener(gameId, options = {}) {
       isFirstSnapshot = false;
     };
 
-    if (_pendingRevealRenderTimer) {
-      clearTimeout(_pendingRevealRenderTimer);
-      _pendingRevealRenderTimer = null;
-    }
-
     if (replayedPreRenderConfirm) {
-      _pendingRevealRenderTimer = window.setTimeout(() => {
-        _pendingRevealRenderTimer = null;
-        finishSnapshotRender();
-      }, CARD_CONFIRM_ANIM_MS);
+      scheduleSnapshotRender(finishSnapshotRender, CARD_CONFIRM_ANIM_MS, { extend: true });
     } else {
-      finishSnapshotRender();
+      const holdForLocalConfirmMs = Math.max(0, _localConfirmAnimUntil - Date.now());
+      if (holdForLocalConfirmMs > 0) {
+        scheduleSnapshotRender(finishSnapshotRender, holdForLocalConfirmMs, { extend: true });
+      } else {
+        scheduleSnapshotRender(finishSnapshotRender, 0);
+      }
     }
   }, (err) => {
     console.error('Game listener error:', err);
@@ -3706,6 +3735,8 @@ function stopGameListener() {
     clearTimeout(_pendingRevealRenderTimer);
     _pendingRevealRenderTimer = null;
   }
+  _deferredSnapshotRender = null;
+  _localConfirmAnimUntil = 0;
   try { syncTeamConsidering(null); } catch (_) {}
   clearRevealAnimationSuppressions();
   currentGame = null;
@@ -7141,6 +7172,7 @@ async function handleCardConfirm(evt, cardIndex) {
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   if (runPhysicalConfirmAnim) {
     // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
+    _localConfirmAnimUntil = Date.now() + CARD_CONFIRM_ANIM_MS;
     markRevealAnimationSuppressed(idx);
     applyConfirmAnimationClasses(cardEl, confirmBackType);
   } else {
@@ -7155,6 +7187,7 @@ async function handleCardConfirm(evt, cardIndex) {
     await _originalHandleCardClick(idx);
   } finally {
     clearTimeout(lockGuard);
+    _localConfirmAnimUntil = 0;
     clearConfirmAnimationClasses(cardEl);
   }
 }
