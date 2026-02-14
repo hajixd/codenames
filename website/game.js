@@ -49,29 +49,31 @@ let _prevBoardSignature = null; // Track board identity so we can reset per-game
 const CARD_CONFIRM_ANIM_MS = 1850;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
-const CARD_TYPES = ['red', 'blue', 'neutral', 'assassin'];
+const _CARD_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _pendingRevealRenderTimer = null;
 let _deferredSnapshotRender = null;
 let _localConfirmAnimUntil = 0;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
-function normalizeCardType(rawType) {
+function normalizeCardType(rawType, fallback = 'neutral') {
   const t = String(rawType || '').toLowerCase();
-  return CARD_TYPES.includes(t) ? t : 'neutral';
+  return _CARD_TYPES.includes(t) ? t : fallback;
 }
 
 function clearConfirmAnimationClasses(cardEl) {
   if (!cardEl) return;
   cardEl.classList.remove('confirming-guess', 'confirm-animate');
+  cardEl.classList.remove('confirm-back-red', 'confirm-back-blue', 'confirm-back-neutral', 'confirm-back-assassin');
+  cardEl.removeAttribute('data-confirm-back-label');
 }
 
 function applyConfirmAnimationClasses(cardEl, opts = {}) {
   if (!cardEl) return;
   const replay = !!opts.replay;
   if (replay) {
-    // For snapshot replays, briefly restore the unrevealed presentation.
-    cardEl.classList.remove('revealed');
+    // For snapshot replays, briefly restore the unrevealed presentation first.
+    cardEl.classList.remove('revealed', ..._CARD_TYPES.map((t) => `card-${t}`));
   }
   clearConfirmAnimationClasses(cardEl);
   cardEl.classList.add('confirming-guess', 'confirm-animate');
@@ -153,7 +155,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
     if (!cardEl || !cardEl.classList.contains('revealed')) return;
 
     const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
-    const revealType = normalizeCardType(cardTypeRaw);
+    const revealType = normalizeCardType(cardTypeRaw, '');
     if (revealType) cardEl.classList.add(`card-${revealType}`);
     // Restart animation classes in case snapshots arrive quickly.
     cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
@@ -168,7 +170,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
   });
 }
 
-function replayConfirmAnimationOnCurrentBoard(cardIndices = []) {
+function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
   if (!isOgLikeStyleActive()) return false;
   if (!Array.isArray(cardIndices) || !cardIndices.length) return false;
   let animatedAny = false;
@@ -3660,7 +3662,7 @@ function startGameListener(gameId, options = {}) {
       clearRevealAnimationSuppressions();
     }
 
-    const replayedPreRenderConfirm = replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices);
+    const replayedPreRenderConfirm = replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, currentGame.cards);
     const finishSnapshotRender = () => {
       renderGame();
       if (newlyRevealedIndices.length && !replayedPreRenderConfirm) {
@@ -4194,8 +4196,7 @@ function renderBoard(isSpymaster) {
   const boardEl = document.getElementById('game-board');
   if (!boardEl || !currentGame?.cards) return;
   setupBoardCardInteractions();
-  const isOnlineMode = isOnlineStyleActive();
-  const isOgLikeMode = isOgLikeStyleActive();
+  const isOgMode = isOnlineStyleActive();
   const boardWordFitKey = currentGame.cards.map((c) => `${String(c?.word || '')}:${c?.revealed ? 1 : 0}`).join('|');
   const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
 
@@ -4243,12 +4244,12 @@ function renderBoard(isSpymaster) {
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
-    const cardType = normalizeCardType(card.type);
+    const cardType = normalizeCardType(card?.type);
 
     if (card.revealed) {
       classes.push('revealed');
       classes.push(`card-${cardType}`);
-      if (isOnlineMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
+      if (isOgMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
       classes.push(`card-${cardType}`);
@@ -4292,15 +4293,13 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
-    const backFace = isOgLikeMode
-      ? `
-          <div class="card-face card-back">
-            <span class="card-word"><span class="word-text">${word}</span></span>
-          </div>
-        `
-      : '';
+    const backFace = `
+      <div class="card-face card-back" aria-hidden="true">
+        <span class="card-back-core" aria-hidden="true"></span>
+      </div>
+    `;
     return `
-      <div class="${classes.join(' ')}" data-index="${i}" data-card-type="${cardType}">
+      <div class="${classes.join(' ')}" data-index="${i}" data-back-type="${cardType}">
         ${consideringHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
