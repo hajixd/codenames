@@ -4302,9 +4302,7 @@ function renderBoard(isSpymaster) {
       : '';
     const backFace = isOgMode
       ? `
-          <div class="card-face card-back">
-            <span class="card-word"><span class="word-text">${word}</span></span>
-          </div>
+          <div class="card-face card-back" aria-hidden="true"></div>
         `
       : '';
     return `

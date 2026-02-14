@@ -5584,7 +5584,12 @@ button.player-tag.pill-action:disabled{
   align-items: center;
   justify-content: center;
   padding: 6px;
+  -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+}
+
+.game-card .card-front {
+  transform: rotateY(0deg);
 }
 
 .game-card .card-back {
@@ -20228,6 +20233,14 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-in
   transform: rotateY(0deg);
 }
 
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-front {
+  animation: ogConfirmFrontVisibility var(--card-confirm-duration) linear both;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back {
+  animation: ogConfirmBackVisibility var(--card-confirm-duration) linear both;
+}
+
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-back .card-word {
   opacity: 0 !important;
   visibility: hidden;
@@ -20297,6 +20310,24 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate.confirm-back-assassin .
   }
   100% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(180deg) rotateZ(0deg) scale(1);
+  }
+}
+
+@keyframes ogConfirmFrontVisibility {
+  0%, 44% {
+    visibility: visible;
+  }
+  45%, 100% {
+    visibility: hidden;
+  }
+}
+
+@keyframes ogConfirmBackVisibility {
+  0%, 44% {
+    visibility: hidden;
+  }
+  45%, 100% {
+    visibility: visible;
   }
 }
 
