@@ -4277,6 +4277,8 @@ function renderBracketMatchCard(m, opts = {}) {
     `data-brx-b-name="${esc(bName)}"`,
     `data-brx-a-seed="${esc(aSeed)}"`,
     `data-brx-b-seed="${esc(bSeed)}"`,
+    `data-brx-a-wins="${esc(String(aRoundWins))}"`,
+    `data-brx-b-wins="${esc(String(bRoundWins))}"`,
     `data-brx-winner-id="${esc(String(match.winnerTeamId || ''))}"`,
   ];
 
@@ -4365,6 +4367,8 @@ function renderBrackets(teams) {
         bTeamId: el.getAttribute('data-brx-b-id') || '',
         aSeed: el.getAttribute('data-brx-a-seed') || '',
         bSeed: el.getAttribute('data-brx-b-seed') || '',
+        aWins: el.getAttribute('data-brx-a-wins') || '0',
+        bWins: el.getAttribute('data-brx-b-wins') || '0',
       });
     };
     el.addEventListener('click', open);
@@ -4931,7 +4935,7 @@ function renderBracketPopupRosterItems(players) {
   return list.map((name) => `<li>${esc(name)}</li>`).join('');
 }
 
-function showBracketMatchPopup({ matchId, round, bestOf, aName, bName, aTeamId, bTeamId, aSeed, bSeed }) {
+function showBracketMatchPopup({ matchId, round, bestOf, aName, bName, aTeamId, bTeamId, aSeed, bSeed, aWins, bWins }) {
   try {
     closeBracketMatchPopup();
 
@@ -4949,6 +4953,9 @@ function showBracketMatchPopup({ matchId, round, bestOf, aName, bName, aTeamId, 
     const idLabel = String(matchId || '').trim() || '—';
     const aDisplay = sideA.seed ? `#${sideA.seed} ${sideA.name}` : sideA.name;
     const bDisplay = sideB.seed ? `#${sideB.seed} ${sideB.name}` : sideB.name;
+    const scoreA = clampBracketSeriesWins(aWins || 0);
+    const scoreB = clampBracketSeriesWins(bWins || 0);
+    const scoreLabel = `${scoreA}-${scoreB}`;
 
     _bracketsPopupEl.innerHTML = `
       <div class="brx-pop-card" role="dialog" aria-modal="true" aria-label="Bracket match details">
@@ -4960,6 +4967,7 @@ function showBracketMatchPopup({ matchId, round, bestOf, aName, bName, aTeamId, 
         <div class="brx-pop-subline">
           <span>${esc(roundLabel)}</span>
           <span>BO${esc(bo)}</span>
+          <span class="brx-pop-score">Score ${esc(scoreLabel)}</span>
           <span class="mono">${esc(idLabel)}</span>
         </div>
         <div class="brx-pop-lineup">
