@@ -1404,8 +1404,9 @@ function _extractAllCapsWord(msg) {
   return m ? m[0] : '';
 }
 
-function makeChatMoreHuman(ai, game, msg, vision) {
+function makeChatMoreHuman(ai, game, msg, vision, opts = {}) {
   try {
+    const bypassSimilarity = !!opts.bypassSimilarity;
     let out = String(msg || '').trim();
     if (!out) return '';
 
@@ -1454,7 +1455,7 @@ function makeChatMoreHuman(ai, game, msg, vision) {
 
     // If too similar to recent messages, suppress it entirely — silence is better than circles
     const tooSimilar = recent.some(r => _jaccard(r, out) > 0.38);
-    if (tooSimilar) {
+    if (tooSimilar && !bypassSimilarity) {
       return '';
     }
 
@@ -1615,9 +1616,9 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `HOW TO TALK (critical — read carefully):`,
     `You're texting with friends during a board game. Be casual, short, and real.`,
     `- If the answer is OBVIOUS, just say so quickly: "obviously it's FORK, let's get it"`,
-    `- If you AGREE with a teammate, just say you agree. Do NOT restate their reasoning.`,
-    `  GOOD: "yeah agree, let's go FORK"`,
-    `  BAD: "I also think FORK because utensils include forks and it connects to the clue"`,
+    `- Don't do empty agreement. If you agree, add one NEW reason or a risk caveat.`,
+    `  GOOD: "FORK works, but watch ASSASSIN overlap with KNIFE vibes"`,
+    `  BAD: "yeah agree, let's go FORK"`,
     `- If you DISAGREE, say why in 1 sentence and offer your alternative.`,
     `  GOOD: "eh idk about PASTA, i was thinking more CHOPSTICKS"`,
     `  BAD: "While PASTA is an interesting suggestion, I believe we should consider CHOPSTICKS instead because..."`,
@@ -1627,7 +1628,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Use casual language: "aight", "ngl", "lowkey", "kinda", "idk", "tbh", contractions, etc.`,
     `- NEVER sound like a formal essay or AI. No "I believe", "I suggest", "Additionally", "Furthermore".`,
     `- Keep it to 1-2 short sentences MAX. Think group chat, not paragraph.`,
-    `- EVERY message must add NEW information or a NEW opinion. If someone already said what you're thinking, just agree and move on.`,
+    `- EVERY message must add NEW information or a NEW opinion. If you have nothing new, set chat="" instead of agreeing.`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
     ``,
@@ -2866,6 +2867,8 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
   const ref = db.collection('games').doc(game.id);
   let turnEnded = false;
   let resultCard = card; // keep reference for post-tx work
+  let revealedCommitted = false;
+  let clueMeta = null; // { team, word, number }
 
   try {
     await db.runTransaction(async (tx) => {
@@ -2883,6 +2886,11 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
       const updatedCards = [...liveCards];
       updatedCards[cardIndex] = { ...liveCard, revealed: true };
       resultCard = liveCard;
+      clueMeta = {
+        team: String(current.currentTeam || ''),
+        word: String(current?.currentClue?.word || ''),
+        number: Number(current?.currentClue?.number || 0)
+      };
 
       const teamName = current.currentTeam === 'red' ? (current.redTeamName || 'Red Team') : (current.blueTeamName || 'Blue Team');
       const updates = {
@@ -2953,18 +2961,21 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
       updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
       tx.update(ref, updates);
       turnEnded = endTurn;
+      revealedCommitted = true;
     });
 
     // Update clue history outside the transaction (non-critical)
-    if (game.currentClue?.word) {
+    if (revealedCommitted && clueMeta?.word) {
       const guessResult = {
         word: resultCard.word,
-        result: resultCard.type === 'assassin' ? 'assassin' : (resultCard.type === game.currentTeam ? 'correct' : (resultCard.type === 'neutral' ? 'neutral' : 'wrong')),
+        result: resultCard.type === 'assassin'
+          ? 'assassin'
+          : (resultCard.type === clueMeta.team ? 'correct' : (resultCard.type === 'neutral' ? 'neutral' : 'wrong')),
         type: resultCard.type,
         by: ai.name,
         timestamp: new Date().toISOString(),
       };
-      await addGuessToClueHistory(game.id, game.currentTeam, game.currentClue.word, game.currentClue.number, guessResult);
+      await addGuessToClueHistory(game.id, clueMeta.team, clueMeta.word, clueMeta.number, guessResult);
     }
 
     if (window.playSound) window.playSound('cardReveal');
@@ -2979,6 +2990,10 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
 
 async function aiConsiderEndTurn(ai, game, forceEnd = false, incrementSeq = false) {
   if (ai.mode !== 'autonomous') return false;
+  try {
+    const fresh = await getGameSnapshot(game?.id);
+    if (fresh && fresh.cards) game = fresh;
+  } catch (_) {}
   if (!game || game.winner) return false;
   if (String(ai?.seatRole || '') !== 'operative') return false;
   if (String(game.currentPhase || '') !== 'operatives') return false;
@@ -3037,16 +3052,54 @@ didEnd = true;
 
 // ─── AI Chat & Reactions ────────────────────────────────────────────────────
 
+function isGreetingLike(text) {
+  const s = String(text || '').trim().toLowerCase();
+  if (!s) return false;
+  return /(?:^|\s)(hi|hey|hello|yo|sup|hiya|howdy|what'?s up|whats up)(?:\s|$|[!?.])/.test(s);
+}
+
+function buildFallbackReplyForChat(lastText, senderName = '') {
+  const text = String(lastText || '').trim();
+  const lower = text.toLowerCase();
+  const sender = String(senderName || '').trim();
+  const senderShort = sender.replace(/^ai\s+/i, '').split(/\s+/).filter(Boolean)[0] || '';
+
+  if (isGreetingLike(lower)) {
+    return senderShort ? `yo ${senderShort}` : _pick(['yo', 'hey', 'sup']);
+  }
+  if (/\?/.test(text) || /\b(thoughts|what do you think|agree|should we)\b/.test(lower)) {
+    return _pick([
+      "i'm not sold yet, let's pressure-test another option",
+      "not convinced yet, i want one cleaner link first",
+      "i disagree for now, that line feels risky"
+    ]);
+  }
+  return _pick([
+    "i'm not fully buying that, feels risky",
+    "eh i disagree, i think we're forcing it",
+    "not sure, i'd rather re-check the clue fit"
+  ]);
+}
+
 async function generateAIChatMessage(ai, game, context, opts = {}) {
   try {
+    // Keep conversational output aligned with the latest board/chat state.
+    try {
+      const fresh = await getGameSnapshot(game?.id);
+      if (fresh && fresh.cards) game = fresh;
+    } catch (_) {}
+
     const core = ensureAICore(ai);
     if (!core) return '';
+    if (!game || game.winner) return '';
     const team = ai.team;
 
     const vision = buildAIVision(game, ai);
     const unrevealed = (vision.cards || []).filter(c => !c.revealed).map(c => String(c.word || '').toUpperCase());
     const teamChat = await fetchRecentTeamChat(game.id, team, 10);
     const lastMessage = (opts && opts.lastMessage) ? String(opts.lastMessage).trim() : '';
+    const forceResponse = !!opts.forceResponse;
+    const isReplyContext = String(context || '').toLowerCase() === 'reply';
 
     const persona = core.personality;
     const systemPrompt = [
@@ -3059,6 +3112,10 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `- Use contractions, casual phrasing. "yeah", "nah", "lol", "ngl", etc.`,
       `- Don't repeat anything that's already been said in the chat.`,
       `- If you'd just be saying something obvious or redundant, set msg="" instead.`,
+      `- Do NOT be a yes-man. If an idea seems weak, push back clearly.`,
+      `- Avoid agreement-only replies ("yeah", "same", "sounds good"). Add a reason or an alternative.`,
+      isReplyContext ? `- If someone greets you, greet back naturally first.` : '',
+      isReplyContext ? `- In replies, react to the latest message and add a distinct angle.` : '',
       `- 1-2 short sentences max. Keep it <=140 chars.`,
       `- Never reference card indices/numbers. Use actual board WORDS only.`,
       `- Don't invent board words — only mention words from the unrevealed list.`,
@@ -3090,6 +3147,11 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     let msg = String(parsed.msg || '').trim();
     msg = sanitizeChatText(msg, vision, 160);
+    if (!msg && forceResponse && isReplyContext) {
+      const src = String(opts.lastMessageText || lastMessage || '').trim();
+      const sender = String(opts.lastSenderName || '').trim();
+      msg = buildFallbackReplyForChat(src, sender);
+    }
     if (!msg) return '';
 
     // Basic guard: if message contains a token that matches a board word, ensure it's actually unrevealed.
@@ -3146,18 +3208,21 @@ async function generateAIReaction(ai, revealedCard, clue) {
 }
 
 
-async function sendAIChatMessage(ai, game, text) {
+async function sendAIChatMessage(ai, game, text, opts = {}) {
   if (!text || !game?.id) return;
   if (String(ai?.seatRole || '').trim().toLowerCase() === 'spymaster') return;
 
+  const force = !!opts.force;
+  const originalText = String(text || '').trim();
   const teamColor = ai.team;
 
   // Make messages feel like real friends (and avoid repetition across AIs)
   try {
     const vision = buildAIVision(game, ai);
-    const human = makeChatMoreHuman(ai, game, text, vision);
+    const human = makeChatMoreHuman(ai, game, text, vision, { bypassSimilarity: force });
     text = (human || '').trim();
   } catch (_) {}
+  if (!text && force) text = originalText.slice(0, 180);
   if (!text) return;
 
   // Extra: avoid the *same AI* paraphrasing itself over and over.
@@ -3165,7 +3230,7 @@ async function sendAIChatMessage(ai, game, text) {
     const core = ensureAICore(ai);
     const prev = (core && Array.isArray(core.recentChat)) ? core.recentChat : [];
     const selfTooSimilar = prev.slice(-6).some(r => _jaccard(r, text) > 0.34);
-    if (selfTooSimilar) return;
+    if (selfTooSimilar && !force) return;
     if (core) {
       if (!Array.isArray(core.recentChat)) core.recentChat = [];
       core.recentChat.push(String(text));
@@ -3199,56 +3264,87 @@ async function sendAIChatMessage(ai, game, text) {
 
 // Lightweight conversational replies (texting vibes) so the AI can react to humans/other AIs.
 async function maybeAIRespondToTeamChat(ai, game) {
+  let locked = false;
   try {
-    if (!ai || !game?.id) return;
-    if (aiThinkingState[ai.id]) return;
+    if (!ai || !game?.id) return false;
+    if (String(ai?.seatRole || '') !== 'operative') return false;
+    if (aiThinkingState[ai.id]) return false;
+
+    // Keep replies grounded in the latest game state.
+    try {
+      const freshGame = await getGameSnapshot(game?.id);
+      if (freshGame && freshGame.cards) game = freshGame;
+    } catch (_) {}
+    if (!game || game.winner) return false;
 
     const now = Date.now();
     const lastReply = Number(aiLastChatReplyMs[ai.id] || 0);
-    // Hard throttle to avoid spam
-    if (now - lastReply < 20000) return;
+    // Keep responses fast but non-spammy.
+    if (now - lastReply < 8000) return false;
 
-    const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 12);
-    if (!msgs || !msgs.length) return;
+    const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 14);
+    if (!msgs || !msgs.length) return false;
 
     const newest = Math.max(...msgs.map(m => Number(m.createdAtMs || 0)));
     const lastSeen = Number(aiLastChatSeenMs[ai.id] || 0);
-    if (!lastSeen) {
-      // First time: mark as seen but don't reply
-      aiLastChatSeenMs[ai.id] = newest;
-      return;
-    }
+    // On first run, only consider very recent messages so we don't respond to stale history.
+    const baseline = lastSeen > 0 ? lastSeen : Math.max(0, newest - 15000);
 
-    // Find the most recent new message not from this AI
-    const fresh = msgs.filter(m => (Number(m.createdAtMs || 0) > lastSeen) && String(m.senderId || '') !== String(ai.odId || ''));
-    aiLastChatSeenMs[ai.id] = newest;
-    if (!fresh.length) return;
+    // Find new messages not from this AI.
+    const fresh = msgs.filter(m => (
+      Number(m.createdAtMs || 0) > baseline &&
+      String(m.senderId || '') !== String(ai.odId || '')
+    ));
+    aiLastChatSeenMs[ai.id] = Math.max(lastSeen, newest);
+    if (!fresh.length) return false;
 
     const last = fresh[fresh.length - 1];
     const text = String(last.text || '').trim();
-    if (!text) return;
+    if (!text) return false;
 
     const lower = text.toLowerCase();
+    const senderId = String(last.senderId || '').toLowerCase();
+    const senderName = String(last.senderName || '').trim();
+    const senderIsAI = /^ai\b/i.test(senderName) || senderId.startsWith('ai');
     const nameHit = ai.name ? lower.includes(String(ai.name).toLowerCase()) : false;
-    const directHit = nameHit || lower.includes('ai') || lower.includes('bot');
-    const question = /\?\s*$/.test(text) || lower.includes('thoughts') || lower.includes('what do you think');
+    const directHit = nameHit || /\b(ai|bot)\b/.test(lower);
+    const question = /\?/.test(text) || /\b(thoughts|what do you think|agree|should we)\b/.test(lower);
+    const greeting = isGreetingLike(text);
 
-    // Only reply when it looks conversational or direct
-    if (!directHit && !question) return;
-    // Add a little variability so it doesn't feel mechanical
-    if (!directHit && Math.random() < 0.35) return;
+    let shouldReply = false;
+    if (directHit || question || greeting) shouldReply = true;
+    else if (senderIsAI) shouldReply = Math.random() < 0.55;
+    else shouldReply = Math.random() < 0.72;
+
+    if (!shouldReply) return false;
 
     aiThinkingState[ai.id] = true;
-    await humanDelay(900, 2200);
-    const reply = await generateAIChatMessage(ai, game, 'reply', { lastMessage: `${last.senderName}: ${text}` });
-    if (reply) {
-      await sendAIChatMessage(ai, game, reply);
-      aiLastChatReplyMs[ai.id] = Date.now();
+    locked = true;
+    await humanDelay(500, 1200);
+
+    const forceResponse = !!(directHit || question || greeting);
+    let reply = await generateAIChatMessage(ai, game, 'reply', {
+      lastMessage: `${senderName}: ${text}`,
+      lastMessageText: text,
+      lastSenderName: senderName,
+      forceResponse
+    });
+
+    if (!reply && forceResponse) {
+      reply = buildFallbackReplyForChat(text, senderName);
     }
-  } catch (e) {
+
+    if (reply) {
+      await sendAIChatMessage(ai, game, reply, { force: forceResponse });
+      aiLastChatReplyMs[ai.id] = Date.now();
+      return true;
+    }
+    return false;
+  } catch (_) {
     // don't crash the main loop
+    return false;
   } finally {
-    aiThinkingState[ai.id] = false;
+    if (locked) aiThinkingState[ai.id] = false;
   }
 }
 
@@ -3430,12 +3526,14 @@ function startAIGameLoop() {
       return;
     }
 
-    // Low-frequency chat listening so AIs can actually "converse".
-    // (Throttled inside maybeAIRespondToTeamChat to avoid spam.)
-    const chatCandidates = (aiPlayers || []).filter(a => a && a.mode === 'autonomous');
-    if (chatCandidates.length && Math.random() < 0.55) {
-      const pick = chatCandidates[Math.floor(Math.random() * chatCandidates.length)];
-      await maybeAIRespondToTeamChat(pick, game);
+    // Conversational listening: scan a few candidates each tick and let one reply.
+    // Reply throttling stays inside maybeAIRespondToTeamChat.
+    const chatCandidates = (aiPlayers || [])
+      .filter(a => a && a.mode === 'autonomous' && String(a.seatRole || '') === 'operative')
+      .sort((a, b) => Number(aiLastChatReplyMs[a.id] || 0) - Number(aiLastChatReplyMs[b.id] || 0));
+    for (const candidate of chatCandidates.slice(0, 3)) {
+      const replied = await maybeAIRespondToTeamChat(candidate, game);
+      if (replied) break;
     }
 
     // Role selection phase
