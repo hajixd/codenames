@@ -22794,7 +22794,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   /* Nudge OG/Cozy team stacks slightly upward (Operatives / Score / Spymasters). */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel {
-    margin-bottom: clamp(8px, 1.2vh, 18px);
+    margin-bottom: clamp(24px, 3.6vh, 64px);
   }
 
   /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
