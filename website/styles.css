@@ -10912,13 +10912,13 @@ body.tournament.has-team-color .input:focus {
 }
 
 .game-center-area .game-board-wrapper {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   min-height: 0;
   padding: 14px 0 2px;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .game-center-area .game-board {
@@ -23169,7 +23169,7 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   border-radius: 14px;
 }
 
-/* Mobile OG/Cozy: keep board + clue row in normal flow and use scrolling instead of overlap. */
+/* Mobile OG/Cozy: keep board + clue row in normal flow and let board height push controls down. */
 @media (max-width: 1024px) {
   body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-center-area,
   body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-board-wrapper,
@@ -23185,9 +23185,8 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   }
 
   body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
-    flex: 1 1 auto;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    flex: 0 0 auto;
+    overflow: visible !important;
     margin-top: clamp(56px, 9vh, 88px) !important;
     margin-bottom: 0 !important;
     padding: 0 0 max(14px, env(safe-area-inset-bottom, 0px));
