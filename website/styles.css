@@ -12093,6 +12093,76 @@ body.tournament.has-team-color .input:focus {
   }
 }
 
+/* =========================
+   Admin: Bracket editor modal
+========================= */
+
+.bracket-admin-modal .modal-card.bracket-admin-card {
+  width: min(920px, calc(100vw - 28px));
+  max-height: min(88vh, 760px);
+}
+
+.bracket-admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bracket-admin-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bracket-admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 26vh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+.bracket-admin-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.bracket-admin-row-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.bracket-admin-row .input {
+  margin: 0;
+}
+
+@media (max-width: 620px) {
+  .bracket-admin-modal .modal-card.bracket-admin-card {
+    width: calc(100vw - 16px);
+    max-height: 90vh;
+  }
+
+  .bracket-admin-list {
+    max-height: 24vh;
+  }
+
+  .bracket-admin-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
 .log-tag{
   font-size: 10px;
   font-weight: 800;
@@ -22316,6 +22386,19 @@ body.light-mode #brackets-board .brx-slot.is-team{
 
 body.light-mode #brackets-board .brx-slot.is-team:hover{
   background: color-mix(in srgb, var(--team-accent, var(--accent)) 34%, #ffffff 66%);
+}
+
+#brackets-board .brx-slot.is-team.is-winner{
+  border-color: color-mix(in srgb, var(--team-accent, var(--accent)) 72%, #ffffff 28%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--team-accent, var(--accent)) 46%, rgba(255,255,255,0.24)),
+    0 0 0 1px color-mix(in srgb, var(--team-accent, var(--accent)) 34%, transparent);
+}
+
+body.light-mode #brackets-board .brx-slot.is-team.is-winner{
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--team-accent, var(--accent)) 52%, rgba(0,0,0,0.08)),
+    0 0 0 1px color-mix(in srgb, var(--team-accent, var(--accent)) 42%, transparent);
 }
 
 #brackets-board .brx-slot.is-team::before{

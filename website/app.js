@@ -3682,6 +3682,17 @@ function renderTeams(teams) {
    Brackets page
 ========================= */
 let bracketRandomizeInFlight = false;
+let bracketAdminModalOpen = false;
+let bracketAdminSaveInFlight = false;
+let bracketAdminDraft = null;
+
+const BRACKET_MATCH_IDS = ['QF1', 'QF2', 'QF3', 'QF4', 'SF1', 'SF2', 'F'];
+const BRACKET_MATCH_ID_SET = new Set(BRACKET_MATCH_IDS);
+
+function normalizeBracketMatchId(raw) {
+  const id = String(raw || '').trim().toUpperCase();
+  return BRACKET_MATCH_ID_SET.has(id) ? id : '';
+}
 
 function sortBracketTeamsBySeed(teams) {
   return [...(teams || [])].sort((a, b) => {
@@ -3692,7 +3703,8 @@ function sortBracketTeamsBySeed(teams) {
   });
 }
 
-function getBracketTeamPool(teams) {
+function getBracketTeamPool(teams, opts = {}) {
+  const slotOrderByTeamId = opts?.slotOrderByTeamId instanceof Map ? opts.slotOrderByTeamId : null;
   const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
   const seeded = sortBracketTeamsBySeed(visible);
   const seedById = new Map();
@@ -3701,11 +3713,19 @@ function getBracketTeamPool(teams) {
     if (id) seedById.set(id, idx + 1);
   });
 
-  const hasCustomOrder = visible.some(t => Number.isFinite(Number(t?.bracketSlotOrder)));
+  const getTeamOrder = (team) => {
+    const tid = String(team?.id || '').trim();
+    if (slotOrderByTeamId && tid && slotOrderByTeamId.has(tid)) {
+      return Number(slotOrderByTeamId.get(tid));
+    }
+    return Number(team?.bracketSlotOrder);
+  };
+
+  const hasCustomOrder = visible.some((team) => Number.isFinite(getTeamOrder(team)));
   const sorted = hasCustomOrder
     ? [...visible].sort((a, b) => {
-      const ao = Number(a?.bracketSlotOrder);
-      const bo = Number(b?.bracketSlotOrder);
+      const ao = getTeamOrder(a);
+      const bo = getTeamOrder(b);
       const aHas = Number.isFinite(ao);
       const bHas = Number.isFinite(bo);
       if (aHas && bHas && ao !== bo) return ao - bo;
@@ -3750,10 +3770,65 @@ function buildPlaceholderSlot(name, source) {
   };
 }
 
-function buildBracketModel(teams) {
+function getBracketWinnerSelections(teams, overrideWinnerByMatchId = null) {
+  const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
+  const visibleIds = new Set(
+    visible
+      .map(t => String(t?.id || '').trim())
+      .filter(Boolean)
+  );
+
+  if (overrideWinnerByMatchId && typeof overrideWinnerByMatchId === 'object') {
+    const out = {};
+    BRACKET_MATCH_IDS.forEach((matchId) => {
+      const teamId = String(overrideWinnerByMatchId[matchId] || '').trim();
+      out[matchId] = (teamId && visibleIds.has(teamId)) ? teamId : '';
+    });
+    return out;
+  }
+
+  const claims = {};
+  const conflicts = new Set();
+  visible.forEach((team) => {
+    const tid = String(team?.id || '').trim();
+    if (!tid) return;
+    const wins = Array.isArray(team?.bracketWins) ? team.bracketWins : [];
+    wins.forEach((raw) => {
+      const matchId = normalizeBracketMatchId(raw);
+      if (!matchId) return;
+      if (!claims[matchId]) claims[matchId] = tid;
+      else if (claims[matchId] !== tid) conflicts.add(matchId);
+    });
+  });
+  conflicts.forEach((matchId) => { claims[matchId] = ''; });
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    if (!claims[matchId] || !visibleIds.has(claims[matchId])) claims[matchId] = '';
+  });
+  return claims;
+}
+
+function cloneBracketSlot(slot) {
+  return slot ? { ...slot } : null;
+}
+
+function resolveBracketMatchWinner(match, winnerSelections) {
+  const matchId = normalizeBracketMatchId(match?.id);
+  if (!matchId) return null;
+  const selectedTeamId = String(winnerSelections?.[matchId] || '').trim();
+  if (!selectedTeamId) return null;
+  const winnerSlot = (match?.slots || []).find((slot) => (
+    slot
+    && slot.kind === 'team'
+    && String(slot.id || '').trim() === selectedTeamId
+  ));
+  return winnerSlot ? cloneBracketSlot(winnerSlot) : null;
+}
+
+function buildBracketModel(teams, opts = {}) {
   const safeTeams = Array.isArray(teams) ? teams : [];
   const st = computeUserState(safeTeams);
-  const pool = getBracketTeamPool(safeTeams);
+  const pool = getBracketTeamPool(safeTeams, { slotOrderByTeamId: opts?.slotOrderByTeamId || null });
+  const winnerSelections = getBracketWinnerSelections(safeTeams, opts?.winnerByMatchId || null);
   const slottedTeams = Array.from({ length: 8 }, (_, i) => pool.sorted[i] || null);
   const seededSlots = slottedTeams.map((t, idx) => {
     const tid = String(t?.id || '').trim();
@@ -3767,6 +3842,7 @@ function buildBracketModel(teams) {
     round,
     bestOf: 3,
     slots: [a, b],
+    winnerTeamId: '',
   });
 
   const qf1 = match('QF1', 'Quarterfinal 1', 'Quarterfinals', seededSlots[0], seededSlots[7]);
@@ -3774,34 +3850,71 @@ function buildBracketModel(teams) {
   const qf3 = match('QF3', 'Quarterfinal 3', 'Quarterfinals', seededSlots[1], seededSlots[6]);
   const qf4 = match('QF4', 'Quarterfinal 4', 'Quarterfinals', seededSlots[2], seededSlots[5]);
 
+  const qf1Winner = resolveBracketMatchWinner(qf1, winnerSelections);
+  const qf2Winner = resolveBracketMatchWinner(qf2, winnerSelections);
+  const qf3Winner = resolveBracketMatchWinner(qf3, winnerSelections);
+  const qf4Winner = resolveBracketMatchWinner(qf4, winnerSelections);
+  qf1.winnerTeamId = qf1Winner ? String(qf1Winner.id || '') : '';
+  qf2.winnerTeamId = qf2Winner ? String(qf2Winner.id || '') : '';
+  qf3.winnerTeamId = qf3Winner ? String(qf3Winner.id || '') : '';
+  qf4.winnerTeamId = qf4Winner ? String(qf4Winner.id || '') : '';
+
   const sf1 = match(
     'SF1',
     'Semifinal 1',
     'Semifinals',
-    buildPlaceholderSlot('Winner QF1', 'QF1'),
-    buildPlaceholderSlot('Winner QF2', 'QF2')
+    qf1Winner || buildPlaceholderSlot('Winner QF1', 'QF1'),
+    qf2Winner || buildPlaceholderSlot('Winner QF2', 'QF2')
   );
   const sf2 = match(
     'SF2',
     'Semifinal 2',
     'Semifinals',
-    buildPlaceholderSlot('Winner QF3', 'QF3'),
-    buildPlaceholderSlot('Winner QF4', 'QF4')
+    qf3Winner || buildPlaceholderSlot('Winner QF3', 'QF3'),
+    qf4Winner || buildPlaceholderSlot('Winner QF4', 'QF4')
   );
+
+  const sf1Winner = resolveBracketMatchWinner(sf1, winnerSelections);
+  const sf2Winner = resolveBracketMatchWinner(sf2, winnerSelections);
+  sf1.winnerTeamId = sf1Winner ? String(sf1Winner.id || '') : '';
+  sf2.winnerTeamId = sf2Winner ? String(sf2Winner.id || '') : '';
 
   const final = match(
     'F',
     'Grand Final',
     'Final',
-    buildPlaceholderSlot('Winner SF1', 'SF1'),
-    buildPlaceholderSlot('Winner SF2', 'SF2')
+    sf1Winner || buildPlaceholderSlot('Winner SF1', 'SF1'),
+    sf2Winner || buildPlaceholderSlot('Winner SF2', 'SF2')
   );
+  const finalWinner = resolveBracketMatchWinner(final, winnerSelections);
+  final.winnerTeamId = finalWinner ? String(finalWinner.id || '') : '';
+
+  const matches = [qf1, qf2, qf3, qf4, sf1, sf2, final];
+  const matchById = Object.fromEntries(matches.map((m) => [String(m.id || ''), m]));
+  const slotTeamIds = slottedTeams.map((team) => String(team?.id || '').trim());
+  const teamOptions = pool.seeded
+    .map((team) => {
+      const tid = String(team?.id || '').trim();
+      if (!tid) return null;
+      return {
+        id: tid,
+        name: String(team?.teamName || 'Unnamed').trim() || 'Unnamed',
+        seed: pool.seedById.get(tid) || null,
+      };
+    })
+    .filter(Boolean);
 
   return {
     state: st,
     visibleCount: pool.visible.length,
     seededCount: Math.min(8, pool.visible.length),
     hasCustomOrder: !!pool.hasCustomOrder,
+    winnerSelections,
+    matches,
+    matchById,
+    slotTeamIds,
+    teamOptions,
+    champion: finalWinner ? cloneBracketSlot(finalWinner) : null,
     rounds: {
       quarterfinals: [qf1, qf2, qf3, qf4],
       semifinals: [sf1, sf2],
@@ -3830,6 +3943,27 @@ function setBracketRandomizeButtonState(model = null) {
   } else {
     btn.title = 'Randomize who plays who in the bracket.';
   }
+}
+
+function setBracketAdminEditButtonState(model = null) {
+  const btn = document.getElementById('brackets-admin-edit-btn');
+  if (!btn) return;
+
+  const admin = !!isAdminUser();
+  btn.style.display = admin ? '' : 'none';
+  if (!admin) {
+    if (bracketAdminModalOpen) closeBracketAdminModal();
+    return;
+  }
+
+  const visibleCount = Number(model?.visibleCount || 0);
+  const canEdit = !bracketAdminSaveInFlight && visibleCount > 0;
+  btn.disabled = !canEdit;
+  btn.classList.toggle('disabled', !canEdit);
+  btn.textContent = bracketAdminSaveInFlight ? 'Saving...' : 'Edit Bracket';
+  if (bracketAdminSaveInFlight) btn.title = 'Saving bracket changes...';
+  else if (visibleCount <= 0) btn.title = 'Need at least 1 team to edit bracket slots.';
+  else btn.title = 'Manually set bracket slots and winners.';
 }
 
 function shuffleTeams(list) {
@@ -3901,10 +4035,11 @@ function bracketSlotLabel(slot) {
   return 'TBD';
 }
 
-function renderBracketSlot(slot) {
+function renderBracketSlot(slot, opts = {}) {
   const safe = slot || { kind: 'tbd', seed: '', name: 'TBD', members: 0, id: '', color: '', isMine: false };
   const cls = ['brx-slot', `is-${safe.kind}`];
   if (safe.isMine) cls.push('is-mine');
+  if (safe.kind === 'team' && opts?.isWinner) cls.push('is-winner');
 
   const attrs = [];
   if (safe.kind === 'team' && safe.id) {
@@ -3956,6 +4091,7 @@ function renderBracketMatchCard(m, opts = {}) {
     `data-brx-b-name="${esc(bName)}"`,
     `data-brx-a-seed="${esc(aSeed)}"`,
     `data-brx-b-seed="${esc(bSeed)}"`,
+    `data-brx-winner-id="${esc(String(match.winnerTeamId || ''))}"`,
   ];
 
   return `
@@ -3965,8 +4101,8 @@ function renderBracketMatchCard(m, opts = {}) {
         <span class="brx-match-badge">BO${esc(String(match.bestOf || 3))}</span>
       </header>
       <div class="brx-match-slots">
-        ${renderBracketSlot(a)}
-        ${renderBracketSlot(b)}
+        ${renderBracketSlot(a, { isWinner: !!(match.winnerTeamId && aId && match.winnerTeamId === aId) })}
+        ${renderBracketSlot(b, { isWinner: !!(match.winnerTeamId && bId && match.winnerTeamId === bId) })}
       </div>
     </article>
   `;
@@ -3980,6 +4116,7 @@ function renderBrackets(teams) {
   const model = buildBracketModel(teams);
   if (pill) pill.textContent = String(model.visibleCount);
   setBracketRandomizeButtonState(model);
+  setBracketAdminEditButtonState(model);
 
   board.innerHTML = `
     <div class="brx-shell" aria-label="Tournament bracket">
@@ -4046,6 +4183,320 @@ function renderBrackets(teams) {
       }
     });
   });
+
+  if (bracketAdminModalOpen) {
+    renderBracketAdminModal();
+  }
+}
+
+function emptyBracketWinnerMap() {
+  return BRACKET_MATCH_IDS.reduce((acc, matchId) => {
+    acc[matchId] = '';
+    return acc;
+  }, {});
+}
+
+function buildBracketSlotOrderMap(slotTeamIds) {
+  const map = new Map();
+  const arr = Array.isArray(slotTeamIds) ? slotTeamIds : [];
+  for (let i = 0; i < 8; i++) {
+    const teamId = String(arr[i] || '').trim();
+    if (!teamId) continue;
+    map.set(teamId, i + 1);
+  }
+  return map;
+}
+
+function createBracketAdminDraft() {
+  const model = buildBracketModel(teamsCache);
+  const winners = emptyBracketWinnerMap();
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    winners[matchId] = String(model?.winnerSelections?.[matchId] || '').trim();
+  });
+  return {
+    slotTeamIds: Array.from({ length: 8 }, (_, idx) => String(model?.slotTeamIds?.[idx] || '').trim()),
+    winnerByMatchId: winners,
+  };
+}
+
+function sanitizeBracketAdminDraft(draft) {
+  const next = {
+    slotTeamIds: Array.from({ length: 8 }, (_, idx) => String(draft?.slotTeamIds?.[idx] || '').trim()),
+    winnerByMatchId: emptyBracketWinnerMap(),
+  };
+
+  const visibleIds = new Set(
+    (teamsCache || [])
+      .filter(t => !t?.archived && !teamIsEmpty(t))
+      .map(t => String(t?.id || '').trim())
+      .filter(Boolean)
+  );
+
+  next.slotTeamIds = next.slotTeamIds.map((teamId) => (visibleIds.has(teamId) ? teamId : ''));
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    const teamId = String(draft?.winnerByMatchId?.[matchId] || '').trim();
+    next.winnerByMatchId[matchId] = (teamId && visibleIds.has(teamId)) ? teamId : '';
+  });
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const model = buildBracketModel(teamsCache, {
+      slotOrderByTeamId: buildBracketSlotOrderMap(next.slotTeamIds),
+      winnerByMatchId: next.winnerByMatchId,
+    });
+    BRACKET_MATCH_IDS.forEach((matchId) => {
+      const picked = String(next.winnerByMatchId[matchId] || '').trim();
+      if (!picked) return;
+      const participantIds = (model?.matchById?.[matchId]?.slots || [])
+        .filter(slot => slot && slot.kind === 'team' && slot.id)
+        .map(slot => String(slot.id || '').trim());
+      if (!participantIds.includes(picked)) {
+        next.winnerByMatchId[matchId] = '';
+        changed = true;
+      }
+    });
+  }
+
+  return next;
+}
+
+function renderBracketAdminModal() {
+  if (!bracketAdminModalOpen) return;
+  if (!isAdminUser()) {
+    closeBracketAdminModal();
+    return;
+  }
+
+  bracketAdminDraft = sanitizeBracketAdminDraft(bracketAdminDraft || createBracketAdminDraft());
+  const slotsHost = document.getElementById('bracket-admin-slots');
+  const winnersHost = document.getElementById('bracket-admin-winners');
+  const saveBtn = document.getElementById('bracket-admin-save');
+  if (!slotsHost || !winnersHost) return;
+
+  const previewModel = buildBracketModel(teamsCache, {
+    slotOrderByTeamId: buildBracketSlotOrderMap(bracketAdminDraft.slotTeamIds),
+    winnerByMatchId: bracketAdminDraft.winnerByMatchId,
+  });
+  const teamOptions = Array.isArray(previewModel?.teamOptions) ? previewModel.teamOptions : [];
+
+  const slotRows = Array.from({ length: 8 }, (_, idx) => {
+    const selectedId = String(bracketAdminDraft?.slotTeamIds?.[idx] || '').trim();
+    const options = [
+      '<option value="">-- Empty --</option>',
+      ...teamOptions.map((team) => {
+        const tid = String(team?.id || '').trim();
+        const isSelected = selectedId && tid && selectedId === tid;
+        const seed = Number.isFinite(Number(team?.seed)) ? `#${team.seed} ` : '';
+        const label = `${seed}${String(team?.name || 'Unnamed')}`;
+        return `<option value="${esc(tid)}" ${isSelected ? 'selected' : ''}>${esc(label)}</option>`;
+      }),
+    ].join('');
+    return `
+      <label class="bracket-admin-row">
+        <span class="bracket-admin-row-label">Slot ${idx + 1}</span>
+        <select class="input" data-bracket-slot="${idx}">${options}</select>
+      </label>
+    `;
+  }).join('');
+  slotsHost.innerHTML = slotRows;
+
+  const winnerRows = BRACKET_MATCH_IDS.map((matchId) => {
+    const match = previewModel?.matchById?.[matchId];
+    const chosenTeamId = String(bracketAdminDraft?.winnerByMatchId?.[matchId] || '').trim();
+    const participants = (match?.slots || [])
+      .filter(slot => slot && slot.kind === 'team' && slot.id)
+      .map((slot) => ({
+        id: String(slot.id || '').trim(),
+        label: `${Number.isFinite(Number(slot.seed)) ? `#${slot.seed} ` : ''}${String(slot.fullName || slot.name || 'Team').trim()}`,
+      }));
+    const hasParticipants = participants.length > 0;
+    const options = [
+      '<option value="">-- Not Set --</option>',
+      ...participants.map((entry) => (
+        `<option value="${esc(entry.id)}" ${chosenTeamId === entry.id ? 'selected' : ''}>${esc(entry.label)}</option>`
+      )),
+    ].join('');
+    return `
+      <label class="bracket-admin-row">
+        <span class="bracket-admin-row-label">${esc(String(match?.label || matchId))}</span>
+        <select class="input" data-bracket-winner="${esc(matchId)}" ${hasParticipants ? '' : 'disabled'}>${options}</select>
+      </label>
+    `;
+  }).join('');
+  winnersHost.innerHTML = winnerRows;
+
+  slotsHost.querySelectorAll('[data-bracket-slot]')?.forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const idx = Number(sel.getAttribute('data-bracket-slot'));
+      if (!Number.isFinite(idx) || idx < 0 || idx >= 8) return;
+      bracketAdminDraft.slotTeamIds[idx] = String(sel.value || '').trim();
+      renderBracketAdminModal();
+    });
+  });
+
+  winnersHost.querySelectorAll('[data-bracket-winner]')?.forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const matchId = normalizeBracketMatchId(sel.getAttribute('data-bracket-winner'));
+      if (!matchId) return;
+      bracketAdminDraft.winnerByMatchId[matchId] = String(sel.value || '').trim();
+      renderBracketAdminModal();
+    });
+  });
+
+  if (saveBtn) {
+    saveBtn.disabled = !!bracketAdminSaveInFlight;
+    saveBtn.classList.toggle('disabled', !!bracketAdminSaveInFlight);
+    saveBtn.textContent = bracketAdminSaveInFlight ? 'Saving...' : 'Save';
+  }
+}
+
+function openBracketAdminModal() {
+  if (!isAdminUser()) {
+    showToast('Admin only.');
+    return;
+  }
+  const modal = document.getElementById('bracket-admin-modal');
+  if (!modal) return;
+  bracketAdminModalOpen = true;
+  bracketAdminDraft = createBracketAdminDraft();
+  setHint('bracket-admin-hint', '');
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+  renderBracketAdminModal();
+}
+
+function closeBracketAdminModal() {
+  const modal = document.getElementById('bracket-admin-modal');
+  bracketAdminModalOpen = false;
+  bracketAdminDraft = null;
+  if (modal) {
+    modal.classList.remove('modal-open');
+    setTimeout(() => { modal.style.display = 'none'; }, 200);
+  }
+  setHint('bracket-admin-hint', '');
+}
+
+function clearBracketAdminWinners() {
+  if (!bracketAdminModalOpen) return;
+  if (!bracketAdminDraft) bracketAdminDraft = createBracketAdminDraft();
+  bracketAdminDraft.winnerByMatchId = emptyBracketWinnerMap();
+  renderBracketAdminModal();
+}
+
+async function saveBracketAdminChanges() {
+  if (!isAdminUser()) {
+    showToast('Admin only.');
+    return;
+  }
+  if (!bracketAdminModalOpen || bracketAdminSaveInFlight) return;
+
+  bracketAdminDraft = sanitizeBracketAdminDraft(bracketAdminDraft || createBracketAdminDraft());
+  const slotTeamIds = Array.isArray(bracketAdminDraft?.slotTeamIds)
+    ? bracketAdminDraft.slotTeamIds.map(v => String(v || '').trim())
+    : [];
+
+  const seen = new Set();
+  for (const teamId of slotTeamIds) {
+    if (!teamId) continue;
+    if (seen.has(teamId)) {
+      setHint('bracket-admin-hint', 'Each team can only appear once in slots.');
+      return;
+    }
+    seen.add(teamId);
+  }
+
+  const slotOrderByTeamId = buildBracketSlotOrderMap(slotTeamIds);
+  const previewModel = buildBracketModel(teamsCache, {
+    slotOrderByTeamId,
+    winnerByMatchId: bracketAdminDraft.winnerByMatchId,
+  });
+  const winnerByMatchId = emptyBracketWinnerMap();
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    const selectedTeamId = String(bracketAdminDraft?.winnerByMatchId?.[matchId] || '').trim();
+    if (!selectedTeamId) return;
+    const participants = (previewModel?.matchById?.[matchId]?.slots || [])
+      .filter(slot => slot && slot.kind === 'team' && slot.id)
+      .map(slot => String(slot.id || '').trim());
+    if (participants.includes(selectedTeamId)) winnerByMatchId[matchId] = selectedTeamId;
+  });
+
+  const visibleTeams = (teamsCache || [])
+    .filter(t => !t?.archived && !teamIsEmpty(t))
+    .filter(t => String(t?.id || '').trim());
+  if (!visibleTeams.length) {
+    setHint('bracket-admin-hint', 'No teams available.');
+    return;
+  }
+
+  const winsByTeam = new Map();
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    const winnerTeamId = String(winnerByMatchId[matchId] || '').trim();
+    if (!winnerTeamId) return;
+    const list = winsByTeam.get(winnerTeamId) || [];
+    list.push(matchId);
+    winsByTeam.set(winnerTeamId, list);
+  });
+
+  bracketAdminSaveInFlight = true;
+  setHint('bracket-admin-hint', 'Saving…');
+  renderBracketAdminModal();
+  setBracketAdminEditButtonState(previewModel);
+
+  try {
+    let batch = db.batch();
+    let writes = 0;
+    for (const team of visibleTeams) {
+      const tid = String(team?.id || '').trim();
+      if (!tid) continue;
+
+      const preservedWins = (Array.isArray(team?.bracketWins) ? team.bracketWins : [])
+        .map(v => String(v || '').trim())
+        .filter(Boolean)
+        .filter((matchId) => !BRACKET_MATCH_ID_SET.has(normalizeBracketMatchId(matchId)));
+
+      const assignedWins = winsByTeam.get(tid) || [];
+      const nextWins = Array.from(new Set([...preservedWins, ...assignedWins]));
+
+      const slotOrder = slotOrderByTeamId.get(tid);
+      const updates = {
+        bracketSlotUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        bracketWinsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+      if (Number.isFinite(Number(slotOrder))) updates.bracketSlotOrder = Number(slotOrder);
+      else updates.bracketSlotOrder = firebase.firestore.FieldValue.delete();
+      if (nextWins.length) updates.bracketWins = nextWins;
+      else updates.bracketWins = firebase.firestore.FieldValue.delete();
+
+      batch.update(db.collection('teams').doc(tid), updates);
+      writes++;
+      if (writes >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        writes = 0;
+      }
+    }
+    if (writes > 0) await batch.commit();
+
+    try {
+      const winnerCount = BRACKET_MATCH_IDS.reduce((acc, matchId) => acc + (winnerByMatchId[matchId] ? 1 : 0), 0);
+      logEvent('bracket_admin_update', 'Admin updated bracket slots and winners.', {
+        slottedCount: slotTeamIds.filter(Boolean).length,
+        winnerCount,
+      });
+    } catch (_) {}
+
+    showToast('Bracket updated.');
+    closeBracketAdminModal();
+  } catch (err) {
+    console.error('Bracket admin save failed:', err);
+    setHint('bracket-admin-hint', err?.message || 'Could not save bracket.');
+    showToast(err?.message || 'Could not save bracket.');
+  } finally {
+    bracketAdminSaveInFlight = false;
+    setBracketAdminEditButtonState(buildBracketModel(teamsCache));
+    if (bracketAdminModalOpen) renderBracketAdminModal();
+  }
 }
 
 // Back-compat no-op for older code paths that still reference this helper.
@@ -4053,9 +4504,33 @@ function drawBracketWires() {}
 
 function initBracketsUI() {
   const randomizeBtn = document.getElementById('brackets-randomize-btn');
+  const editBtn = document.getElementById('brackets-admin-edit-btn');
+  const adminModal = document.getElementById('bracket-admin-modal');
+  const adminCloseBtn = document.getElementById('bracket-admin-close');
+  const adminCancelBtn = document.getElementById('bracket-admin-cancel');
+  const adminSaveBtn = document.getElementById('bracket-admin-save');
+  const adminClearWinnersBtn = document.getElementById('bracket-admin-clear-winners');
+
   randomizeBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     randomizeBracketMatchups();
+  });
+  editBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    openBracketAdminModal();
+  });
+  adminCloseBtn?.addEventListener('click', closeBracketAdminModal);
+  adminCancelBtn?.addEventListener('click', closeBracketAdminModal);
+  adminSaveBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    saveBracketAdminChanges();
+  });
+  adminClearWinnersBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    clearBracketAdminWinners();
+  });
+  adminModal?.addEventListener('click', (e) => {
+    if (e.target === adminModal) closeBracketAdminModal();
   });
 
   let raf = null;
@@ -4073,7 +4548,9 @@ function initBracketsUI() {
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(rerenderIfVisible).catch(() => {});
   }
-  setBracketRandomizeButtonState(buildBracketModel(teamsCache));
+  const model = buildBracketModel(teamsCache);
+  setBracketRandomizeButtonState(model);
+  setBracketAdminEditButtonState(model);
 }
 
 let _bracketsPopupEl = null;
