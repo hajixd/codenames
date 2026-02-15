@@ -23171,6 +23171,17 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
 
 /* Mobile OG/Cozy: keep board + clue row in normal flow and let board height push controls down. */
 @media (max-width: 1024px) {
+  .panel-game.game-active {
+    bottom: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+  }
+
   body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-center-area,
   body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-board-wrapper,
   body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-board {
