@@ -5590,15 +5590,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const waitingEl = document.getElementById('waiting-message');
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
   const waitingForEl = document.getElementById('waiting-for');
-  const setWaitingTeamRole = (teamColor, roleLabel) => {
-    if (!waitingForEl) return;
-    const team = (teamColor === 'blue') ? 'blue' : 'red';
-    const rawTeamName = team === 'blue'
-      ? truncateTeamNameGame(currentGame?.blueTeamName)
-      : truncateTeamNameGame(currentGame?.redTeamName);
-    const teamName = String(rawTeamName || (team === 'blue' ? 'Blue Team' : 'Red Team')).trim();
-    waitingForEl.innerHTML = `<span class="waiting-team waiting-team-${team}">${escapeHtml(teamName)}</span> ${escapeHtml(roleLabel)}`;
-  };
 
   syncClueSubmitButtonAppearance();
 
@@ -5665,9 +5656,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       clueFormEl.style.display = 'flex';
       const numInput = document.getElementById('clue-num-input');
       if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
-    } else {
-      waitingEl.style.display = 'block';
-      setWaitingTeamRole(currentGame.currentTeam, 'SPYMASTER');
     }
     return;
   }
@@ -5685,9 +5673,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     if (!spectator && isMyTurn && !isSpymaster) {
       // Show end turn button
       operativeActionsEl.style.display = 'flex';
-    } else {
-      waitingEl.style.display = 'block';
-      setWaitingTeamRole(currentGame.currentTeam, 'OPERATIVES');
     }
   }
 }

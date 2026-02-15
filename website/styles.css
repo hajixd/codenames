@@ -22433,6 +22433,16 @@ body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
   margin-top: 4px;
 }
 
+@media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
+    margin-top: 22px !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
+    margin-top: 10px;
+  }
+}
+
 /* Bring back waiting status, but smaller/subtler. */
 body:is(.og-mode, .cozy-mode) .waiting-expanded {
   font-size: 10px;
