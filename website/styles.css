@@ -22792,19 +22792,34 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 32vh), 120px);
   }
 
-  /* Move OG/Cozy team stacks upward (Operatives / Score / Spymasters). */
+  /* Keep OG/Cozy team stacks in normal flow (no transform clipping). */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel {
     margin-bottom: 0;
-    transform: translateY(clamp(-72px, calc(-20px - (1 - var(--desktop-game-scale, 1)) * 32vh), -18px));
+    transform: none;
   }
 
-  /* Lift board/cards slightly on desktop to match the raised side stacks. */
+  /* Safer "higher" adjustments: tighten internal top spacing instead of translating containers. */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-block {
+    padding-top: 8px;
+    padding-bottom: 14px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-title {
+    margin: 0 0 6px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .og-score-block {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board-wrapper {
-    transform: translateY(-12px);
+    transform: none;
+    padding-top: 8px;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board {
-    margin-top: -6px;
+    margin-top: 0;
   }
 
   /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
