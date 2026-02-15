@@ -4235,7 +4235,7 @@ function renderBracketSlot(slot, opts = {}) {
   const hasRoundWins = Number.isFinite(Number(opts?.roundWins));
   const roundWins = hasRoundWins ? clampBracketSeriesWins(opts.roundWins) : null;
   const meta = safe.kind === 'team'
-    ? `<span class="brx-slot-meta">${esc(roundWins == null ? String(safe.members) + 'p' : String(roundWins) + 'W')}</span>`
+    ? `<span class="brx-slot-meta">${esc(roundWins == null ? String(safe.members) + 'p' : String(roundWins))}</span>`
     : '<span class="brx-slot-meta">—</span>';
   const mine = safe.isMine ? '<span class="brx-slot-you">Your team</span>' : '';
 
