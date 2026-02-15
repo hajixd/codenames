@@ -330,7 +330,6 @@ let quickPlayEnsurePromise = null;
 // Practice is fully local-only (no Firestore reads/writes).
 const LOCAL_PRACTICE_ID_PREFIX = 'practice_local_';
 const LS_LOCAL_PRACTICE_GAMES = 'ct_localPracticeGames_v1';
-const DEFAULT_BOARD_VIBE = 'cool codename words';
 const localPracticeGames = new Map();
 let localPracticeAiTimer = null;
 let localPracticeAiBusy = false;
@@ -1268,9 +1267,7 @@ function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
-  const vibeEl = document.getElementById('qp-vibe');
-  const vibeRaw = vibeEl ? String(vibeEl.value || '') : DEFAULT_BOARD_VIBE;
-  const vibe = String(vibeRaw || '').trim();
+  const vibe = String(document.getElementById('qp-vibe')?.value || '').trim();
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
@@ -1283,13 +1280,12 @@ function readQuickSettingsFromUI() {
 function getQuickSettings(game) {
   const base = game?.quickSettings || null;
   if (base && typeof base === 'object') {
-    const baseVibe = (typeof base.vibe === 'string') ? base.vibe : DEFAULT_BOARD_VIBE;
     return {
       blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
       clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
       deckId: normalizeDeckId(base.deckId || 'standard'),
-      vibe: String(baseVibe || ''),
+      vibe: String(base.vibe || ''),
     };
   }
   return {
@@ -1297,7 +1293,7 @@ function getQuickSettings(game) {
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
     deckId: 'standard',
-    vibe: DEFAULT_BOARD_VIBE,
+    vibe: '',
   };
 }
 
@@ -1850,8 +1846,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
 
   const size = Math.max(2, Math.min(4, parseInt(opts.size, 10) || 2)); // 2, 3, or 4
   const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
-  const vibeRaw = (typeof opts.vibe === 'string') ? opts.vibe : DEFAULT_BOARD_VIBE;
-  const vibe = String(vibeRaw || '').trim();
+  const vibe = String(opts.vibe || '').trim();
   const deckId = normalizeDeckId(opts.deckId || 'standard');
 
   const usedNames = new Set([userName]);
@@ -3091,11 +3086,7 @@ async function checkAndEndEmptyQuickPlayGame(game) {
 
 async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
-  const vibeRaw = (typeof settings?.vibe === 'string') ? settings.vibe : DEFAULT_BOARD_VIBE;
-  const vibe = String(vibeRaw || '').trim();
-  const normalizedSettings = { ...settings, vibe };
-
-  const cards = await buildQuickPlayCardsFromSettings(normalizedSettings);
+  const cards = await buildQuickPlayCardsFromSettings(settings);
 
   return {
     type: 'quick',
@@ -3125,7 +3116,7 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
-      vibe,
+      vibe: settings.vibe || '',
     },
     log: [],
     winner: null,
@@ -3162,7 +3153,7 @@ async function ensureQuickPlayGameExists() {
         clueTimerSeconds: 0,
         guessTimerSeconds: 0,
         deckId: 'standard',
-        vibe: DEFAULT_BOARD_VIBE,
+        vibe: '',
       };
     }
     // Remove legacy negotiation fields if present.

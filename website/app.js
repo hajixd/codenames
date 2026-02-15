@@ -45,7 +45,6 @@ const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
 const LS_SETTINGS_OG_MODE = 'ct_og_mode_v1';
 const LS_SETTINGS_STYLE_MODE = 'ct_style_mode_v1';
-const DEFAULT_BOARD_VIBE = 'cool codename words';
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -10996,8 +10995,7 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const sizeNum = parseInt(opts?.size, 10);
   const size = (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
   const role = String(opts?.role || 'operative');
-  const vibeRaw = (typeof opts?.vibe === 'string') ? opts.vibe : DEFAULT_BOARD_VIBE;
-  const vibe = String(vibeRaw || '').trim();
+  const vibe = String(opts?.vibe || '').trim();
   const deckId = String(opts?.deckId || 'standard');
 
   const gameId = await createFn({ size, role, vibe, deckId });
@@ -11020,9 +11018,6 @@ function initPracticePage() {
   const stepVibe = document.getElementById('practice-step-vibe');
 
   const state = { role: null, size: null };
-  if (vibeInput && !String(vibeInput.value || '').trim()) {
-    vibeInput.value = DEFAULT_BOARD_VIBE;
-  }
 
   const setSelected = (btns, activeBtn) => {
     btns.forEach(b => b.classList.toggle('is-selected', b === activeBtn));
@@ -11092,10 +11087,6 @@ function openPracticeModal() {
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
   requestAnimationFrame(() => modal.classList.add('modal-open'));
-  try {
-    const vibeEl = document.getElementById('practice-vibe');
-    if (vibeEl && !String(vibeEl.value || '').trim()) vibeEl.value = DEFAULT_BOARD_VIBE;
-  } catch (_) {}
   try { document.getElementById('practice-vibe')?.focus?.(); } catch (_) {}
 }
 
