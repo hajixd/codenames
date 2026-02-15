@@ -22837,7 +22837,8 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .game-sidebar {
     overflow: visible;
-    align-self: end;
+    align-self: stretch;
+    justify-content: flex-end;
   }
 
   .clue-history-panel,
@@ -22871,4 +22872,21 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     max-height: none;
     overflow: visible;
   }
+}
+
+/* Team-colored thin borders for in-game chat + game log */
+.operative-chat-panel.chat-team-red {
+  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 44%, var(--border) 56%);
+}
+
+.operative-chat-panel.chat-team-blue {
+  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 44%, var(--border) 56%);
+}
+
+#game-board-container.turn-red .game-log-panel {
+  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 44%, var(--border) 56%);
+}
+
+#game-board-container.turn-blue .game-log-panel {
+  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 44%, var(--border) 56%);
 }
