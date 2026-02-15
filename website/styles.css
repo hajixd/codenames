@@ -22769,31 +22769,30 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     --desktop-game-scale: 1;
   }
 
-  /* Desktop OG/Cozy: allow lifted top elements to paint above container chrome. */
-  body:is(.og-mode, .cozy-mode) .panel-game.game-active,
-  body:is(.og-mode, .cozy-mode) .panel-game.game-active .panel-inner,
-  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
-    overflow: visible;
-  }
-
-  body:is(.og-mode, .cozy-mode) #panel-game.panel.game-active {
-    z-index: 240;
-  }
-
-  body:is(.og-mode, .cozy-mode) #panel-game.panel {
-    contain: none;
-  }
-
-  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
-    contain: none;
+  /* Desktop OG/Cozy: avoid overlap and let extra height be handled by scroll. */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active {
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .panel-game.game-active .panel-inner {
     justify-content: flex-end;
   }
 
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .panel-inner {
+    justify-content: flex-start;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
+    height: auto;
+    max-height: none;
+    min-height: calc(100dvh - 64px);
+    overflow: visible;
+  }
+
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-main-layout {
     overflow: visible;
+    align-items: start;
   }
 
   #game-board-container.game-container-expanded {
@@ -22821,7 +22820,6 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     transform: none;
     gap: 8px;
     position: relative;
-    z-index: 260;
   }
 
   /* OG/Cozy desktop: anchor side stacks near the top (separate from card position). */
@@ -22830,15 +22828,14 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     justify-content: flex-start;
     overflow: visible;
     position: relative;
-    z-index: 252;
   }
 
   /* Safer "higher" adjustments: tighten internal top spacing instead of translating containers. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-phase-banner {
-    margin-top: -8px;
+    margin-top: 0;
     padding: 0 0 4px;
     position: relative;
-    z-index: 260;
+    z-index: 26;
     overflow: visible;
   }
 
@@ -22852,7 +22849,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-operatives {
-    margin-top: -12px;
+    margin-top: 0;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-title {
@@ -22862,7 +22859,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .og-score-block {
     padding-top: 0;
     padding-bottom: 0;
-    margin-top: -7px;
+    margin-top: 0;
     margin-bottom: 1px;
   }
 
