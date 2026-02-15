@@ -22435,11 +22435,12 @@ body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
 
 @media (max-width: 1024px) {
   body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
-    margin-top: 30px !important;
+    margin-top: 38px !important;
+    margin-bottom: 38px !important;
   }
 
   body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
-    margin-top: 16px;
+    margin-top: 18px;
   }
 
   /* Hide OG/Cozy phase text on mobile ("GIVE YOUR OPERATIVES A CLUE", etc.). */
