@@ -22796,7 +22796,13 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel {
     margin-bottom: 0;
     transform: none;
-    gap: 10px;
+    gap: 8px;
+  }
+
+  /* OG/Cozy desktop: anchor side stacks near the top (separate from card position). */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar {
+    padding-top: 0;
+    justify-content: flex-start;
   }
 
   /* Safer "higher" adjustments: tighten internal top spacing instead of translating containers. */
@@ -22813,36 +22819,38 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-block {
-    padding-top: 2px;
-    padding-bottom: 14px;
+    padding-top: 1px;
+    padding-bottom: 13px;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-title {
-    margin: 0 0 2px;
+    margin: 4px 0 2px;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .og-score-block {
     padding-top: 0;
     padding-bottom: 0;
+    margin-top: -4px;
+    margin-bottom: 1px;
   }
 
   /* Spymaster box: slightly taller vertically on desktop. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-spymasters {
-    padding-top: 4px;
-    padding-bottom: 14px;
+    padding-top: 5px;
+    padding-bottom: 15px;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-spymasters .online-roster-surface {
-    min-height: clamp(92px, 10.5vh, 118px);
+    min-height: clamp(98px, 11.4vh, 126px);
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board-wrapper {
     transform: none;
-    padding-top: 2px;
+    padding-top: 5px;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board {
-    margin-top: -4px;
+    margin-top: 0;
   }
 
   /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
@@ -22856,6 +22864,24 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
       font-size: clamp(8px, calc(10px * var(--desktop-game-scale, 1)), 12px);
       letter-spacing: calc(1px * var(--desktop-game-scale, 1));
     }
+  }
+}
+
+/* Desktop OG/Cozy: keep docked Game Log as tall as docked Team Chat. */
+@media (min-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) {
+    --og-docked-panel-h: clamp(220px, 33vh, 330px);
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open {
+    height: var(--og-docked-panel-h);
+    max-height: var(--og-docked-panel-h);
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner {
+    height: 100%;
+    max-height: 100%;
   }
 }
 
