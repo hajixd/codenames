@@ -22792,9 +22792,19 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 32vh), 120px);
   }
 
-  /* Nudge OG/Cozy team stacks slightly upward (Operatives / Score / Spymasters). */
+  /* Move OG/Cozy team stacks upward (Operatives / Score / Spymasters). */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel {
-    margin-bottom: clamp(24px, 3.6vh, 64px);
+    margin-bottom: 0;
+    transform: translateY(clamp(-72px, calc(-20px - (1 - var(--desktop-game-scale, 1)) * 32vh), -18px));
+  }
+
+  /* Lift board/cards slightly on desktop to match the raised side stacks. */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board-wrapper {
+    transform: translateY(-12px);
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board {
+    margin-top: -6px;
   }
 
   /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
