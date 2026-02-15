@@ -1928,6 +1928,9 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 }
 
 async function runOperativeCouncil(game, team) {
+  if (!game || game.winner) return;
+  if (String(game.currentPhase || '') !== 'operatives') return;
+  if (String(game.currentTeam || '') !== String(team || '')) return;
   const ops = (getAIOperatives(team) || []).filter(a => a && a.mode === 'autonomous');
   if (!ops.length) return;
 
@@ -1949,6 +1952,9 @@ async function runOperativeCouncil(game, team) {
       const g2 = await getGameSnapshot(game?.id);
       if (g2 && g2.cards) working = g2;
     } catch (_) {}
+    if (!working || working.winner) return;
+    if (String(working.currentPhase || '') !== 'operatives') return;
+    if (String(working.currentTeam || '') !== String(team || '')) return;
 
     const chatBefore = await getTeamChatState(game.id, team, 14);
 
@@ -2006,6 +2012,9 @@ async function runOperativeCouncil(game, team) {
           const g2 = await getGameSnapshot(game?.id);
           if (g2 && g2.cards) working = g2;
         } catch (_) {}
+        if (!working || working.winner) return;
+        if (String(working.currentPhase || '') !== 'operatives') return;
+        if (String(working.currentTeam || '') !== String(team || '')) return;
         const chatBefore = await getTeamChatState(game.id, team, 16);
 
         aiThinkingState[ai.id] = true;
@@ -2245,6 +2254,11 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
 }
 
 async function submitClueDirect(ai, game, clueWord, clueNumber) {
+  if (!ai || !game || game.winner) return;
+  if (String(ai?.mode || '') !== 'autonomous') return;
+  if (String(ai?.seatRole || '') !== 'spymaster') return;
+  if (String(game.currentPhase || '') !== 'spymaster') return;
+  if (String(game.currentTeam || '') !== String(ai?.team || '')) return;
   const team = ai.team;
   const ref = db.collection('games').doc(game.id);
 
@@ -2387,6 +2401,9 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
 }
 
 async function runSpymasterCouncil(game, team) {
+  if (!game || game.winner) return;
+  if (String(game.currentPhase || '') !== 'spymaster') return;
+  if (String(game.currentTeam || '') !== String(team || '')) return;
   const spies = (getAISpymasters(team) || []).filter(a => a && a.mode === 'autonomous');
   if (!spies.length) return;
 
@@ -2406,6 +2423,9 @@ async function runSpymasterCouncil(game, team) {
       const g2 = await getGameSnapshot(game?.id);
       if (g2 && g2.cards) working = g2;
     } catch (_) {}
+    if (!working || working.winner) return;
+    if (String(working.currentPhase || '') !== 'spymaster') return;
+    if (String(working.currentTeam || '') !== String(team || '')) return;
 
     const chatBefore = await getTeamChatState(game.id, team, 14);
 
@@ -2447,6 +2467,9 @@ async function runSpymasterCouncil(game, team) {
           const g2 = await getGameSnapshot(game?.id);
           if (g2 && g2.cards) working = g2;
         } catch (_) {}
+        if (!working || working.winner) return;
+        if (String(working.currentPhase || '') !== 'spymaster') return;
+        if (String(working.currentTeam || '') !== String(team || '')) return;
 
         const chatBefore = await getTeamChatState(game.id, team, 16);
         aiThinkingState[ai.id] = true;
@@ -2530,6 +2553,11 @@ async function aiGiveClue(ai, game) {
       const fresh = await getGameSnapshot(game?.id);
       if (fresh && fresh.cards) game = fresh;
     } catch (_) {}
+    if (!game || game.winner) return;
+    if (String(ai?.mode || '') !== 'autonomous') return;
+    if (String(ai?.seatRole || '') !== 'spymaster') return;
+    if (String(game.currentPhase || '') !== 'spymaster') return;
+    if (String(game.currentTeam || '') !== String(ai?.team || '')) return;
 
     const core = ensureAICore(ai);
     if (!core) return;
@@ -2659,6 +2687,11 @@ async function aiGuessCard(ai, game) {
       const fresh = await getGameSnapshot(game?.id);
       if (fresh && fresh.cards) game = fresh;
     } catch (_) {}
+    if (!game || game.winner) return;
+    if (String(ai?.mode || '') !== 'autonomous') return;
+    if (String(ai?.seatRole || '') !== 'operative') return;
+    if (String(game.currentPhase || '') !== 'operatives') return;
+    if (String(game.currentTeam || '') !== String(ai?.team || '')) return;
 
     const core = ensureAICore(ai);
     if (!core) return;
@@ -2750,6 +2783,11 @@ async function aiGuessCard(ai, game) {
 
 // Returns { turnEnded: bool } so the caller knows whether the turn already switched.
 async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
+  if (!game || game.winner) return { turnEnded: false };
+  if (String(ai?.mode || '') !== 'autonomous') return { turnEnded: false };
+  if (String(ai?.seatRole || '') !== 'operative') return { turnEnded: false };
+  if (String(game.currentPhase || '') !== 'operatives') return { turnEnded: false };
+  if (String(game.currentTeam || '') !== String(ai?.team || '')) return { turnEnded: false };
   const card = game.cards[cardIndex];
   if (!card || card.revealed) return { turnEnded: false };
 
@@ -2869,6 +2907,10 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
 
 async function aiConsiderEndTurn(ai, game, forceEnd = false, incrementSeq = false) {
   if (ai.mode !== 'autonomous') return false;
+  if (!game || game.winner) return false;
+  if (String(ai?.seatRole || '') !== 'operative') return false;
+  if (String(game.currentPhase || '') !== 'operatives') return false;
+  if (String(game.currentTeam || '') !== String(ai?.team || '')) return false;
 
   const teamName = game.currentTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
 
@@ -3179,15 +3221,10 @@ async function aiOffTurnScout(ai, game) {
     const systemPrompt = [
       `You are ${ai.name}, an OPERATIVE on ${String(ai.team || '').toUpperCase()} team in Codenames.`,
       `It is NOT your team's turn right now. Opponent (${opponent}) gave clue "${clueWord}" for ${Number(vision?.clue?.number || 0)}.`,
-      `Do fast off-turn scouting for your teammates: mark words likely tied to the opponent clue so your team can avoid traps later.`,
-      `Use tags as follows:`,
-      `- "no" = likely opponent-related/risky word (danger for your team)`,
-      `- "maybe" = possible opponent-related word`,
-      `- "yes" = exceptionally strong counter-signal for your own team (rare off-turn)`,
-      `Pick 1-3 marks max. Only use indices from the unrevealed list.`,
+      `IMPORTANT RULE: you may chat only. Do NOT make card marks or any game actions off-turn.`,
       `Optional chat should be one short casual sentence. If nothing useful, chat="".`,
       `Never mention confidence scores.`,
-      `Return JSON only: {"mind":"2-6 lines first-person thinking","marks":[{"index":N,"tag":"yes|maybe|no"}],"chat":"short optional message"}`,
+      `Return JSON only: {"mind":"2-6 lines first-person thinking","chat":"short optional message"}`,
     ].join('\n');
 
     const userPrompt = [
@@ -3213,21 +3250,6 @@ async function aiOffTurnScout(ai, game) {
 
     const mind = String(parsed.mind || '').trim();
     if (mind) appendMind(ai, mind);
-
-    const validIdx = new Set(unrevealed.map(c => Number(c.index)));
-    const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
-    const marks = [];
-    for (const m of marksIn) {
-      const idx = Number(m?.index);
-      const tag = String(m?.tag || '').toLowerCase().trim();
-      if (!Number.isFinite(idx) || !validIdx.has(idx)) continue;
-      if (!['yes', 'maybe', 'no'].includes(tag)) continue;
-      marks.push({ index: idx, tag });
-      if (marks.length >= 3) break;
-    }
-
-    if (marks.length) await syncAIMarkerSet(game.id, ai.team, ai, marks);
-    else await syncAIMarkerSet(game.id, ai.team, ai, []);
 
     let chat = sanitizeChatText(String(parsed.chat || '').trim(), vision, 140);
     if (chat && (Math.random() < 0.72)) {
@@ -3356,8 +3378,8 @@ function startAIGameLoop() {
 
     const currentTeam = game.currentTeam;
 
-    // Off-turn scouting: waiting-team operatives can still discuss and place markers
-    // based on the opponent clue while they wait.
+    // Off-turn chatter only: waiting-team operatives can discuss while waiting,
+    // but they are blocked from card marks and other game actions.
     if (game.currentPhase === 'operatives' && game.currentClue && Math.random() < 0.68) {
       const waitingOps = (aiPlayers || []).filter(a =>
         a &&

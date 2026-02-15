@@ -53,6 +53,7 @@ const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _pendingRevealRenderTimer = null;
 let _deferredSnapshotRender = null;
 let _localConfirmAnimUntil = 0;
+let _cardAnimOverlayTimer = null;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -68,6 +69,17 @@ function getConfirmBackLabel(confirmBackType) {
   if (type === 'neutral') return 'NEUTRAL';
   if (type === 'assassin') return 'ASSASSIN';
   return 'NEUTRAL';
+}
+
+function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
+  const host = document.getElementById('game-board-container');
+  if (!host) return;
+  host.classList.add('card-anim-overlay');
+  if (_cardAnimOverlayTimer) clearTimeout(_cardAnimOverlayTimer);
+  _cardAnimOverlayTimer = window.setTimeout(() => {
+    _cardAnimOverlayTimer = null;
+    host.classList.remove('card-anim-overlay');
+  }, Math.max(260, Number(holdMs) || 0));
 }
 
 function clearConfirmAnimationClasses(cardEl) {
@@ -88,6 +100,7 @@ function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
   clearConfirmAnimationClasses(cardEl);
   cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
   cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
+  pulseCardAnimationOverlay();
 }
 
 function flushDeferredSnapshotRender() {
@@ -173,6 +186,7 @@ function animateNewlyRevealedCards(cardIndices = []) {
     void cardEl.offsetWidth;
     cardEl.classList.add('guess-animate');
     cardEl.classList.add('revealing');
+    pulseCardAnimationOverlay();
 
     window.setTimeout(() => {
       if (!cardEl.isConnected) return;
@@ -5042,57 +5056,133 @@ function renderAdvancedFeatures() {
   renderOgPanels();
 }
 
+let _rosterExpandPopupHideTimer = null;
+
+function closeRosterExpandPopup() {
+  const popup = document.getElementById('roster-expand-popup');
+  if (!popup) return;
+  popup.classList.remove('visible');
+  if (_rosterExpandPopupHideTimer) clearTimeout(_rosterExpandPopupHideTimer);
+  _rosterExpandPopupHideTimer = window.setTimeout(() => {
+    _rosterExpandPopupHideTimer = null;
+    if (!popup.classList.contains('visible')) popup.style.display = 'none';
+  }, 180);
+}
+
+function openRosterExpandPopup(team, role) {
+  if (!currentGame) return;
+  const popup = document.getElementById('roster-expand-popup');
+  const titleEl = document.getElementById('roster-expand-title');
+  const subtitleEl = document.getElementById('roster-expand-subtitle');
+  const listEl = document.getElementById('roster-expand-list');
+  const cardEl = popup?.querySelector?.('.roster-expand-card');
+  if (!popup || !titleEl || !subtitleEl || !listEl || !cardEl) return;
+  if (_rosterExpandPopupHideTimer) {
+    clearTimeout(_rosterExpandPopupHideTimer);
+    _rosterExpandPopupHideTimer = null;
+  }
+
+  const teamColor = (team === 'blue') ? 'blue' : 'red';
+  const seatRole = (role === 'spymaster') ? 'spymaster' : 'operative';
+  const roster = getTeamPlayers(teamColor, currentGame);
+  const isSpy = (p) => isSpymasterPlayerForTeam(p, teamColor, currentGame);
+  const players = roster.filter((p) => seatRole === 'spymaster' ? isSpy(p) : !isSpy(p));
+  const myId = String(getUserId?.() || '').trim();
+  const teamNameRaw = teamColor === 'blue' ? currentGame.blueTeamName : currentGame.redTeamName;
+  const teamName = String(teamNameRaw || (teamColor === 'blue' ? 'Blue Team' : 'Red Team')).trim();
+  const roleLabel = seatRole === 'spymaster' ? 'Spymasters' : 'Operatives';
+
+  popup.classList.remove('team-red', 'team-blue', 'role-spymaster', 'role-operative');
+  popup.classList.add(teamColor === 'blue' ? 'team-blue' : 'team-red');
+  popup.classList.add(seatRole === 'spymaster' ? 'role-spymaster' : 'role-operative');
+  cardEl.classList.remove('team-red', 'team-blue');
+  cardEl.classList.add(teamColor === 'blue' ? 'team-blue' : 'team-red');
+
+  titleEl.textContent = `${teamName} ${roleLabel}`;
+  subtitleEl.textContent = players.length === 1 ? '1 player' : `${players.length} players`;
+
+  if (!players.length) {
+    listEl.innerHTML = '<div class="roster-expand-empty">No players in this seat yet.</div>';
+  } else {
+    listEl.innerHTML = players.map((p) => {
+      const pid = String(p?.odId || p?.userId || '').trim();
+      const isMe = !!(myId && pid && pid === myId);
+      const ai = !!p?.isAI;
+      const name = escapeHtml(displayPlayerName(p) || '—');
+      const rowClasses = ['roster-expand-item', teamColor, ai ? 'is-ai' : '', isMe ? 'is-me' : ''].filter(Boolean).join(' ');
+      const attrs = pid && !ai
+        ? `class="${rowClasses} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
+        : `class="${rowClasses}"`;
+      const initials = escapeHtml((displayPlayerName(p) || '?').trim().slice(0, 2).toUpperCase());
+      const badge = ai ? 'AI' : (isMe ? 'YOU' : 'HUMAN');
+      return `
+        <div ${attrs}>
+          <div class="roster-expand-avatar">${initials}</div>
+          <div class="roster-expand-meta">
+            <div class="roster-expand-name">${name}</div>
+            <div class="roster-expand-kind">${ai ? 'Autonomous AI' : 'Player'}</div>
+          </div>
+          <div class="roster-expand-badge">${badge}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  popup.style.display = 'block';
+  void popup.offsetWidth;
+  popup.classList.add('visible');
+
+  if (popup.dataset.bound !== '1') {
+    popup.dataset.bound = '1';
+    document.getElementById('roster-expand-close')?.addEventListener('click', closeRosterExpandPopup);
+    document.getElementById('roster-expand-backdrop')?.addEventListener('click', closeRosterExpandPopup);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeRosterExpandPopup();
+    });
+  }
+}
+
+function openRosterExpandPopupForBox(box) {
+  if (!box) return;
+  const teamHost = box.closest('.og-mobile-team');
+  const team = teamHost?.id?.includes('blue') ? 'blue' : 'red';
+  const role = box.classList.contains('og-mobile-box-spy') ? 'spymaster' : 'operative';
+  openRosterExpandPopup(team, role);
+}
+
 function bindOgMobileBoxExpanders() {
   const panels = document.getElementById('og-mobile-panels');
   if (!panels) return;
 
   const boxes = Array.from(panels.querySelectorAll('.og-mobile-box'));
   boxes.forEach((box) => {
-    if (!box.dataset.expandKey) {
-      const teamId = box.closest('.og-mobile-team')?.id || 'og-mobile-team';
-      const role = box.classList.contains('og-mobile-box-spy') ? 'spy' : 'ops';
-      box.dataset.expandKey = `${teamId}:${role}`;
-    }
+    box.classList.remove('is-expanded');
     box.setAttribute('role', 'button');
     box.setAttribute('tabindex', '0');
-    if (!box.hasAttribute('aria-expanded')) box.setAttribute('aria-expanded', 'false');
+    box.setAttribute('aria-haspopup', 'dialog');
+    box.setAttribute('aria-expanded', 'false');
   });
-
-  const toggleBox = (box) => {
-    if (!box) return;
-    const willExpand = !box.classList.contains('is-expanded');
-    const teamHost = box.closest('.og-mobile-team');
-    if (teamHost) {
-      teamHost.querySelectorAll('.og-mobile-box.is-expanded').forEach((el) => {
-        if (el === box) return;
-        el.classList.remove('is-expanded');
-        el.setAttribute('aria-expanded', 'false');
-      });
-    }
-    box.classList.toggle('is-expanded', willExpand);
-    box.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
-  };
 
   if (panels.dataset.expandBound !== '1') {
     panels.dataset.expandBound = '1';
-    let lastToggleAt = 0;
-    const handleToggleEvent = (e) => {
+    let lastOpenAt = 0;
+    const openFromEvent = (e) => {
       const now = Date.now();
-      if (now - lastToggleAt < 160) return;
+      if (now - lastOpenAt < 180) return;
       const interactive = e.target?.closest?.('a, button, input, textarea, select');
       if (interactive && !interactive.classList.contains('og-mobile-box')) return;
       const box = e.target?.closest?.('.og-mobile-box');
       if (!box || !panels.contains(box)) return;
-      lastToggleAt = now;
-      toggleBox(box);
+      lastOpenAt = now;
+      openRosterExpandPopupForBox(box);
     };
-    panels.addEventListener('click', handleToggleEvent);
+    panels.addEventListener('click', openFromEvent);
     panels.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       const box = e.target?.closest?.('.og-mobile-box');
       if (!box || !panels.contains(box)) return;
       e.preventDefault();
-      toggleBox(box);
+      openRosterExpandPopupForBox(box);
     });
   }
 }
@@ -5109,6 +5199,7 @@ function renderOgPanels() {
   if (!ogPanelBlue || !ogPanelRed) return;
 
   if (!isOgMode || !currentGame) {
+    closeRosterExpandPopup();
     ogPanelBlue.style.display = 'none';
     ogPanelRed.style.display = 'none';
     if (ogMobilePanels) ogMobilePanels.style.display = '';
@@ -5475,6 +5566,17 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const operativeActionsEl = document.getElementById('operative-actions');
   const waitingEl = document.getElementById('waiting-message');
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
+  const waitingForEl = document.getElementById('waiting-for');
+
+  const setWaitingTeamRole = (teamColor, roleLabel) => {
+    if (!waitingForEl) return;
+    const team = (teamColor === 'blue') ? 'blue' : 'red';
+    const rawTeamName = team === 'blue'
+      ? truncateTeamNameGame(currentGame?.blueTeamName)
+      : truncateTeamNameGame(currentGame?.redTeamName);
+    const teamName = String(rawTeamName || (team === 'blue' ? 'Blue Team' : 'Red Team')).trim();
+    waitingForEl.innerHTML = `<span class="waiting-team waiting-team-${team}">${escapeHtml(teamName)}</span>'s ${escapeHtml(roleLabel)}`;
+  };
 
   syncClueSubmitButtonAppearance();
 
@@ -5519,15 +5621,13 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const hasPlayers = redCount > 0 && blueCount > 0;
 
     waitingEl.style.display = 'block';
-    const waitingFor = document.getElementById('waiting-for');
-
     if (!myTeamColor) {
-      waitingFor.textContent = 'players to join.';
+      if (waitingForEl) waitingForEl.textContent = 'players to join.';
     } else if (!hasPlayers) {
-      waitingFor.textContent = 'at least 1 player on each team.';
+      if (waitingForEl) waitingForEl.textContent = 'at least 1 player on each team.';
     } else {
       // Show start button
-      waitingFor.innerHTML = `
+      if (waitingForEl) waitingForEl.innerHTML = `
         <span>Ready to start!</span>
         <button class="btn primary small" style="margin-left: 12px;" onclick="startQuickGame('${currentGame.id}')">Start Game</button>
       `;
@@ -5537,7 +5637,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
   if (currentGame.currentPhase === 'role-selection') {
     waitingEl.style.display = 'block';
-    document.getElementById('waiting-for').textContent = 'all teams to select roles';
+    if (waitingForEl) waitingForEl.textContent = 'all teams to select roles';
     return;
   }
 
@@ -5550,8 +5650,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     } else {
       // Show waiting message
       waitingEl.style.display = 'block';
-      const waitingTeam = truncateTeamNameGame(currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
-      document.getElementById('waiting-for').textContent = `${waitingTeam}'s Spymaster`;
+      setWaitingTeamRole(currentGame.currentTeam, 'Spymaster');
     }
     return;
   }
@@ -5571,8 +5670,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       operativeActionsEl.style.display = 'flex';
     } else if (!isMyTurn) {
       waitingEl.style.display = 'block';
-      const waitingTeam = truncateTeamNameGame(currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
-      document.getElementById('waiting-for').textContent = `${waitingTeam}'s Operatives`;
+      setWaitingTeamRole(currentGame.currentTeam, 'Operatives');
     }
   }
 }
@@ -7260,6 +7358,7 @@ function initOperativeChat() {
   if (isCurrentLocalPracticeGame()) {
     let teamForChat = getMyTeamColor();
     const isSpectatorChat = !teamForChat && !!spectatorMode;
+    const isSpymasterChat = !isSpectatorChat && !!isCurrentUserSpymaster();
     if (isSpectatorChat) teamForChat = spectatorChatTeam || 'red';
     if (!teamForChat) {
       renderOperativeChat([]);
@@ -7285,11 +7384,14 @@ function initOperativeChat() {
         : '';
     }
     if (input) {
-      input.disabled = isSpectatorChat;
-      input.placeholder = isSpectatorChat ? `Spectating ${teamForChat.toUpperCase()} chat…` : 'Message your team...';
+      const readOnly = isSpectatorChat || isSpymasterChat;
+      input.disabled = readOnly;
+      input.placeholder = isSpectatorChat
+        ? `Spectating ${teamForChat.toUpperCase()} chat…`
+        : (isSpymasterChat ? 'Spymasters cannot send team chat.' : 'Message your team...');
     }
     if (form) {
-      form.classList.toggle('spectator-readonly', isSpectatorChat);
+      form.classList.toggle('spectator-readonly', isSpectatorChat || isSpymasterChat);
     }
     const chatField = teamForChat === 'blue' ? 'blueChat' : 'redChat';
     const messages = Array.isArray(currentGame?.[chatField]) ? currentGame[chatField] : [];
@@ -7299,6 +7401,7 @@ function initOperativeChat() {
 
   let teamForChat = getMyTeamColor();
   const isSpectatorChat = !teamForChat && !!spectatorMode;
+  const isSpymasterChat = !isSpectatorChat && !!isCurrentUserSpymaster();
 
   // Spectators can toggle between RED/BLUE operative chats (read-only)
   if (isSpectatorChat) {
@@ -7329,11 +7432,14 @@ function initOperativeChat() {
       : '';
   }
   if (input) {
-    input.disabled = isSpectatorChat;
-    input.placeholder = isSpectatorChat ? `Spectating ${teamForChat.toUpperCase()} chat…` : 'Message your team...';
+    const readOnly = isSpectatorChat || isSpymasterChat;
+    input.disabled = readOnly;
+    input.placeholder = isSpectatorChat
+      ? `Spectating ${teamForChat.toUpperCase()} chat…`
+      : (isSpymasterChat ? 'Spymasters cannot send team chat.' : 'Message your team...');
   }
   if (form) {
-    form.classList.toggle('spectator-readonly', isSpectatorChat);
+    form.classList.toggle('spectator-readonly', isSpectatorChat || isSpymasterChat);
   }
 
   // Listen to team chat subcollection
@@ -7412,6 +7518,7 @@ async function handleOperativeChatSubmit(e) {
   const input = document.getElementById('operative-chat-input');
   const text = input?.value?.trim();
   if (!text || !currentGame?.id) return;
+  if (isCurrentUserSpymaster()) return;
 
   if (isCurrentLocalPracticeGame()) {
     const myTeamColor = getMyTeamColor();
