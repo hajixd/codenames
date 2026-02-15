@@ -22789,7 +22789,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   }
 
   .panel-game.game-active .game-sidebar {
-    padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 22vh), 84px);
+    padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 14vh), 56px);
   }
 
   /* Keep OG/Cozy team stacks in normal flow (no transform clipping). */
@@ -22801,8 +22801,11 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   /* Safer "higher" adjustments: tighten internal top spacing instead of translating containers. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-phase-banner {
-    margin-top: -8px;
-    padding: 0 0 2px;
+    margin-top: 0;
+    padding: 2px 0 4px;
+    position: relative;
+    z-index: 26;
+    overflow: visible;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-phase-text {
@@ -22825,12 +22828,12 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   /* Spymaster box: slightly taller vertically on desktop. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-spymasters {
-    padding-top: 6px;
-    padding-bottom: 16px;
+    padding-top: 4px;
+    padding-bottom: 14px;
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-spymasters .online-roster-surface {
-    min-height: clamp(118px, 14vh, 152px);
+    min-height: clamp(92px, 10.5vh, 118px);
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area .game-board-wrapper {
