@@ -3807,28 +3807,174 @@ function getBracketWinnerSelections(teams, overrideWinnerByMatchId = null) {
   return claims;
 }
 
+function clampBracketSeriesWins(value) {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 2) return 2;
+  return n;
+}
+
+function sanitizeBracketBestOf3Pair(aWins, bWins, preferredWinner = '') {
+  let a = clampBracketSeriesWins(aWins);
+  let b = clampBracketSeriesWins(bWins);
+
+  if (a === 2 && b === 2) {
+    if (preferredWinner === 'b') a = 1;
+    else b = 1;
+  }
+
+  if (a + b > 3) {
+    if (preferredWinner === 'b') a = Math.max(0, 3 - b);
+    else b = Math.max(0, 3 - a);
+  }
+
+  if (a === 2 && b > 1) b = 1;
+  if (b === 2 && a > 1) a = 1;
+  return [a, b];
+}
+
+function emptyBracketScoreMap() {
+  return BRACKET_MATCH_IDS.reduce((acc, matchId) => {
+    acc[matchId] = {};
+    return acc;
+  }, {});
+}
+
+function cloneBracketScoreMap(scoreByMatchId) {
+  const out = emptyBracketScoreMap();
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    const raw = (scoreByMatchId && typeof scoreByMatchId === 'object')
+      ? scoreByMatchId[matchId]
+      : null;
+    const row = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const next = {};
+    Object.entries(row).forEach(([rawTeamId, rawWins]) => {
+      const teamId = String(rawTeamId || '').trim();
+      const wins = clampBracketSeriesWins(rawWins);
+      if (!teamId || wins <= 0) return;
+      next[teamId] = wins;
+    });
+    out[matchId] = next;
+  });
+  return out;
+}
+
+function getBracketSeriesScores(teams, overrideScoreByMatchId = null) {
+  const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
+  const visibleIds = new Set(
+    visible
+      .map(t => String(t?.id || '').trim())
+      .filter(Boolean)
+  );
+  const out = emptyBracketScoreMap();
+  const assignScore = (rawMatchId, rawTeamId, rawWins) => {
+    const matchId = normalizeBracketMatchId(rawMatchId);
+    const teamId = String(rawTeamId || '').trim();
+    const wins = clampBracketSeriesWins(rawWins);
+    if (!matchId || !teamId || wins <= 0) return;
+    if (!visibleIds.has(teamId)) return;
+    out[matchId][teamId] = wins;
+  };
+
+  if (overrideScoreByMatchId && typeof overrideScoreByMatchId === 'object') {
+    BRACKET_MATCH_IDS.forEach((matchId) => {
+      const row = overrideScoreByMatchId[matchId];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+      Object.entries(row).forEach(([rawTeamId, rawWins]) => {
+        assignScore(matchId, rawTeamId, rawWins);
+      });
+    });
+    return out;
+  }
+
+  visible.forEach((team) => {
+    const teamId = String(team?.id || '').trim();
+    if (!teamId) return;
+    const rawSeries = (team && typeof team.bracketSeriesWins === 'object' && !Array.isArray(team.bracketSeriesWins))
+      ? team.bracketSeriesWins
+      : null;
+    if (!rawSeries) return;
+    Object.entries(rawSeries).forEach(([rawMatchId, rawWins]) => {
+      assignScore(rawMatchId, teamId, rawWins);
+    });
+  });
+
+  const fallbackWinners = getBracketWinnerSelections(teams);
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    if (Object.keys(out[matchId] || {}).length > 0) return;
+    const teamId = String(fallbackWinners?.[matchId] || '').trim();
+    if (!teamId || !visibleIds.has(teamId)) return;
+    out[matchId] = { [teamId]: 2 };
+  });
+
+  return out;
+}
+
 function cloneBracketSlot(slot) {
   return slot ? { ...slot } : null;
 }
 
-function resolveBracketMatchWinner(match, winnerSelections) {
+function resolveBracketMatchOutcome(match, scoreSelections, winnerSelections) {
   const matchId = normalizeBracketMatchId(match?.id);
-  if (!matchId) return null;
-  const selectedTeamId = String(winnerSelections?.[matchId] || '').trim();
-  if (!selectedTeamId) return null;
-  const winnerSlot = (match?.slots || []).find((slot) => (
-    slot
-    && slot.kind === 'team'
-    && String(slot.id || '').trim() === selectedTeamId
-  ));
-  return winnerSlot ? cloneBracketSlot(winnerSlot) : null;
+  const slots = Array.isArray(match?.slots) ? match.slots : [];
+  const a = slots?.[0] || null;
+  const b = slots?.[1] || null;
+  const aId = (a && a.kind === 'team' && a.id) ? String(a.id || '').trim() : '';
+  const bId = (b && b.kind === 'team' && b.id) ? String(b.id || '').trim() : '';
+  const row = (matchId && scoreSelections && typeof scoreSelections === 'object' && scoreSelections[matchId]
+    && typeof scoreSelections[matchId] === 'object' && !Array.isArray(scoreSelections[matchId]))
+    ? scoreSelections[matchId]
+    : {};
+
+  let aWins = aId ? clampBracketSeriesWins(row[aId]) : 0;
+  let bWins = bId ? clampBracketSeriesWins(row[bId]) : 0;
+  [aWins, bWins] = sanitizeBracketBestOf3Pair(aWins, bWins);
+
+  let winnerTeamId = '';
+  if (aId && aWins === 2 && aWins > bWins) winnerTeamId = aId;
+  else if (bId && bWins === 2 && bWins > aWins) winnerTeamId = bId;
+
+  if (!winnerTeamId && matchId) {
+    const fallbackTeamId = String(winnerSelections?.[matchId] || '').trim();
+    if (fallbackTeamId && (fallbackTeamId === aId || fallbackTeamId === bId)) {
+      winnerTeamId = fallbackTeamId;
+      if (winnerTeamId === aId) {
+        aWins = 2;
+        if (bWins > 1) bWins = 1;
+      } else if (winnerTeamId === bId) {
+        bWins = 2;
+        if (aWins > 1) aWins = 1;
+      }
+    }
+  }
+
+  const winnerSlot = winnerTeamId
+    ? slots.find((slot) => slot && slot.kind === 'team' && String(slot.id || '').trim() === winnerTeamId)
+    : null;
+
+  const scoreByTeamId = {};
+  if (aId && aWins > 0) scoreByTeamId[aId] = aWins;
+  if (bId && bWins > 0) scoreByTeamId[bId] = bWins;
+
+  return {
+    winnerSlot: winnerSlot ? cloneBracketSlot(winnerSlot) : null,
+    winnerTeamId,
+    series: { aWins, bWins },
+    scoreByTeamId,
+  };
 }
 
 function buildBracketModel(teams, opts = {}) {
   const safeTeams = Array.isArray(teams) ? teams : [];
   const st = computeUserState(safeTeams);
   const pool = getBracketTeamPool(safeTeams, { slotOrderByTeamId: opts?.slotOrderByTeamId || null });
-  const winnerSelections = getBracketWinnerSelections(safeTeams, opts?.winnerByMatchId || null);
+  const hasScoreOverride = !!(opts && Object.prototype.hasOwnProperty.call(opts, 'scoreByMatchId'));
+  const winnerOverride = (opts && Object.prototype.hasOwnProperty.call(opts, 'winnerByMatchId'))
+    ? opts.winnerByMatchId
+    : (hasScoreOverride ? {} : null);
+  const scoreSelections = getBracketSeriesScores(safeTeams, opts?.scoreByMatchId || null);
+  const winnerSelections = getBracketWinnerSelections(safeTeams, winnerOverride);
   const slottedTeams = Array.from({ length: 8 }, (_, i) => pool.sorted[i] || null);
   const seededSlots = slottedTeams.map((t, idx) => {
     const tid = String(t?.id || '').trim();
@@ -3843,6 +3989,8 @@ function buildBracketModel(teams, opts = {}) {
     bestOf: 3,
     slots: [a, b],
     winnerTeamId: '',
+    series: { aWins: 0, bWins: 0 },
+    scoreByTeamId: {},
   });
 
   const qf1 = match('QF1', 'Quarterfinal 1', 'Quarterfinals', seededSlots[0], seededSlots[7]);
@@ -3850,14 +3998,27 @@ function buildBracketModel(teams, opts = {}) {
   const qf3 = match('QF3', 'Quarterfinal 3', 'Quarterfinals', seededSlots[1], seededSlots[6]);
   const qf4 = match('QF4', 'Quarterfinal 4', 'Quarterfinals', seededSlots[2], seededSlots[5]);
 
-  const qf1Winner = resolveBracketMatchWinner(qf1, winnerSelections);
-  const qf2Winner = resolveBracketMatchWinner(qf2, winnerSelections);
-  const qf3Winner = resolveBracketMatchWinner(qf3, winnerSelections);
-  const qf4Winner = resolveBracketMatchWinner(qf4, winnerSelections);
-  qf1.winnerTeamId = qf1Winner ? String(qf1Winner.id || '') : '';
-  qf2.winnerTeamId = qf2Winner ? String(qf2Winner.id || '') : '';
-  qf3.winnerTeamId = qf3Winner ? String(qf3Winner.id || '') : '';
-  qf4.winnerTeamId = qf4Winner ? String(qf4Winner.id || '') : '';
+  const qf1Outcome = resolveBracketMatchOutcome(qf1, scoreSelections, winnerSelections);
+  const qf2Outcome = resolveBracketMatchOutcome(qf2, scoreSelections, winnerSelections);
+  const qf3Outcome = resolveBracketMatchOutcome(qf3, scoreSelections, winnerSelections);
+  const qf4Outcome = resolveBracketMatchOutcome(qf4, scoreSelections, winnerSelections);
+  qf1.winnerTeamId = String(qf1Outcome?.winnerTeamId || '');
+  qf2.winnerTeamId = String(qf2Outcome?.winnerTeamId || '');
+  qf3.winnerTeamId = String(qf3Outcome?.winnerTeamId || '');
+  qf4.winnerTeamId = String(qf4Outcome?.winnerTeamId || '');
+  qf1.series = qf1Outcome?.series || { aWins: 0, bWins: 0 };
+  qf2.series = qf2Outcome?.series || { aWins: 0, bWins: 0 };
+  qf3.series = qf3Outcome?.series || { aWins: 0, bWins: 0 };
+  qf4.series = qf4Outcome?.series || { aWins: 0, bWins: 0 };
+  qf1.scoreByTeamId = qf1Outcome?.scoreByTeamId || {};
+  qf2.scoreByTeamId = qf2Outcome?.scoreByTeamId || {};
+  qf3.scoreByTeamId = qf3Outcome?.scoreByTeamId || {};
+  qf4.scoreByTeamId = qf4Outcome?.scoreByTeamId || {};
+
+  const qf1Winner = qf1Outcome?.winnerSlot || null;
+  const qf2Winner = qf2Outcome?.winnerSlot || null;
+  const qf3Winner = qf3Outcome?.winnerSlot || null;
+  const qf4Winner = qf4Outcome?.winnerSlot || null;
 
   const sf1 = match(
     'SF1',
@@ -3874,10 +4035,17 @@ function buildBracketModel(teams, opts = {}) {
     qf4Winner || buildPlaceholderSlot('Winner QF4', 'QF4')
   );
 
-  const sf1Winner = resolveBracketMatchWinner(sf1, winnerSelections);
-  const sf2Winner = resolveBracketMatchWinner(sf2, winnerSelections);
-  sf1.winnerTeamId = sf1Winner ? String(sf1Winner.id || '') : '';
-  sf2.winnerTeamId = sf2Winner ? String(sf2Winner.id || '') : '';
+  const sf1Outcome = resolveBracketMatchOutcome(sf1, scoreSelections, winnerSelections);
+  const sf2Outcome = resolveBracketMatchOutcome(sf2, scoreSelections, winnerSelections);
+  sf1.winnerTeamId = String(sf1Outcome?.winnerTeamId || '');
+  sf2.winnerTeamId = String(sf2Outcome?.winnerTeamId || '');
+  sf1.series = sf1Outcome?.series || { aWins: 0, bWins: 0 };
+  sf2.series = sf2Outcome?.series || { aWins: 0, bWins: 0 };
+  sf1.scoreByTeamId = sf1Outcome?.scoreByTeamId || {};
+  sf2.scoreByTeamId = sf2Outcome?.scoreByTeamId || {};
+
+  const sf1Winner = sf1Outcome?.winnerSlot || null;
+  const sf2Winner = sf2Outcome?.winnerSlot || null;
 
   const final = match(
     'F',
@@ -3886,11 +4054,22 @@ function buildBracketModel(teams, opts = {}) {
     sf1Winner || buildPlaceholderSlot('Winner SF1', 'SF1'),
     sf2Winner || buildPlaceholderSlot('Winner SF2', 'SF2')
   );
-  const finalWinner = resolveBracketMatchWinner(final, winnerSelections);
-  final.winnerTeamId = finalWinner ? String(finalWinner.id || '') : '';
+  const finalOutcome = resolveBracketMatchOutcome(final, scoreSelections, winnerSelections);
+  final.winnerTeamId = String(finalOutcome?.winnerTeamId || '');
+  final.series = finalOutcome?.series || { aWins: 0, bWins: 0 };
+  final.scoreByTeamId = finalOutcome?.scoreByTeamId || {};
+  const finalWinner = finalOutcome?.winnerSlot || null;
 
   const matches = [qf1, qf2, qf3, qf4, sf1, sf2, final];
   const matchById = Object.fromEntries(matches.map((m) => [String(m.id || ''), m]));
+  const resolvedWinnerSelections = BRACKET_MATCH_IDS.reduce((acc, matchId) => {
+    acc[matchId] = String(matchById?.[matchId]?.winnerTeamId || '').trim();
+    return acc;
+  }, {});
+  const resolvedScoreSelections = BRACKET_MATCH_IDS.reduce((acc, matchId) => {
+    acc[matchId] = { ...(matchById?.[matchId]?.scoreByTeamId || {}) };
+    return acc;
+  }, {});
   const slotTeamIds = slottedTeams.map((team) => String(team?.id || '').trim());
   const teamOptions = pool.seeded
     .map((team) => {
@@ -3909,7 +4088,8 @@ function buildBracketModel(teams, opts = {}) {
     visibleCount: pool.visible.length,
     seededCount: Math.min(8, pool.visible.length),
     hasCustomOrder: !!pool.hasCustomOrder,
-    winnerSelections,
+    winnerSelections: resolvedWinnerSelections,
+    scoreSelections: resolvedScoreSelections,
     matches,
     matchById,
     slotTeamIds,
@@ -3963,7 +4143,7 @@ function setBracketAdminEditButtonState(model = null) {
   btn.textContent = bracketAdminSaveInFlight ? 'Saving...' : 'Edit Bracket';
   if (bracketAdminSaveInFlight) btn.title = 'Saving bracket changes...';
   else if (visibleCount <= 0) btn.title = 'Need at least 1 team to edit bracket slots.';
-  else btn.title = 'Manually set bracket slots and winners.';
+  else btn.title = 'Manually set bracket slots and BO3 results.';
 }
 
 function shuffleTeams(list) {
@@ -4189,13 +4369,6 @@ function renderBrackets(teams) {
   }
 }
 
-function emptyBracketWinnerMap() {
-  return BRACKET_MATCH_IDS.reduce((acc, matchId) => {
-    acc[matchId] = '';
-    return acc;
-  }, {});
-}
-
 function buildBracketSlotOrderMap(slotTeamIds) {
   const map = new Map();
   const arr = Array.isArray(slotTeamIds) ? slotTeamIds : [];
@@ -4207,22 +4380,53 @@ function buildBracketSlotOrderMap(slotTeamIds) {
   return map;
 }
 
+function bracketScoreRowEqual(a, b) {
+  const normalize = (row) => {
+    const out = {};
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return out;
+    Object.entries(row).forEach(([rawTeamId, rawWins]) => {
+      const teamId = String(rawTeamId || '').trim();
+      const wins = clampBracketSeriesWins(rawWins);
+      if (!teamId || wins <= 0) return;
+      out[teamId] = wins;
+    });
+    return out;
+  };
+  const left = normalize(a);
+  const right = normalize(b);
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (let i = 0; i < leftKeys.length; i++) {
+    const key = leftKeys[i];
+    if (key !== rightKeys[i]) return false;
+    if (left[key] !== right[key]) return false;
+  }
+  return true;
+}
+
+function bracketAdminMatchSideLabel(slot) {
+  if (!slot) return 'TBD';
+  if (slot.kind === 'team') {
+    const seed = Number.isFinite(Number(slot.seed)) ? `#${slot.seed} ` : '';
+    return `${seed}${String(slot.fullName || slot.name || 'Team').trim()}`;
+  }
+  if (slot.kind === 'placeholder') return String(slot.name || 'TBD');
+  return 'TBD';
+}
+
 function createBracketAdminDraft() {
   const model = buildBracketModel(teamsCache);
-  const winners = emptyBracketWinnerMap();
-  BRACKET_MATCH_IDS.forEach((matchId) => {
-    winners[matchId] = String(model?.winnerSelections?.[matchId] || '').trim();
-  });
   return {
     slotTeamIds: Array.from({ length: 8 }, (_, idx) => String(model?.slotTeamIds?.[idx] || '').trim()),
-    winnerByMatchId: winners,
+    scoreByMatchId: cloneBracketScoreMap(model?.scoreSelections || null),
   };
 }
 
 function sanitizeBracketAdminDraft(draft) {
   const next = {
     slotTeamIds: Array.from({ length: 8 }, (_, idx) => String(draft?.slotTeamIds?.[idx] || '').trim()),
-    winnerByMatchId: emptyBracketWinnerMap(),
+    scoreByMatchId: cloneBracketScoreMap(draft?.scoreByMatchId || null),
   };
 
   const visibleIds = new Set(
@@ -4234,8 +4438,15 @@ function sanitizeBracketAdminDraft(draft) {
 
   next.slotTeamIds = next.slotTeamIds.map((teamId) => (visibleIds.has(teamId) ? teamId : ''));
   BRACKET_MATCH_IDS.forEach((matchId) => {
-    const teamId = String(draft?.winnerByMatchId?.[matchId] || '').trim();
-    next.winnerByMatchId[matchId] = (teamId && visibleIds.has(teamId)) ? teamId : '';
+    const row = next.scoreByMatchId[matchId] || {};
+    const filtered = {};
+    Object.entries(row).forEach(([rawTeamId, rawWins]) => {
+      const teamId = String(rawTeamId || '').trim();
+      const wins = clampBracketSeriesWins(rawWins);
+      if (!teamId || !visibleIds.has(teamId) || wins <= 0) return;
+      filtered[teamId] = wins;
+    });
+    next.scoreByMatchId[matchId] = filtered;
   });
 
   let changed = true;
@@ -4243,22 +4454,69 @@ function sanitizeBracketAdminDraft(draft) {
     changed = false;
     const model = buildBracketModel(teamsCache, {
       slotOrderByTeamId: buildBracketSlotOrderMap(next.slotTeamIds),
-      winnerByMatchId: next.winnerByMatchId,
+      scoreByMatchId: next.scoreByMatchId,
     });
     BRACKET_MATCH_IDS.forEach((matchId) => {
-      const picked = String(next.winnerByMatchId[matchId] || '').trim();
-      if (!picked) return;
-      const participantIds = (model?.matchById?.[matchId]?.slots || [])
-        .filter(slot => slot && slot.kind === 'team' && slot.id)
-        .map(slot => String(slot.id || '').trim());
-      if (!participantIds.includes(picked)) {
-        next.winnerByMatchId[matchId] = '';
+      const match = model?.matchById?.[matchId];
+      const aId = (match?.slots?.[0] && match.slots[0].kind === 'team' && match.slots[0].id)
+        ? String(match.slots[0].id || '').trim()
+        : '';
+      const bId = (match?.slots?.[1] && match.slots[1].kind === 'team' && match.slots[1].id)
+        ? String(match.slots[1].id || '').trim()
+        : '';
+
+      const row = next.scoreByMatchId[matchId] || {};
+      let aWins = aId ? clampBracketSeriesWins(row[aId]) : 0;
+      let bWins = bId ? clampBracketSeriesWins(row[bId]) : 0;
+      [aWins, bWins] = sanitizeBracketBestOf3Pair(aWins, bWins);
+
+      const normalized = {};
+      if (aId && aWins > 0) normalized[aId] = aWins;
+      if (bId && bWins > 0) normalized[bId] = bWins;
+      if (!bracketScoreRowEqual(row, normalized)) {
+        next.scoreByMatchId[matchId] = normalized;
         changed = true;
       }
     });
   }
 
   return next;
+}
+
+function adjustBracketAdminSeriesScore(matchId, teamId, delta) {
+  const mid = normalizeBracketMatchId(matchId);
+  const tid = String(teamId || '').trim();
+  const amount = Number(delta);
+  if (!mid || !tid || !Number.isFinite(amount) || amount === 0) return;
+  if (!bracketAdminDraft) bracketAdminDraft = createBracketAdminDraft();
+
+  bracketAdminDraft = sanitizeBracketAdminDraft(bracketAdminDraft);
+  const previewModel = buildBracketModel(teamsCache, {
+    slotOrderByTeamId: buildBracketSlotOrderMap(bracketAdminDraft.slotTeamIds),
+    scoreByMatchId: bracketAdminDraft.scoreByMatchId,
+  });
+  const match = previewModel?.matchById?.[mid];
+  if (!match) return;
+  const aId = (match?.slots?.[0] && match.slots[0].kind === 'team' && match.slots[0].id)
+    ? String(match.slots[0].id || '').trim()
+    : '';
+  const bId = (match?.slots?.[1] && match.slots[1].kind === 'team' && match.slots[1].id)
+    ? String(match.slots[1].id || '').trim()
+    : '';
+  if (!aId && !bId) return;
+  if (tid !== aId && tid !== bId) return;
+
+  const row = { ...(bracketAdminDraft?.scoreByMatchId?.[mid] || {}) };
+  let aWins = aId ? clampBracketSeriesWins(row[aId]) : 0;
+  let bWins = bId ? clampBracketSeriesWins(row[bId]) : 0;
+  if (tid === aId) aWins = clampBracketSeriesWins(aWins + amount);
+  if (tid === bId) bWins = clampBracketSeriesWins(bWins + amount);
+  [aWins, bWins] = sanitizeBracketBestOf3Pair(aWins, bWins, tid === bId ? 'b' : 'a');
+
+  const nextRow = {};
+  if (aId && aWins > 0) nextRow[aId] = aWins;
+  if (bId && bWins > 0) nextRow[bId] = bWins;
+  bracketAdminDraft.scoreByMatchId[mid] = nextRow;
 }
 
 function renderBracketAdminModal() {
@@ -4276,7 +4534,7 @@ function renderBracketAdminModal() {
 
   const previewModel = buildBracketModel(teamsCache, {
     slotOrderByTeamId: buildBracketSlotOrderMap(bracketAdminDraft.slotTeamIds),
-    winnerByMatchId: bracketAdminDraft.winnerByMatchId,
+    scoreByMatchId: bracketAdminDraft.scoreByMatchId,
   });
   const teamOptions = Array.isArray(previewModel?.teamOptions) ? previewModel.teamOptions : [];
 
@@ -4301,30 +4559,46 @@ function renderBracketAdminModal() {
   }).join('');
   slotsHost.innerHTML = slotRows;
 
-  const winnerRows = BRACKET_MATCH_IDS.map((matchId) => {
+  const resultRows = BRACKET_MATCH_IDS.map((matchId) => {
     const match = previewModel?.matchById?.[matchId];
-    const chosenTeamId = String(bracketAdminDraft?.winnerByMatchId?.[matchId] || '').trim();
-    const participants = (match?.slots || [])
-      .filter(slot => slot && slot.kind === 'team' && slot.id)
-      .map((slot) => ({
-        id: String(slot.id || '').trim(),
-        label: `${Number.isFinite(Number(slot.seed)) ? `#${slot.seed} ` : ''}${String(slot.fullName || slot.name || 'Team').trim()}`,
-      }));
-    const hasParticipants = participants.length > 0;
-    const options = [
-      '<option value="">-- Not Set --</option>',
-      ...participants.map((entry) => (
-        `<option value="${esc(entry.id)}" ${chosenTeamId === entry.id ? 'selected' : ''}>${esc(entry.label)}</option>`
-      )),
-    ].join('');
+    const slotA = match?.slots?.[0] || null;
+    const slotB = match?.slots?.[1] || null;
+    const aId = (slotA && slotA.kind === 'team' && slotA.id) ? String(slotA.id || '').trim() : '';
+    const bId = (slotB && slotB.kind === 'team' && slotB.id) ? String(slotB.id || '').trim() : '';
+    const aWins = clampBracketSeriesWins(match?.series?.aWins || 0);
+    const bWins = clampBracketSeriesWins(match?.series?.bWins || 0);
+    const aWinner = !!(match?.winnerTeamId && aId && String(match.winnerTeamId) === aId);
+    const bWinner = !!(match?.winnerTeamId && bId && String(match.winnerTeamId) === bId);
+    const canEditA = !!aId && !bracketAdminSaveInFlight;
+    const canEditB = !!bId && !bracketAdminSaveInFlight;
+    const canReset = (aWins > 0 || bWins > 0) && !bracketAdminSaveInFlight;
     return `
-      <label class="bracket-admin-row">
+      <div class="bracket-admin-row bracket-admin-series-row">
         <span class="bracket-admin-row-label">${esc(String(match?.label || matchId))}</span>
-        <select class="input" data-bracket-winner="${esc(matchId)}" ${hasParticipants ? '' : 'disabled'}>${options}</select>
-      </label>
+        <div class="bracket-admin-series">
+          <div class="bracket-admin-series-side ${aWinner ? 'is-winner' : ''} ${aId ? 'is-team' : 'is-empty'}">
+            <span class="bracket-admin-series-name">${esc(bracketAdminMatchSideLabel(slotA))}</span>
+            <div class="bracket-admin-series-controls">
+              <button type="button" class="bracket-admin-score-btn" data-bracket-series-dec="${esc(matchId)}" data-team-id="${esc(aId)}" ${canEditA ? '' : 'disabled'}>-1</button>
+              <span class="bracket-admin-series-score">${aWins}</span>
+              <button type="button" class="bracket-admin-score-btn" data-bracket-series-inc="${esc(matchId)}" data-team-id="${esc(aId)}" ${canEditA ? '' : 'disabled'}>+1</button>
+            </div>
+          </div>
+          <span class="bracket-admin-series-vs">vs</span>
+          <div class="bracket-admin-series-side ${bWinner ? 'is-winner' : ''} ${bId ? 'is-team' : 'is-empty'}">
+            <span class="bracket-admin-series-name">${esc(bracketAdminMatchSideLabel(slotB))}</span>
+            <div class="bracket-admin-series-controls">
+              <button type="button" class="bracket-admin-score-btn" data-bracket-series-dec="${esc(matchId)}" data-team-id="${esc(bId)}" ${canEditB ? '' : 'disabled'}>-1</button>
+              <span class="bracket-admin-series-score">${bWins}</span>
+              <button type="button" class="bracket-admin-score-btn" data-bracket-series-inc="${esc(matchId)}" data-team-id="${esc(bId)}" ${canEditB ? '' : 'disabled'}>+1</button>
+            </div>
+          </div>
+          <button type="button" class="bracket-admin-series-reset" data-bracket-series-reset="${esc(matchId)}" ${canReset ? '' : 'disabled'}>Reset</button>
+        </div>
+      </div>
     `;
   }).join('');
-  winnersHost.innerHTML = winnerRows;
+  winnersHost.innerHTML = resultRows;
 
   slotsHost.querySelectorAll('[data-bracket-slot]')?.forEach((sel) => {
     sel.addEventListener('change', () => {
@@ -4335,11 +4609,28 @@ function renderBracketAdminModal() {
     });
   });
 
-  winnersHost.querySelectorAll('[data-bracket-winner]')?.forEach((sel) => {
-    sel.addEventListener('change', () => {
-      const matchId = normalizeBracketMatchId(sel.getAttribute('data-bracket-winner'));
+  winnersHost.querySelectorAll('[data-bracket-series-inc]')?.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const matchId = btn.getAttribute('data-bracket-series-inc');
+      const teamId = btn.getAttribute('data-team-id');
+      adjustBracketAdminSeriesScore(matchId, teamId, 1);
+      renderBracketAdminModal();
+    });
+  });
+  winnersHost.querySelectorAll('[data-bracket-series-dec]')?.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const matchId = btn.getAttribute('data-bracket-series-dec');
+      const teamId = btn.getAttribute('data-team-id');
+      adjustBracketAdminSeriesScore(matchId, teamId, -1);
+      renderBracketAdminModal();
+    });
+  });
+  winnersHost.querySelectorAll('[data-bracket-series-reset]')?.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const matchId = normalizeBracketMatchId(btn.getAttribute('data-bracket-series-reset'));
       if (!matchId) return;
-      bracketAdminDraft.winnerByMatchId[matchId] = String(sel.value || '').trim();
+      if (!bracketAdminDraft) bracketAdminDraft = createBracketAdminDraft();
+      bracketAdminDraft.scoreByMatchId[matchId] = {};
       renderBracketAdminModal();
     });
   });
@@ -4380,7 +4671,7 @@ function closeBracketAdminModal() {
 function clearBracketAdminWinners() {
   if (!bracketAdminModalOpen) return;
   if (!bracketAdminDraft) bracketAdminDraft = createBracketAdminDraft();
-  bracketAdminDraft.winnerByMatchId = emptyBracketWinnerMap();
+  bracketAdminDraft.scoreByMatchId = emptyBracketScoreMap();
   renderBracketAdminModal();
 }
 
@@ -4409,17 +4700,13 @@ async function saveBracketAdminChanges() {
   const slotOrderByTeamId = buildBracketSlotOrderMap(slotTeamIds);
   const previewModel = buildBracketModel(teamsCache, {
     slotOrderByTeamId,
-    winnerByMatchId: bracketAdminDraft.winnerByMatchId,
+    scoreByMatchId: bracketAdminDraft.scoreByMatchId,
   });
-  const winnerByMatchId = emptyBracketWinnerMap();
+  const winnerByMatchId = {};
   BRACKET_MATCH_IDS.forEach((matchId) => {
-    const selectedTeamId = String(bracketAdminDraft?.winnerByMatchId?.[matchId] || '').trim();
-    if (!selectedTeamId) return;
-    const participants = (previewModel?.matchById?.[matchId]?.slots || [])
-      .filter(slot => slot && slot.kind === 'team' && slot.id)
-      .map(slot => String(slot.id || '').trim());
-    if (participants.includes(selectedTeamId)) winnerByMatchId[matchId] = selectedTeamId;
+    winnerByMatchId[matchId] = String(previewModel?.matchById?.[matchId]?.winnerTeamId || '').trim();
   });
+  const scoreByMatchId = cloneBracketScoreMap(previewModel?.scoreSelections || null);
 
   const visibleTeams = (teamsCache || [])
     .filter(t => !t?.archived && !teamIsEmpty(t))
@@ -4436,6 +4723,20 @@ async function saveBracketAdminChanges() {
     const list = winsByTeam.get(winnerTeamId) || [];
     list.push(matchId);
     winsByTeam.set(winnerTeamId, list);
+  });
+  const seriesByTeam = new Map();
+  BRACKET_MATCH_IDS.forEach((matchId) => {
+    const row = (scoreByMatchId && typeof scoreByMatchId[matchId] === 'object' && !Array.isArray(scoreByMatchId[matchId]))
+      ? scoreByMatchId[matchId]
+      : {};
+    Object.entries(row).forEach(([rawTeamId, rawWins]) => {
+      const teamId = String(rawTeamId || '').trim();
+      const wins = clampBracketSeriesWins(rawWins);
+      if (!teamId || wins <= 0) return;
+      const current = seriesByTeam.get(teamId) || {};
+      current[matchId] = wins;
+      seriesByTeam.set(teamId, current);
+    });
   });
 
   bracketAdminSaveInFlight = true;
@@ -4457,16 +4758,34 @@ async function saveBracketAdminChanges() {
 
       const assignedWins = winsByTeam.get(tid) || [];
       const nextWins = Array.from(new Set([...preservedWins, ...assignedWins]));
+      const preservedSeries = {};
+      const rawSeries = (team && typeof team.bracketSeriesWins === 'object' && !Array.isArray(team.bracketSeriesWins))
+        ? team.bracketSeriesWins
+        : null;
+      if (rawSeries) {
+        Object.entries(rawSeries).forEach(([rawMatchId, rawWins]) => {
+          const matchId = normalizeBracketMatchId(rawMatchId);
+          if (matchId) return;
+          const wins = clampBracketSeriesWins(rawWins);
+          if (wins <= 0) return;
+          preservedSeries[String(rawMatchId)] = wins;
+        });
+      }
+      const assignedSeries = seriesByTeam.get(tid) || {};
+      const nextSeries = { ...preservedSeries, ...assignedSeries };
 
       const slotOrder = slotOrderByTeamId.get(tid);
       const updates = {
         bracketSlotUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         bracketWinsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        bracketSeriesUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
       if (Number.isFinite(Number(slotOrder))) updates.bracketSlotOrder = Number(slotOrder);
       else updates.bracketSlotOrder = firebase.firestore.FieldValue.delete();
       if (nextWins.length) updates.bracketWins = nextWins;
       else updates.bracketWins = firebase.firestore.FieldValue.delete();
+      if (Object.keys(nextSeries).length > 0) updates.bracketSeriesWins = nextSeries;
+      else updates.bracketSeriesWins = firebase.firestore.FieldValue.delete();
 
       batch.update(db.collection('teams').doc(tid), updates);
       writes++;
@@ -4480,7 +4799,7 @@ async function saveBracketAdminChanges() {
 
     try {
       const winnerCount = BRACKET_MATCH_IDS.reduce((acc, matchId) => acc + (winnerByMatchId[matchId] ? 1 : 0), 0);
-      logEvent('bracket_admin_update', 'Admin updated bracket slots and winners.', {
+      logEvent('bracket_admin_update', 'Admin updated bracket slots and BO3 results.', {
         slottedCount: slotTeamIds.filter(Boolean).length,
         winnerCount,
       });

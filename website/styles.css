@@ -12147,6 +12147,95 @@ body.tournament.has-team-color .input:focus {
   margin: 0;
 }
 
+.bracket-admin-series-row {
+  align-items: stretch;
+}
+
+.bracket-admin-series {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.bracket-admin-series-side {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+}
+
+.bracket-admin-series-side.is-empty {
+  opacity: 0.72;
+}
+
+.bracket-admin-series-side.is-winner {
+  border-color: color-mix(in srgb, var(--accent) 52%, rgba(255,255,255,0.18));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.bracket-admin-series-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bracket-admin-series-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.bracket-admin-series-score {
+  min-width: 18px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.bracket-admin-score-btn,
+.bracket-admin-series-reset {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  border-radius: 8px;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bracket-admin-score-btn:hover,
+.bracket-admin-series-reset:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.24);
+}
+
+.bracket-admin-score-btn:disabled,
+.bracket-admin-series-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bracket-admin-series-vs {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
 @media (max-width: 620px) {
   .bracket-admin-modal .modal-card.bracket-admin-card {
     width: calc(100vw - 16px);
@@ -12160,6 +12249,18 @@ body.tournament.has-team-color .input:focus {
   .bracket-admin-row {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .bracket-admin-series {
+    grid-template-columns: 1fr;
+  }
+
+  .bracket-admin-series-vs {
+    display: none;
+  }
+
+  .bracket-admin-series-reset {
+    width: 100%;
   }
 }
 
