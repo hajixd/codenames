@@ -4232,7 +4232,11 @@ function renderBracketSlot(slot, opts = {}) {
   if (safe.color) attrs.push(`style="--team-accent:${esc(safe.color)}"`);
 
   const seed = safe.seed ? `<span class="brx-slot-seed">#${esc(String(safe.seed))}</span>` : '<span class="brx-slot-seed">—</span>';
-  const meta = safe.kind === 'team' ? `<span class="brx-slot-meta">${esc(String(safe.members))}p</span>` : '<span class="brx-slot-meta">—</span>';
+  const hasRoundWins = Number.isFinite(Number(opts?.roundWins));
+  const roundWins = hasRoundWins ? clampBracketSeriesWins(opts.roundWins) : null;
+  const meta = safe.kind === 'team'
+    ? `<span class="brx-slot-meta">${esc(roundWins == null ? String(safe.members) + 'p' : String(roundWins) + 'W')}</span>`
+    : '<span class="brx-slot-meta">—</span>';
   const mine = safe.isMine ? '<span class="brx-slot-you">Your team</span>' : '';
 
   return `
@@ -4259,6 +4263,8 @@ function renderBracketMatchCard(m, opts = {}) {
     : String(b?.name || 'TBD');
   const aSeed = (a && a.kind === 'team' && Number.isFinite(Number(a.seed))) ? String(a.seed) : '';
   const bSeed = (b && b.kind === 'team' && Number.isFinite(Number(b.seed))) ? String(b.seed) : '';
+  const aRoundWins = clampBracketSeriesWins(match?.series?.aWins || 0);
+  const bRoundWins = clampBracketSeriesWins(match?.series?.bWins || 0);
   const attrs = [
     `data-brx-match-id="${esc(match.id || '')}"`,
     `data-brx-round="${esc(match.round || '')}"`,
@@ -4281,8 +4287,14 @@ function renderBracketMatchCard(m, opts = {}) {
         <span class="brx-match-badge">BO${esc(String(match.bestOf || 3))}</span>
       </header>
       <div class="brx-match-slots">
-        ${renderBracketSlot(a, { isWinner: !!(match.winnerTeamId && aId && match.winnerTeamId === aId) })}
-        ${renderBracketSlot(b, { isWinner: !!(match.winnerTeamId && bId && match.winnerTeamId === bId) })}
+        ${renderBracketSlot(a, {
+          isWinner: !!(match.winnerTeamId && aId && match.winnerTeamId === aId),
+          roundWins: aRoundWins,
+        })}
+        ${renderBracketSlot(b, {
+          isWinner: !!(match.winnerTeamId && bId && match.winnerTeamId === bId),
+          roundWins: bRoundWins,
+        })}
       </div>
     </article>
   `;
