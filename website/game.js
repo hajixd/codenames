@@ -5617,7 +5617,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
   syncClueSubmitButtonAppearance();
 
-  // Keep clue/end-turn pills visible at all times during gameplay.
+  // Default: keep clue/end-turn pills visible during gameplay.
   currentClueEl.style.display = 'flex';
   operativeActionsEl.style.display = 'flex';
   currentClueEl.classList.remove('clue-team-red', 'clue-team-blue');
@@ -5701,7 +5701,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
   if (currentGame.currentPhase === 'spymaster') {
     if (!spectator && isMyTurn && isSpymaster) {
-      // Show clue input
+      // Active spymaster: clue input replaces the clue pill while typing.
+      currentClueEl.style.display = 'none';
       clueFormEl.style.display = 'flex';
       const numInput = document.getElementById('clue-num-input');
       if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
