@@ -5077,6 +5077,62 @@ function renderAdvancedFeatures() {
 
 let _rosterExpandPopupHideTimer = null;
 let _rosterExpandOpenBoxEl = null;
+let _rosterExpandJoinBusy = false;
+
+function getRosterExpandSeatActionState(teamColor, seatRole) {
+  if (!currentGame || currentGame.type !== 'quick') return null;
+  const myId = String(getUserId?.() || '').trim();
+  const myName = String(getUserName?.() || '').trim();
+  if (!myId || !myName) return null;
+
+  if (_rosterExpandJoinBusy) {
+    return { label: 'Joining...', disabled: true, hint: '' };
+  }
+
+  const myTeam = getQuickPlayerRole(currentGame, myId);
+  const mySeat = getQuickPlayerSeatRole(currentGame, myId);
+  if (myTeam === teamColor && mySeat === seatRole) {
+    return { label: 'Already Here', disabled: true, hint: '' };
+  }
+
+  const inProgress = !!(currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.winner == null);
+  const activeJoinOn = isActiveJoinOn(currentGame);
+  const isTeamMember = (myTeam === 'red' || myTeam === 'blue');
+  const label = (isTeamMember && myTeam !== teamColor) ? 'Switch Team' : 'Join Team';
+
+  if (inProgress && !activeJoinOn) {
+    return { label, disabled: true, hint: 'Active Join is off for this game right now.' };
+  }
+
+  return { label, disabled: false, hint: '' };
+}
+
+async function joinQuickSeatFromRosterExpand(teamColor, seatRole) {
+  if (!currentGame || currentGame.type !== 'quick') return;
+  if (_rosterExpandJoinBusy) return;
+
+  _rosterExpandJoinBusy = true;
+  const popup = document.getElementById('roster-expand-popup');
+  if (popup?.classList.contains('visible')) {
+    openRosterExpandPopup(teamColor, seatRole, _rosterExpandOpenBoxEl);
+  }
+
+  try {
+    await joinQuickLobby(teamColor, seatRole);
+    if (selectedQuickTeam === teamColor && selectedQuickSeatRole === seatRole) {
+      spectatorMode = false;
+      spectatingGameId = null;
+      closeRosterExpandPopup();
+    }
+  } catch (err) {
+    console.error('Failed to join/switch from roster popup:', err);
+  } finally {
+    _rosterExpandJoinBusy = false;
+    if (popup?.classList.contains('visible')) {
+      openRosterExpandPopup(teamColor, seatRole, _rosterExpandOpenBoxEl);
+    }
+  }
+}
 
 function closeRosterExpandPopup() {
   if (_rosterExpandOpenBoxEl?.isConnected) {
@@ -5087,6 +5143,7 @@ function closeRosterExpandPopup() {
   const popup = document.getElementById('roster-expand-popup');
   if (!popup) return;
   popup.classList.remove('visible');
+  popup.classList.remove('has-actions');
   if (_rosterExpandPopupHideTimer) clearTimeout(_rosterExpandPopupHideTimer);
   _rosterExpandPopupHideTimer = window.setTimeout(() => {
     _rosterExpandPopupHideTimer = null;
@@ -5102,6 +5159,13 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
   const listEl = document.getElementById('roster-expand-list');
   const cardEl = popup?.querySelector?.('.roster-expand-card');
   if (!popup || !titleEl || !subtitleEl || !listEl || !cardEl) return;
+  let actionsEl = popup.querySelector('.roster-expand-actions');
+  if (!actionsEl) {
+    actionsEl = document.createElement('div');
+    actionsEl.id = 'roster-expand-actions';
+    actionsEl.className = 'roster-expand-actions';
+    cardEl.appendChild(actionsEl);
+  }
   if (_rosterExpandPopupHideTimer) {
     clearTimeout(_rosterExpandPopupHideTimer);
     _rosterExpandPopupHideTimer = null;
@@ -5116,6 +5180,8 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
   const teamNameRaw = teamColor === 'blue' ? currentGame.blueTeamName : currentGame.redTeamName;
   const teamName = String(teamNameRaw || (teamColor === 'blue' ? 'Blue Team' : 'Red Team')).trim();
   const roleLabel = seatRole === 'spymaster' ? 'Spymasters' : 'Operatives';
+  popup.dataset.teamColor = teamColor;
+  popup.dataset.seatRole = seatRole;
 
   popup.classList.remove('team-red', 'team-blue', 'role-spymaster', 'role-operative');
   popup.classList.add(teamColor === 'blue' ? 'team-blue' : 'team-red');
@@ -5154,6 +5220,25 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
     }).join('');
   }
 
+  const actionState = getRosterExpandSeatActionState(teamColor, seatRole);
+  if (actionsEl && actionState) {
+    popup.classList.add('has-actions');
+    actionsEl.style.display = 'grid';
+    actionsEl.innerHTML = `
+      <button
+        type="button"
+        class="roster-expand-action-btn team-${teamColor}"
+        data-roster-seat-action="join"
+        ${actionState.disabled ? 'disabled' : ''}
+      >${escapeHtml(actionState.label)}</button>
+      ${actionState.hint ? `<div class="roster-expand-action-hint">${escapeHtml(actionState.hint)}</div>` : ''}
+    `;
+  } else if (actionsEl) {
+    popup.classList.remove('has-actions');
+    actionsEl.style.display = 'none';
+    actionsEl.innerHTML = '';
+  }
+
   if (_rosterExpandOpenBoxEl && _rosterExpandOpenBoxEl !== sourceBox && _rosterExpandOpenBoxEl.isConnected) {
     _rosterExpandOpenBoxEl.setAttribute('aria-expanded', 'false');
   }
@@ -5172,6 +5257,13 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
     document.getElementById('roster-expand-backdrop')?.addEventListener('click', closeRosterExpandPopup);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeRosterExpandPopup();
+    });
+    popup.addEventListener('click', (e) => {
+      const btn = e.target?.closest?.('[data-roster-seat-action="join"]');
+      if (!btn || btn.disabled) return;
+      const teamColor = popup.dataset.teamColor === 'blue' ? 'blue' : 'red';
+      const seatRole = popup.dataset.seatRole === 'spymaster' ? 'spymaster' : 'operative';
+      void joinQuickSeatFromRosterExpand(teamColor, seatRole);
     });
   }
 }

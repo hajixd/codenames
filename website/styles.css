@@ -13216,6 +13216,10 @@ body.qp-gate-open .app {
   background: rgba(0,0,0,0.16);
 }
 
+.roster-expand-popup.has-actions .roster-expand-list {
+  max-height: calc(min(78vh, 620px) - 140px);
+}
+
 .roster-expand-empty {
   display: flex;
   align-items: center;
@@ -13304,6 +13308,58 @@ body.qp-gate-open .app {
   background: rgba(120, 205, 88, 0.20);
   border-color: rgba(186, 235, 166, 0.48);
   color: #efffe4;
+}
+
+.roster-expand-actions {
+  position: relative;
+  z-index: 1;
+  display: none;
+  gap: 7px;
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.20);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.roster-expand-action-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.26);
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.roster-expand-action-btn.team-red {
+  border-color: rgba(255, 194, 160, 0.72);
+}
+
+.roster-expand-action-btn.team-blue {
+  border-color: rgba(162, 232, 255, 0.72);
+}
+
+.roster-expand-action-btn:active {
+  transform: translateY(1px);
+}
+
+.roster-expand-action-btn:disabled {
+  cursor: default;
+  opacity: 0.56;
+}
+
+.roster-expand-action-hint {
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.76);
+  text-align: center;
 }
 
 /* Accessibility: visually hidden */
@@ -23047,4 +23103,40 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 62%, rgba(255,255,255,0.24) 38%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-blue, #2563eb) 22%, transparent);
   border-radius: 14px;
+}
+
+/* Mobile OG/Cozy: keep board + clue row in normal flow and use scrolling instead of overlap. */
+@media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-center-area,
+  body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-board-wrapper,
+  body:is(.og-mode, .cozy-mode) #game-board-container:not(.card-anim-overlay) .game-board {
+    position: relative;
+    z-index: 2 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area {
+    overflow: visible !important;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
+    flex: 1 1 auto;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    margin-top: 8px !important;
+    margin-bottom: 0 !important;
+    padding: 0 0 max(14px, env(safe-area-inset-bottom, 0px));
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
+    margin-top: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
+    position: relative;
+    z-index: 3;
+    margin-top: 0 !important;
+    flex-shrink: 0;
+  }
 }
