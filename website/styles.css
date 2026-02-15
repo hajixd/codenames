@@ -22391,3 +22391,87 @@ body.light-mode .brx-pop-card{
       "brackets";
   }
 }
+
+/* Gameplay density + alignment tuning */
+body:is(.og-mode, .cozy-mode) .gamelog-header {
+  padding: 8px 12px 6px;
+}
+
+body:is(.og-mode, .cozy-mode) .gamelog-entries {
+  padding: 8px 10px 10px;
+  gap: 7px;
+}
+
+body:is(.og-mode, .cozy-mode) .og-game-log-section {
+  max-height: 230px;
+}
+
+body:is(.og-mode, .cozy-mode) .og-game-log {
+  min-height: 105px;
+  max-height: 160px;
+}
+
+body:is(.og-mode, .cozy-mode) .og-chat-section {
+  max-height: 240px;
+}
+
+body:is(.og-mode, .cozy-mode) #og-chat-host {
+  min-height: 96px;
+  max-height: 178px;
+}
+
+body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-messages {
+  padding: 6px 8px;
+}
+
+body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-form {
+  margin-top: 6px;
+  padding: 6px;
+}
+
+/* Move clue row and board slightly lower. */
+body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
+  margin-top: 3px;
+}
+
+body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
+  margin-top: 5px;
+}
+
+body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
+  margin-top: 1px;
+}
+
+@media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open,
+  body:is(.og-mode, .cozy-mode) .og-chat-slidedown.open {
+    max-height: 44vh;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-chat-slidedown.open .og-chat-slidedown-inner {
+    height: calc(44vh - 8px);
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner .gamelog-entries {
+    max-height: calc(44vh - 48px);
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-chat-slidedown-body {
+    height: calc(44vh - 48px);
+    max-height: calc(44vh - 48px);
+  }
+}
+
+@media (min-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open,
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner,
+  body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel {
+    height: clamp(190px, 29vh, 286px);
+    max-height: clamp(190px, 29vh, 286px);
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner .gamelog-entries {
+    max-height: calc(clamp(190px, 29vh, 286px) - 42px);
+  }
+}

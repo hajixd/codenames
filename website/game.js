@@ -5591,16 +5591,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
   const waitingForEl = document.getElementById('waiting-for');
 
-  const setWaitingTeamRole = (teamColor, roleLabel) => {
-    if (!waitingForEl) return;
-    const team = (teamColor === 'blue') ? 'blue' : 'red';
-    const rawTeamName = team === 'blue'
-      ? truncateTeamNameGame(currentGame?.blueTeamName)
-      : truncateTeamNameGame(currentGame?.redTeamName);
-    const teamName = String(rawTeamName || (team === 'blue' ? 'Blue Team' : 'Red Team')).trim();
-    waitingForEl.innerHTML = `<span class="waiting-team waiting-team-${team}">${escapeHtml(teamName)}</span>'s ${escapeHtml(roleLabel)}`;
-  };
-
   syncClueSubmitButtonAppearance();
 
   // Hide all first
@@ -5626,7 +5616,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       } else if (currentGame.currentPhase === 'operatives') {
         ogText.textContent = 'GUESS THE WORDS';
       } else if (currentGame.currentPhase === 'waiting') {
-        ogText.textContent = 'WAITING FOR PLAYERS';
+        ogText.textContent = '';
       } else if (currentGame.currentPhase === 'role-selection') {
         ogText.textContent = 'SELECT YOUR ROLE';
       }
@@ -5643,13 +5633,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const blueCount = (currentGame.bluePlayers || []).length;
     const hasPlayers = redCount > 0 && blueCount > 0;
 
-    waitingEl.style.display = 'block';
-    if (!myTeamColor) {
-      if (waitingForEl) waitingForEl.textContent = 'players to join.';
-    } else if (!hasPlayers) {
-      if (waitingForEl) waitingForEl.textContent = 'at least 1 player on each team.';
-    } else {
-      // Show start button
+    waitingEl.style.display = 'none';
+    if (myTeamColor && hasPlayers) {
+      // Keep start action available without waiting-status text.
+      waitingEl.style.display = 'block';
       if (waitingForEl) waitingForEl.innerHTML = `
         <span>Ready to start!</span>
         <button class="btn primary small" style="margin-left: 12px;" onclick="startQuickGame('${currentGame.id}')">Start Game</button>
@@ -5659,8 +5646,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
 
   if (currentGame.currentPhase === 'role-selection') {
-    waitingEl.style.display = 'block';
-    if (waitingForEl) waitingForEl.textContent = 'all teams to select roles';
+    waitingEl.style.display = 'none';
     return;
   }
 
@@ -5670,10 +5656,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       clueFormEl.style.display = 'flex';
       const numInput = document.getElementById('clue-num-input');
       if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
-    } else {
-      // Show waiting message
-      waitingEl.style.display = 'block';
-      setWaitingTeamRole(currentGame.currentTeam, 'Spymaster');
     }
     return;
   }
@@ -5691,9 +5673,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     if (!spectator && isMyTurn && !isSpymaster) {
       // Show end turn button
       operativeActionsEl.style.display = 'flex';
-    } else if (!isMyTurn) {
-      waitingEl.style.display = 'block';
-      setWaitingTeamRole(currentGame.currentTeam, 'Operatives');
     }
   }
 }
