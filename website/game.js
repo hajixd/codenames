@@ -1297,6 +1297,30 @@ function getQuickSettings(game) {
   };
 }
 
+function getPhaseTimerSeconds(game, phase) {
+  const s = getQuickSettings(game);
+  if (phase === 'spymaster') {
+    const secs = Number(s?.clueTimerSeconds);
+    return Number.isFinite(secs) ? Math.max(0, secs) : 0;
+  }
+  if (phase === 'operatives') {
+    const secs = Number(s?.guessTimerSeconds);
+    return Number.isFinite(secs) ? Math.max(0, secs) : 0;
+  }
+  return 0;
+}
+
+function buildPhaseTimerEndValue(game, phase) {
+  const secs = getPhaseTimerSeconds(game, phase);
+  if (!secs) return null;
+  const ms = Date.now() + (secs * 1000);
+  try {
+    return firebase.firestore.Timestamp.fromDate(new Date(ms));
+  } catch (_) {
+    return new Date(ms);
+  }
+}
+
 function formatSeconds(sec) {
   const s = parseInt(sec || 0, 10);
   if (!s) return '∞';
@@ -2795,9 +2819,16 @@ async function startQuickLobbyListener() {
         const inBlue = (quickLobbyGame.bluePlayers || []).some(p => p.odId === odId);
         const inSpec = (quickLobbyGame.spectators || []).some(p => p.odId === odId);
         if (inRed || inBlue || inSpec) {
-          spectatorMode = !!inSpec && !(inRed || inBlue);
-          spectatingGameId = spectatorMode ? quickLobbyGame.id : null;
-          startGameListener(quickLobbyGame.id, { spectator: spectatorMode });
+          const targetSpectatorMode = !!inSpec && !(inRed || inBlue);
+          const alreadyListeningToSameGame =
+            !!gameUnsub &&
+            String(currentGame?.id || '') === String(quickLobbyGame.id || '') &&
+            spectatorMode === targetSpectatorMode;
+          if (!alreadyListeningToSameGame) {
+            spectatorMode = targetSpectatorMode;
+            spectatingGameId = targetSpectatorMode ? quickLobbyGame.id : null;
+            startGameListener(quickLobbyGame.id, { spectator: targetSpectatorMode });
+          }
           return;
         }
       }
@@ -3118,6 +3149,7 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
     guessesRemaining: 0,
+    timerEnd: null,
     quickSettings: {
       blackCards: settings.blackCards,
       clueTimerSeconds: settings.clueTimerSeconds,
@@ -3490,6 +3522,7 @@ async function maybeAutoStartQuickPlay(game) {
       const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
+      const startTimerEnd = (startPhase === 'spymaster') ? buildPhaseTimerEndValue(g, 'spymaster') : null;
 
       tx.update(ref, {
         cards,
@@ -3505,6 +3538,7 @@ async function maybeAutoStartQuickPlay(game) {
         blueCardsLeft: SECOND_TEAM_CARDS,
         currentClue: null,
         guessesRemaining: 0,
+        timerEnd: startTimerEnd,
         winner: null,
         log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -3578,6 +3612,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
       const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
+      const startTimerEnd = (startPhase === 'spymaster') ? buildPhaseTimerEndValue(g, 'spymaster') : null;
 
       tx.update(ref, {
         cards,
@@ -3593,6 +3628,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
         blueCardsLeft: SECOND_TEAM_CARDS,
         currentClue: null,
         guessesRemaining: 0,
+        timerEnd: startTimerEnd,
         winner: null,
         log: firebase.firestore.FieldValue.arrayUnion('Game started.'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -4298,6 +4334,7 @@ async function endAbandonedTournamentGame(gameId, reason) {
     await db.collection('games').doc(gameId).update({
       winner: 'abandoned',
       currentPhase: 'ended',
+      timerEnd: null,
       endedReason: reason || 'abandoned',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       log: firebase.firestore.FieldValue.arrayUnion(`Game ended (${reason || 'abandoned'}).`)
@@ -4622,7 +4659,9 @@ function startGameListener(gameId, options = {}) {
   }
 
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
-    const prevCards = Array.isArray(currentGame?.cards) ? currentGame.cards : null;
+    const prevCards = Array.isArray(currentGame?.cards)
+      ? currentGame.cards.map((c) => ({ revealed: !!c?.revealed }))
+      : null;
     if (!snap.exists) {
       clearRevealAnimationSuppressions();
       currentGame = null;
@@ -5069,6 +5108,9 @@ function renderAdvancedFeatures() {
 
   // Initialize operative chat
   initOperativeChat();
+
+  // Backfill timer for older/legacy turns that do not have timerEnd yet.
+  maybeBackfillCurrentTurnTimer(currentGame);
 
   // Handle timer if present
   if (currentGame?.timerEnd) {
@@ -6169,6 +6211,7 @@ async function selectRole(role) {
 
   if (willHaveRedSpymaster && willHaveBlueSpymaster) {
     updates.currentPhase = 'spymaster';
+    updates.timerEnd = buildPhaseTimerEndValue(currentGame, 'spymaster');
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
   }
 
@@ -6257,6 +6300,7 @@ async function handleClueSubmit(e) {
       currentClue: { word, number },
       guessesRemaining: (number === 0 ? 0 : (number + 1)), // guesses = number + 1 (0 means no guesses)
       currentPhase: 'operatives',
+      timerEnd: buildPhaseTimerEndValue(currentGame, 'operatives'),
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -6434,6 +6478,7 @@ async function handleCardClick(cardIndex) {
       if (winner) {
         updates.winner = winner;
         updates.currentPhase = 'ended';
+        updates.timerEnd = null;
         const winnerName = truncateTeamNameGame(winner === 'red' ? liveGame.redTeamName : liveGame.blueTeamName);
         logEntries.push(`${winnerName} wins!`);
       } else if (endTurn) {
@@ -6441,6 +6486,7 @@ async function handleCardClick(cardIndex) {
         updates.currentPhase = 'spymaster';
         updates.currentClue = null;
         updates.guessesRemaining = 0;
+        updates.timerEnd = buildPhaseTimerEndValue(liveGame, 'spymaster');
       }
       updates.log = firebase.firestore.FieldValue.arrayUnion(...logEntries);
 
@@ -6535,6 +6581,7 @@ async function handleEndTurn() {
       currentPhase: 'spymaster',
       currentClue: null,
       guessesRemaining: 0,
+      timerEnd: buildPhaseTimerEndValue(currentGame, 'spymaster'),
       log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -6624,6 +6671,7 @@ async function handleLeaveGame(opts = {}) {
         tx.update(ref, {
           winner: 'ended',
           currentPhase: 'ended',
+          timerEnd: null,
           endedReason: 'practice_left',
           endedBy: {
             odId: odId || null,
@@ -6705,6 +6753,7 @@ async function handleEndGame() {
   db.collection('games').doc(gameId).update({
     winner: 'ended',
     currentPhase: 'ended',
+    timerEnd: null,
     endedReason: 'manual',
     endedBy: {
       odId: getUserId() || null,
@@ -6975,6 +7024,47 @@ let ogChatOriginalParent = null;
 let ogChatOriginalNextSibling = null;
 let gameTimerInterval = null;
 let gameTimerEnd = null;
+let timerBackfillInFlight = false;
+let timerBackfillLastKey = '';
+let timerBackfillLastAt = 0;
+
+function maybeBackfillCurrentTurnTimer(game) {
+  if (!game || game.type !== 'quick' || game.winner) return;
+  const phase = String(game.currentPhase || '');
+  if (phase !== 'spymaster' && phase !== 'operatives') return;
+  if (game.timerEnd) return;
+
+  const secs = getPhaseTimerSeconds(game, phase);
+  if (!secs) return;
+
+  const key = `${String(game.id || '')}:${phase}:${String(game.currentTeam || '')}:${secs}`;
+  const now = Date.now();
+  if (timerBackfillInFlight) return;
+  if (timerBackfillLastKey === key && (now - timerBackfillLastAt) < 1500) return;
+
+  timerBackfillInFlight = true;
+  timerBackfillLastKey = key;
+  timerBackfillLastAt = now;
+
+  const ref = db.collection('games').doc(String(game.id || '').trim());
+  db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const current = snap.data() || {};
+    if (current.winner) return;
+    if (String(current.currentPhase || '') !== phase) return;
+    if (String(current.currentTeam || '') !== String(game.currentTeam || '')) return;
+    if (current.timerEnd) return;
+    const end = buildPhaseTimerEndValue(current, phase);
+    if (!end) return;
+    tx.update(ref, {
+      timerEnd: end,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }).catch(() => {}).finally(() => {
+    timerBackfillInFlight = false;
+  });
+}
 
 // Initialize advanced features
 function initAdvancedFeatures() {

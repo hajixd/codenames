@@ -59,6 +59,30 @@ function tsToMs(ts) {
   return 0;
 }
 
+function getPhaseTimerSecondsFromGame(game, phase) {
+  const qs = (game && typeof game.quickSettings === 'object' && game.quickSettings) ? game.quickSettings : {};
+  if (phase === 'spymaster') {
+    const secs = Number(qs.clueTimerSeconds);
+    return Number.isFinite(secs) ? Math.max(0, secs) : 0;
+  }
+  if (phase === 'operatives') {
+    const secs = Number(qs.guessTimerSeconds);
+    return Number.isFinite(secs) ? Math.max(0, secs) : 0;
+  }
+  return 0;
+}
+
+function buildPhaseTimerEndForGame(game, phase) {
+  const secs = getPhaseTimerSecondsFromGame(game, phase);
+  if (!secs) return null;
+  const ms = Date.now() + (secs * 1000);
+  try {
+    return firebase.firestore.Timestamp.fromDate(new Date(ms));
+  } catch (_) {
+    return new Date(ms);
+  }
+}
+
 async function claimAIController(gameId) {
   const myId = getAIClientId();
   const ref = db.collection('games').doc(gameId);
@@ -2470,6 +2494,7 @@ async function submitClueDirect(ai, game, clueWord, clueNumber) {
       currentClue: { word: clueWord, number: clueNumber },
       guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
       currentPhase: 'operatives',
+      timerEnd: buildPhaseTimerEndForGame(current, 'operatives'),
       log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
       clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
       [seqField]: firebase.firestore.FieldValue.increment(1),
@@ -3073,6 +3098,7 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
       if (winner) {
         updates.winner = winner;
         updates.currentPhase = 'ended';
+        updates.timerEnd = null;
         const winnerName = winner === 'red' ? (current.redTeamName || 'Red') : (current.blueTeamName || 'Blue');
         logEntry += ` ${winnerName} wins!`;
         endTurn = true; // treat game-over as turn ended for the caller
@@ -3081,6 +3107,7 @@ async function aiRevealCard(ai, game, cardIndex, incrementSeq = false) {
         updates.currentPhase = 'spymaster';
         updates.currentClue = null;
         updates.guessesRemaining = 0;
+        updates.timerEnd = buildPhaseTimerEndForGame(current, 'spymaster');
       }
 
       updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
@@ -3151,6 +3178,7 @@ async function aiConsiderEndTurn(ai, game, forceEnd = false, incrementSeq = fals
   currentPhase: 'spymaster',
   currentClue: null,
   guessesRemaining: 0,
+  timerEnd: buildPhaseTimerEndForGame(current, 'spymaster'),
   log: firebase.firestore.FieldValue.arrayUnion(`AI ${ai.name} (${teamName}) ended their turn.`),
   updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
 };
@@ -3670,6 +3698,7 @@ async function aiSelectRole(ai, game) {
   const otherSpymaster = game[otherKey];
   if (otherSpymaster) {
     updates.currentPhase = 'spymaster';
+    updates.timerEnd = buildPhaseTimerEndForGame(game, 'spymaster');
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
   }
 
