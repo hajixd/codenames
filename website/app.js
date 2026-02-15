@@ -8397,10 +8397,10 @@ const PRESENCE_UPDATE_INTERVAL_MS = 60 * 1000; // Update every 1 minute
 
 
 const PRESENCE_WHERE_LABELS = {
-  menus: 'In Menus',
-  tournament: 'In Tournament',
-  lobby: 'In Lobby',
-  game: 'In Game'
+  menus: 'Multiplayer',
+  tournament: 'Teams',
+  lobby: 'Multiplayer',
+  game: 'Multiplayer'
 };
 
 function computeLocalPresenceWhereKey() {
@@ -8447,12 +8447,32 @@ function computeLocalPresenceWhereKey() {
   return 'menus';
 }
 
+function getPresencePanelLabel(presence) {
+  const panelId = String(presence?.activePanelId || '').trim();
+  if (!panelId) return '';
+  if (panelId === 'panel-practice') return 'Singleplayer';
+  if (panelId === 'panel-brackets') return 'Brackets';
+  if (panelId === 'panel-teams' || panelId === 'panel-home' || panelId === 'panel-myteam') return 'Teams';
+  if (panelId === 'panel-game') return 'Multiplayer';
+  return '';
+}
+
 function getPresenceWhereLabel(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
   if (!presence) return '';
+
+  const byPanel = getPresencePanelLabel(presence);
+  if (byPanel) return byPanel;
+
   const key = (presence.whereKey || presence.where || '').toString().trim();
-  if (!key) return '';
-  return presence.whereLabel || PRESENCE_WHERE_LABELS[key] || key;
+  if (key) return PRESENCE_WHERE_LABELS[key] || key;
+
+  // Legacy docs may only have a freeform whereLabel.
+  const legacy = String(presence.whereLabel || '').trim();
+  if (!legacy) return '';
+  if (/tournament/i.test(legacy)) return 'Teams';
+  if (/(menu|lobby|game)/i.test(legacy)) return 'Multiplayer';
+  return legacy;
 }
 
 // Expose for game.js or other modules
