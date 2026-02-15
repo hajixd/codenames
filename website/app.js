@@ -1624,12 +1624,12 @@ function initLaunchScreen() {
     if (hint) hint.textContent = '';
     // Quick Play can be gated if there's a live game in progress.
     if (mode === 'quick' && opts && opts.gateIfLiveGame) {
-      maybeGateQuickPlayWithLiveGame({ loadingLabel: 'Loading Board' });
+      maybeGateQuickPlayWithLiveGame();
       return;
     }
 
     // Show loading screen during navigation transition
-    showAuthLoadingScreen(mode === 'quick' ? 'Loading Board' : 'Loading');
+    showAuthLoadingScreen();
 
     // Ensure the loader stays up until the destination has rendered a usable first state.
     try { if (mode === 'quick' && typeof window.resetQuickPlayReady === 'function') window.resetQuickPlayReady(); } catch (_) {}
@@ -10988,32 +10988,19 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
     return null;
   }
 
+  if (hintEl) hintEl.textContent = 'Starting…';
   const createFn = window.createPracticeGame;
   if (typeof createFn !== 'function') throw new Error('Practice not available');
 
-  if (hintEl) hintEl.textContent = '';
+  const sizeNum = parseInt(opts?.size, 10);
+  const size = (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
+  const role = String(opts?.role || 'operative');
+  const vibe = String(opts?.vibe || '').trim();
+  const deckId = String(opts?.deckId || 'standard');
 
-  const loadingStartedAt = Date.now();
-  showAuthLoadingScreen('Choosing Cards');
-
-  try {
-    const sizeNum = parseInt(opts?.size, 10);
-    const size = (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
-    const role = String(opts?.role || 'operative');
-    const vibe = String(opts?.vibe || '').trim();
-    const deckId = String(opts?.deckId || 'standard');
-
-    const gameId = await createFn({ size, role, vibe, deckId });
-    try { setAuthLoadingMessage('Loading Board'); } catch (_) {}
-    openPracticeGameInApp(gameId);
-    return gameId;
-  } finally {
-    const elapsed = Date.now() - loadingStartedAt;
-    const wait = Math.max(0, 320 - elapsed);
-    setTimeout(() => {
-      try { hideAuthLoadingScreen(); } catch (_) {}
-    }, wait);
-  }
+  const gameId = await createFn({ size, role, vibe, deckId });
+  openPracticeGameInApp(gameId);
+  return gameId;
 }
 
 function initPracticePage() {
@@ -11043,7 +11030,7 @@ function initPracticePage() {
     if (startBtn) startBtn.disabled = !ok;
     if (hintEl) {
       hintEl.textContent = ok
-        ? 'Starts here in this tab.'
+        ? ''
         : 'Pick a role and team size to continue.';
     }
   };
@@ -11110,7 +11097,7 @@ function closePracticeModal() {
   modal.setAttribute('aria-hidden', 'true');
   setTimeout(() => { modal.style.display = 'none'; }, 180);
   const hint = document.getElementById('practice-hint');
-  if (hint) hint.textContent = 'Starts here in this tab.';
+  if (hint) hint.textContent = '';
 }
 
 function initPracticeModal() {

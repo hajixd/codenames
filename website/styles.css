@@ -22456,28 +22456,70 @@ body:is(.og-mode, .cozy-mode) .waiting-expanded {
   line-height: 1.2;
 }
 
-/* Team-colored clue/action bar */
-.game-center-area .game-action-bar.turn-red {
-  background: color-mix(in srgb, var(--game-red, #ff6b5d) 16%, var(--surface) 84%);
-  border-color: color-mix(in srgb, var(--game-red, #ff6b5d) 40%, var(--border) 60%);
+/* Team-colored clue pill (Clue: WORD NUMBER). */
+.clue-display-expanded.clue-team-red {
+  background: color-mix(in srgb, var(--game-red, #ff6b5d) 18%, var(--surface) 82%);
+  border: 1px solid color-mix(in srgb, var(--game-red, #ff6b5d) 42%, var(--border) 58%);
 }
 
-.game-center-area .game-action-bar.turn-blue {
-  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 16%, var(--surface) 84%);
-  border-color: color-mix(in srgb, var(--game-blue, #5ab7ff) 40%, var(--border) 60%);
+.clue-display-expanded.clue-team-blue {
+  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 18%, var(--surface) 82%);
+  border: 1px solid color-mix(in srgb, var(--game-blue, #5ab7ff) 42%, var(--border) 58%);
 }
 
-body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar.turn-red {
-  background: color-mix(in srgb, var(--game-red, #ff6b5d) 24%, rgba(10, 14, 22, 0.9) 76%);
-  border: 1px solid color-mix(in srgb, var(--game-red, #ff6b5d) 44%, rgba(255, 255, 255, 0.14) 56%);
+body:is(.og-mode, .cozy-mode) .clue-display-expanded.clue-team-red {
+  background: color-mix(in srgb, var(--game-red, #ff6b5d) 30%, rgba(18, 20, 26, 0.88) 70%);
+  border-color: color-mix(in srgb, var(--game-red, #ff6b5d) 54%, rgba(255, 255, 255, 0.15) 46%);
 }
 
-body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar.turn-blue {
-  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 24%, rgba(10, 14, 22, 0.9) 76%);
-  border: 1px solid color-mix(in srgb, var(--game-blue, #5ab7ff) 44%, rgba(255, 255, 255, 0.14) 56%);
+body:is(.og-mode, .cozy-mode) .clue-display-expanded.clue-team-blue {
+  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 30%, rgba(18, 20, 26, 0.88) 70%);
+  border-color: color-mix(in srgb, var(--game-blue, #5ab7ff) 54%, rgba(255, 255, 255, 0.15) 46%);
 }
 
-.game-center-area .operative-actions-expanded .btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+/* Keep mobile OG Chat and Game Log expansion exactly the same size. */
+@media (max-width: 1024px), (max-height: 560px) and (hover: none) and (pointer: coarse) {
+  .og-gamelog-slidedown.open,
+  .og-chat-slidedown.open {
+    max-height: 60vh;
+  }
+
+  .og-gamelog-slidedown-inner,
+  .og-chat-slidedown-inner {
+    max-height: calc(60vh - 16px);
+  }
+
+  .og-gamelog-slidedown.open .og-gamelog-slidedown-inner,
+  .og-chat-slidedown.open .og-chat-slidedown-inner {
+    height: calc(60vh - 16px);
+  }
+
+  .og-gamelog-slidedown-inner .gamelog-entries,
+  .og-chat-slidedown-body {
+    height: calc(60vh - 50px);
+    max-height: calc(60vh - 50px);
+  }
+}
+
+@media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
+  .og-gamelog-slidedown.open,
+  .og-chat-slidedown.open {
+    max-height: 50vh;
+  }
+
+  .og-gamelog-slidedown-inner,
+  .og-chat-slidedown-inner {
+    max-height: calc(50vh - 8px);
+  }
+
+  .og-gamelog-slidedown.open .og-gamelog-slidedown-inner,
+  .og-chat-slidedown.open .og-chat-slidedown-inner {
+    height: calc(50vh - 8px);
+  }
+
+  .og-gamelog-slidedown-inner .gamelog-entries,
+  .og-chat-slidedown-body {
+    height: calc(50vh - 50px);
+    max-height: calc(50vh - 50px);
+  }
 }
