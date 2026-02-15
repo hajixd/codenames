@@ -3681,15 +3681,44 @@ function renderTeams(teams) {
 /* =========================
    Brackets page
 ========================= */
-function getBracketTeamPool(teams) {
-  const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
-  const sorted = [...visible].sort((a, b) => {
+let bracketRandomizeInFlight = false;
+
+function sortBracketTeamsBySeed(teams) {
+  return [...(teams || [])].sort((a, b) => {
     const da = getMembers(a).length;
     const db = getMembers(b).length;
     if (db !== da) return db - da;
     return String(a?.teamName || '').localeCompare(String(b?.teamName || ''));
   });
-  return { visible, sorted };
+}
+
+function getBracketTeamPool(teams) {
+  const visible = (teams || []).filter(t => !t?.archived && !teamIsEmpty(t));
+  const seeded = sortBracketTeamsBySeed(visible);
+  const seedById = new Map();
+  seeded.forEach((team, idx) => {
+    const id = String(team?.id || '').trim();
+    if (id) seedById.set(id, idx + 1);
+  });
+
+  const hasCustomOrder = visible.some(t => Number.isFinite(Number(t?.bracketSlotOrder)));
+  const sorted = hasCustomOrder
+    ? [...visible].sort((a, b) => {
+      const ao = Number(a?.bracketSlotOrder);
+      const bo = Number(b?.bracketSlotOrder);
+      const aHas = Number.isFinite(ao);
+      const bHas = Number.isFinite(bo);
+      if (aHas && bHas && ao !== bo) return ao - bo;
+      if (aHas !== bHas) return aHas ? -1 : 1;
+
+      const aSeed = seedById.get(String(a?.id || '').trim()) || Number.MAX_SAFE_INTEGER;
+      const bSeed = seedById.get(String(b?.id || '').trim()) || Number.MAX_SAFE_INTEGER;
+      if (aSeed !== bSeed) return aSeed - bSeed;
+      return String(a?.teamName || '').localeCompare(String(b?.teamName || ''));
+    })
+    : seeded;
+
+  return { visible, sorted, seeded, seedById, hasCustomOrder };
 }
 
 function buildBracketSlot(team, seed, st) {
@@ -3725,8 +3754,12 @@ function buildBracketModel(teams) {
   const safeTeams = Array.isArray(teams) ? teams : [];
   const st = computeUserState(safeTeams);
   const pool = getBracketTeamPool(safeTeams);
-  const seededTeams = Array.from({ length: 8 }, (_, i) => pool.sorted[i] || null);
-  const seededSlots = seededTeams.map((t, idx) => buildBracketSlot(t, idx + 1, st));
+  const slottedTeams = Array.from({ length: 8 }, (_, i) => pool.sorted[i] || null);
+  const seededSlots = slottedTeams.map((t, idx) => {
+    const tid = String(t?.id || '').trim();
+    const seed = tid ? (pool.seedById.get(tid) || (idx + 1)) : (idx + 1);
+    return buildBracketSlot(t, seed, st);
+  });
 
   const match = (id, label, round, a, b) => ({
     id,
@@ -3767,13 +3800,98 @@ function buildBracketModel(teams) {
   return {
     state: st,
     visibleCount: pool.visible.length,
-    seededCount: Math.min(8, pool.sorted.length),
+    seededCount: Math.min(8, pool.visible.length),
+    hasCustomOrder: !!pool.hasCustomOrder,
     rounds: {
       quarterfinals: [qf1, qf2, qf3, qf4],
       semifinals: [sf1, sf2],
       final,
     },
   };
+}
+
+function setBracketRandomizeButtonState(model = null) {
+  const btn = document.getElementById('brackets-randomize-btn');
+  if (!btn) return;
+
+  const admin = !!isAdminUser();
+  btn.style.display = admin ? '' : 'none';
+  if (!admin) return;
+
+  const visibleCount = Number(model?.visibleCount || 0);
+  const canRandomize = !bracketRandomizeInFlight && visibleCount > 1;
+  btn.disabled = !canRandomize;
+  btn.classList.toggle('disabled', !canRandomize);
+  btn.textContent = bracketRandomizeInFlight ? 'Randomizing...' : 'Randomize';
+  if (bracketRandomizeInFlight) {
+    btn.title = 'Randomizing bracket...';
+  } else if (visibleCount <= 1) {
+    btn.title = 'Need at least 2 teams to randomize.';
+  } else {
+    btn.title = 'Randomize who plays who in the bracket.';
+  }
+}
+
+function shuffleTeams(list) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+async function randomizeBracketMatchups() {
+  if (!isAdminUser()) {
+    showToast('Admin only.');
+    return;
+  }
+  if (bracketRandomizeInFlight) return;
+
+  const visible = (teamsCache || [])
+    .filter(t => !t?.archived && !teamIsEmpty(t))
+    .filter(t => String(t?.id || '').trim());
+  if (visible.length < 2) {
+    showToast('Need at least 2 teams.');
+    return;
+  }
+
+  bracketRandomizeInFlight = true;
+  setBracketRandomizeButtonState({ visibleCount: visible.length });
+  try {
+    const shuffled = shuffleTeams(visible);
+    let batch = db.batch();
+    let writes = 0;
+    for (let idx = 0; idx < shuffled.length; idx++) {
+      const team = shuffled[idx];
+      const tid = String(team?.id || '').trim();
+      if (!tid) continue;
+      batch.update(db.collection('teams').doc(tid), {
+        bracketSlotOrder: idx + 1,
+        bracketSlotUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      writes++;
+      if (writes >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        writes = 0;
+      }
+    }
+    if (writes > 0) await batch.commit();
+
+    try {
+      logEvent('bracket_randomize', `Admin randomized bracket matchups (${shuffled.length} teams).`, {
+        teamCount: shuffled.length,
+      });
+    } catch (_) {}
+    showToast('Bracket randomized.');
+  } catch (err) {
+    console.error('Bracket randomize failed:', err);
+    showToast(err?.message || 'Could not randomize bracket.');
+  } finally {
+    bracketRandomizeInFlight = false;
+    try { renderBrackets(teamsCache); } catch (_) {}
+  }
 }
 
 function bracketSlotLabel(slot) {
@@ -3861,6 +3979,7 @@ function renderBrackets(teams) {
 
   const model = buildBracketModel(teams);
   if (pill) pill.textContent = String(model.visibleCount);
+  setBracketRandomizeButtonState(model);
 
   board.innerHTML = `
     <div class="brx-shell" aria-label="Tournament bracket">
@@ -3933,6 +4052,12 @@ function renderBrackets(teams) {
 function drawBracketWires() {}
 
 function initBracketsUI() {
+  const randomizeBtn = document.getElementById('brackets-randomize-btn');
+  randomizeBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    randomizeBracketMatchups();
+  });
+
   let raf = null;
   const rerenderIfVisible = () => {
     if (raf) cancelAnimationFrame(raf);
@@ -3948,6 +4073,7 @@ function initBracketsUI() {
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(rerenderIfVisible).catch(() => {});
   }
+  setBracketRandomizeButtonState(buildBracketModel(teamsCache));
 }
 
 let _bracketsPopupEl = null;
