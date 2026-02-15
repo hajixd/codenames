@@ -2263,12 +2263,14 @@ function setupOgGamelogSlidedown() {
     closeLog();
     chatSlidedown.classList.add('open');
     chatToggleBtn?.classList.add('og-gamelog-active');
+    markOgChatSeen();
     try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
   }
   function closeChat() {
     if (!chatSlidedown) return;
     chatSlidedown.classList.remove('open');
     chatToggleBtn?.classList.remove('og-gamelog-active');
+    updateOgChatUnreadBadge();
     try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
   }
   const isOpen = () => slidedown.classList.contains('open');
@@ -5589,15 +5591,36 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const waitingEl = document.getElementById('waiting-message');
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
   const waitingForEl = document.getElementById('waiting-for');
+  const clueWordEl = document.getElementById('clue-word');
+  const clueNumberEl = document.getElementById('clue-number');
+  const guessesLeftEl = document.getElementById('guesses-left');
+  const endTurnBtn = document.getElementById('end-turn-btn');
+  if (!clueWordEl || !clueNumberEl || !guessesLeftEl || !endTurnBtn) return;
 
   syncClueSubmitButtonAppearance();
 
-  // Hide all first
-  currentClueEl.style.display = 'none';
+  // Keep clue/end-turn pills visible at all times during gameplay.
+  currentClueEl.style.display = 'flex';
+  operativeActionsEl.style.display = 'flex';
   currentClueEl.classList.remove('clue-team-red', 'clue-team-blue');
+  operativeActionsEl.classList.remove('clue-team-red', 'clue-team-blue');
+  const activeTeam = currentGame?.currentTeam === 'blue' ? 'blue' : 'red';
+  const teamClass = activeTeam === 'blue' ? 'clue-team-blue' : 'clue-team-red';
+  currentClueEl.classList.add(teamClass);
+  operativeActionsEl.classList.add(teamClass);
+
   clueFormEl.style.display = 'none';
-  operativeActionsEl.style.display = 'none';
   waitingEl.style.display = 'none';
+
+  let clueWord = '—';
+  let clueNumber = '—';
+  if (currentGame?.currentClue) {
+    clueWord = String(currentGame.currentClue.word || '—');
+    clueNumber = String(currentGame.currentClue.number ?? '—');
+  }
+  clueWordEl.textContent = clueWord;
+  clueNumberEl.textContent = clueNumber;
+  guessesLeftEl.textContent = '';
 
   // Update OG mode phase banner
   const ogBanner = document.getElementById('og-phase-banner');
@@ -5623,9 +5646,16 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     }
   }
 
-  if (currentGame.winner) return;
-
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
+  const canEndTurn = !spectator
+    && !currentGame?.winner
+    && currentGame?.currentPhase === 'operatives'
+    && isMyTurn
+    && !isSpymaster;
+  endTurnBtn.disabled = !canEndTurn;
+  endTurnBtn.classList.toggle('disabled', !canEndTurn);
+
+  if (currentGame.winner) return;
 
   // Quick Play waiting phase
   if (currentGame.currentPhase === 'waiting') {
@@ -5660,22 +5690,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     return;
   }
 
-  if (currentGame.currentPhase === 'operatives') {
-    // Show current clue
-    if (currentGame.currentClue) {
-      currentClueEl.style.display = 'flex';
-      currentClueEl.classList.add(currentGame.currentTeam === 'blue' ? 'clue-team-blue' : 'clue-team-red');
-      document.getElementById('clue-word').textContent = currentGame.currentClue.word;
-      document.getElementById('clue-number').textContent = currentGame.currentClue.number;
-      // Keep the UI minimal; we don't show an explicit "unlimited" label.
-      document.getElementById('guesses-left').textContent = '';
-    }
-
-    if (!spectator && isMyTurn && !isSpymaster) {
-      // Show end turn button
-      operativeActionsEl.style.display = 'flex';
-    }
-  }
+  if (currentGame.currentPhase === 'operatives') return;
 }
 
 function renderGameLog() {
@@ -6728,6 +6743,10 @@ let _lastCardConfirmIndex = -1;
 let operativeChatUnsub = null;
 let operativeChatTeamViewing = null; // 'red' | 'blue'
 let spectatorChatTeam = 'red';
+let ogChatUnreadCount = 0;
+let ogChatLastSeenMs = 0;
+let ogChatLastMessageMs = 0;
+let ogChatUnreadKey = '';
 let _consideringSyncNonce = 0;
 
 // When Cozy/Online (OG-style) panels are active, we dock the existing chat panel
@@ -6791,6 +6810,11 @@ function initAdvancedFeatures() {
   window.addEventListener('focus', () => {
     _processingGuess = false;
   });
+
+  if (!window.__ogChatUnreadResizeBound) {
+    window.__ogChatUnreadResizeBound = true;
+    window.addEventListener('resize', updateOgChatUnreadBadge);
+  }
 }
 
 // Call init on DOMContentLoaded
@@ -7414,6 +7438,70 @@ function updatePendingCardSelectionUI() {
    Operative Team Chat
 ========================= */
 
+function updateOgChatUnreadBadge() {
+  const badge = document.getElementById('og-chat-unread-badge');
+  if (!badge) return;
+  const show = isOgLikeStyleActive() && isMobileLayoutLike() && ogChatUnreadCount > 0;
+  badge.textContent = ogChatUnreadCount > 99 ? '99+' : String(Math.max(0, ogChatUnreadCount));
+  badge.style.display = show ? 'inline-flex' : 'none';
+}
+
+function resetOgChatUnreadState() {
+  ogChatUnreadCount = 0;
+  ogChatLastSeenMs = 0;
+  ogChatLastMessageMs = 0;
+  ogChatUnreadKey = '';
+  updateOgChatUnreadBadge();
+}
+
+function markOgChatSeen(latestMs = ogChatLastMessageMs) {
+  if (Number.isFinite(latestMs) && latestMs > 0) {
+    ogChatLastSeenMs = Math.max(ogChatLastSeenMs, latestMs);
+    ogChatLastMessageMs = Math.max(ogChatLastMessageMs, latestMs);
+  }
+  ogChatUnreadCount = 0;
+  updateOgChatUnreadBadge();
+}
+
+function refreshOgChatUnreadFromMessages(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  const gameId = String(currentGame?.id || '').trim();
+  const team = String(operativeChatTeamViewing || spectatorChatTeam || getMyTeamColor() || '').trim();
+  const key = `${gameId}:${team}`;
+  const myId = String(getUserId() || '').trim();
+
+  let latestMs = 0;
+  let unread = 0;
+  for (const msg of list) {
+    const date = resolveChatMessageDate(msg);
+    const ms = (date instanceof Date) ? date.getTime() : 0;
+    if (!Number.isFinite(ms) || ms <= 0) continue;
+    if (ms > latestMs) latestMs = ms;
+    if (ms > ogChatLastSeenMs && String(msg?.senderId || '').trim() !== myId) unread += 1;
+  }
+
+  // On first load (or when switching game/team chat), don't show historical messages as unread.
+  if (key !== ogChatUnreadKey) {
+    ogChatUnreadKey = key;
+    ogChatLastMessageMs = latestMs;
+    ogChatLastSeenMs = latestMs;
+    ogChatUnreadCount = 0;
+    updateOgChatUnreadBadge();
+    return;
+  }
+
+  if (latestMs > ogChatLastMessageMs) ogChatLastMessageMs = latestMs;
+  const chatOpen = !!document.getElementById('og-chat-slidedown')?.classList.contains('open');
+  const shouldTrack = isOgLikeStyleActive() && isMobileLayoutLike();
+  if (!shouldTrack || chatOpen) {
+    markOgChatSeen(latestMs);
+    return;
+  }
+
+  ogChatUnreadCount = Math.max(0, unread);
+  updateOgChatUnreadBadge();
+}
+
 function initOperativeChat() {
   if (!currentGame?.id) return;
 
@@ -7524,14 +7612,17 @@ function renderOperativeChat(messages) {
   const container = document.getElementById('operative-chat-messages');
   if (!container) return;
 
+  const list = Array.isArray(messages) ? messages : [];
+  refreshOgChatUnreadFromMessages(list);
+
   const odId = getUserId();
 
-  if (!messages || messages.length === 0) {
+  if (!list.length) {
     container.innerHTML = '<div class="chat-empty-state">No messages yet. Discuss with your team!</div>';
     return;
   }
 
-  container.innerHTML = messages.map(msg => {
+  container.innerHTML = list.map(msg => {
     const isMe = msg.senderId === odId;
     const time = formatTime(resolveChatMessageDate(msg));
     const teamColor = operativeChatTeamViewing || getMyTeamColor() || 'red';
@@ -8784,6 +8875,7 @@ function cleanupAdvancedFeatures() {
     operativeChatUnsub();
     operativeChatUnsub = null;
   }
+  resetOgChatUnreadState();
 
   cardTags = {};
   pendingCardSelection = null;

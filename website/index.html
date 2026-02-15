@@ -221,13 +221,13 @@
           <div class="launch-mode-row">
             <button class="mode-card" id="launch-quick-play" type="button">
               <div class="mode-card-icon">⚡</div>
-              <div class="mode-card-title">Quick Match</div>
+              <div class="mode-card-title">Multiplayer</div>
               <div class="mode-card-desc">Jump into a casual live game.</div>
             </button>
 
             <button class="mode-card" id="launch-practice" type="button">
               <div class="mode-card-icon">🤖</div>
-              <div class="mode-card-title">Practice</div>
+              <div class="mode-card-title">Singleplayer</div>
               <div class="mode-card-desc">Pick a vibe, pick a role, scrim with AIs.</div>
             </button>
 
@@ -397,7 +397,7 @@
         <section class="panel panel-practice" id="panel-practice">
           <div class="panel-inner">
             <div class="page-topbar">
-              <h2 class="page-title">Practice</h2>
+              <h2 class="page-title">Singleplayer</h2>
             </div>
             <p class="subtitle small">Choose a role, choose a team size, set a board vibe, then jump in.</p>
 
@@ -443,7 +443,7 @@
                 <div class="practice-step-title">3) Board vibe</div>
                 <div class="practice-vibe-row">
                   <input class="input practice-vibe" id="practice-page-vibe" type="text" placeholder="e.g. cozy cafe, cyberpunk noir, ocean animals…" autocomplete="off" />
-                  <button class="btn primary" id="practice-page-start" type="button" disabled>Start Practice</button>
+                  <button class="btn primary" id="practice-page-start" type="button" disabled>Start Singleplayer</button>
                 </div>
                 <div class="hint" id="practice-page-hint"></div>
               </div>
@@ -530,7 +530,7 @@
               <div class="mode-cards">
                 <button class="mode-card" id="select-quick-play" type="button">
                   <div class="mode-card-icon">⚡</div>
-                  <div class="mode-card-title">Quick Play</div>
+                  <div class="mode-card-title">Multiplayer</div>
                   <div class="mode-card-desc">Jump into a casual game. Pick your team color, customize settings, and play instantly.</div>
                 </button>
 
@@ -551,7 +551,7 @@
             <!-- Quick Play Lobby -->
             <div id="quick-play-lobby" style="display:none;">
               <div class="lobby-header">
-                <h2>Quick Play</h2>
+                <h2>Multiplayer</h2>
               </div>
 
               <!-- Player Name Check -->
@@ -635,9 +635,9 @@
                 <!-- Settings modal -->
                 <div class="modal" id="quick-settings-modal" aria-hidden="true" style="display:none;">
                   <div class="modal-backdrop" id="quick-settings-backdrop"></div>
-                  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Quick Play Settings">
+                  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Multiplayer Settings">
                     <div class="modal-head">
-                      <div class="modal-title">Quick Play Settings</div>
+                      <div class="modal-title">Multiplayer Settings</div>
                       <button class="icon-btn" id="quick-settings-close" type="button" aria-label="Close settings">✕</button>
                     </div>
 
@@ -757,7 +757,9 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                   </button>
                   <button class="og-topbar-btn" type="button" id="og-chat-toggle-btn">
-                    <svg class="og-topbar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Chat</button>
+                    <svg class="og-topbar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Chat
+                    <span class="og-chat-unread-badge" id="og-chat-unread-badge" aria-label="Unread chat messages" style="display:none;">0</span>
+                  </button>
                   <button class="og-topbar-btn" type="button" id="og-gamelog-toggle-btn">
                     <svg class="og-topbar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Game Log</button>
                 </div>
@@ -1154,7 +1156,7 @@
         <div class="modal-backdrop" id="practice-backdrop"></div>
         <div class="modal-card practice-card" role="dialog" aria-modal="true" aria-label="Practice setup">
           <div class="modal-head">
-            <div class="modal-title">Practice</div>
+            <div class="modal-title">Singleplayer</div>
             <button class="icon-btn" id="practice-close" type="button" aria-label="Close">✕</button>
           </div>
 
@@ -1195,7 +1197,7 @@
             <div class="hint" id="practice-hint"></div>
 
             <div class="form-actions" style="margin-top: 14px;">
-              <button class="btn primary" id="practice-start" type="button">Start Practice</button>
+              <button class="btn primary" id="practice-start" type="button">Start Singleplayer</button>
               <button class="btn" id="practice-cancel" type="button">Cancel</button>
             </div>
           </div>

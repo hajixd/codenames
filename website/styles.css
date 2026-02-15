@@ -22477,6 +22477,62 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded.clue-team-blue {
   border-color: color-mix(in srgb, var(--game-blue, #5ab7ff) 54%, rgba(255, 255, 255, 0.15) 46%);
 }
 
+/* End Turn pill mirrors clue team color. */
+.operative-actions-expanded.clue-team-red .btn {
+  background: color-mix(in srgb, var(--game-red, #ff6b5d) 22%, var(--surface) 78%);
+  border: 1px solid color-mix(in srgb, var(--game-red, #ff6b5d) 44%, var(--border) 56%);
+  border-radius: 999px;
+}
+
+.operative-actions-expanded.clue-team-blue .btn {
+  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 22%, var(--surface) 78%);
+  border: 1px solid color-mix(in srgb, var(--game-blue, #5ab7ff) 44%, var(--border) 56%);
+  border-radius: 999px;
+}
+
+body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-red .btn {
+  background: color-mix(in srgb, var(--game-red, #ff6b5d) 32%, rgba(18, 20, 26, 0.88) 68%);
+  border-color: color-mix(in srgb, var(--game-red, #ff6b5d) 56%, rgba(255, 255, 255, 0.16) 44%);
+  color: #fff;
+}
+
+body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
+  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 32%, rgba(18, 20, 26, 0.88) 68%);
+  border-color: color-mix(in srgb, var(--game-blue, #5ab7ff) 56%, rgba(255, 255, 255, 0.16) 44%);
+  color: #fff;
+}
+
+.operative-actions-expanded.clue-team-red .btn:disabled,
+.operative-actions-expanded.clue-team-blue .btn:disabled {
+  opacity: 0.55;
+}
+
+/* Mobile unread count on OG top Chat button */
+#og-chat-toggle-btn {
+  position: relative;
+}
+
+.og-chat-unread-badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
 /* Keep mobile OG Chat and Game Log expansion exactly the same size. */
 @media (max-width: 1024px), (max-height: 560px) and (hover: none) and (pointer: coarse) {
   .og-gamelog-slidedown.open,
