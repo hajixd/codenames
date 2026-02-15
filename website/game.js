@@ -5655,7 +5655,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       } else if (currentGame.currentPhase === 'spymaster') {
         ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
       } else if (currentGame.currentPhase === 'operatives') {
-        ogText.textContent = '';
+        // Desktop-only guidance above the board.
+        ogText.textContent = isMobileLayoutLike() ? '' : 'GUESS THE WORDS';
       } else if (currentGame.currentPhase === 'waiting') {
         ogText.textContent = '';
       } else if (currentGame.currentPhase === 'role-selection') {
