@@ -22837,7 +22837,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .game-sidebar {
     overflow: visible;
-    align-self: start;
+    align-self: end;
   }
 
   .clue-history-panel,

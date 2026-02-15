@@ -8400,7 +8400,8 @@ const PRESENCE_WHERE_LABELS = {
   menus: 'In Multiplayer',
   tournament: 'In Teams',
   lobby: 'In Multiplayer',
-  game: 'In Multiplayer'
+  game: 'In Multiplayer',
+  practice: 'In Singleplayer'
 };
 
 function computeLocalPresenceWhereKey() {
@@ -8417,6 +8418,11 @@ function computeLocalPresenceWhereKey() {
   // 1) If the game board is visible, we're either in lobby (waiting) or actively in a game.
   const gameBoard = document.getElementById('game-board-container');
   if (isDisplayed(gameBoard)) {
+    try {
+      if (typeof window.isPracticeGameActive === 'function' && window.isPracticeGameActive()) {
+        return 'practice';
+      }
+    } catch (_) {}
     const phase = (typeof window.getCurrentGamePhase === 'function') ? window.getCurrentGamePhase() : null;
     if (phase && phase !== 'waiting') return 'game';
     return 'lobby';
@@ -8449,10 +8455,12 @@ function computeLocalPresenceWhereKey() {
 
 function getPresencePanelLabel(presence) {
   const panelId = String(presence?.activePanelId || '').trim();
+  const whereKey = String(presence?.whereKey || presence?.where || '').trim();
   if (!panelId) return '';
   if (panelId === 'panel-practice') return 'In Singleplayer';
   if (panelId === 'panel-brackets') return 'In Brackets';
   if (panelId === 'panel-teams' || panelId === 'panel-home' || panelId === 'panel-myteam') return 'In Teams';
+  if (panelId === 'panel-game' && whereKey === 'practice') return 'In Singleplayer';
   if (panelId === 'panel-game') return 'In Multiplayer';
   return '';
 }
