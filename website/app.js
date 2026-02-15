@@ -3889,10 +3889,6 @@ function renderBrackets(teams) {
           <div class="brx-round-title">Final</div>
           <div class="brx-match-stack is-final">
             ${renderBracketMatchCard(model.rounds.final, { isFinal: true })}
-            <div class="brx-champion" aria-hidden="true">
-              <div class="brx-champion-label">Champion</div>
-              <div class="brx-champion-value">Winner Final</div>
-            </div>
           </div>
         </section>
       </div>

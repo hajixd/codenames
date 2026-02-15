@@ -22034,7 +22034,7 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
   opacity: 1;
 }
 
-/* ==================== Bracket Compact Pass ==================== */
+/* ==================== Bracket Cleanup Pass ==================== */
 #panel-brackets .panel-inner{
   max-width: min(980px, 100%);
   padding: clamp(14px, 1.8vw, 22px);
@@ -22052,28 +22052,64 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
 }
 
 #brackets-board .brx-grid{
+  --brx-grid-gap: 18px;
+  --brx-wire-gap: calc(var(--brx-grid-gap) / 2);
+  --brx-lane-height: 420px;
+  --brx-wire-color: color-mix(in srgb, var(--border) 74%, transparent 26%);
   grid-template-columns: minmax(230px, 1.08fr) minmax(205px, 0.96fr) minmax(188px, 0.84fr);
-  gap: 10px;
-  min-width: 700px;
+  gap: var(--brx-grid-gap);
+  min-width: 730px;
 }
 
 #brackets-board .brx-round{
-  border-radius: 12px;
-  padding: 8px;
+  position: relative;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 #brackets-board .brx-round-title{
   font-size: 10px;
   letter-spacing: 0.7px;
-  margin-bottom: 7px;
+  margin: 0 0 7px 2px;
 }
 
 #brackets-board .brx-match-stack{
-  gap: 7px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--brx-lane-height);
 }
 
-#brackets-board .brx-round-sf .brx-match:first-child{ margin-bottom: 24px; }
-#brackets-board .brx-round-f .brx-match.is-final{ margin-top: 44px; }
+#brackets-board .brx-round-qf .brx-match-stack{
+  justify-content: space-between;
+}
+
+#brackets-board .brx-round-sf .brx-match-stack{
+  justify-content: center;
+  gap: 92px;
+}
+
+#brackets-board .brx-round-f .brx-match-stack{
+  justify-content: center;
+}
+
+#brackets-board .brx-round .brx-match{
+  margin: 0;
+}
+
+#brackets-board .brx-round-sf .brx-match:first-child,
+#brackets-board .brx-round-f .brx-match.is-final{
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+#brackets-board .brx-round-f .brx-match-stack{
+  min-height: var(--brx-lane-height);
+}
 
 #brackets-board .brx-match{
   border-radius: 10px;
@@ -22117,13 +22153,26 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
 }
 
 #brackets-board .brx-slot.is-team{
-  padding-left: 12px;
+  padding-left: 8px;
+  border-color: color-mix(in srgb, var(--team-accent, var(--accent)) 48%, var(--border-soft) 52%);
+  background: color-mix(in srgb, var(--team-accent, var(--accent)) 36%, var(--surface2) 64%);
+}
+
+body.light-mode #brackets-board .brx-slot.is-team{
+  background: color-mix(in srgb, var(--team-accent, var(--accent)) 30%, #ffffff 70%);
+}
+
+#brackets-board .brx-slot.is-team:hover{
+  border-color: color-mix(in srgb, var(--team-accent, var(--accent)) 62%, var(--border-soft) 38%);
+  background: color-mix(in srgb, var(--team-accent, var(--accent)) 42%, var(--surface2) 58%);
+}
+
+body.light-mode #brackets-board .brx-slot.is-team:hover{
+  background: color-mix(in srgb, var(--team-accent, var(--accent)) 34%, #ffffff 66%);
 }
 
 #brackets-board .brx-slot.is-team::before{
-  left: 6px;
-  top: 7px;
-  bottom: 7px;
+  display: none;
 }
 
 #brackets-board .brx-slot-you{
@@ -22132,19 +22181,56 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
   padding: 1px 6px;
 }
 
-#brackets-board .brx-champion{
-  margin-top: 8px;
-  border-radius: 10px;
-  padding: 8px 10px;
+#brackets-board .brx-round-qf .brx-match::after,
+#brackets-board .brx-round-sf .brx-match::before,
+#brackets-board .brx-round-sf .brx-match::after,
+#brackets-board .brx-round-f .brx-match::before{
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: var(--brx-wire-gap);
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--brx-wire-color);
+  pointer-events: none;
 }
 
-#brackets-board .brx-champion-label{
-  font-size: 9px;
+#brackets-board .brx-round-qf .brx-match::after,
+#brackets-board .brx-round-sf .brx-match::after{
+  right: calc(-1 * var(--brx-wire-gap));
 }
 
-#brackets-board .brx-champion-value{
-  margin-top: 2px;
-  font-size: 12px;
+#brackets-board .brx-round-sf .brx-match::before,
+#brackets-board .brx-round-f .brx-match::before{
+  left: calc(-1 * var(--brx-wire-gap));
+}
+
+#brackets-board .brx-round-qf .brx-match-stack::before,
+#brackets-board .brx-round-qf .brx-match-stack::after,
+#brackets-board .brx-round-sf .brx-match-stack::after{
+  content: "";
+  position: absolute;
+  width: 2px;
+  background: var(--brx-wire-color);
+  pointer-events: none;
+}
+
+#brackets-board .brx-round-qf .brx-match-stack::before{
+  right: calc(-1 * var(--brx-wire-gap));
+  top: 12.5%;
+  height: 25%;
+}
+
+#brackets-board .brx-round-qf .brx-match-stack::after{
+  right: calc(-1 * var(--brx-wire-gap));
+  top: 62.5%;
+  height: 25%;
+}
+
+#brackets-board .brx-round-sf .brx-match-stack::after{
+  right: calc(-1 * var(--brx-wire-gap));
+  top: 25%;
+  height: 50%;
 }
 
 .brx-pop-card{
@@ -22182,17 +22268,19 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
   }
 
   #brackets-board .brx-grid{
+    --brx-grid-gap: 12px;
+    --brx-lane-height: 360px;
     min-width: 640px;
     grid-template-columns: minmax(214px, 1.08fr) minmax(186px, 0.94fr) minmax(166px, 0.82fr);
-    gap: 8px;
+  }
+
+  #brackets-board .brx-round-sf .brx-match-stack{
+    gap: 74px;
   }
 
   #brackets-board .brx-round{
-    padding: 7px;
+    padding: 0;
   }
-
-  #brackets-board .brx-round-sf .brx-match:first-child{ margin-bottom: 20px; }
-  #brackets-board .brx-round-f .brx-match.is-final{ margin-top: 36px; }
 }
 
 /* Brackets match popup: fully opaque, centered, game-day detail layout. */
