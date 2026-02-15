@@ -8116,34 +8116,46 @@ function startGameTimer(endTime, phase) {
   const timerEl = document.getElementById('game-timer');
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
+  const ogTimerEl = document.getElementById('og-topbar-timer');
+  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
+  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
 
   if (!timerEl || !fillEl || !textEl) return;
 
   timerEl.style.display = 'flex';
+  if (ogTimerEl) ogTimerEl.style.display = 'inline-flex';
+  if (ogTimerPhaseEl) {
+    ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
+  }
 
-  const totalDuration = gameTimerEnd - Date.now();
+  const totalDuration = Math.max(1, gameTimerEnd - Date.now());
 
   gameTimerInterval = setInterval(() => {
     const remaining = Math.max(0, gameTimerEnd - Date.now());
     const seconds = Math.ceil(remaining / 1000);
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
+    const timerText = `${minutes}:${secs.toString().padStart(2, '0')}`;
 
-    textEl.textContent = `${minutes}:${secs.toString().padStart(2, '0')}`;
+    textEl.textContent = timerText;
+    if (ogTimerTextEl) ogTimerTextEl.textContent = timerText;
 
-    const percent = (remaining / totalDuration) * 100;
+    const percent = Math.max(0, Math.min(100, (remaining / totalDuration) * 100));
     fillEl.style.width = `${percent}%`;
 
     // Warning states
     fillEl.classList.remove('warning', 'danger');
     textEl.classList.remove('warning', 'danger');
+    ogTimerEl?.classList.remove('warning', 'danger');
 
     if (seconds <= 10) {
       fillEl.classList.add('danger');
       textEl.classList.add('danger');
+      ogTimerEl?.classList.add('danger');
     } else if (seconds <= 30) {
       fillEl.classList.add('warning');
       textEl.classList.add('warning');
+      ogTimerEl?.classList.add('warning');
     }
 
     if (remaining <= 0) {
@@ -8160,7 +8172,12 @@ function stopGameTimer() {
   gameTimerEnd = null;
 
   const timerEl = document.getElementById('game-timer');
+  const ogTimerEl = document.getElementById('og-topbar-timer');
   if (timerEl) timerEl.style.display = 'none';
+  if (ogTimerEl) {
+    ogTimerEl.style.display = 'none';
+    ogTimerEl.classList.remove('warning', 'danger');
+  }
 }
 
 /* =========================
@@ -9064,13 +9081,16 @@ async function handleCardConfirm(evt, cardIndex) {
           clearConfirmAnimationClasses(cardEl);
           return;
         }
-        const liveIsRevealed = !!currentGame?.cards?.[idx]?.revealed;
-        if (liveIsRevealed) {
+        if ((Date.now() - holdStartedAt) >= maxHoldMs) {
           clearConfirmAnimationClasses(cardEl);
           return;
         }
-        if ((Date.now() - holdStartedAt) >= maxHoldMs) {
-          clearConfirmAnimationClasses(cardEl);
+        // Keep the hold if Firestore has already marked the card revealed but
+        // this DOM node has not been re-rendered yet. Releasing here causes a
+        // one-frame front-face flash before the snapshot render swaps DOM.
+        const liveIsRevealed = !!currentGame?.cards?.[idx]?.revealed;
+        if (liveIsRevealed) {
+          window.setTimeout(releaseHoldWhenReady, 40);
           return;
         }
         window.setTimeout(releaseHoldWhenReady, 120);

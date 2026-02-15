@@ -15354,6 +15354,59 @@ body.cozy-mode .og-topbar {
   gap: 8px;
 }
 
+.og-topbar-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 92px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+  line-height: 1;
+}
+
+.og-topbar-timer-phase {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.75px;
+  text-transform: uppercase;
+  color: rgba(226, 235, 244, 0.8);
+}
+
+.og-topbar-timer-text {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.25px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.og-topbar-timer.warning .og-topbar-timer-text {
+  color: #facc15;
+}
+
+.og-topbar-timer.danger .og-topbar-timer-text {
+  color: #ef4444;
+}
+
+@media (max-width: 980px) {
+  .og-topbar-timer {
+    min-width: 0;
+    padding: 4px 8px;
+    gap: 6px;
+  }
+
+  .og-topbar-timer-phase {
+    display: none;
+  }
+
+  .og-topbar-timer-text {
+    font-size: 13px;
+  }
+}
+
 .og-topbar-btn {
   display: inline-flex;
   align-items: center;
