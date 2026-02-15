@@ -1908,6 +1908,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     cards,
     redMarkers: {},
     blueMarkers: {},
+    redConsidering: {},
+    blueConsidering: {},
     // game state
     currentPhase: 'spymaster',
     currentTeam: 'red',
@@ -3105,6 +3107,9 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
     // Team-visible markers (reset each game)
     redMarkers: {},
     blueMarkers: {},
+    // Team-visible "currently considering" chips
+    redConsidering: {},
+    blueConsidering: {},
     currentTeam: firstTeam,
     currentPhase: 'waiting',
     redSpymaster: null,
@@ -3482,6 +3487,10 @@ async function maybeAutoStartQuickPlay(game) {
 
       tx.update(ref, {
         cards,
+        redMarkers: {},
+        blueMarkers: {},
+        redConsidering: {},
+        blueConsidering: {},
         currentTeam: firstTeam,
         currentPhase: startPhase,
         redSpymaster: redSpy,
@@ -3566,6 +3575,10 @@ window.startQuickGame = async function startQuickGame(gameId) {
 
       tx.update(ref, {
         cards,
+        redMarkers: {},
+        blueMarkers: {},
+        redConsidering: {},
+        blueConsidering: {},
         currentTeam: firstTeam,
         currentPhase: startPhase,
         redSpymaster: redSpy,
@@ -4466,6 +4479,9 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
     // Team-visible markers (reset each game)
     redMarkers: {},
     blueMarkers: {},
+    // Team-visible "currently considering" chips
+    redConsidering: {},
+    blueConsidering: {},
     currentTeam: firstTeam,
     currentPhase: 'role-selection', // role-selection, spymaster, operatives, ended
     redSpymaster: null,
@@ -5409,11 +5425,13 @@ function renderBoard(isSpymaster) {
     pendingCardSelection = pendingIdx;
   }
 
-  const teamConsidering = (myTeamColor === 'red')
-    ? (currentGame?.redConsidering || {})
-    : (myTeamColor === 'blue')
-      ? (currentGame?.blueConsidering || {})
-      : {};
+  const turnTeam = (currentGame?.currentTeam === 'red' || currentGame?.currentTeam === 'blue')
+    ? currentGame.currentTeam
+    : null;
+  const canViewTurnConsidering = !!turnTeam && (spectator || (myTeamColor && myTeamColor === turnTeam));
+  const teamConsidering = canViewTurnConsidering
+    ? (turnTeam === 'red' ? (currentGame?.redConsidering || {}) : (currentGame?.blueConsidering || {}))
+    : {};
   const myOwnerId = getCurrentMarkerOwnerId();
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
@@ -5458,7 +5476,7 @@ function renderBoard(isSpymaster) {
             ${visibleConsidering.map(entry => {
               const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
-              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''}" title="${title}">${initials}</span>`;
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}" title="${title}">${initials}</span>`;
             }).join('')}
             ${consideringVisible.length > visibleConsidering.length
               ? `<span class="card-considering-chip more">+${consideringVisible.length - visibleConsidering.length}</span>`
@@ -5831,7 +5849,9 @@ function buildOgStructuredLog() {
 
     const teamRaw = String(clue.team || 'red').toLowerCase();
     const team = (teamRaw === 'blue' || teamRaw === 'red') ? teamRaw : 'red';
-    const spymaster = getTeamSpymasterName(team, currentGame) || 'Spymaster';
+    const teamRoster = getTeamPlayers(team, currentGame);
+    const spymasterRaw = getTeamSpymasterName(team, currentGame) || 'Spymaster';
+    const spymaster = displayNameFromRoster(spymasterRaw, teamRoster) || 'Spymaster';
     const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
     const clueWord = String(clue.word || '').trim() || 'CLUE';
     const clueNumberRaw = parseInt(clue.number, 10);
@@ -5841,7 +5861,10 @@ function buildOgStructuredLog() {
     // This makes the clue more visible and uses space more efficiently.
     const clueRow = `<div class="gamelog-clue-row">
         <div class="gamelog-clue-pill clue-with-avatar team-${escapeHtml(team)}">
-          <div class="gamelog-avatar">${escapeHtml(initial)}</div>
+          <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
+            <div class="gamelog-avatar">${escapeHtml(initial)}</div>
+            <div class="gamelog-avatar-name">${escapeHtml(spymaster)}</div>
+          </div>
           <div class="gamelog-clue-word">${escapeHtml(clueWord)}</div>
           <div class="gamelog-clue-count">${escapeHtml(String(clueNumber))}</div>
         </div>
@@ -6998,6 +7021,7 @@ function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId 
         initials: String(value?.initials || '?').slice(0, 3).toUpperCase(),
         name: String(value?.name || '').trim(),
         ts,
+        isAI: owner.startsWith('ai:') || owner.startsWith('ai_'),
         isMine: !!(myOwnerId && owner === myOwnerId),
       };
     })

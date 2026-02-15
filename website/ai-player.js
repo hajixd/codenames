@@ -1059,10 +1059,74 @@ function _normalizeMarkerBucket(raw) {
   return out;
 }
 
+function _normalizeConsideringBucket(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [owner, value] of Object.entries(raw || {})) {
+    const id = String(owner || '').trim();
+    if (!id) continue;
+    if (typeof value === 'string') {
+      const name = String(value || '').trim();
+      out[id] = {
+        initials: _nameInitials(name),
+        name,
+        ts: Date.now()
+      };
+      continue;
+    }
+    if (!value || typeof value !== 'object') continue;
+    const name = String(value.name || value.n || '').trim();
+    const initialsRaw = String(value.initials || value.i || '').trim();
+    const initials = (initialsRaw || _nameInitials(name)).slice(0, 3).toUpperCase();
+    const ts = Number(value.ts || value.t || 0);
+    out[id] = {
+      initials: initials || '?',
+      name,
+      ts: Number.isFinite(ts) ? ts : 0
+    };
+  }
+  return out;
+}
+
 function _markerOwnerId(input) {
   const raw = String(input || '').trim();
   if (!raw) return 'legacy';
   return raw.startsWith('ai:') || raw.startsWith('u:') ? raw : `ai:${raw}`;
+}
+
+function _nameInitials(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '?';
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    return `${tokens[0][0] || ''}${tokens[1][0] || ''}`.toUpperCase();
+  }
+  const plain = raw.replace(/[^a-zA-Z0-9]/g, '');
+  if (!plain) return '?';
+  return plain.slice(0, 2).toUpperCase();
+}
+
+function _pickAIConsideringIndex(decisionLike) {
+  const action = String(decisionLike?.action || '').toLowerCase().trim();
+  if (action === 'end_turn') return null;
+
+  const marks = Array.isArray(decisionLike?.marks) ? decisionLike.marks : [];
+  let fallbackMaybe = null;
+  let fallbackNo = null;
+  for (const m of marks) {
+    const idx = Number(m?.index);
+    const tag = String(m?.tag || '').toLowerCase().trim();
+    if (!Number.isFinite(idx) || idx < 0) continue;
+    if (tag === 'yes') return idx;
+    if (tag === 'maybe' && fallbackMaybe === null) fallbackMaybe = idx;
+    if (tag === 'no' && fallbackNo === null) fallbackNo = idx;
+  }
+  if (fallbackMaybe !== null) return fallbackMaybe;
+  if (fallbackNo !== null) return fallbackNo;
+
+  const idx = Number(decisionLike?.index);
+  if (action === 'guess' && Number.isFinite(idx) && idx >= 0) return idx;
+  return null;
 }
 
 async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag, ownerId = 'legacy') {
@@ -1101,47 +1165,55 @@ async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag, ownerId = 
   } catch (_) {}
 }
 
-async function syncAIMarkerSet(gameId, team, ai, marks) {
+async function syncAIConsideringState(gameId, team, ai, decisionLike) {
   try {
     if (!gameId || !ai || !ai.id) return;
-    const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
+    const markersField = (team === 'red') ? 'redMarkers' : 'blueMarkers';
+    const consideringField = (team === 'red') ? 'redConsidering' : 'blueConsidering';
     const owner = _markerOwnerId(ai.id);
-    const desired = new Map();
-
-    for (const m of (Array.isArray(marks) ? marks : [])) {
-      const idx = Number(m?.index);
-      const t = String(m?.tag || '').toLowerCase().trim();
-      if (!Number.isFinite(idx) || idx < 0) continue;
-      if (!['yes', 'maybe', 'no'].includes(t)) continue;
-      desired.set(String(idx), t);
-    }
+    const desiredIdx = _pickAIConsideringIndex(decisionLike);
+    const rawAiName = String(ai?.name || '').trim() || 'AI';
+    const name = /^ai\s+/i.test(rawAiName) ? rawAiName : `AI ${rawAiName}`;
+    const initials = _nameInitials(rawAiName);
 
     const ref = db.collection('games').doc(String(gameId));
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) return;
       const game = snap.data() || {};
-      const markers = { ...(game?.[field] || {}) };
+      const markers = { ...(game?.[markersField] || {}) };
+      const considering = { ...(game?.[consideringField] || {}) };
 
-      // Remove stale marks owned by this AI first.
       for (const [idx, raw] of Object.entries(markers)) {
         const bucket = _normalizeMarkerBucket(raw);
-        if (bucket[owner] && !desired.has(String(idx))) {
-          delete bucket[owner];
-          if (Object.keys(bucket).length) markers[idx] = bucket;
-          else delete markers[idx];
+        if (!bucket[owner]) continue;
+        delete bucket[owner];
+        if (Object.keys(bucket).length) markers[idx] = bucket;
+        else delete markers[idx];
+      }
+
+      for (const key of Object.keys(considering)) {
+        const bucket = _normalizeConsideringBucket(considering[key]);
+        delete bucket[owner];
+        if (Object.keys(bucket).length) considering[key] = bucket;
+        else delete considering[key];
+      }
+
+      if (Number.isFinite(desiredIdx) && desiredIdx >= 0) {
+        const idx = Number(desiredIdx);
+        const cards = Array.isArray(game?.cards) ? game.cards : [];
+        const card = cards[idx];
+        if (card && !card.revealed) {
+          const key = String(idx);
+          const bucket = _normalizeConsideringBucket(considering[key]);
+          bucket[owner] = { initials, name, ts: Date.now() };
+          considering[key] = bucket;
         }
       }
 
-      // Apply latest marks.
-      for (const [idx, t] of desired.entries()) {
-        const bucket = _normalizeMarkerBucket(markers[idx]);
-        bucket[owner] = t;
-        markers[idx] = bucket;
-      }
-
       tx.update(ref, {
-        [field]: markers,
+        [markersField]: markers,
+        [consideringField]: considering,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
@@ -1979,8 +2051,8 @@ async function runOperativeCouncil(game, team) {
 
       proposalsByAi.set(ai.id, prop);
 
-      // Share markers (team-visible) and short chat to coordinate
-      await syncAIMarkerSet(game.id, team, ai, prop?.marks || []);
+      // Share current AI focus with teammates via considering chips.
+      await syncAIConsideringState(game.id, team, ai, prop);
       if (prop?.chat) await sendAIChatMessage(ai, working, prop.chat);
 
       core.lastSuggestionKey = key;
@@ -2029,8 +2101,8 @@ async function runOperativeCouncil(game, team) {
             chat = await rewriteDraftChatAfterUpdate(ai, working, 'operative', chat, chatBefore.docs, chatAfter.docs);
           }
 
-          // Apply any new markers.
-          await syncAIMarkerSet(game.id, team, ai, follow.marks || []);
+          // Update the AI's current focus indicator.
+          await syncAIConsideringState(game.id, team, ai, follow);
 
           // Update this AI's latest lean if it provided one.
           if (follow.action === 'guess' || follow.action === 'end_turn') {
