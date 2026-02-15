@@ -3872,21 +3872,18 @@ function renderBrackets(teams) {
       <div class="brx-status">${esc(status)}</div>
       <div class="brx-grid">
         <section class="brx-round brx-round-qf" aria-label="Quarterfinals">
-          <div class="brx-round-title">Quarterfinals</div>
           <div class="brx-match-stack">
             ${model.rounds.quarterfinals.map(m => renderBracketMatchCard(m)).join('')}
           </div>
         </section>
 
         <section class="brx-round brx-round-sf" aria-label="Semifinals">
-          <div class="brx-round-title">Semifinals</div>
           <div class="brx-match-stack is-spread">
             ${model.rounds.semifinals.map(m => renderBracketMatchCard(m)).join('')}
           </div>
         </section>
 
         <section class="brx-round brx-round-f" aria-label="Final">
-          <div class="brx-round-title">Final</div>
           <div class="brx-match-stack is-final">
             ${renderBracketMatchCard(model.rounds.final, { isFinal: true })}
           </div>
