@@ -6749,6 +6749,31 @@ let settingsVolume = 70;
 let settingsStyleMode = 'online'; // only supported style
 // Audio context for sound effects
 let audioCtx = null;
+let audioUnlocked = false;
+let audioUnlockListenersAttached = false;
+
+function unlockAudioFromGesture() {
+  audioUnlocked = true;
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (_) {
+      return;
+    }
+  }
+  if (audioCtx.state === 'suspended') {
+    try { void audioCtx.resume(); } catch (_) {}
+  }
+}
+
+function attachAudioUnlockListeners() {
+  if (audioUnlockListenersAttached) return;
+  audioUnlockListenersAttached = true;
+  const onceOpts = { once: true, capture: true };
+  document.addEventListener('pointerdown', unlockAudioFromGesture, onceOpts);
+  document.addEventListener('touchstart', unlockAudioFromGesture, onceOpts);
+  document.addEventListener('keydown', unlockAudioFromGesture, onceOpts);
+}
 
 function initSettings() {
   // Load saved settings from localStorage
@@ -6764,6 +6789,10 @@ function initSettings() {
   // Only Codenames Online style is supported.
   settingsStyleMode = normalizeStyleMode(savedStyleMode);
   if (savedStyleMode !== 'online') safeLSSet(LS_SETTINGS_STYLE_MODE, 'online');
+
+  // Browser autoplay policies require a user gesture before audio playback.
+  // We arm listeners early so WebAudio unlocks on the first interaction.
+  attachAudioUnlockListeners();
 
   // Keep legacy keys consistent for older installs
   syncLegacyStyleKeys();
@@ -7309,6 +7338,7 @@ function applyAnimationsSetting() {
 
 // Sound Effects System using Web Audio API
 function getAudioContext() {
+  if (!audioUnlocked) return null;
   if (!audioCtx) {
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -7317,10 +7347,7 @@ function getAudioContext() {
       return null;
     }
   }
-  // Resume if suspended (required for autoplay policies)
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
+  if (audioCtx.state !== 'running') return null;
   return audioCtx;
 }
 
