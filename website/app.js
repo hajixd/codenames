@@ -3862,14 +3862,8 @@ function renderBrackets(teams) {
   const model = buildBracketModel(teams);
   if (pill) pill.textContent = String(model.visibleCount);
 
-  const missing = Math.max(0, 8 - model.seededCount);
-  const status = missing > 0
-    ? `${missing} more team${missing === 1 ? '' : 's'} needed for a full 8-team bracket.`
-    : 'Top 8 teams are seeded by roster size, then alphabetically.';
-
   board.innerHTML = `
     <div class="brx-shell" aria-label="Tournament bracket">
-      <div class="brx-status">${esc(status)}</div>
       <div class="brx-grid">
         <section class="brx-round brx-round-qf" aria-label="Quarterfinals">
           <div class="brx-match-stack">

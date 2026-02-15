@@ -22041,9 +22041,11 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
 }
 
 #brackets-board .brx-shell{
-  border-radius: 14px;
-  padding: 10px 10px 12px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
 }
 
 #brackets-board .brx-status{
@@ -22122,6 +22124,11 @@ body.cozy-mode #brackets-board .brx-round{
 #brackets-board .brx-match{
   border-radius: 10px;
   padding: 7px;
+  background: color-mix(in srgb, var(--surface) 64%, transparent 36%);
+}
+
+body.light-mode #brackets-board .brx-match{
+  background: color-mix(in srgb, #ffffff 72%, transparent 28%);
 }
 
 #brackets-board .brx-match-head{
@@ -22271,8 +22278,8 @@ body.light-mode #brackets-board .brx-slot.is-team:hover{
   }
 
   #brackets-board .brx-shell{
-    padding: 6px;
-    border-radius: 10px;
+    padding: 0;
+    border-radius: 0;
   }
 
   #brackets-board .brx-status{
