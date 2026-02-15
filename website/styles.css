@@ -22807,8 +22807,8 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   /* Safer "higher" adjustments: tighten internal top spacing instead of translating containers. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-phase-banner {
-    margin-top: 0;
-    padding: 2px 0 4px;
+    margin-top: -8px;
+    padding: 0 0 4px;
     position: relative;
     z-index: 26;
     overflow: visible;
@@ -22823,6 +22823,10 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     padding-bottom: 13px;
   }
 
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-operatives {
+    margin-top: -12px;
+  }
+
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .online-roster-title {
     margin: 4px 0 2px;
   }
@@ -22830,7 +22834,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel .og-score-block {
     padding-top: 0;
     padding-bottom: 0;
-    margin-top: -4px;
+    margin-top: -7px;
     margin-bottom: 1px;
   }
 
@@ -22929,6 +22933,10 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     align-self: stretch;
     justify-content: flex-end;
     padding-top: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-sidebar {
+    justify-content: flex-start;
   }
 
   .clue-history-panel,
