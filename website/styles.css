@@ -5269,7 +5269,9 @@ button.player-tag.pill-action:disabled{
 }
 
 .panel-game.game-active {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Game Lobby */
