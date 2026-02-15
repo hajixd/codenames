@@ -22769,8 +22769,14 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     --desktop-game-scale: 1;
   }
 
+  .panel-game.game-active .panel-inner {
+    justify-content: flex-end;
+  }
+
   #game-board-container.game-container-expanded {
     zoom: var(--desktop-game-scale);
+    margin-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 45vh), 160px);
+    margin-bottom: 0;
   }
 
   @supports not (zoom: 1) {
@@ -22780,6 +22786,10 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
       width: calc(100% / var(--desktop-game-scale));
       margin-inline: auto;
     }
+  }
+
+  .panel-game.game-active .game-sidebar {
+    padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 32vh), 120px);
   }
 
   /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
@@ -22839,6 +22849,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     overflow: visible;
     align-self: stretch;
     justify-content: flex-end;
+    padding-top: 0;
   }
 
   .clue-history-panel,
@@ -22876,17 +22887,52 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
 /* Team-colored thin borders for in-game chat + game log */
 .operative-chat-panel.chat-team-red {
-  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 44%, var(--border) 56%);
+  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 60%, var(--border) 40%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-red, #dc2626) 24%, transparent);
 }
 
 .operative-chat-panel.chat-team-blue {
-  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 44%, var(--border) 56%);
+  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 60%, var(--border) 40%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-blue, #2563eb) 24%, transparent);
 }
 
 #game-board-container.turn-red .game-log-panel {
-  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 44%, var(--border) 56%);
+  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 60%, var(--border) 40%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-red, #dc2626) 24%, transparent);
 }
 
 #game-board-container.turn-blue .game-log-panel {
-  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 44%, var(--border) 56%);
+  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 60%, var(--border) 40%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-blue, #2563eb) 24%, transparent);
+}
+
+/* OG/Cozy: force visible team-colored outlines on the rendered chat/log surfaces. */
+body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-red {
+  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 62%, rgba(255,255,255,0.22) 38%) !important;
+  border-radius: 14px;
+}
+
+body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue {
+  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 62%, rgba(255,255,255,0.22) 38%) !important;
+  border-radius: 14px;
+}
+
+body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-red .operative-chat-messages {
+  border-color: color-mix(in srgb, var(--game-red, #dc2626) 62%, rgba(255,255,255,0.20) 38%) !important;
+}
+
+body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue .operative-chat-messages {
+  border-color: color-mix(in srgb, var(--game-blue, #2563eb) 62%, rgba(255,255,255,0.20) 38%) !important;
+}
+
+#game-board-container.turn-red .og-gamelog-slidedown-inner.gamelog-shell {
+  border: 1px solid color-mix(in srgb, var(--game-red, #dc2626) 62%, rgba(255,255,255,0.24) 38%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-red, #dc2626) 22%, transparent);
+  border-radius: 14px;
+}
+
+#game-board-container.turn-blue .og-gamelog-slidedown-inner.gamelog-shell {
+  border: 1px solid color-mix(in srgb, var(--game-blue, #2563eb) 62%, rgba(255,255,255,0.24) 38%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-blue, #2563eb) 22%, transparent);
+  border-radius: 14px;
 }
