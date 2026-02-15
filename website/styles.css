@@ -22042,9 +22042,19 @@ body.cozy-mode #game-board-container.turn-red.turn-spymaster #og-mobile-red .og-
 
 #brackets-board .brx-shell{
   border: 0;
+  border-style: none;
   border-radius: 0;
   background: transparent;
   padding: 0;
+  box-shadow: none;
+}
+
+body.light-mode #brackets-board .brx-shell,
+body.og-mode #brackets-board .brx-shell,
+body.cozy-mode #brackets-board .brx-shell{
+  border: 0;
+  border-style: none;
+  background: transparent;
   box-shadow: none;
 }
 
