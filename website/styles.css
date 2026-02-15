@@ -21322,9 +21322,14 @@ body.cozy-mode .og-chat-slidedown {
   overflow: hidden;
 }
 
+.og-chat-slidedown.open .og-chat-slidedown-inner {
+  height: calc(60vh - 16px);
+}
+
 .og-chat-slidedown-body {
   flex: 1;
   min-height: 0;
+  height: calc(60vh - 56px);
   max-height: calc(60vh - 56px);
   overflow: hidden;
   display: flex;
@@ -21367,19 +21372,21 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
 
 body.og-mode #og-mobile-chat-host .operative-chat-messages,
 body.cozy-mode #og-mobile-chat-host .operative-chat-messages {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 body.og-mode #og-mobile-chat-host .operative-chat-form,
 body.cozy-mode #og-mobile-chat-host .operative-chat-form {
   margin-top: 8px;
   flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  position: relative;
+  bottom: auto;
+  z-index: 3;
 }
 
 /* Desktop: tune docked chat to match the Game Log shell proportions and vibe. */
@@ -21541,11 +21548,16 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
     max-height: 50vh;
   }
 
+  .og-chat-slidedown.open .og-chat-slidedown-inner {
+    height: calc(50vh - 8px);
+  }
+
   .og-gamelog-slidedown-inner .gamelog-entries {
     max-height: calc(50vh - 50px);
   }
 
   .og-chat-slidedown-body {
+    height: calc(50vh - 50px);
     max-height: calc(50vh - 50px);
   }
 
@@ -21672,6 +21684,7 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.is-expanded {
+    min-height: 150px;
     max-height: 190px;
     transform: translateY(-1px);
     box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35);
@@ -21687,6 +21700,37 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
     outline: 2px solid rgba(255, 255, 255, 0.78);
     outline-offset: 1px;
   }
+}
+
+/* Ensure mobile roster box expansion still works on touch devices with wider viewports. */
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box {
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: max-height 220ms ease, min-height 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+}
+
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box .og-player-slots {
+  max-height: 42px;
+  overflow: hidden;
+  transition: max-height 220ms ease;
+}
+
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.og-mobile-box-spy .og-player-slots {
+  max-height: 34px;
+}
+
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.is-expanded {
+  min-height: 150px;
+  max-height: 200px !important;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35);
+}
+
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.is-expanded .og-player-slots {
+  max-height: 140px;
+  overflow: auto;
+  padding-right: 2px;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Strongly grey out non-active roster sections so the active turn stands out. */

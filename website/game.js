@@ -2346,7 +2346,8 @@ function setupOgGamelogSlidedown() {
   };
 
   bindScrollBoundaryLock(entries, isOpen);
-  bindScrollBoundaryLock(chatBody, isChatOpen);
+  const chatMessages = document.getElementById('operative-chat-messages');
+  bindScrollBoundaryLock(chatMessages || chatBody, isChatOpen);
 }
 
 /* =========================
@@ -5086,8 +5087,6 @@ function bindOgMobileBoxExpanders() {
       toggleBox(box);
     };
     panels.addEventListener('click', handleToggleEvent);
-    panels.addEventListener('pointerup', handleToggleEvent);
-    panels.addEventListener('touchend', handleToggleEvent, { passive: true });
     panels.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       const box = e.target?.closest?.('.og-mobile-box');
