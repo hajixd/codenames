@@ -22066,7 +22066,7 @@ body.cozy-mode #brackets-board .brx-shell{
 #brackets-board .brx-grid{
   --brx-grid-gap: 18px;
   --brx-wire-gap: calc(var(--brx-grid-gap) / 2);
-  --brx-lane-height: 500px;
+  --brx-lane-height: 620px;
   --brx-wire-color: rgba(255, 255, 255, 0.98);
   grid-template-columns: minmax(230px, 1.08fr) minmax(205px, 0.96fr) minmax(188px, 0.84fr);
   gap: var(--brx-grid-gap);
@@ -22110,7 +22110,7 @@ body.cozy-mode #brackets-board .brx-round{
 
 #brackets-board .brx-round-sf .brx-match-stack{
   justify-content: center;
-  gap: 126px;
+  gap: 170px;
 }
 
 #brackets-board .brx-round-f .brx-match-stack{
@@ -22299,13 +22299,13 @@ body.light-mode #brackets-board .brx-slot.is-team:hover{
 
   #brackets-board .brx-grid{
     --brx-grid-gap: 10px;
-    --brx-lane-height: 368px;
+    --brx-lane-height: 430px;
     min-width: 560px;
     grid-template-columns: minmax(188px, 1.05fr) minmax(164px, 0.92fr) minmax(144px, 0.8fr);
   }
 
   #brackets-board .brx-round-sf .brx-match-stack{
-    gap: 84px;
+    gap: 110px;
   }
 
   #brackets-board .brx-round{
@@ -22359,13 +22359,13 @@ body.light-mode #brackets-board .brx-slot.is-team:hover{
 @media (max-width: 560px){
   #brackets-board .brx-grid{
     --brx-grid-gap: 8px;
-    --brx-lane-height: 340px;
+    --brx-lane-height: 400px;
     min-width: 500px;
     grid-template-columns: minmax(172px, 1.03fr) minmax(149px, 0.9fr) minmax(130px, 0.78fr);
   }
 
   #brackets-board .brx-round-sf .brx-match-stack{
-    gap: 72px;
+    gap: 92px;
   }
 
   #brackets-board .brx-slot{

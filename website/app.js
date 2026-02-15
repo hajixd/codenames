@@ -8397,10 +8397,10 @@ const PRESENCE_UPDATE_INTERVAL_MS = 60 * 1000; // Update every 1 minute
 
 
 const PRESENCE_WHERE_LABELS = {
-  menus: 'Multiplayer',
-  tournament: 'Teams',
-  lobby: 'Multiplayer',
-  game: 'Multiplayer'
+  menus: 'In Multiplayer',
+  tournament: 'In Teams',
+  lobby: 'In Multiplayer',
+  game: 'In Multiplayer'
 };
 
 function computeLocalPresenceWhereKey() {
@@ -8450,10 +8450,10 @@ function computeLocalPresenceWhereKey() {
 function getPresencePanelLabel(presence) {
   const panelId = String(presence?.activePanelId || '').trim();
   if (!panelId) return '';
-  if (panelId === 'panel-practice') return 'Singleplayer';
-  if (panelId === 'panel-brackets') return 'Brackets';
-  if (panelId === 'panel-teams' || panelId === 'panel-home' || panelId === 'panel-myteam') return 'Teams';
-  if (panelId === 'panel-game') return 'Multiplayer';
+  if (panelId === 'panel-practice') return 'In Singleplayer';
+  if (panelId === 'panel-brackets') return 'In Brackets';
+  if (panelId === 'panel-teams' || panelId === 'panel-home' || panelId === 'panel-myteam') return 'In Teams';
+  if (panelId === 'panel-game') return 'In Multiplayer';
   return '';
 }
 
@@ -8470,8 +8470,8 @@ function getPresenceWhereLabel(presenceOrUserId) {
   // Legacy docs may only have a freeform whereLabel.
   const legacy = String(presence.whereLabel || '').trim();
   if (!legacy) return '';
-  if (/tournament/i.test(legacy)) return 'Teams';
-  if (/(menu|lobby|game)/i.test(legacy)) return 'Multiplayer';
+  if (/tournament/i.test(legacy)) return 'In Teams';
+  if (/(menu|lobby|game)/i.test(legacy)) return 'In Multiplayer';
   return legacy;
 }
 
