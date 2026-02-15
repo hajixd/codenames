@@ -3076,6 +3076,7 @@ async function generateAIReaction(ai, revealedCard, clue) {
 
 async function sendAIChatMessage(ai, game, text) {
   if (!text || !game?.id) return;
+  if (String(ai?.seatRole || '').trim().toLowerCase() === 'spymaster') return;
 
   const teamColor = ai.team;
 
