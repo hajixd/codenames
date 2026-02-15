@@ -13320,6 +13320,12 @@ body.qp-gate-open .app {
   background: rgba(0, 0, 0, 0.18);
 }
 
+.roster-expand-actions-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .roster-expand-action-btn {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.26);
@@ -13341,6 +13347,11 @@ body.qp-gate-open .app {
 
 .roster-expand-action-btn.team-blue {
   border-color: rgba(162, 232, 255, 0.72);
+}
+
+.roster-expand-action-btn-spectator {
+  border-color: rgba(245, 245, 245, 0.52);
+  background: rgba(18, 18, 18, 0.34);
 }
 
 .roster-expand-action-btn:active {
@@ -22637,22 +22648,22 @@ body.light-mode .brx-pop-card{
     padding: 6px 10px;
   }
 
-  /* Keep non-expanded mobile team boxes below the board/card layer. */
+  /* Keep non-expanded mobile team boxes above the board/card layer. */
   body:is(.og-mode, .cozy-mode) #og-mobile-panels {
     position: relative;
-    z-index: 0;
+    z-index: 12;
   }
 
   body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box {
     position: relative;
-    z-index: 0;
+    z-index: 13;
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .game-center-area,
   body:is(.og-mode, .cozy-mode) #game-board-container .game-board-wrapper,
   body:is(.og-mode, .cozy-mode) #game-board-container .game-board {
     position: relative;
-    z-index: 8;
+    z-index: 2;
   }
 }
 
@@ -23124,7 +23135,7 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
     flex: 1 1 auto;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    margin-top: 8px !important;
+    margin-top: clamp(56px, 9vh, 88px) !important;
     margin-bottom: 0 !important;
     padding: 0 0 max(14px, env(safe-area-inset-bottom, 0px));
   }
@@ -23138,5 +23149,47 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
     z-index: 3;
     margin-top: 0 !important;
     flex-shrink: 0;
+  }
+}
+
+/* Desktop OG/Cozy roster blocks: clickable for join/switch/spectate popup. */
+@media (min-width: 1025px) {
+  body:is(.og-mode, .cozy-mode) .online-roster-block.roster-expand-trigger {
+    cursor: pointer;
+  }
+
+  body:is(.og-mode, .cozy-mode) .online-roster-block.roster-expand-trigger:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.84);
+    outline-offset: 2px;
+  }
+}
+
+/* Scroll long rosters instead of overflowing panel boxes. */
+@media (min-width: 1025px) {
+  body:is(.og-mode, .cozy-mode) .og-team-panel .online-roster-operatives .online-roster-surface,
+  body:is(.og-mode, .cozy-mode) .og-team-panel .online-roster-spymasters .online-roster-surface {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-team-panel .online-roster-operatives .online-roster-surface {
+    max-height: clamp(200px, 29vh, 340px);
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-team-panel .online-roster-spymasters .online-roster-surface {
+    max-height: clamp(96px, 18vh, 190px);
+  }
+}
+
+/* Quick Play desktop: keep spectator/operative columns scrollable when crowded. */
+@media (min-width: 1025px) {
+  .quick-role-section .quick-team-list {
+    max-height: clamp(140px, 22vh, 250px);
+    overflow-y: auto;
+  }
+
+  .quick-team-col.spectator .quick-team-list {
+    max-height: clamp(180px, 30vh, 340px);
+    overflow-y: auto;
   }
 }

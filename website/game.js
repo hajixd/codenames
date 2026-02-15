@@ -3212,9 +3212,15 @@ async function joinQuickLobby(role, seatRole) {
 
       const activeJoinOn = isActiveJoinOn(game);
 
-      // If a game is already in progress, do not allow new joins unless Active Join is enabled.
-      if (game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null && !activeJoinOn) {
-        throw new Error('Quick Play is in progress. Please wait for the next game.');
+      const inProgress = !!(game.currentPhase && game.currentPhase !== 'waiting' && game.winner == null);
+      const currentRole = getQuickPlayerRole(game, odId);
+      const joiningTeam = (role === 'red' || role === 'blue');
+      const alreadyOnTeam = (currentRole === 'red' || currentRole === 'blue');
+
+      // Allow late spectator joins and allow existing team players to switch seats/teams.
+      // Block only brand-new team joins while Active Join is off.
+      if (inProgress && !activeJoinOn && joiningTeam && !alreadyOnTeam) {
+        throw new Error('Quick Play is in progress. Late team join is off right now.');
       }
 
       const redPlayers = Array.isArray(game.redPlayers) ? [...game.redPlayers] : [];
@@ -5079,32 +5085,43 @@ let _rosterExpandPopupHideTimer = null;
 let _rosterExpandOpenBoxEl = null;
 let _rosterExpandJoinBusy = false;
 
-function getRosterExpandSeatActionState(teamColor, seatRole) {
+function getRosterExpandPopupActionStates(teamColor, seatRole) {
   if (!currentGame || currentGame.type !== 'quick') return null;
   const myId = String(getUserId?.() || '').trim();
   const myName = String(getUserName?.() || '').trim();
   if (!myId || !myName) return null;
 
   if (_rosterExpandJoinBusy) {
-    return { label: 'Joining...', disabled: true, hint: '' };
+    return {
+      seat: { label: 'Working...', disabled: true, hint: '' },
+      spectator: { label: 'Working...', disabled: true, hint: '' },
+    };
   }
 
   const myTeam = getQuickPlayerRole(currentGame, myId);
   const mySeat = getQuickPlayerSeatRole(currentGame, myId);
-  if (myTeam === teamColor && mySeat === seatRole) {
-    return { label: 'Already Here', disabled: true, hint: '' };
-  }
-
   const inProgress = !!(currentGame.currentPhase && currentGame.currentPhase !== 'waiting' && currentGame.winner == null);
   const activeJoinOn = isActiveJoinOn(currentGame);
   const isTeamMember = (myTeam === 'red' || myTeam === 'blue');
-  const label = (isTeamMember && myTeam !== teamColor) ? 'Switch Team' : 'Join Team';
+  const onTargetSeat = (myTeam === teamColor && mySeat === seatRole);
 
-  if (inProgress && !activeJoinOn) {
-    return { label, disabled: true, hint: 'Active Join is off for this game right now.' };
+  const seat = {
+    label: onTargetSeat ? 'Already Here' : ((isTeamMember && myTeam !== teamColor) ? 'Switch Team' : 'Join Team'),
+    disabled: onTargetSeat,
+    hint: '',
+  };
+  if (!seat.disabled && inProgress && !activeJoinOn && !isTeamMember) {
+    seat.disabled = true;
+    seat.hint = 'Active Join is off for this game right now.';
   }
 
-  return { label, disabled: false, hint: '' };
+  const spectator = {
+    label: (myTeam === 'spectator') ? 'Spectating' : 'Spectate',
+    disabled: (myTeam === 'spectator'),
+    hint: '',
+  };
+
+  return { seat, spectator };
 }
 
 async function joinQuickSeatFromRosterExpand(teamColor, seatRole) {
@@ -5126,6 +5143,33 @@ async function joinQuickSeatFromRosterExpand(teamColor, seatRole) {
     }
   } catch (err) {
     console.error('Failed to join/switch from roster popup:', err);
+  } finally {
+    _rosterExpandJoinBusy = false;
+    if (popup?.classList.contains('visible')) {
+      openRosterExpandPopup(teamColor, seatRole, _rosterExpandOpenBoxEl);
+    }
+  }
+}
+
+async function joinQuickSpectatorFromRosterExpand() {
+  if (!currentGame || currentGame.type !== 'quick') return;
+  if (_rosterExpandJoinBusy) return;
+
+  _rosterExpandJoinBusy = true;
+  const popup = document.getElementById('roster-expand-popup');
+  const teamColor = popup?.dataset?.teamColor === 'blue' ? 'blue' : 'red';
+  const seatRole = popup?.dataset?.seatRole === 'spymaster' ? 'spymaster' : 'operative';
+  if (popup?.classList.contains('visible')) {
+    openRosterExpandPopup(teamColor, seatRole, _rosterExpandOpenBoxEl);
+  }
+
+  try {
+    await joinQuickLobby('spectator');
+    spectatorMode = true;
+    spectatingGameId = String(currentGame?.id || QUICKPLAY_DOC_ID);
+    closeRosterExpandPopup();
+  } catch (err) {
+    console.error('Failed to spectate from roster popup:', err);
   } finally {
     _rosterExpandJoinBusy = false;
     if (popup?.classList.contains('visible')) {
@@ -5220,18 +5264,26 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
     }).join('');
   }
 
-  const actionState = getRosterExpandSeatActionState(teamColor, seatRole);
-  if (actionsEl && actionState) {
+  const actionStates = getRosterExpandPopupActionStates(teamColor, seatRole);
+  if (actionsEl && actionStates) {
     popup.classList.add('has-actions');
     actionsEl.style.display = 'grid';
     actionsEl.innerHTML = `
-      <button
-        type="button"
-        class="roster-expand-action-btn team-${teamColor}"
-        data-roster-seat-action="join"
-        ${actionState.disabled ? 'disabled' : ''}
-      >${escapeHtml(actionState.label)}</button>
-      ${actionState.hint ? `<div class="roster-expand-action-hint">${escapeHtml(actionState.hint)}</div>` : ''}
+      <div class="roster-expand-actions-row">
+        <button
+          type="button"
+          class="roster-expand-action-btn team-${teamColor}"
+          data-roster-seat-action="join-seat"
+          ${actionStates.seat.disabled ? 'disabled' : ''}
+        >${escapeHtml(actionStates.seat.label)}</button>
+        <button
+          type="button"
+          class="roster-expand-action-btn roster-expand-action-btn-spectator"
+          data-roster-seat-action="join-spectator"
+          ${actionStates.spectator.disabled ? 'disabled' : ''}
+        >${escapeHtml(actionStates.spectator.label)}</button>
+      </div>
+      ${actionStates.seat.hint ? `<div class="roster-expand-action-hint">${escapeHtml(actionStates.seat.hint)}</div>` : ''}
     `;
   } else if (actionsEl) {
     popup.classList.remove('has-actions');
@@ -5259,20 +5311,31 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
       if (e.key === 'Escape') closeRosterExpandPopup();
     });
     popup.addEventListener('click', (e) => {
-      const btn = e.target?.closest?.('[data-roster-seat-action="join"]');
+      const btn = e.target?.closest?.('[data-roster-seat-action]');
       if (!btn || btn.disabled) return;
-      const teamColor = popup.dataset.teamColor === 'blue' ? 'blue' : 'red';
-      const seatRole = popup.dataset.seatRole === 'spymaster' ? 'spymaster' : 'operative';
-      void joinQuickSeatFromRosterExpand(teamColor, seatRole);
+      const action = String(btn.getAttribute('data-roster-seat-action') || '');
+      if (action === 'join-spectator') {
+        void joinQuickSpectatorFromRosterExpand();
+        return;
+      }
+      if (action === 'join-seat') {
+        const teamColor = popup.dataset.teamColor === 'blue' ? 'blue' : 'red';
+        const seatRole = popup.dataset.seatRole === 'spymaster' ? 'spymaster' : 'operative';
+        void joinQuickSeatFromRosterExpand(teamColor, seatRole);
+      }
     });
   }
 }
 
 function openRosterExpandPopupForBox(box) {
   if (!box) return;
-  const teamHost = box.closest('.og-mobile-team');
+  const mobileTeamHost = box.closest('.og-mobile-team');
+  const desktopTeamHost = box.closest('.og-team-panel');
+  const teamHost = mobileTeamHost || desktopTeamHost;
   const team = teamHost?.id?.includes('blue') ? 'blue' : 'red';
-  const role = box.classList.contains('og-mobile-box-spy') ? 'spymaster' : 'operative';
+  const role = (box.classList.contains('og-mobile-box-spy') || box.classList.contains('online-roster-spymasters'))
+    ? 'spymaster'
+    : 'operative';
   const popup = document.getElementById('roster-expand-popup');
   const alreadyOpen = !!(popup && popup.classList.contains('visible') && _rosterExpandOpenBoxEl === box);
   if (alreadyOpen) {
@@ -5280,6 +5343,45 @@ function openRosterExpandPopupForBox(box) {
     return;
   }
   openRosterExpandPopup(team, role, box);
+}
+
+function bindOgDesktopBoxExpanders() {
+  const panels = Array.from(document.querySelectorAll('#og-panel-blue, #og-panel-red'));
+  if (!panels.length) return;
+
+  panels.forEach((panel) => {
+    const boxes = Array.from(panel.querySelectorAll('.online-roster-block'));
+    boxes.forEach((box) => {
+      box.classList.add('roster-expand-trigger');
+      box.setAttribute('role', 'button');
+      box.setAttribute('tabindex', '0');
+      box.setAttribute('aria-haspopup', 'dialog');
+      const expanded = !!(_rosterExpandOpenBoxEl && _rosterExpandOpenBoxEl === box);
+      box.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
+
+    if (panel.dataset.expandBound === '1') return;
+    panel.dataset.expandBound = '1';
+    let lastOpenAt = 0;
+    const openFromEvent = (e) => {
+      const now = Date.now();
+      if (now - lastOpenAt < 180) return;
+      const interactive = e.target?.closest?.('a, button, input, textarea, select');
+      if (interactive && !interactive.classList.contains('online-roster-block')) return;
+      const box = e.target?.closest?.('.online-roster-block');
+      if (!box || !panel.contains(box)) return;
+      lastOpenAt = now;
+      openRosterExpandPopupForBox(box);
+    };
+    panel.addEventListener('click', openFromEvent);
+    panel.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const box = e.target?.closest?.('.online-roster-block');
+      if (!box || !panel.contains(box)) return;
+      e.preventDefault();
+      openRosterExpandPopupForBox(box);
+    });
+  });
 }
 
 function bindOgMobileBoxExpanders() {
@@ -5432,6 +5534,7 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
   }
 
   bindOgMobileBoxExpanders();
+  bindOgDesktopBoxExpanders();
 }
 
 function dockChatIntoOgPanels(isOgMode) {
