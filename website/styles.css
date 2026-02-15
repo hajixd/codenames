@@ -22455,3 +22455,29 @@ body:is(.og-mode, .cozy-mode) .waiting-expanded {
   letter-spacing: 0.35px;
   line-height: 1.2;
 }
+
+/* Team-colored clue/action bar */
+.game-center-area .game-action-bar.turn-red {
+  background: color-mix(in srgb, var(--game-red, #ff6b5d) 16%, var(--surface) 84%);
+  border-color: color-mix(in srgb, var(--game-red, #ff6b5d) 40%, var(--border) 60%);
+}
+
+.game-center-area .game-action-bar.turn-blue {
+  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 16%, var(--surface) 84%);
+  border-color: color-mix(in srgb, var(--game-blue, #5ab7ff) 40%, var(--border) 60%);
+}
+
+body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar.turn-red {
+  background: color-mix(in srgb, var(--game-red, #ff6b5d) 24%, rgba(10, 14, 22, 0.9) 76%);
+  border: 1px solid color-mix(in srgb, var(--game-red, #ff6b5d) 44%, rgba(255, 255, 255, 0.14) 56%);
+}
+
+body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar.turn-blue {
+  background: color-mix(in srgb, var(--game-blue, #5ab7ff) 24%, rgba(10, 14, 22, 0.9) 76%);
+  border: 1px solid color-mix(in srgb, var(--game-blue, #5ab7ff) 44%, rgba(255, 255, 255, 0.14) 56%);
+}
+
+.game-center-area .operative-actions-expanded .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

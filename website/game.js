@@ -1972,7 +1972,7 @@ function initGameUI() {
     // with a chooser overlay (rejoin/spectate/back to homepage).
     try {
       if (typeof window.maybeGateQuickPlayWithLiveGame === 'function') {
-        window.maybeGateQuickPlayWithLiveGame({ onProceed: () => showQuickPlayLobby(), showLoading: true, loadingLabel: 'Loading', minDelayMs: 250 });
+        window.maybeGateQuickPlayWithLiveGame({ onProceed: () => showQuickPlayLobby(), showLoading: true, loadingLabel: 'Loading Board', minDelayMs: 250 });
         return;
       }
     } catch (_) {}
@@ -5589,14 +5589,29 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const waitingEl = document.getElementById('waiting-message');
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
   const waitingForEl = document.getElementById('waiting-for');
+  const endTurnBtn = document.getElementById('end-turn-btn');
+  const actionBarEl = document.querySelector('.game-center-area .game-action-bar');
 
   syncClueSubmitButtonAppearance();
+
+  if (actionBarEl) {
+    actionBarEl.classList.remove('turn-red', 'turn-blue');
+    const phase = String(currentGame?.currentPhase || '');
+    if (!currentGame?.winner && (phase === 'spymaster' || phase === 'operatives')) {
+      actionBarEl.classList.add(currentGame.currentTeam === 'blue' ? 'turn-blue' : 'turn-red');
+    }
+  }
 
   // Hide all first
   currentClueEl.style.display = 'none';
   clueFormEl.style.display = 'none';
   operativeActionsEl.style.display = 'none';
   waitingEl.style.display = 'none';
+  if (endTurnBtn) {
+    endTurnBtn.disabled = true;
+    endTurnBtn.classList.add('disabled');
+    endTurnBtn.title = '';
+  }
 
   // Update OG mode phase banner
   const ogBanner = document.getElementById('og-phase-banner');
@@ -5656,6 +5671,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       const numInput = document.getElementById('clue-num-input');
       if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
     }
+    operativeActionsEl.style.display = 'flex';
+    if (endTurnBtn) {
+      endTurnBtn.disabled = true;
+      endTurnBtn.classList.add('disabled');
+      endTurnBtn.title = 'Wait for operative phase.';
+    }
     return;
   }
 
@@ -5669,9 +5690,22 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       document.getElementById('guesses-left').textContent = '';
     }
 
-    if (!spectator && isMyTurn && !isSpymaster) {
-      // Show end turn button
-      operativeActionsEl.style.display = 'flex';
+    operativeActionsEl.style.display = 'flex';
+    const canEndTurn = !spectator && isMyTurn && !isSpymaster;
+    if (endTurnBtn) {
+      endTurnBtn.disabled = !canEndTurn;
+      endTurnBtn.classList.toggle('disabled', !canEndTurn);
+      if (canEndTurn) {
+        endTurnBtn.title = '';
+      } else if (spectator) {
+        endTurnBtn.title = 'Spectators cannot end turns.';
+      } else if (!isMyTurn) {
+        endTurnBtn.title = 'Opponent turn.';
+      } else if (isSpymaster) {
+        endTurnBtn.title = 'Spymasters cannot end turns.';
+      } else {
+        endTurnBtn.title = 'Not available right now.';
+      }
     }
   }
 }
