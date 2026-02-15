@@ -21892,12 +21892,29 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
   }
 }
 
+@keyframes ogRosterBoxExpand {
+  0% { transform: translateY(0) scale(1); }
+  55% { transform: translateY(-2px) scale(1.012); }
+  100% { transform: translateY(-1px) scale(1); }
+}
+
 /* Mobile team boxes: tap anywhere on Operatives/Spymasters box to expand. */
 @media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) .og-mobile-panels {
+    max-height: none !important;
+    overflow: visible;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-mobile-panels .og-mobile-team {
+    max-height: none !important;
+    overflow: visible;
+  }
+
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box {
     cursor: pointer;
     touch-action: manipulation;
-    transition: max-height 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+    will-change: min-height, max-height, transform;
+    transition: min-height 220ms ease, max-height 220ms ease, transform 220ms ease, box-shadow 220ms ease;
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box .og-player-slots {
@@ -21911,16 +21928,29 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.is-expanded {
-    min-height: 150px;
-    max-height: 190px;
+    animation: ogRosterBoxExpand 260ms cubic-bezier(0.2, 0.84, 0.28, 1);
     transform: translateY(-1px);
     box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35);
   }
 
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.og-mobile-box-ops.is-expanded {
+    min-height: 142px;
+    max-height: 196px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.og-mobile-box-spy.is-expanded {
+    min-height: 120px;
+    max-height: 170px;
+  }
+
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.is-expanded .og-player-slots {
-    max-height: 140px;
+    max-height: 132px;
     overflow: auto;
     padding-right: 2px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box.og-mobile-box-spy.is-expanded .og-player-slots {
+    max-height: 110px;
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box:focus-visible {
@@ -21933,6 +21963,7 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
 body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box {
   cursor: pointer;
   touch-action: manipulation;
+  will-change: min-height, max-height, transform;
   transition: max-height 220ms ease, min-height 220ms ease, transform 220ms ease, box-shadow 220ms ease;
 }
 
@@ -21947,17 +21978,30 @@ body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.og-mobile-box-spy
 }
 
 body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.is-expanded {
-  min-height: 150px;
-  max-height: 200px !important;
+  animation: ogRosterBoxExpand 260ms cubic-bezier(0.2, 0.84, 0.28, 1);
   transform: translateY(-1px);
   box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35);
 }
 
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.og-mobile-box-ops.is-expanded {
+  min-height: 142px;
+  max-height: 196px !important;
+}
+
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.og-mobile-box-spy.is-expanded {
+  min-height: 120px;
+  max-height: 170px !important;
+}
+
 body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.is-expanded .og-player-slots {
-  max-height: 140px;
+  max-height: 132px;
   overflow: auto;
   padding-right: 2px;
   -webkit-overflow-scrolling: touch;
+}
+
+body:is(.og-mode, .cozy-mode) #og-mobile-panels .og-mobile-box.og-mobile-box-spy.is-expanded .og-player-slots {
+  max-height: 110px;
 }
 
 /* Strongly grey out non-active roster sections so the active turn stands out. */

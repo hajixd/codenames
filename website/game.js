@@ -5057,8 +5057,19 @@ function renderAdvancedFeatures() {
 }
 
 let _rosterExpandPopupHideTimer = null;
+let _ogMobileExpandedSeatKey = null;
 
 function closeRosterExpandPopup() {
+  _ogMobileExpandedSeatKey = null;
+  const mobilePanels = document.getElementById('og-mobile-panels');
+  if (mobilePanels) {
+    mobilePanels.querySelectorAll('.og-mobile-box.is-expanded').forEach((el) => {
+      el.classList.remove('is-expanded');
+      el.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // Legacy popup fallback: ensure stale dialogs are closed if present.
   const popup = document.getElementById('roster-expand-popup');
   if (!popup) return;
   popup.classList.remove('visible');
@@ -5070,76 +5081,22 @@ function closeRosterExpandPopup() {
 }
 
 function openRosterExpandPopup(team, role) {
-  if (!currentGame) return;
-  const popup = document.getElementById('roster-expand-popup');
-  const titleEl = document.getElementById('roster-expand-title');
-  const subtitleEl = document.getElementById('roster-expand-subtitle');
-  const listEl = document.getElementById('roster-expand-list');
-  const cardEl = popup?.querySelector?.('.roster-expand-card');
-  if (!popup || !titleEl || !subtitleEl || !listEl || !cardEl) return;
-  if (_rosterExpandPopupHideTimer) {
-    clearTimeout(_rosterExpandPopupHideTimer);
-    _rosterExpandPopupHideTimer = null;
-  }
-
+  const panels = document.getElementById('og-mobile-panels');
+  if (!panels) return;
   const teamColor = (team === 'blue') ? 'blue' : 'red';
   const seatRole = (role === 'spymaster') ? 'spymaster' : 'operative';
-  const roster = getTeamPlayers(teamColor, currentGame);
-  const isSpy = (p) => isSpymasterPlayerForTeam(p, teamColor, currentGame);
-  const players = roster.filter((p) => seatRole === 'spymaster' ? isSpy(p) : !isSpy(p));
-  const myId = String(getUserId?.() || '').trim();
-  const teamNameRaw = teamColor === 'blue' ? currentGame.blueTeamName : currentGame.redTeamName;
-  const teamName = String(teamNameRaw || (teamColor === 'blue' ? 'Blue Team' : 'Red Team')).trim();
-  const roleLabel = seatRole === 'spymaster' ? 'Spymasters' : 'Operatives';
+  const seatKey = `${teamColor}:${seatRole}`;
+  _ogMobileExpandedSeatKey = (_ogMobileExpandedSeatKey === seatKey) ? null : seatKey;
 
-  popup.classList.remove('team-red', 'team-blue', 'role-spymaster', 'role-operative');
-  popup.classList.add(teamColor === 'blue' ? 'team-blue' : 'team-red');
-  popup.classList.add(seatRole === 'spymaster' ? 'role-spymaster' : 'role-operative');
-  cardEl.classList.remove('team-red', 'team-blue');
-  cardEl.classList.add(teamColor === 'blue' ? 'team-blue' : 'team-red');
-
-  titleEl.textContent = `${teamName} ${roleLabel}`;
-  subtitleEl.textContent = players.length === 1 ? '1 player' : `${players.length} players`;
-
-  if (!players.length) {
-    listEl.innerHTML = '<div class="roster-expand-empty">No players in this seat yet.</div>';
-  } else {
-    listEl.innerHTML = players.map((p) => {
-      const pid = String(p?.odId || p?.userId || '').trim();
-      const isMe = !!(myId && pid && pid === myId);
-      const ai = !!p?.isAI;
-      const name = escapeHtml(displayPlayerName(p) || '—');
-      const rowClasses = ['roster-expand-item', teamColor, ai ? 'is-ai' : '', isMe ? 'is-me' : ''].filter(Boolean).join(' ');
-      const attrs = pid && !ai
-        ? `class="${rowClasses} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
-        : `class="${rowClasses}"`;
-      const initials = escapeHtml((displayPlayerName(p) || '?').trim().slice(0, 2).toUpperCase());
-      const badge = ai ? 'AI' : (isMe ? 'YOU' : 'HUMAN');
-      return `
-        <div ${attrs}>
-          <div class="roster-expand-avatar">${initials}</div>
-          <div class="roster-expand-meta">
-            <div class="roster-expand-name">${name}</div>
-            <div class="roster-expand-kind">${ai ? 'Autonomous AI' : 'Player'}</div>
-          </div>
-          <div class="roster-expand-badge">${badge}</div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  popup.style.display = 'block';
-  void popup.offsetWidth;
-  popup.classList.add('visible');
-
-  if (popup.dataset.bound !== '1') {
-    popup.dataset.bound = '1';
-    document.getElementById('roster-expand-close')?.addEventListener('click', closeRosterExpandPopup);
-    document.getElementById('roster-expand-backdrop')?.addEventListener('click', closeRosterExpandPopup);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeRosterExpandPopup();
-    });
-  }
+  const boxes = Array.from(panels.querySelectorAll('.og-mobile-box'));
+  boxes.forEach((box) => {
+    const host = box.closest('.og-mobile-team');
+    const boxTeam = host?.id?.includes('blue') ? 'blue' : 'red';
+    const boxRole = box.classList.contains('og-mobile-box-spy') ? 'spymaster' : 'operative';
+    const active = !!_ogMobileExpandedSeatKey && `${boxTeam}:${boxRole}` === _ogMobileExpandedSeatKey;
+    box.classList.toggle('is-expanded', active);
+    box.setAttribute('aria-expanded', active ? 'true' : 'false');
+  });
 }
 
 function openRosterExpandPopupForBox(box) {
@@ -5156,24 +5113,28 @@ function bindOgMobileBoxExpanders() {
 
   const boxes = Array.from(panels.querySelectorAll('.og-mobile-box'));
   boxes.forEach((box) => {
-    box.classList.remove('is-expanded');
     box.setAttribute('role', 'button');
     box.setAttribute('tabindex', '0');
-    box.setAttribute('aria-haspopup', 'dialog');
-    box.setAttribute('aria-expanded', 'false');
+    box.setAttribute('aria-haspopup', 'false');
+    const host = box.closest('.og-mobile-team');
+    const boxTeam = host?.id?.includes('blue') ? 'blue' : 'red';
+    const boxRole = box.classList.contains('og-mobile-box-spy') ? 'spymaster' : 'operative';
+    const active = !!_ogMobileExpandedSeatKey && `${boxTeam}:${boxRole}` === _ogMobileExpandedSeatKey;
+    box.classList.toggle('is-expanded', active);
+    box.setAttribute('aria-expanded', active ? 'true' : 'false');
   });
 
   if (panels.dataset.expandBound !== '1') {
     panels.dataset.expandBound = '1';
-    let lastOpenAt = 0;
+    let lastToggleAt = 0;
     const openFromEvent = (e) => {
       const now = Date.now();
-      if (now - lastOpenAt < 180) return;
+      if (now - lastToggleAt < 180) return;
       const interactive = e.target?.closest?.('a, button, input, textarea, select');
       if (interactive && !interactive.classList.contains('og-mobile-box')) return;
       const box = e.target?.closest?.('.og-mobile-box');
       if (!box || !panels.contains(box)) return;
-      lastOpenAt = now;
+      lastToggleAt = now;
       openRosterExpandPopupForBox(box);
     };
     panels.addEventListener('click', openFromEvent);
@@ -6041,25 +6002,24 @@ async function handleClueSubmit(e) {
    Card Guessing
 ========================= */
 async function handleCardClick(cardIndex) {
-  if (!currentGame || currentGame.currentPhase !== 'operatives') return;
-  if (isSpectating()) return;
-  if (currentGame.winner) return;
+  if (!currentGame || currentGame.currentPhase !== 'operatives') return false;
+  if (isSpectating()) return false;
+  if (currentGame.winner) return false;
 
   const myTeamColor = getMyTeamColor();
-  if (currentGame.currentTeam !== myTeamColor) return;
-  if (isCurrentUserSpymaster()) return;
+  if (currentGame.currentTeam !== myTeamColor) return false;
+  if (isCurrentUserSpymaster()) return false;
 
   const idx = Number(cardIndex);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= currentGame.cards.length) return;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= currentGame.cards.length) return false;
 
   const card = currentGame.cards[idx];
-  if (!card || card.revealed) return;
+  if (!card || card.revealed) return false;
 
   // Prevent concurrent guess processing (double-click / multi-player race)
-  if (_processingGuess) return;
+  if (_processingGuess) return false;
   _processingGuess = true;
   try {
-
     // Clear pending selection only after we've validated this guess attempt.
     clearPendingCardSelection();
 
@@ -6070,134 +6030,192 @@ async function handleCardClick(cardIndex) {
         applyLocalPracticeGuessState(draft, idx, guessByName);
       });
       maybeStartLocalPracticeAI();
-      return;
+      return true;
     }
 
-  // Capture current clue for history logging
-  const clueWordAtGuess = currentGame.currentClue?.word || null;
-  const clueNumberAtGuess = (currentGame.currentClue && typeof currentGame.currentClue.number !== 'undefined') ? currentGame.currentClue.number : null;
-  const guessByName = getUserName() || 'Someone';
+    const gameId = String(currentGame?.id || '').trim();
+    if (!gameId) return false;
+    const gameRef = db.collection('games').doc(gameId);
+    const myUserId = String(getUserId() || '').trim();
+    const myNameNorm = normalizeSpyIdentity(getUserName());
 
-  // Reveal the card
-  const updatedCards = [...currentGame.cards];
-  updatedCards[idx] = { ...card, revealed: true };
+    const txResult = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(gameRef);
+      if (!snap.exists) return { committed: false, reason: 'missing-game' };
 
-  const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const userName = getUserName() || 'Someone';
-  const updates = {
-    cards: updatedCards,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
-  const redCardsLeftNow = getCardsLeft(currentGame, 'red');
-  const blueCardsLeftNow = getCardsLeft(currentGame, 'blue');
+      const liveGame = { id: snap.id, ...snap.data() };
+      if (!liveGame || liveGame.currentPhase !== 'operatives' || liveGame.winner) {
+        return { committed: false, reason: 'stale-phase' };
+      }
 
-  let logEntry = `${guessByName} (${teamName}) guessed "${card.word}" - `;
-  let endTurn = false;
-  let winner = null;
+      const cardsLive = Array.isArray(liveGame.cards) ? liveGame.cards : [];
+      if (!Number.isInteger(idx) || idx < 0 || idx >= cardsLive.length) {
+        return { committed: false, reason: 'bad-index' };
+      }
 
-  // Play card reveal sound
-  if (window.playSound) window.playSound('cardReveal');
+      const cardLive = cardsLive[idx];
+      if (!cardLive || cardLive.revealed) {
+        return { committed: false, reason: 'already-revealed' };
+      }
 
-  // Determine result
-  if (card.type === 'assassin') {
-    // Game over - other team wins
-    winner = currentGame.currentTeam === 'red' ? 'blue' : 'red';
-    logEntry += 'ASSASSIN! Game over.';
-    // Play assassin sound after a brief delay
-    setTimeout(() => { if (window.playSound) window.playSound('cardAssassin'); }, 200);
-  } else if (card.type === currentGame.currentTeam) {
-    // Correct guess
-    logEntry += 'Correct!';
-    // Play correct sound
-    setTimeout(() => { if (window.playSound) window.playSound('cardCorrect'); }, 200);
+      const isMe = (p) => {
+        const pid = String(p?.odId || p?.userId || p?.id || '').trim();
+        if (myUserId && pid && pid === myUserId) return true;
+        return !!myNameNorm && normalizeSpyIdentity(p?.name) === myNameNorm;
+      };
 
-    // Update cards left
-    if (currentGame.currentTeam === 'red') {
-      updates.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
-      if (updates.redCardsLeft === 0) winner = 'red';
-    } else {
-      updates.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
-      if (updates.blueCardsLeft === 0) winner = 'blue';
-    }
+      const redPlayers = Array.isArray(liveGame.redPlayers) ? liveGame.redPlayers : [];
+      const bluePlayers = Array.isArray(liveGame.bluePlayers) ? liveGame.bluePlayers : [];
+      const inRed = redPlayers.some(isMe);
+      const inBlue = !inRed && bluePlayers.some(isMe);
+      const teamLive = inRed ? 'red' : (inBlue ? 'blue' : null);
+      if (!teamLive) return { committed: false, reason: 'not-on-team' };
+      if (liveGame.currentTeam !== teamLive) return { committed: false, reason: 'not-your-turn' };
 
-    // Consume one guess. If no guesses remain after a correct guess, the turn ends.
-  } else if (card.type === 'neutral') {
-    // Neutral - end turn
-    logEntry += 'Neutral. Turn ends.';
-    endTurn = true;
-    // Play wrong/neutral sound
-    setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
-  } else {
-    // Other team's card - end turn and give them a point
-    const ownerTeamName = card.type === 'red'
-      ? (currentGame.redTeamName || 'Red Team')
-      : (currentGame.blueTeamName || 'Blue Team');
-    logEntry += `Wrong! (${ownerTeamName}'s card)`;
-    // Play wrong sound
-    setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
+      const myRoster = teamLive === 'red' ? redPlayers : bluePlayers;
+      const me = myRoster.find(isMe) || null;
+      if (!me) return { committed: false, reason: 'player-not-found' };
+      if (isSpymasterPlayerForTeam(me, teamLive, liveGame)) {
+        return { committed: false, reason: 'spymaster-blocked' };
+      }
 
-    if (card.type === 'red') {
-      updates.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
-      if (updates.redCardsLeft === 0) winner = 'red';
-    } else {
-      updates.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
-      if (updates.blueCardsLeft === 0) winner = 'blue';
-    }
+      const clueWordAtGuess = liveGame.currentClue?.word || null;
+      const clueNumberAtGuess = (liveGame.currentClue && typeof liveGame.currentClue.number !== 'undefined')
+        ? liveGame.currentClue.number
+        : null;
+      const guessByName = displayPlayerName(me) || getUserName() || 'Someone';
 
-    endTurn = true;
-  }
+      const nextCards = [...cardsLive];
+      nextCards[idx] = { ...cardLive, revealed: true };
 
-  // Decrement guesses remaining (standard Codenames: number + 1 total guesses)
-  const _gr = Number.isFinite(+currentGame.guessesRemaining) ? +currentGame.guessesRemaining : 0;
-  const _nextGr = Math.max(0, _gr - 1);
-  if (currentGame.currentClue) {
-    updates.guessesRemaining = _nextGr;
-    // If we used up our last guess on a correct card, the clue is "done" and the turn ends.
-    if (!winner && !endTurn && card.type === currentGame.currentTeam && _nextGr <= 0) {
-      endTurn = true;
-    }
-    // Any turn-ending event resets remaining guesses.
-    if (endTurn || winner) {
-      updates.guessesRemaining = 0;
-    }
-  }
+      const teamName = teamLive === 'red'
+        ? (liveGame.redTeamName || 'Red Team')
+        : (liveGame.blueTeamName || 'Blue Team');
 
-  const guessResult = {
-    word: card.word,
-    result: (card.type === 'assassin') ? 'assassin' : (card.type === currentGame.currentTeam ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
-    type: card.type,
-    by: guessByName,
-    timestamp: new Date().toISOString()
-  };
+      const updates = {
+        cards: nextCards,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      const redCardsLeftNow = getCardsLeft(liveGame, 'red');
+      const blueCardsLeftNow = getCardsLeft(liveGame, 'blue');
 
-  updates.log = firebase.firestore.FieldValue.arrayUnion(logEntry);
+      let logEntry = `${guessByName} (${teamName}) guessed "${cardLive.word}" - `;
+      let winner = null;
+      let endTurn = false;
 
-  if (winner) {
-    updates.winner = winner;
-    updates.currentPhase = 'ended';
-    const winnerName = truncateTeamNameGame(winner === 'red' ? currentGame.redTeamName : currentGame.blueTeamName);
-    updates.log = firebase.firestore.FieldValue.arrayUnion(`${winnerName} wins!`);
-  } else if (endTurn) {
-    // Switch teams
-    updates.currentTeam = currentGame.currentTeam === 'red' ? 'blue' : 'red';
-    updates.currentPhase = 'spymaster';
-    updates.currentClue = null;
-    updates.guessesRemaining = 0;
-  }
+      if (cardLive.type === 'assassin') {
+        winner = teamLive === 'red' ? 'blue' : 'red';
+        logEntry += 'ASSASSIN! Game over.';
+      } else if (cardLive.type === teamLive) {
+        logEntry += 'Correct!';
+        if (teamLive === 'red') {
+          updates.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+      } else if (cardLive.type === 'neutral') {
+        logEntry += 'Neutral. Turn ends.';
+        endTurn = true;
+      } else {
+        const ownerTeamName = cardLive.type === 'red'
+          ? (liveGame.redTeamName || 'Red Team')
+          : (liveGame.blueTeamName || 'Blue Team');
+        logEntry += `Wrong! (${ownerTeamName}'s card)`;
+        if (cardLive.type === 'red') {
+          updates.redCardsLeft = Math.max(0, redCardsLeftNow - 1);
+          if (updates.redCardsLeft === 0) winner = 'red';
+        } else {
+          updates.blueCardsLeft = Math.max(0, blueCardsLeftNow - 1);
+          if (updates.blueCardsLeft === 0) winner = 'blue';
+        }
+        endTurn = true;
+      }
 
-  // Capture team before Firestore update (snapshot listener may change currentGame.currentTeam)
-  const teamAtGuess = currentGame.currentTeam;
+      const guessesNow = Number.isFinite(+liveGame.guessesRemaining) ? +liveGame.guessesRemaining : 0;
+      const guessesNext = Math.max(0, guessesNow - 1);
+      if (liveGame.currentClue) {
+        updates.guessesRemaining = guessesNext;
+        if (!winner && !endTurn && cardLive.type === teamLive && guessesNext <= 0) {
+          endTurn = true;
+        }
+        if (winner || endTurn) updates.guessesRemaining = 0;
+      }
 
-    try {
-      await db.collection('games').doc(currentGame.id).update(updates);
+      const guessResult = {
+        word: cardLive.word,
+        result: (cardLive.type === 'assassin')
+          ? 'assassin'
+          : (cardLive.type === teamLive ? 'correct' : (cardLive.type === 'neutral' ? 'neutral' : 'wrong')),
+        type: cardLive.type,
+        by: guessByName,
+        timestamp: new Date().toISOString()
+      };
+
+      const logEntries = [logEntry];
+      if (winner) {
+        updates.winner = winner;
+        updates.currentPhase = 'ended';
+        const winnerName = truncateTeamNameGame(winner === 'red' ? liveGame.redTeamName : liveGame.blueTeamName);
+        logEntries.push(`${winnerName} wins!`);
+      } else if (endTurn) {
+        updates.currentTeam = teamLive === 'red' ? 'blue' : 'red';
+        updates.currentPhase = 'spymaster';
+        updates.currentClue = null;
+        updates.guessesRemaining = 0;
+      }
+      updates.log = firebase.firestore.FieldValue.arrayUnion(...logEntries);
 
       if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
-        addGuessToClueHistory(currentGame.id, teamAtGuess, clueWordAtGuess, clueNumberAtGuess, guessResult)
-          .catch((e) => console.warn('Clue-history append failed (best-effort):', e));
+        const history = Array.isArray(liveGame.clueHistory) ? [...liveGame.clueHistory] : [];
+        let historyIdx = -1;
+        for (let i = history.length - 1; i >= 0; i -= 1) {
+          const item = history[i];
+          if (!item) continue;
+          if (
+            String(item.team) === String(teamLive) &&
+            String(item.word) === String(clueWordAtGuess) &&
+            Number(item.number) === Number(clueNumberAtGuess)
+          ) {
+            historyIdx = i;
+            break;
+          }
+        }
+
+        if (historyIdx >= 0) {
+          const entry = { ...history[historyIdx] };
+          const results = Array.isArray(entry.results) ? [...entry.results] : [];
+          const guessWordNorm = String(guessResult.word || '').toUpperCase();
+          const hasGuess = guessWordNorm && results.some((r) => String(r?.word || '').toUpperCase() === guessWordNorm);
+          if (!hasGuess) {
+            results.push(guessResult);
+            entry.results = results;
+            history[historyIdx] = entry;
+            updates.clueHistory = history;
+          }
+        }
       }
-    } catch (e) {
-      console.error('Failed to reveal card:', e);
+
+      tx.update(gameRef, updates);
+      return { committed: true, result: guessResult.result };
+    });
+
+    if (!txResult?.committed) return false;
+
+    if (window.playSound) window.playSound('cardReveal');
+    if (txResult.result === 'assassin') {
+      setTimeout(() => { if (window.playSound) window.playSound('cardAssassin'); }, 200);
+    } else if (txResult.result === 'correct') {
+      setTimeout(() => { if (window.playSound) window.playSound('cardCorrect'); }, 200);
+    } else {
+      setTimeout(() => { if (window.playSound) window.playSound('cardWrong'); }, 200);
     }
+
+    return true;
+  } catch (e) {
+    console.error('Failed to reveal card:', e);
+    return false;
   } finally {
     _processingGuess = false;
   }
@@ -8578,8 +8596,8 @@ async function handleCardConfirm(evt, cardIndex) {
     if (runPhysicalConfirmAnim) {
       await new Promise((resolve) => setTimeout(resolve, CARD_CONFIRM_ANIM_MS));
     }
-    await _originalHandleCardClick(idx);
-    confirmCommitted = true;
+    const guessCommitted = await _originalHandleCardClick(idx);
+    confirmCommitted = !!guessCommitted;
   } finally {
     clearTimeout(lockGuard);
     _localConfirmAnimUntil = 0;
