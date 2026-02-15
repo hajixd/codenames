@@ -315,6 +315,7 @@ let quickPlayEnsurePromise = null;
 
 // Practice is fully local-only (no Firestore reads/writes).
 const LOCAL_PRACTICE_ID_PREFIX = 'practice_local_';
+const LS_LOCAL_PRACTICE_GAMES = 'ct_localPracticeGames_v1';
 const localPracticeGames = new Map();
 let localPracticeAiTimer = null;
 let localPracticeAiBusy = false;
@@ -348,6 +349,34 @@ function getLocalPracticeGame(gameId) {
   return raw ? cloneLocalValue(raw) : null;
 }
 
+function loadLocalPracticeGamesFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_LOCAL_PRACTICE_GAMES);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    const entries = Object.entries(parsed);
+    for (const [key, value] of entries) {
+      if (!isLocalPracticeGameId(key)) continue;
+      if (!value || typeof value !== 'object') continue;
+      localPracticeGames.set(key, cloneLocalValue(value));
+    }
+  } catch (_) {}
+}
+
+function persistLocalPracticeGamesToStorage() {
+  try {
+    const payload = {};
+    for (const [key, value] of localPracticeGames.entries()) {
+      if (!isLocalPracticeGameId(key) || !value) continue;
+      payload[key] = cloneLocalValue(value);
+    }
+    localStorage.setItem(LS_LOCAL_PRACTICE_GAMES, JSON.stringify(payload));
+  } catch (_) {}
+}
+
+loadLocalPracticeGamesFromStorage();
+
 function setLocalPracticeGame(gameId, gameData, opts = {}) {
   const key = String(gameId || '').trim();
   if (!key || !isLocalPracticeGameId(key) || !gameData) return null;
@@ -357,6 +386,7 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
   next.id = key;
   next.updatedAtMs = Date.now();
   localPracticeGames.set(key, next);
+  persistLocalPracticeGamesToStorage();
 
   if (!opts.skipRender && currentGame?.id === key) {
     const prevCards = Array.isArray(prevLiveGame?.cards) ? prevLiveGame.cards : null;
@@ -441,6 +471,14 @@ function deleteLocalPracticeGame(gameId) {
   const key = String(gameId || '').trim();
   if (!key) return;
   localPracticeGames.delete(key);
+  persistLocalPracticeGamesToStorage();
+  try {
+    const active = String(localStorage.getItem(LS_ACTIVE_GAME_ID) || '').trim();
+    if (active && active === key) {
+      localStorage.removeItem(LS_ACTIVE_GAME_ID);
+      localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR);
+    }
+  } catch (_) {}
 }
 
 function appendGuessToClueHistoryLocal(game, team, clueWord, clueNumber, guess) {
@@ -1201,6 +1239,11 @@ function maybeStartLocalPracticeAI() {
 }
 
 window.isLocalPracticeGameId = isLocalPracticeGameId;
+window.hasLocalPracticeGame = function hasLocalPracticeGame(gameId) {
+  const key = String(gameId || '').trim();
+  if (!isLocalPracticeGameId(key)) return false;
+  return localPracticeGames.has(key);
+};
 window.isPracticeGameActive = () => !!(currentGame && currentGame.type === 'practice');
 
 // Quick Play settings / negotiation
@@ -4487,6 +4530,15 @@ function startGameListener(gameId, options = {}) {
   if (localPractice) {
     gameUnsub = () => {};
     clearRevealAnimationSuppressions();
+    try {
+      if (typeof safeLSSet === 'function') {
+        safeLSSet(LS_ACTIVE_GAME_ID, String(gameId || ''));
+        safeLSSet(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
+      } else {
+        localStorage.setItem(LS_ACTIVE_GAME_ID, String(gameId || ''));
+        localStorage.setItem(LS_ACTIVE_GAME_SPECTATOR, spectatorMode ? '1' : '0');
+      }
+    } catch (_) {}
     const localGame = getLocalPracticeGame(gameId);
     if (!localGame) {
       currentGame = null;
@@ -5022,11 +5074,20 @@ function bindOgMobileBoxExpanders() {
 
   if (panels.dataset.expandBound !== '1') {
     panels.dataset.expandBound = '1';
-    panels.addEventListener('click', (e) => {
+    let lastToggleAt = 0;
+    const handleToggleEvent = (e) => {
+      const now = Date.now();
+      if (now - lastToggleAt < 160) return;
+      const interactive = e.target?.closest?.('a, button, input, textarea, select');
+      if (interactive && !interactive.classList.contains('og-mobile-box')) return;
       const box = e.target?.closest?.('.og-mobile-box');
       if (!box || !panels.contains(box)) return;
+      lastToggleAt = now;
       toggleBox(box);
-    });
+    };
+    panels.addEventListener('click', handleToggleEvent);
+    panels.addEventListener('pointerup', handleToggleEvent);
+    panels.addEventListener('touchend', handleToggleEvent, { passive: true });
     panels.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       const box = e.target?.closest?.('.og-mobile-box');

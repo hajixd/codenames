@@ -13415,6 +13415,37 @@ body.og-mode .drawer-backdrop#chat-drawer-backdrop{
   }
 }
 
+/* Mobile OG/Cozy: keep Messages drawer in desktop position (right side). */
+@media (max-width: 768px){
+  body.og-mode .chat-drawer,
+  body.cozy-mode .chat-drawer{
+    top: env(safe-area-inset-top);
+    right: 0;
+    left: auto;
+    bottom: auto;
+    height: calc(100dvh - env(safe-area-inset-top));
+    height: calc(100vh - env(safe-area-inset-top));
+    width: min(420px, 94vw);
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid var(--border);
+    box-shadow: -24px 0 60px rgba(0,0,0,.25);
+    transform: translateX(102%);
+    transition: transform .18s ease;
+  }
+
+  body.og-mode .chat-drawer.open,
+  body.cozy-mode .chat-drawer.open{
+    transform: translateX(0);
+  }
+
+  body.og-mode #chat-drawer-backdrop,
+  body.cozy-mode #chat-drawer-backdrop{
+    background: rgba(0,0,0,.40);
+    backdrop-filter: blur(2px);
+  }
+}
+
 
 .chat-personal-picker-wrap{ position: relative; flex: 1; }
 .chat-personal-picker{
@@ -21295,14 +21326,18 @@ body.cozy-mode .og-chat-slidedown {
   flex: 1;
   min-height: 0;
   max-height: calc(60vh - 56px);
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   padding: 8px 10px 10px;
 }
 
 #og-mobile-chat-host {
   display: flex;
+  flex: 1;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 body.og-mode #og-mobile-chat-host .operative-chat-panel,
@@ -21310,6 +21345,7 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-panel {
   display: flex !important;
   flex-direction: column;
   flex: 1;
+  height: 100%;
   min-height: 0;
   background: transparent;
   border: none;
@@ -21327,6 +21363,23 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-panel .sidebar-panel-header 
 body.og-mode #og-mobile-chat-host .chat-privacy-badge,
 body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
   display: none;
+}
+
+body.og-mode #og-mobile-chat-host .operative-chat-messages,
+body.cozy-mode #og-mobile-chat-host .operative-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body.og-mode #og-mobile-chat-host .operative-chat-form,
+body.cozy-mode #og-mobile-chat-host .operative-chat-form {
+  margin-top: 8px;
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 
 /* Desktop: tune docked chat to match the Game Log shell proportions and vibe. */
@@ -21601,9 +21654,10 @@ body.cozy-mode #og-mobile-chat-host .chat-privacy-badge {
 }
 
 /* Mobile team boxes: tap anywhere on Operatives/Spymasters box to expand. */
-@media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
+@media (max-width: 1024px) {
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-box {
     cursor: pointer;
+    touch-action: manipulation;
     transition: max-height 220ms ease, transform 220ms ease, box-shadow 220ms ease;
   }
 

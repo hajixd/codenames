@@ -2223,6 +2223,39 @@ function restoreLastNavigation() {
   // - Avoid flashing the Quick Play lobby on refresh.
   // - If a live Quick Play game is in progress, show the smooth "live game" chooser.
   if (mode === 'quick') {
+    // Practice games are local-only and should resume directly from local storage.
+    try {
+      const resumeId = String(safeLSGet(LS_ACTIVE_GAME_ID) || '').trim();
+      const isLocalPractice = !!(
+        resumeId &&
+        typeof window.isLocalPracticeGameId === 'function' &&
+        window.isLocalPracticeGameId(resumeId)
+      );
+      const hasPracticeState = !isLocalPractice
+        ? false
+        : (typeof window.hasLocalPracticeGame === 'function'
+            ? !!window.hasLocalPracticeGame(resumeId)
+            : true);
+      if (isLocalPractice && !hasPracticeState) {
+        try { localStorage.removeItem(LS_ACTIVE_GAME_ID); } catch (_) {}
+        try { localStorage.removeItem(LS_ACTIVE_GAME_SPECTATOR); } catch (_) {}
+      }
+      if (isLocalPractice && hasPracticeState) {
+        showAuthLoadingScreen('Restoring');
+        setTimeout(() => {
+          try {
+            enterAppFromLaunch('quick', { restore: true, skipQuickLobby: true });
+            try { window.showGameBoard?.(); } catch (_) {}
+            try { window.startGameListener?.(resumeId, { spectator: false, ephemeral: true }); } catch (_) {}
+            try { document.body.classList.add('practice'); } catch (_) {}
+          } finally {
+            hideAuthLoadingScreen();
+          }
+        }, 0);
+        return;
+      }
+    } catch (_) {}
+
     try {
       maybeGateQuickPlayWithLiveGame({
         showLoading: true,
