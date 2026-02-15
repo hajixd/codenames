@@ -22776,6 +22776,10 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     overflow: visible;
   }
 
+  body:is(.og-mode, .cozy-mode) #panel-game.panel.game-active {
+    z-index: 240;
+  }
+
   body:is(.og-mode, .cozy-mode) #panel-game.panel {
     contain: none;
   }
@@ -22786,6 +22790,10 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .panel-game.game-active .panel-inner {
     justify-content: flex-end;
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-main-layout {
+    overflow: visible;
   }
 
   #game-board-container.game-container-expanded {
@@ -22813,7 +22821,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     transform: none;
     gap: 8px;
     position: relative;
-    z-index: 40;
+    z-index: 260;
   }
 
   /* OG/Cozy desktop: anchor side stacks near the top (separate from card position). */
@@ -22822,7 +22830,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     justify-content: flex-start;
     overflow: visible;
     position: relative;
-    z-index: 32;
+    z-index: 252;
   }
 
   /* Safer "higher" adjustments: tighten internal top spacing instead of translating containers. */
@@ -22830,7 +22838,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     margin-top: -8px;
     padding: 0 0 4px;
     position: relative;
-    z-index: 40;
+    z-index: 260;
     overflow: visible;
   }
 
