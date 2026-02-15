@@ -3980,6 +3980,69 @@ function truncateTeamNameGame(name, maxLen = 20) {
   return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
 }
 
+function clampGameDaySeriesWins(value) {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 2) return 2;
+  return n;
+}
+
+function buildBracketSeriesByMatchup() {
+  const map = new Map();
+  if (typeof buildBracketModel !== 'function') return map;
+  const teams = Array.isArray(teamsCache) ? teamsCache : [];
+  let model = null;
+  try {
+    model = buildBracketModel(teams);
+  } catch (_) {
+    return map;
+  }
+  const matches = Array.isArray(model?.matches) ? model.matches : [];
+  matches.forEach((match) => {
+    const sides = (match?.slots || [])
+      .filter(slot => slot && slot.kind === 'team' && slot.id)
+      .map(slot => String(slot.id || '').trim())
+      .filter(Boolean);
+    if (sides.length !== 2) return;
+    const leftId = sides[0];
+    const rightId = sides[1];
+    const leftWins = clampGameDaySeriesWins(match?.series?.aWins || 0);
+    const rightWins = clampGameDaySeriesWins(match?.series?.bWins || 0);
+    const key = [leftId, rightId].sort().join('|');
+    map.set(key, {
+      matchId: String(match?.id || '').trim(),
+      label: String(match?.label || '').trim(),
+      byTeamId: {
+        [leftId]: leftWins,
+        [rightId]: rightWins,
+      }
+    });
+  });
+  return map;
+}
+
+function getGameDaySeriesScore(game, seriesByMatchup = null) {
+  if (!game || String(game?.type || '').trim() !== 'tournament') return null;
+  const redTeamId = String(game?.redTeamId || '').trim();
+  const blueTeamId = String(game?.blueTeamId || '').trim();
+  if (!redTeamId || !blueTeamId) return null;
+
+  const key = [redTeamId, blueTeamId].sort().join('|');
+  const source = (seriesByMatchup instanceof Map)
+    ? seriesByMatchup
+    : buildBracketSeriesByMatchup();
+  const row = source.get(key);
+  if (!row || !row.byTeamId || typeof row.byTeamId !== 'object') return null;
+
+  return {
+    matchId: String(row.matchId || '').trim(),
+    label: String(row.label || '').trim(),
+    redWins: clampGameDaySeriesWins(row.byTeamId[redTeamId] || 0),
+    blueWins: clampGameDaySeriesWins(row.byTeamId[blueTeamId] || 0),
+  };
+}
+
 async function renderSpectateGames() {
   const section = document.getElementById('spectate-games-section');
   const list = document.getElementById('spectate-games-list');
@@ -4005,11 +4068,16 @@ async function renderSpectateGames() {
     }
 
     section.style.display = 'block';
+    const seriesByMatchup = buildBracketSeriesByMatchup();
 
     const activeHtml = activeGames.map(g => {
       const redName = escapeHtml(truncateTeamNameGame(g.redTeamName || 'Red Team'));
       const blueName = escapeHtml(truncateTeamNameGame(g.blueTeamName || 'Blue Team'));
       const status = escapeHtml(describeGameStatus(g));
+      const series = getGameDaySeriesScore(g, seriesByMatchup);
+      const scoreChip = series
+        ? `<span class="challenge-score" title="Series score">${escapeHtml(`${series.redWins}-${series.blueWins}`)}</span>`
+        : '';
 
       // Tournament games: only team members can join, others can only watch
       // Quick Play games: anyone in the game can rejoin
@@ -4034,7 +4102,10 @@ async function renderSpectateGames() {
         <div class="challenge-row">
           <div class="challenge-info">
             <span class="challenge-team-name">${redName} vs ${blueName}</span>
-            <span class="challenge-meta">${status}</span>
+            <div class="challenge-meta-row">
+              <span class="challenge-meta">${status}</span>
+              ${scoreChip}
+            </div>
           </div>
           <div class="challenge-actions">
             <button class="btn primary small" onclick="${primaryAction}">${primaryLabel}</button>
@@ -4075,6 +4146,7 @@ async function renderTournamentLobby() {
   const pendingSec = document.getElementById('pending-challenges-section');
   const activeBanner = document.getElementById('game-active-banner');
   const activeGamesSec = document.getElementById('active-games-section');
+  const seriesByMatchup = buildBracketSeriesByMatchup();
 
   if (!statusEl) return;
 
@@ -4088,7 +4160,7 @@ async function renderTournamentLobby() {
 
     // Render active games list for spectating
     if (activeGamesSec) activeGamesSec.style.display = 'none';
-    await renderActiveGamesList(null, null);
+    await renderActiveGamesList(null, null, seriesByMatchup);
     return;
   }
 
@@ -4106,7 +4178,9 @@ async function renderTournamentLobby() {
       activeBanner.style.display = 'flex';
       const teamsText = document.getElementById('game-banner-teams');
       if (teamsText) {
-        teamsText.textContent = `${truncateTeamNameGame(activeGame.redTeamName)} vs ${truncateTeamNameGame(activeGame.blueTeamName)}`;
+        const score = getGameDaySeriesScore(activeGame, seriesByMatchup);
+        const scoreSuffix = score ? ` (${score.redWins}-${score.blueWins})` : '';
+        teamsText.textContent = `${truncateTeamNameGame(activeGame.redTeamName)} vs ${truncateTeamNameGame(activeGame.blueTeamName)}${scoreSuffix}`;
       }
     }
     if (challengesSec) challengesSec.style.display = 'none';
@@ -4114,7 +4188,7 @@ async function renderTournamentLobby() {
     if (pendingSec) pendingSec.style.display = 'none';
 
     // Still show active games list (for spectating other matches)
-    await renderActiveGamesList(myTeam, activeGame.id);
+    await renderActiveGamesList(myTeam, activeGame.id, seriesByMatchup);
     return;
   } else {
     if (activeBanner) activeBanner.style.display = 'none';
@@ -4199,10 +4273,10 @@ async function renderTournamentLobby() {
   }
 
   // Active games list (spectate / join)
-  await renderActiveGamesList(myTeam, null);
+  await renderActiveGamesList(myTeam, null, seriesByMatchup);
 }
 
-async function renderActiveGamesList(myTeam, myActiveGameId) {
+async function renderActiveGamesList(myTeam, myActiveGameId, seriesByMatchup = null) {
   const activeGamesSec = document.getElementById('active-games-section');
   const list = document.getElementById('active-games-list');
   if (!activeGamesSec || !list) return;
@@ -4214,11 +4288,18 @@ async function renderActiveGamesList(myTeam, myActiveGameId) {
   }
 
   activeGamesSec.style.display = 'block';
+  const matchupSeries = (seriesByMatchup instanceof Map)
+    ? seriesByMatchup
+    : buildBracketSeriesByMatchup();
 
   list.innerHTML = games.map(g => {
     const redName = escapeHtml(truncateTeamNameGame(g.redTeamName || 'Red Team'));
     const blueName = escapeHtml(truncateTeamNameGame(g.blueTeamName || 'Blue Team'));
     const status = escapeHtml(describeGameStatus(g));
+    const series = getGameDaySeriesScore(g, matchupSeries);
+    const scoreChip = series
+      ? `<span class="challenge-score" title="Series score">${escapeHtml(`${series.redWins}-${series.blueWins}`)}</span>`
+      : '';
 
     const isMyGame = !!(myTeam && (g.redTeamId === myTeam.id || g.blueTeamId === myTeam.id));
     const primaryLabel = isMyGame ? (myActiveGameId === g.id ? 'Rejoin' : 'Join') : 'Spectate';
@@ -4228,7 +4309,10 @@ async function renderActiveGamesList(myTeam, myActiveGameId) {
       <div class="challenge-row">
         <div class="challenge-info">
           <span class="challenge-team-name">${redName} vs ${blueName}</span>
-          <span class="challenge-meta">${status}</span>
+          <div class="challenge-meta-row">
+            <span class="challenge-meta">${status}</span>
+            ${scoreChip}
+          </div>
         </div>
         <div class="challenge-actions">
           <button class="btn primary small" onclick="${primaryAction}">${primaryLabel}</button>
