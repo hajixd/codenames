@@ -22781,6 +22781,19 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
       margin-inline: auto;
     }
   }
+
+  /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
+  @supports (zoom: 1) {
+    body:is(.og-mode, .cozy-mode) .panel-game.game-active .online-roster-title {
+      font-size: clamp(18px, calc(30px * var(--desktop-game-scale, 1)), 34px);
+      letter-spacing: calc(1.6px * var(--desktop-game-scale, 1));
+    }
+
+    body.og-mode .panel-game.game-active .og-mobile-box-header {
+      font-size: clamp(8px, calc(10px * var(--desktop-game-scale, 1)), 12px);
+      letter-spacing: calc(1px * var(--desktop-game-scale, 1));
+    }
+  }
 }
 
 @media (min-width: 1800px) and (min-height: 980px) {
