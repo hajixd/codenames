@@ -23742,11 +23742,14 @@ body.stacking-turn-active .game-center-area .game-action-bar {
 
 .clue-stack-input-slot {
   width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .clue-stack-input-slot .clue-form-expanded {
-  max-width: 100%;
   width: 100%;
+  max-width: clamp(320px, 42vw, 460px);
+  margin: 0 auto;
 }
 
 .clue-stack-chip-row {
@@ -24059,48 +24062,66 @@ body.light-mode .clue-stack-chip {
 
 /* ── Judge Courtroom Layout ── */
 .judge-courtroom {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 12px;
-  align-items: center;
-  padding: 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  padding: 14px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
   position: relative;
   overflow: visible;
-  min-height: 100px;
 }
 
-.judge-col {
-  display: flex;
-  flex-direction: column;
+.judge-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   align-items: center;
-  justify-content: center;
-  min-height: 80px;
-  gap: 6px;
 }
 
-.judge-col-label {
+.judge-top-label {
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 1.2px;
   text-transform: uppercase;
+  text-align: center;
+  opacity: 0.95;
 }
 
-.judge-col-legal .judge-col-label {
+.judge-top-legal {
   color: #39d353;
 }
 
-.judge-col-illegal .judge-col-label {
+.judge-top-illegal {
   color: #f85149;
 }
 
-.judge-col-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+.judge-stage {
+  position: relative;
+  min-height: 132px;
   overflow: visible;
+}
+
+.judge-lane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  border-radius: 12px;
+  opacity: 0.18;
+}
+
+.judge-lane-legal {
+  left: 0;
+  background: rgba(57, 211, 83, 0.12);
+  border: 1px solid rgba(57, 211, 83, 0.18);
+}
+
+.judge-lane-illegal {
+  right: 0;
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.18);
 }
 
 .judge-avatar {
@@ -24114,11 +24135,16 @@ body.light-mode .clue-stack-chip {
   font-weight: 800;
   font-size: 13px;
   color: var(--text);
-  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+  transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1),
               background 0.4s ease,
               border-color 0.4s ease,
               box-shadow 0.4s ease;
-  position: relative;
+  position: absolute;
+  left: 50%;
+  top: calc(var(--judge-row, 0) * 42px);
+  transform: translateX(-50%);
+  z-index: 2;
 }
 
 .judge-avatar-icon {
@@ -24152,30 +24178,18 @@ body.light-mode .clue-stack-chip {
 
 /* Center state — waiting to vote */
 .judge-avatar.judge-center {
-  transform: translateX(0);
+  left: 50%;
+  transform: translateX(-50%);
   animation: judgeOrbPulse 1.2s ease-in-out infinite;
-}
-
-.judge-avatar.judge-center:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.judge-avatar.judge-center:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-/* Slide to LEGAL (left) */
-@keyframes judgeSlideLeft {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(calc(-100% - 30px)); }
+  animation-delay: calc(var(--judge-row, 0) * 0.2s);
 }
 
 .judge-avatar.judge-legal {
-  transform: translateX(calc(-100% - 30px));
+  left: 25%;
+  transform: translateX(-50%);
   background: rgba(57, 211, 83, 0.15);
   border-color: #39d353;
   box-shadow: 0 0 12px rgba(57, 211, 83, 0.3);
-  animation: judgeSlideLeft 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .judge-avatar.judge-legal .judge-avatar-icon {
@@ -24187,18 +24201,12 @@ body.light-mode .clue-stack-chip {
   color: #39d353;
 }
 
-/* Slide to ILLEGAL (right) */
-@keyframes judgeSlideRight {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(calc(100% + 30px)); }
-}
-
 .judge-avatar.judge-illegal {
-  transform: translateX(calc(100% + 30px));
+  left: 75%;
+  transform: translateX(-50%);
   background: rgba(248, 81, 73, 0.15);
   border-color: #f85149;
   box-shadow: 0 0 12px rgba(248, 81, 73, 0.3);
-  animation: judgeSlideRight 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .judge-avatar.judge-illegal .judge-avatar-icon {
@@ -24954,8 +24962,8 @@ body.light-mode.stacking-turn-active .game-action-bar .clue-stack-panel {
 /* Clue form inside stacking panel takes full width */
 body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   flex: 1 1 auto;
-  max-width: 100%;
   width: 100%;
+  max-width: 100%;
 }
 
 /* During operative phase, make clue display + end turn sit as one integrated row */
@@ -24978,8 +24986,10 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   .clue-form-expanded {
     max-width: 340px;
   }
+  /* In stacking mode on desktop, keep the clue input compact instead of full-width */
+  body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded,
   body.stacking-turn-active .game-action-bar .clue-form-expanded {
-    max-width: 100%;
+    max-width: clamp(320px, 42vw, 460px);
   }
   .clue-display-expanded {
     min-width: clamp(180px, 26vw, 320px);

@@ -7298,25 +7298,29 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
       hintHtml = `
         <div class="judge-courtroom ${flashCls}" id="judge-courtroom">
-          <div class="judge-col judge-col-legal"><span class="judge-col-label">LEGAL</span></div>
-          <div class="judge-col judge-col-center">
-            <div class="judge-avatar ${j0cls}" id="judge-avatar-0">
+          <div class="judge-top" aria-hidden="true">
+            <div class="judge-top-label judge-top-legal">LEGAL</div>
+            <div class="judge-top-label judge-top-illegal">ILLEGAL</div>
+          </div>
+          <div class="judge-stage" aria-label="AI legality council">
+            <div class="judge-lane judge-lane-legal" aria-hidden="true"></div>
+            <div class="judge-lane judge-lane-illegal" aria-hidden="true"></div>
+            <div class="judge-avatar ${j0cls}" id="judge-avatar-0" style="--judge-row:0">
               <span class="judge-avatar-icon">${judgeNames[0][0]}</span>
               <span class="judge-avatar-name">${judgeNames[0]}</span>
               <span class="judge-avatar-label">${j0label}</span>
             </div>
-            <div class="judge-avatar ${j1cls}" id="judge-avatar-1">
+            <div class="judge-avatar ${j1cls}" id="judge-avatar-1" style="--judge-row:1">
               <span class="judge-avatar-icon">${judgeNames[1][0]}</span>
               <span class="judge-avatar-name">${judgeNames[1]}</span>
               <span class="judge-avatar-label">${j1label}</span>
             </div>
-            <div class="judge-avatar ${j2cls}" id="judge-avatar-2">
+            <div class="judge-avatar ${j2cls}" id="judge-avatar-2" style="--judge-row:2">
               <span class="judge-avatar-icon">${judgeNames[2][0]}</span>
               <span class="judge-avatar-name">${judgeNames[2]}</span>
               <span class="judge-avatar-label">${j2label}</span>
             </div>
           </div>
-          <div class="judge-col judge-col-illegal"><span class="judge-col-label">ILLEGAL</span></div>
         </div>
       `;
       reviewPanelEl.classList.add('is-reviewing');
