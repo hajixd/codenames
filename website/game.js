@@ -6318,6 +6318,9 @@ function renderClueStackingPanel() {
   const panel = document.getElementById('clue-stack-panel');
   const summaryEl = document.getElementById('clue-stack-summary');
   const chipRow = document.getElementById('clue-stack-chip-row');
+  const inputSlot = document.getElementById('clue-stack-input-slot');
+  const clueForm = document.getElementById('clue-form');
+  const actionBar = panel ? panel.closest('.game-action-bar') : null;
   const numInput = document.getElementById('clue-num-input');
   const minusBtn = document.getElementById('og-num-minus');
   const plusBtn = document.getElementById('og-num-plus');
@@ -6328,6 +6331,10 @@ function renderClueStackingPanel() {
   if (!stackingActive) {
     panel.style.display = 'none';
     chipRow.innerHTML = '';
+    // Move clue form back out of stacking panel to action bar (after the panel)
+    if (clueForm && actionBar && clueForm.parentElement === inputSlot) {
+      panel.insertAdjacentElement('afterend', clueForm);
+    }
     if (numInput) numInput.disabled = false;
     if (minusBtn) minusBtn.disabled = false;
     if (plusBtn) plusBtn.disabled = false;
@@ -6337,6 +6344,11 @@ function renderClueStackingPanel() {
   const selected = getCurrentClueTargetSelection(currentGame);
   clueTargetSelection = selected;
   panel.style.display = 'flex';
+
+  // Move clue form into stacking panel input slot
+  if (clueForm && inputSlot && clueForm.parentElement !== inputSlot) {
+    inputSlot.appendChild(clueForm);
+  }
 
   if (selected.length > 0) {
     summaryEl.textContent = `${selected.length} target${selected.length === 1 ? '' : 's'} selected`;
@@ -7279,6 +7291,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       const j0cls = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
       const j1cls = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
       const j2cls = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+      const judgeNames = ['Aria', 'Kai', 'Nova'];
       const j0label = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
       const j1label = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
       const j2label = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
@@ -7288,15 +7301,18 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           <div class="judge-col judge-col-legal"><span class="judge-col-label">LEGAL</span></div>
           <div class="judge-col judge-col-center">
             <div class="judge-avatar ${j0cls}" id="judge-avatar-0">
-              <span class="judge-avatar-icon">1</span>
+              <span class="judge-avatar-icon">${judgeNames[0][0]}</span>
+              <span class="judge-avatar-name">${judgeNames[0]}</span>
               <span class="judge-avatar-label">${j0label}</span>
             </div>
             <div class="judge-avatar ${j1cls}" id="judge-avatar-1">
-              <span class="judge-avatar-icon">2</span>
+              <span class="judge-avatar-icon">${judgeNames[1][0]}</span>
+              <span class="judge-avatar-name">${judgeNames[1]}</span>
               <span class="judge-avatar-label">${j1label}</span>
             </div>
             <div class="judge-avatar ${j2cls}" id="judge-avatar-2">
-              <span class="judge-avatar-icon">3</span>
+              <span class="judge-avatar-icon">${judgeNames[2][0]}</span>
+              <span class="judge-avatar-name">${judgeNames[2]}</span>
               <span class="judge-avatar-label">${j2label}</span>
             </div>
           </div>

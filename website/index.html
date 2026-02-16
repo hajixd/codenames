@@ -1140,7 +1140,19 @@
                       </button>
                     </div>
 
-                    <!-- Spymaster Clue Input -->
+                    <!-- Stacking Panel (wraps input when active) -->
+                    <div class="clue-stack-panel" id="clue-stack-panel" style="display:none;">
+                      <div class="clue-stack-panel-header">
+                        <span class="clue-stack-badge">STACKING</span>
+                        <span class="clue-stack-summary" id="clue-stack-summary">Tap your team's cards to mark clue targets</span>
+                        <button type="button" class="btn small clue-stack-clear-btn" id="clue-stack-clear-btn">Clear</button>
+                      </div>
+                      <!-- Clue input is inserted here when stacking is active -->
+                      <div class="clue-stack-input-slot" id="clue-stack-input-slot"></div>
+                      <div class="clue-stack-chip-row" id="clue-stack-chip-row"></div>
+                    </div>
+
+                    <!-- Spymaster Clue Input (moves into stacking panel when stacking is active) -->
                     <form class="clue-form-expanded" id="clue-form" style="display:none;">
                       <input type="text" class="input clue-input-expanded" id="clue-input" placeholder="Enter your clue..." required />
                       <input type="number" class="input clue-num-expanded" id="clue-num-input" min="0" max="9" value="1" placeholder="#" required />
@@ -1148,16 +1160,6 @@
                       <button type="button" class="og-num-btn og-num-plus" id="og-num-plus" title="Increase number">+</button>
                       <button type="submit" class="btn primary">Give Clue</button>
                     </form>
-
-                    <!-- Stacking Panel (below input) -->
-                    <div class="clue-stack-panel" id="clue-stack-panel" style="display:none;">
-                      <div class="clue-stack-panel-header">
-                        <span class="clue-stack-badge">STACKING</span>
-                        <span class="clue-stack-summary" id="clue-stack-summary">Tap your team's cards</span>
-                        <button type="button" class="btn small clue-stack-clear-btn" id="clue-stack-clear-btn">Clear</button>
-                      </div>
-                      <div class="clue-stack-chip-row" id="clue-stack-chip-row"></div>
-                    </div>
 
                     <!-- Operative Actions -->
                     <div class="operative-actions-expanded" id="operative-actions" style="display:none;">
