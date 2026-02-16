@@ -879,6 +879,12 @@ function localPracticePause(ms) {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
+function randomDelayMs(minMs, maxMs) {
+  const min = Math.max(0, Number(minMs) || 0);
+  const max = Math.max(min, Number(maxMs) || min);
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
 async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpy = null) {
   const live = getLocalPracticeGame(gameId);
   if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) return false;
@@ -2354,6 +2360,11 @@ function bindGameLogTabControls() {
       btn.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
       });
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setGameLogTab(btn.getAttribute('data-gamelog-tab'));
+      }, { passive: false });
     });
   };
   wireButtons();
@@ -2417,6 +2428,7 @@ function setupOgGamelogSlidedown() {
   const slidedown = document.getElementById('og-gamelog-slidedown');
   const closeBtn = document.getElementById('og-gamelog-close-btn');
   const panel = slidedown?.querySelector('.og-gamelog-slidedown-inner');
+  const entryScrollAreas = slidedown ? Array.from(slidedown.querySelectorAll('.gamelog-entries')) : [];
   const chatToggleBtn = document.getElementById('og-chat-toggle-btn');
   const chatSlidedown = document.getElementById('og-chat-slidedown');
   const chatCloseBtn = document.getElementById('og-chat-close-btn');
@@ -2543,7 +2555,7 @@ function setupOgGamelogSlidedown() {
     }, { passive: false });
   };
 
-  bindScrollBoundaryLock(entries, isOpen);
+  entryScrollAreas.forEach((el) => bindScrollBoundaryLock(el, isOpen));
   const chatMessages = document.getElementById('operative-chat-messages');
   bindScrollBoundaryLock(chatMessages || chatBody, isChatOpen);
 }
@@ -6645,7 +6657,7 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
   if (!opposingSpy || !opposingSpy.isAI) return false;
 
   const aiSpy = toLocalPracticeRuntimeAI(opposingSpy, opposingTeam);
-  await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.beforeDecisionMs);
+  await localPracticePause(randomDelayMs(2200, 4200));
   const live = getLocalPracticeGame(gameId);
   const livePending = normalizePendingClueEntry(live?.pendingClue, live);
   if (!live || !livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return false;
@@ -6744,7 +6756,14 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
 
 async function evaluatePendingClueWithCouncil(game, pending) {
   const baseline = basicClueLegalityCheck(pending, game);
-  const judges = await Promise.all([0, 1, 2].map((idx) => judgePendingClueWithAI(game, pending, idx, baseline)));
+  const judges = [];
+  for (let idx = 0; idx < 3; idx += 1) {
+    // Add deliberate deliberation so council review feels like a real decision.
+    await localPracticePause(randomDelayMs(1050, 1850));
+    const verdict = await judgePendingClueWithAI(game, pending, idx, baseline);
+    judges.push(verdict);
+    if (idx < 2) await localPracticePause(randomDelayMs(320, 760));
+  }
   let legalVotes = judges.filter((j) => j.verdict === 'legal').length;
   let illegalVotes = judges.length - legalVotes;
   let verdict = legalVotes >= illegalVotes ? 'legal' : 'illegal';
@@ -7043,6 +7062,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const currentClueEl = document.getElementById('current-clue');
   const clueFormEl = document.getElementById('clue-form');
   const operativeActionsEl = document.getElementById('operative-actions');
+  const actionBarEl = currentClueEl?.closest?.('.game-action-bar') || null;
   const waitingEl = document.getElementById('waiting-message');
   const typingLiveEl = document.getElementById('clue-live-typing');
   const reviewPanelEl = document.getElementById('clue-review-panel');
@@ -7078,6 +7098,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   if (typingLiveEl) typingLiveEl.style.display = 'none';
   if (reviewPanelEl) reviewPanelEl.style.display = 'none';
   if (reviewActionsEl) reviewActionsEl.style.display = 'none';
+  if (reviewPanelEl) reviewPanelEl.classList.remove('is-reviewing');
+  if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
   renderClueStackingPanel();
@@ -7117,10 +7139,15 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
   if (reviewPanelEl && pending) {
     reviewPanelEl.style.display = 'flex';
-    if (reviewTitleEl) reviewTitleEl.textContent = `Review: ${pending.word} ${pending.number}`;
+    if (reviewTitleEl) {
+      const reviewTitle = `${pending.word} ${pending.number}`;
+      reviewTitleEl.textContent = reviewTitle;
+      reviewTitleEl.title = reviewTitle;
+    }
 
     let statusText = '';
     let hintText = '';
+    let hintHtml = '';
     let metaText = '';
 
     if (pending.state === 'awaiting') {
@@ -7139,7 +7166,17 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     } else if (pending.state === 'reviewing') {
       statusText = 'Council Reviewing';
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
-      hintText = 'Three AI judges are checking clue legality.';
+      hintHtml = `
+        <div class="judge-thinking">
+          <div class="judge-thinking-orbs" aria-hidden="true">
+            <span class="judge-orb"></span>
+            <span class="judge-orb"></span>
+            <span class="judge-orb"></span>
+          </div>
+          <span class="judge-thinking-text">Three AI judges are deliberating…</span>
+        </div>
+      `;
+      reviewPanelEl.classList.add('is-reviewing');
     } else if (pending.state === 'rejected') {
       statusText = 'Rejected';
       const legalVotes = Number(pendingReview?.legalVotes || 0);
@@ -7154,7 +7191,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
     if (reviewStatusEl) reviewStatusEl.textContent = statusText;
     if (reviewMetaEl) reviewMetaEl.textContent = metaText;
-    if (reviewHintEl) reviewHintEl.textContent = hintText;
+    if (reviewHintEl) {
+      if (hintHtml) reviewHintEl.innerHTML = hintHtml;
+      else reviewHintEl.textContent = hintText;
+    }
   }
 
   // Update OG mode phase banner
@@ -7253,7 +7293,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
 
   void clearLiveClueDraftOwnership({ silent: true });
-  if (currentGame.currentPhase === 'operatives') return;
+  if (currentGame.currentPhase === 'operatives') {
+    if (actionBarEl) actionBarEl.classList.add('row-clue-endturn');
+    return;
+  }
 }
 
 function renderGameLog() {
@@ -10063,9 +10106,13 @@ function initMobileSidebarSwipes() {
 
   const isInteractiveTarget = (t) => {
     if (!t) return false;
-    const tag = (t.tagName || '').toLowerCase();
+    const el = (typeof t.closest === 'function')
+      ? t
+      : (t.parentElement || null);
+    if (!el) return false;
+    const tag = (el.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return true;
-    return !!t.closest?.('button, input, textarea, select, a, .operative-chat-form, .clue-form-expanded, .tag-legend-items');
+    return !!el.closest?.('button, input, textarea, select, a, .operative-chat-form, .clue-form-expanded, .tag-legend-items, .gamelog-tabs, .gamelog-tab-btn, .gamelog-entries');
   };
 
   const onStart = (e) => {
