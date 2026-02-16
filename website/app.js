@@ -45,6 +45,7 @@ const LS_SETTINGS_VOLUME = 'ct_volume_v1';
 const LS_SETTINGS_THEME = 'ct_theme_v1';
 const LS_SETTINGS_OG_MODE = 'ct_og_mode_v1';
 const LS_SETTINGS_STYLE_MODE = 'ct_style_mode_v1';
+const LS_SETTINGS_STACKING = 'ct_stacking_v1';
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -7689,6 +7690,7 @@ let settingsAnimations = true;
 let settingsSounds = true;
 let settingsVolume = 70;
 let settingsStyleMode = 'online'; // only supported style
+let settingsStacking = false;
 // Audio context for sound effects
 let audioCtx = null;
 let audioUnlocked = false;
@@ -7723,10 +7725,12 @@ function initSettings() {
   const savedSounds = safeLSGet(LS_SETTINGS_SOUNDS);
   const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
   const savedStyleMode = safeLSGet(LS_SETTINGS_STYLE_MODE);
+  const savedStacking = safeLSGet(LS_SETTINGS_STACKING);
 
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
+  settingsStacking = savedStacking === 'true';
 
   // Only Codenames Online style is supported.
   settingsStyleMode = normalizeStyleMode(savedStyleMode);
@@ -7749,6 +7753,7 @@ function initSettings() {
   const backdrop = document.getElementById('settings-modal-backdrop');
   const closeBtn = document.getElementById('settings-modal-close');
   const animToggle = document.getElementById('settings-animations-toggle');
+  const stackingToggle = document.getElementById('settings-stacking-toggle');
   const styleDropdown = document.getElementById('settings-style-dropdown');
   const styleTrigger = document.getElementById('settings-style-trigger');
   const styleValueEl = document.getElementById('settings-style-value');
@@ -7763,6 +7768,7 @@ function initSettings() {
 
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
+  if (stackingToggle) stackingToggle.checked = settingsStacking;
   const STYLE_MODE_LABELS = { online: 'Codenames Online' };
   const updateStyleDropdownUI = () => {
     const mode = normalizeStyleMode(settingsStyleMode);
@@ -7988,6 +7994,17 @@ function initSettings() {
     settingsAnimations = animToggle.checked;
     safeLSSet(LS_SETTINGS_ANIMATIONS, settingsAnimations ? 'true' : 'false');
     applyAnimationsSetting();
+    playSound('toggle');
+  });
+
+  stackingToggle?.addEventListener('change', () => {
+    settingsStacking = !!stackingToggle.checked;
+    safeLSSet(LS_SETTINGS_STACKING, settingsStacking ? 'true' : 'false');
+    try {
+      window.dispatchEvent(new CustomEvent('codenames:stacking-setting-changed', {
+        detail: { enabled: settingsStacking }
+      }));
+    } catch (_) {}
     playSound('toggle');
   });
 
@@ -9354,6 +9371,9 @@ document.addEventListener('DOMContentLoaded', initGlobalSoundEffects);
 
 // Export for game.js to use
 window.playSound = playSound;
+window.isStackingEnabled = function isStackingEnabled() {
+  return !!settingsStacking;
+};
 
 /* =========================
    Online Presence System

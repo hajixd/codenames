@@ -330,6 +330,7 @@ let quickPlayEnsurePromise = null;
 // Practice is fully local-only (no Firestore reads/writes).
 const LOCAL_PRACTICE_ID_PREFIX = 'practice_local_';
 const LS_LOCAL_PRACTICE_GAMES = 'ct_localPracticeGames_v1';
+const LS_SETTINGS_STACKING = 'ct_stacking_v1';
 const localPracticeGames = new Map();
 let localPracticeAiTimer = null;
 let localPracticeAiBusy = false;
@@ -839,6 +840,8 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
     team: actingTeam,
     word: clueWord,
     number: clueNumber,
+    targets: [],
+    targetWords: [],
     results: [],
     timestamp: new Date().toISOString()
   });
@@ -2149,6 +2152,9 @@ function initGameUI() {
 
   // Clue form
   document.getElementById('clue-form')?.addEventListener('submit', handleClueSubmit);
+  document.getElementById('clue-stack-clear-btn')?.addEventListener('click', () => {
+    clearClueTargetSelection({ refreshGame: true });
+  });
 
   // End turn button
   document.getElementById('end-turn-btn')?.addEventListener('click', handleEndTurn);
@@ -2194,6 +2200,15 @@ function initGameUI() {
 
   // Popover toggles
   setupGamePopovers();
+  bindGameLogTabControls();
+
+  if (!_stackingSettingsBindingReady) {
+    _stackingSettingsBindingReady = true;
+    window.addEventListener('codenames:stacking-setting-changed', () => {
+      clueTargetSelection = [];
+      try { renderGame(); } catch (_) {}
+    });
+  }
 
   // Rejoin game
   document.getElementById('rejoin-game-btn')?.addEventListener('click', rejoinCurrentGame);
@@ -2211,6 +2226,57 @@ function initGameUI() {
 /* =========================
    Game Popovers (Log & Menu)
 ========================= */
+function normalizeGameLogTab(tab) {
+  return String(tab || '').trim().toLowerCase() === 'clues-left' ? 'clues-left' : 'history';
+}
+
+function applyGameLogTabState() {
+  const activeTab = normalizeGameLogTab(gameLogActiveTab);
+  const historyVisible = activeTab === 'history';
+  const cluesVisible = activeTab === 'clues-left';
+
+  const setDisplay = (el, show) => {
+    if (!el) return;
+    el.style.display = show ? '' : 'none';
+  };
+
+  setDisplay(document.getElementById('game-log-entries-sidebar'), historyVisible);
+  setDisplay(document.getElementById('game-log-clues-left-sidebar'), cluesVisible);
+  setDisplay(document.getElementById('og-gamelog-slidedown-entries'), historyVisible);
+  setDisplay(document.getElementById('og-gamelog-slidedown-clues-left'), cluesVisible);
+
+  const tabRoots = [
+    document.getElementById('gamelog-tabs-sidebar'),
+    document.getElementById('gamelog-tabs-slidedown'),
+  ];
+  tabRoots.forEach((root) => {
+    if (!root) return;
+    root.setAttribute('data-active-tab', activeTab);
+    root.querySelectorAll('.gamelog-tab-btn[data-gamelog-tab]').forEach((btn) => {
+      const tab = normalizeGameLogTab(btn.getAttribute('data-gamelog-tab'));
+      const isActive = tab === activeTab;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  });
+}
+
+function setGameLogTab(tab) {
+  gameLogActiveTab = normalizeGameLogTab(tab);
+  applyGameLogTabState();
+}
+
+function bindGameLogTabControls() {
+  if (_gameLogTabBindingsReady) return;
+  _gameLogTabBindingsReady = true;
+  document.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('.gamelog-tab-btn[data-gamelog-tab]');
+    if (!btn) return;
+    const tab = btn.getAttribute('data-gamelog-tab');
+    setGameLogTab(tab);
+  });
+}
+
 function setupGamePopovers() {
   const logToggle = document.getElementById('game-log-toggle');
   const logPopover = document.getElementById('game-log');
@@ -2260,7 +2326,6 @@ function setupOgGamelogSlidedown() {
   const slidedown = document.getElementById('og-gamelog-slidedown');
   const closeBtn = document.getElementById('og-gamelog-close-btn');
   const panel = slidedown?.querySelector('.og-gamelog-slidedown-inner');
-  const entries = document.getElementById('og-gamelog-slidedown-entries');
   const chatToggleBtn = document.getElementById('og-chat-toggle-btn');
   const chatSlidedown = document.getElementById('og-chat-slidedown');
   const chatCloseBtn = document.getElementById('og-chat-close-btn');
@@ -2274,10 +2339,8 @@ function setupOgGamelogSlidedown() {
     closeChat();
     slidedown.classList.add('open');
     toggleBtn.classList.add('og-gamelog-active');
-    // Mirror the sidebar log content into the slidedown
-    const sidebar = document.getElementById('game-log-entries-sidebar');
-    const target = document.getElementById('og-gamelog-slidedown-entries');
-    if (sidebar && target) target.innerHTML = sidebar.innerHTML;
+    try { renderGameLog(); } catch (_) {}
+    applyGameLogTabState();
   }
 
   function closeLog() {
@@ -4773,6 +4836,7 @@ function startGameListener(gameId, options = {}) {
         // Clear all local tags without writing anything to Firestore (markers are reset server-side).
         cardTags = {};
         pendingCardSelection = null;
+        clueTargetSelection = [];
         _pendingSelectionContextKey = null;
         revealedPeekCardIndex = null;
         void syncTeamConsidering(null);
@@ -4894,6 +4958,7 @@ function stopGameListener() {
   _prevClue = null;
   revealedPeekCardIndex = null;
   pendingCardSelection = null;
+  clueTargetSelection = [];
   _pendingSelectionContextKey = null;
   spectatorMode = false;
   spectatingGameId = null;
@@ -5175,12 +5240,20 @@ function renderAdvancedFeatures() {
     updatePendingCardSelectionUI();
   }
 
+  const canStackNow = canCurrentUserStackClueTargets();
+  if (!canStackNow && clueTargetSelection.length) {
+    clueTargetSelection = [];
+  } else if (canStackNow) {
+    clueTargetSelection = getCurrentClueTargetSelection(currentGame);
+  }
+
   // Load tags from localStorage for this game
   loadTagsFromLocal();
 
   // Render advanced UI
   renderCardTags();
   renderClueHistory();
+  renderClueStackingPanel();
   renderTeamRoster();
   updateChatPrivacyBadge();
 
@@ -5630,6 +5703,12 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
   if (ogSlidedownLog && existingLog) {
     ogSlidedownLog.innerHTML = existingLog.innerHTML;
   }
+  const ogSlidedownLeft = document.getElementById('og-gamelog-slidedown-clues-left');
+  const existingLeft = document.getElementById('game-log-clues-left-sidebar');
+  if (ogSlidedownLeft && existingLeft) {
+    ogSlidedownLeft.innerHTML = existingLeft.innerHTML;
+  }
+  applyGameLogTabState();
 
   // --- Mobile panels ---
   const mBlueScore = document.getElementById('og-mobile-blue-score');
@@ -5721,6 +5800,18 @@ function renderBoard(isSpymaster) {
   const spectator = isSpectating();
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuess = isMyTurn && currentGame.currentPhase === 'operatives' && !isSpymaster && !currentGame.winner;
+  const canStackTargets = isMyTurn
+    && currentGame.currentPhase === 'spymaster'
+    && isSpymaster
+    && !currentGame.winner
+    && isStackingSettingEnabledLocal();
+  if (!canStackTargets && clueTargetSelection.length) {
+    clueTargetSelection = [];
+  }
+  const selectedStackTargets = canStackTargets ? getCurrentClueTargetSelection(currentGame) : [];
+  clueTargetSelection = selectedStackTargets;
+  const stackTargetSet = new Set(selectedStackTargets);
+  const stackTargetOrderByIndex = new Map(selectedStackTargets.map((idx, order) => [idx, order + 1]));
   const currentSelectionContextKey = getPendingSelectionContextKey(currentGame);
   const hasStoredPendingSelection =
     pendingCardSelection !== null &&
@@ -5757,6 +5848,7 @@ function renderBoard(isSpymaster) {
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
+    const canTargetThisCard = canStackTargets && !card.revealed && String(card.type || '') === String(myTeamColor || '');
 
     if (card.revealed) {
       classes.push('revealed');
@@ -5765,7 +5857,8 @@ function renderBoard(isSpymaster) {
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
       classes.push(`card-${card.type}`);
-      classes.push('disabled');
+      if (canTargetThisCard) classes.push('stacking-selectable');
+      else classes.push('disabled');
     } else if (!canGuess) {
       classes.push('disabled');
     }
@@ -5774,9 +5867,16 @@ function renderBoard(isSpymaster) {
     if (canGuess && !card.revealed && pendingCardSelection === i) {
       classes.push('pending-select');
     }
+    if (canTargetThisCard && stackTargetSet.has(i)) {
+      classes.push('stacking-selected');
+    }
 
     const word = escapeHtml(card.word);
     const confirmLabel = escapeHtml(`Confirm ${card.word}`);
+    const stackOrder = Number(stackTargetOrderByIndex.get(i) || 0);
+    const stackOrderHtml = stackOrder
+      ? `<div class="card-stack-order" aria-hidden="true">${stackOrder}</div>`
+      : '';
     const consideringEntries = (!card.revealed)
       ? getTeamConsideringEntriesForCard(teamConsidering, i, myOwnerId)
       : [];
@@ -5815,6 +5915,7 @@ function renderBoard(isSpymaster) {
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
         ${consideringHtml}
+        ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
           <div class="card-face card-front">
@@ -5923,6 +6024,140 @@ if (document.fonts && document.fonts.ready) {
   }).catch(() => {});
 }
 
+function isStackingSettingEnabledLocal() {
+  try {
+    if (typeof window.isStackingEnabled === 'function') {
+      return !!window.isStackingEnabled();
+    }
+  } catch (_) {}
+  try {
+    return String(localStorage.getItem(LS_SETTINGS_STACKING) || '').toLowerCase() === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function normalizeClueTargetSelection(selection = [], game = currentGame, teamOverride = null, opts = {}) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const team = (teamOverride === 'blue' || teamOverride === 'red')
+    ? teamOverride
+    : ((game?.currentTeam === 'blue') ? 'blue' : 'red');
+  const allowRevealed = !!opts.allowRevealed;
+  const seen = new Set();
+  const normalized = [];
+  (Array.isArray(selection) ? selection : []).forEach((raw) => {
+    const idx = Number(raw);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= cards.length) return;
+    if (seen.has(idx)) return;
+    const card = cards[idx];
+    if (!card || (!allowRevealed && card.revealed)) return;
+    if (String(card.type || '') !== team) return;
+    seen.add(idx);
+    normalized.push(idx);
+  });
+  return normalized;
+}
+
+function canCurrentUserStackClueTargets() {
+  if (!currentGame || currentGame.winner) return false;
+  if (currentGame.currentPhase !== 'spymaster') return false;
+  if (isSpectating()) return false;
+  if (!isCurrentUserSpymaster()) return false;
+  const myTeamColor = getMyTeamColor();
+  if (!myTeamColor || currentGame.currentTeam !== myTeamColor) return false;
+  return isStackingSettingEnabledLocal();
+}
+
+function getCurrentClueTargetSelection(game = currentGame) {
+  const team = (typeof getMyTeamColor === 'function') ? getMyTeamColor() : null;
+  return normalizeClueTargetSelection(clueTargetSelection, game, team);
+}
+
+function getClueTargetWords(indices = [], game = currentGame) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  return (Array.isArray(indices) ? indices : [])
+    .map((idx) => String(cards?.[idx]?.word || '').trim())
+    .filter(Boolean);
+}
+
+function clearClueTargetSelection(opts = {}) {
+  const changed = Array.isArray(clueTargetSelection) && clueTargetSelection.length > 0;
+  clueTargetSelection = [];
+  if (opts.refreshGame && changed && currentGame) {
+    try { renderGame(); } catch (_) {}
+    return;
+  }
+  if (!opts.skipPanelSync) renderClueStackingPanel();
+}
+
+function toggleClueTargetSelection(cardIndex) {
+  if (!canCurrentUserStackClueTargets()) return;
+  const idx = Number(cardIndex);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  const myTeamColor = getMyTeamColor();
+  const card = currentGame?.cards?.[idx];
+  if (!card || card.revealed) return;
+  if (String(card.type || '') !== String(myTeamColor || '')) return;
+
+  const next = getCurrentClueTargetSelection(currentGame);
+  const at = next.indexOf(idx);
+  if (at >= 0) next.splice(at, 1);
+  else next.push(idx);
+  clueTargetSelection = next;
+  try { renderGame(); } catch (_) {}
+}
+
+function renderClueStackingPanel() {
+  const panel = document.getElementById('clue-stack-panel');
+  const summaryEl = document.getElementById('clue-stack-summary');
+  const chipRow = document.getElementById('clue-stack-chip-row');
+  const numInput = document.getElementById('clue-num-input');
+  const minusBtn = document.getElementById('og-num-minus');
+  const plusBtn = document.getElementById('og-num-plus');
+  const stackingActive = canCurrentUserStackClueTargets();
+  document.body.classList.toggle('stacking-turn-active', stackingActive);
+  if (!panel || !summaryEl || !chipRow) return;
+
+  if (!stackingActive) {
+    panel.style.display = 'none';
+    chipRow.innerHTML = '';
+    if (numInput) numInput.disabled = false;
+    if (minusBtn) minusBtn.disabled = false;
+    if (plusBtn) plusBtn.disabled = false;
+    return;
+  }
+
+  const selected = getCurrentClueTargetSelection(currentGame);
+  clueTargetSelection = selected;
+  panel.style.display = 'flex';
+
+  if (selected.length > 0) {
+    summaryEl.textContent = `${selected.length} target${selected.length === 1 ? '' : 's'} selected`;
+  } else {
+    summaryEl.textContent = 'Tap your team cards to mark clue targets';
+  }
+
+  const words = getClueTargetWords(selected, currentGame);
+  if (!words.length) {
+    chipRow.innerHTML = '<span class="clue-stack-chip clue-stack-chip-empty">No cards selected</span>';
+  } else {
+    chipRow.innerHTML = words.map((word, idx) => (
+      `<span class="clue-stack-chip">${idx + 1}. ${escapeHtml(String(word).toUpperCase())}</span>`
+    )).join('');
+  }
+
+  if (numInput) {
+    numInput.disabled = true;
+    if (selected.length > 0) {
+      numInput.value = String(Math.max(0, Math.min(9, selected.length)));
+    } else if (!String(numInput.value || '').trim()) {
+      numInput.value = '1';
+    }
+  }
+  if (minusBtn) minusBtn.disabled = true;
+  if (plusBtn) plusBtn.disabled = true;
+}
+
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const currentClueEl = document.getElementById('current-clue');
   const clueFormEl = document.getElementById('clue-form');
@@ -5950,6 +6185,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
   clueFormEl.style.display = 'none';
   waitingEl.style.display = 'none';
+  const clueStackPanel = document.getElementById('clue-stack-panel');
+  if (clueStackPanel) clueStackPanel.style.display = 'none';
+  renderClueStackingPanel();
 
   let clueWord = '—';
   let clueNumber = '—';
@@ -6027,6 +6265,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       clueFormEl.style.display = 'flex';
       const numInput = document.getElementById('clue-num-input');
       if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
+      renderClueStackingPanel();
     }
     return;
   }
@@ -6035,9 +6274,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 }
 
 function renderGameLog() {
-  const popoverEl = document.getElementById('game-log-entries');
-  const sidebarEl = document.getElementById('game-log-entries-sidebar');
-  if (!popoverEl && !sidebarEl) return;
+  const popoverHistoryEl = document.getElementById('game-log-entries');
+  const sidebarHistoryEl = document.getElementById('game-log-entries-sidebar');
+  const sidebarCluesLeftEl = document.getElementById('game-log-clues-left-sidebar');
+  const slidedownHistoryEl = document.getElementById('og-gamelog-slidedown-entries');
+  const slidedownCluesLeftEl = document.getElementById('og-gamelog-slidedown-clues-left');
+  if (!popoverHistoryEl && !sidebarHistoryEl && !sidebarCluesLeftEl && !slidedownHistoryEl && !slidedownCluesLeftEl) return;
   if (!currentGame) return;
 
   const rawLog = Array.isArray(currentGame.log)
@@ -6140,27 +6382,94 @@ function renderGameLog() {
   }).join('');
   const fallbackHtml = html || '<div class="gamelog-empty">No events yet. Clues and guesses will appear here.</div>';
 
-  if (popoverEl) popoverEl.innerHTML = fallbackHtml;
+  if (popoverHistoryEl) popoverHistoryEl.innerHTML = fallbackHtml;
 
   const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
+  let historyHtml = fallbackHtml;
   if (isOgMode && currentGame.clueHistory && currentGame.clueHistory.length > 0) {
     const ogHtml = buildOgStructuredLog();
-    if (sidebarEl) sidebarEl.innerHTML = ogHtml || fallbackHtml;
-  } else {
-    if (sidebarEl) sidebarEl.innerHTML = fallbackHtml;
+    historyHtml = ogHtml || fallbackHtml;
   }
 
-  // Mirror into the OG slidedown game log panel
-  const slidedownEl = document.getElementById('og-gamelog-slidedown-entries');
-  if (slidedownEl && sidebarEl) {
-    slidedownEl.innerHTML = sidebarEl.innerHTML;
-    slidedownEl.scrollTop = slidedownEl.scrollHeight;
-  }
+  if (sidebarHistoryEl) sidebarHistoryEl.innerHTML = historyHtml;
+  if (slidedownHistoryEl) slidedownHistoryEl.innerHTML = historyHtml;
+
+  const cluesLeftHtml = buildCluesLeftLogHtml();
+  if (sidebarCluesLeftEl) sidebarCluesLeftEl.innerHTML = cluesLeftHtml;
+  if (slidedownCluesLeftEl) slidedownCluesLeftEl.innerHTML = cluesLeftHtml;
+  applyGameLogTabState();
 
   // Auto-scroll to bottom (popover container + sidebar scroller)
   const popover = document.getElementById('game-log');
-  if (popover) popover.scrollTop = popover.scrollHeight;
-  if (sidebarEl) sidebarEl.scrollTop = sidebarEl.scrollHeight;
+  const activeTab = normalizeGameLogTab(gameLogActiveTab);
+  if (popover && activeTab === 'history') popover.scrollTop = popover.scrollHeight;
+  if (sidebarHistoryEl && activeTab === 'history') sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
+  if (slidedownHistoryEl && activeTab === 'history') slidedownHistoryEl.scrollTop = slidedownHistoryEl.scrollHeight;
+  if (sidebarCluesLeftEl && activeTab === 'clues-left') sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
+  if (slidedownCluesLeftEl && activeTab === 'clues-left') slidedownCluesLeftEl.scrollTop = slidedownCluesLeftEl.scrollHeight;
+}
+
+function getClueTargetIndicesFromEntry(clue, game = currentGame) {
+  const rawTargets = Array.isArray(clue?.targets) ? clue.targets : [];
+  const parsed = rawTargets.map((raw) => {
+    if (Number.isInteger(raw)) return raw;
+    if (raw && typeof raw === 'object') return Number(raw.index);
+    return Number(raw);
+  });
+  const team = String(clue?.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+  return normalizeClueTargetSelection(parsed, game, team, { allowRevealed: true });
+}
+
+function buildCluesLeftLogHtml() {
+  const history = Array.isArray(currentGame?.clueHistory) ? currentGame.clueHistory : [];
+  const cards = Array.isArray(currentGame?.cards) ? currentGame.cards : [];
+  if (!history.length || !cards.length) {
+    return '<div class="gamelog-empty">No stacked clues yet. Turn on Stacking in Settings and pick target cards when giving clues.</div>';
+  }
+
+  const rows = [];
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const clue = history[i];
+    if (!clue || typeof clue !== 'object') continue;
+    const team = String(clue.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+    const clueWord = String(clue.word || '').trim() || 'CLUE';
+    const targetIndices = getClueTargetIndicesFromEntry(clue, currentGame);
+    if (!targetIndices.length) continue;
+
+    const remainingIndices = targetIndices.filter((idx) => {
+      const card = cards[idx];
+      return !!card && !card.revealed;
+    });
+    if (!remainingIndices.length) continue;
+
+    const remainingWords = remainingIndices
+      .map((idx) => String(cards[idx]?.word || '').trim())
+      .filter(Boolean);
+    const total = targetIndices.length;
+    const remainingCount = remainingIndices.length;
+    const foundCount = Math.max(0, total - remainingCount);
+    const statusText = `${remainingCount} left`;
+    const progressText = `${foundCount}/${total} found`;
+    const wordsHtml = remainingWords.length
+      ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
+      : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>';
+
+    rows.push(`
+      <div class="gamelog-left-item team-${escapeHtml(team)}">
+        <div class="gamelog-left-head">
+          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
+          <span class="gamelog-left-clue-count">${escapeHtml(statusText)}</span>
+        </div>
+        <div class="gamelog-left-meta">${escapeHtml(progressText)}</div>
+        <div class="gamelog-left-word-list">${wordsHtml}</div>
+      </div>
+    `);
+  }
+
+  if (!rows.length) {
+    return '<div class="gamelog-empty">No remaining stacked clues right now.</div>';
+  }
+  return rows.join('');
 }
 
 function buildOgStructuredLog() {
@@ -6323,8 +6632,21 @@ async function handleClueSubmit(e) {
 
   const word = (wordInput.value || '').trim().toUpperCase();
   const parsed = parseInt(numInput.value, 10);
-  const number = Number.isInteger(parsed) ? parsed : 1;
+  let number = Number.isInteger(parsed) ? parsed : 1;
   if (!Number.isInteger(parsed)) numInput.value = '1';
+  const stackingOnTurn = canCurrentUserStackClueTargets();
+  const selectedTargets = stackingOnTurn ? getCurrentClueTargetSelection(currentGame) : [];
+  const selectedTargetWords = getClueTargetWords(selectedTargets, currentGame);
+
+  if (stackingOnTurn && selectedTargets.length <= 0) {
+    alert('Select at least one target card for this clue.');
+    return;
+  }
+
+  if (stackingOnTurn && selectedTargets.length > 0) {
+    number = Math.max(0, Math.min(9, selectedTargets.length));
+    if (numInput) numInput.value = String(number);
+  }
 
   if (!word || isNaN(number) || number < 0 || number > 9) {
     return;
@@ -6357,6 +6679,8 @@ async function handleClueSubmit(e) {
       team: currentGame.currentTeam,
       word: word,
       number: number,
+      targets: selectedTargets,
+      targetWords: selectedTargetWords,
       results: [],
       timestamp: new Date().toISOString()
     };
@@ -6373,6 +6697,7 @@ async function handleClueSubmit(e) {
         draft.updatedAtMs = Date.now();
         draft.lastMoveAtMs = Date.now();
       });
+      clearClueTargetSelection({ skipPanelSync: true });
       wordInput.value = '';
       numInput.value = '';
       if (window.playSound) window.playSound('clueGiven');
@@ -6390,6 +6715,7 @@ async function handleClueSubmit(e) {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
+    clearClueTargetSelection({ skipPanelSync: true });
     wordInput.value = '';
     numInput.value = '';
 
@@ -7084,6 +7410,10 @@ setTimeout(updateGameTabBadge, 1000);
 // State for advanced features
 let cardTags = {}; // { cardIndex: 'yes'|'maybe'|'no' }
 let pendingCardSelection = null;
+let clueTargetSelection = [];
+let gameLogActiveTab = 'history';
+let _gameLogTabBindingsReady = false;
+let _stackingSettingsBindingReady = false;
 // Used to run the slow, smooth selection animation exactly once
 let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
 let _pendingSelectionContextKey = null; // turn/clue context at time of selection
@@ -9095,9 +9425,15 @@ function canCurrentUserGuess() {
 
 function handleCardSelect(cardIndex) {
   if (_processingGuess) return;
-  if (!canCurrentUserGuess()) return;
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
+
+  if (canCurrentUserStackClueTargets()) {
+    toggleClueTargetSelection(idx);
+    return;
+  }
+
+  if (!canCurrentUserGuess()) return;
 
   // Toggle selection
   if (pendingCardSelection === idx) {
@@ -9205,6 +9541,8 @@ async function addClueToHistory(gameId, team, word, number) {
         team,
         word,
         number,
+        targets: [],
+        targetWords: [],
         results: [],
         timestamp: new Date().toISOString()
       });
@@ -9217,6 +9555,8 @@ async function addClueToHistory(gameId, team, word, number) {
     team,
     word,
     number,
+    targets: [],
+    targetWords: [],
     results: [],
     timestamp: firebase.firestore.FieldValue.serverTimestamp()
   };

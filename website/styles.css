@@ -23473,3 +23473,335 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
     overflow-y: auto;
   }
 }
+
+/* Stacking: settings + clue selection + log tabs */
+.settings-row-stacking {
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--surface2) 88%), var(--surface2));
+}
+
+.settings-row-stacking .settings-row-label {
+  font-weight: 700;
+}
+
+.gamelog-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px 0;
+}
+
+.gamelog-tab-btn {
+  flex: 1 1 0;
+  min-height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.gamelog-tab-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 36%, rgba(255,255,255,0.16));
+}
+
+.gamelog-tab-btn.active {
+  background: color-mix(in srgb, var(--accent) 24%, rgba(255,255,255,0.04));
+  border-color: color-mix(in srgb, var(--accent) 52%, rgba(255,255,255,0.2));
+  color: #ffffff;
+}
+
+body.light-mode .gamelog-tab-btn {
+  border-color: rgba(20, 30, 45, 0.18);
+  background: rgba(20, 30, 45, 0.04);
+  color: rgba(20, 30, 45, 0.82);
+}
+
+body.light-mode .gamelog-tab-btn.active {
+  background: color-mix(in srgb, var(--accent) 18%, rgba(20,30,45,0.04));
+  border-color: color-mix(in srgb, var(--accent) 38%, rgba(20,30,45,0.22));
+}
+
+.gamelog-left-item {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 10px 9px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gamelog-left-item.team-red {
+  border-color: color-mix(in srgb, #e4573e 44%, rgba(255,255,255,0.14));
+}
+
+.gamelog-left-item.team-blue {
+  border-color: color-mix(in srgb, #3b8beb 44%, rgba(255,255,255,0.14));
+}
+
+.gamelog-left-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gamelog-left-clue-word {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gamelog-left-clue-count {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.gamelog-left-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 0.2px;
+}
+
+.gamelog-left-word-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gamelog-left-word-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.gamelog-left-word-chip.empty {
+  opacity: 0.72;
+  font-style: italic;
+  text-transform: none;
+}
+
+body.light-mode .gamelog-left-item {
+  border-color: rgba(20, 30, 45, 0.16);
+  background: rgba(20, 30, 45, 0.04);
+}
+
+body.light-mode .gamelog-left-item.team-red {
+  border-color: color-mix(in srgb, #c93c2b 36%, rgba(20,30,45,0.16));
+}
+
+body.light-mode .gamelog-left-item.team-blue {
+  border-color: color-mix(in srgb, #1a7fb5 36%, rgba(20,30,45,0.16));
+}
+
+body.light-mode .gamelog-left-clue-count {
+  color: rgba(20, 30, 45, 0.86);
+  background: rgba(20, 30, 45, 0.08);
+  border-color: rgba(20, 30, 45, 0.2);
+}
+
+body.light-mode .gamelog-left-meta {
+  color: rgba(20, 30, 45, 0.64);
+}
+
+body.light-mode .gamelog-left-word-chip {
+  background: rgba(20, 30, 45, 0.06);
+  border-color: rgba(20, 30, 45, 0.2);
+}
+
+.card-stack-order {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  background: color-mix(in srgb, var(--accent) 88%, #ffffff 12%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  z-index: 13;
+}
+
+body:is(.og-mode, .cozy-mode) .card-stack-order {
+  background: linear-gradient(180deg, rgba(88, 183, 88, 0.96), rgba(52, 135, 52, 0.96));
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.game-card.stacking-selectable:not(.revealed):not(.disabled) {
+  cursor: pointer;
+}
+
+.game-card.stacking-selectable:not(.stacking-selected):not(.revealed):not(.disabled) {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.game-card.stacking-selected:not(.revealed):not(.disabled) {
+  border-color: color-mix(in srgb, var(--accent) 58%, #ffffff 42%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 34%, transparent), 0 10px 24px rgba(0,0,0,0.26);
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.stacking-selected:not(.revealed):not(.disabled) {
+  box-shadow: 0 0 0 2px rgba(112, 214, 112, 0.44), 0 10px 20px rgba(0,0,0,0.34);
+}
+
+body.stacking-turn-active .game-center-area .game-action-bar {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.clue-stack-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--surface) 86%), color-mix(in srgb, var(--accent) 8%, var(--surface2) 92%));
+}
+
+.clue-stack-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.clue-stack-badge {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.65px;
+  text-transform: uppercase;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--accent) 72%, #000000 28%);
+}
+
+.clue-stack-summary {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  flex: 1 1 auto;
+}
+
+.clue-stack-clear-btn {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 4px 10px;
+}
+
+.clue-stack-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.clue-stack-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.24px;
+  max-width: 100%;
+}
+
+.clue-stack-chip-empty {
+  opacity: 0.72;
+  font-style: italic;
+}
+
+body.light-mode .clue-stack-panel {
+  border-color: color-mix(in srgb, var(--accent) 28%, rgba(20,30,45,0.22));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, #f5f8fc 90%), color-mix(in srgb, var(--accent) 6%, #edf2f8 94%));
+}
+
+body.light-mode .clue-stack-badge {
+  color: #ffffff;
+}
+
+body.light-mode .clue-stack-chip {
+  border-color: rgba(20, 30, 45, 0.2);
+  background: rgba(20, 30, 45, 0.08);
+}
+
+@media (max-width: 768px) {
+  .gamelog-tabs {
+    gap: 6px;
+    padding: 7px 8px 0;
+  }
+
+  .gamelog-tab-btn {
+    min-height: 30px;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+  }
+
+  .gamelog-left-item {
+    padding: 8px;
+    gap: 5px;
+  }
+
+  .gamelog-left-clue-word {
+    font-size: 13px;
+  }
+
+  .gamelog-left-clue-count {
+    font-size: 10px;
+    padding: 3px 7px;
+  }
+
+  .clue-stack-panel {
+    padding: 7px 8px;
+    gap: 7px;
+  }
+
+  .clue-stack-summary {
+    font-size: 11px;
+  }
+
+  .clue-stack-chip {
+    font-size: 10px;
+    padding: 3px 7px;
+  }
+}
