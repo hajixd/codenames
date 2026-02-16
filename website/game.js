@@ -2494,6 +2494,11 @@ function setupOgGamelogSlidedown() {
     chatToggleBtn?.classList.add('og-gamelog-active');
     markOgChatSeen();
     try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
+    // Scroll chat to bottom when opening
+    requestAnimationFrame(() => {
+      const chatContainer = document.getElementById('operative-chat-messages');
+      if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+    });
   }
   function closeChat() {
     if (!chatSlidedown) return;
@@ -7181,7 +7186,13 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
   clueWordEl.textContent = clueWord;
   clueNumberEl.textContent = clueNumber;
-  guessesLeftEl.textContent = '';
+  // Show guesses remaining inline in the pill during operative phase
+  const gr = Number(currentGame?.guessesRemaining);
+  if (currentGame?.currentPhase === 'operatives' && currentGame?.currentClue && Number.isFinite(gr) && gr > 0) {
+    guessesLeftEl.textContent = `${gr} left`;
+  } else {
+    guessesLeftEl.textContent = '';
+  }
 
   const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
   if (typingLiveEl && currentGame?.currentPhase === 'spymaster' && opposingSpymaster && liveDraft && !pendingBlocking) {
@@ -7324,6 +7335,11 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     && !isSpymaster;
   endTurnBtn.disabled = !canEndTurn;
   endTurnBtn.classList.toggle('disabled', !canEndTurn);
+
+  // Hide the entire end-turn container for spymasters
+  if (isSpymaster) {
+    operativeActionsEl.style.display = 'none';
+  }
 
   if (currentGame.winner) {
     void clearLiveClueDraftOwnership({ silent: true });
@@ -9450,6 +9466,9 @@ function renderOperativeChat(messages) {
     return;
   }
 
+  // Check if user is near the bottom before re-rendering (within 80px)
+  const wasNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
+
   container.innerHTML = list.map(msg => {
     const isMe = msg.senderId === odId;
     const time = formatTime(resolveChatMessageDate(msg));
@@ -9466,8 +9485,13 @@ function renderOperativeChat(messages) {
     `;
   }).join('');
 
-  // Auto-scroll to bottom
-  container.scrollTop = container.scrollHeight;
+  // Auto-scroll to bottom reliably (use rAF to ensure DOM has laid out)
+  if (wasNearBottom || !container._hasScrolledOnce) {
+    container._hasScrolledOnce = true;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }
 }
 
 function resolveChatMessageDate(msg) {
@@ -10107,6 +10131,13 @@ function toggleRightSidebar() {
     if (willShow) other?.classList.remove('mobile-visible');
     sidebar.classList.toggle('mobile-visible', willShow);
     toggleSidebarBackdrop(!!document.querySelector('.game-sidebar.mobile-visible'));
+    // Scroll chat to bottom when opening chat sidebar
+    if (willShow) {
+      requestAnimationFrame(() => {
+        const chatContainer = document.getElementById('operative-chat-messages');
+        if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+      });
+    }
   } else {
     sidebar.classList.toggle('collapsed');
   }

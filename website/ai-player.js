@@ -1578,9 +1578,34 @@ function makeChatMoreHuman(ai, game, msg, vision, opts = {}) {
     const recent = aiChatMemory[gid][team].slice(-14);
 
     // If too similar to recent messages, suppress it entirely — silence is better than circles
-    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.38);
+    const tooSimilar = recent.some(r => _jaccard(r, out) > 0.32);
     if (tooSimilar && !bypassSimilarity) {
       return '';
+    }
+
+    // Suppress "agreement-only" messages when the team has already converged.
+    // Detect if this message is essentially "let's go with WORD" and WORD has been
+    // mentioned 2+ times in recent chat already.
+    if (!bypassSimilarity) {
+      const lowerOut = out.toLowerCase();
+      const isAgreement = /^(yeah|yooo?|aight|let'?s|nice|ok|go|sure|ye|yea|bet)\b/i.test(lowerOut)
+        || /\blet'?s (go|get|do|start|pick)\b/i.test(lowerOut)
+        || /\b(sounds good|i'?m? (down|with)|on board|same)\b/i.test(lowerOut);
+      if (isAgreement) {
+        // Extract board words mentioned in this message
+        const unrevealed = (vision?.cards || []).filter(c => !c.revealed).map(c => String(c.word || '').toUpperCase());
+        const mentioned = unrevealed.filter(w => lowerOut.includes(w.toLowerCase()));
+        if (mentioned.length > 0) {
+          const wordMentionCounts = mentioned.map(w => {
+            const wLower = w.toLowerCase();
+            return recent.filter(r => r.toLowerCase().includes(wLower)).length;
+          });
+          // If any mentioned word already appears in 2+ recent messages, this is redundant agreement
+          if (wordMentionCounts.some(c => c >= 2)) {
+            return '';
+          }
+        }
+      }
     }
 
     out = out.replace(/\s{2,}/g, ' ').trim();
@@ -1754,6 +1779,8 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- NEVER sound like a formal essay or AI. No "I believe", "I suggest", "Additionally", "Furthermore".`,
     `- Keep it to 1-2 short sentences MAX. Think group chat, not paragraph.`,
     `- EVERY message must add NEW information or a NEW opinion. If you have nothing new, set chat="" instead of agreeing.`,
+    `- If teammates already said "let's go with WORD", do NOT say another variant of "yeah let's go with WORD". That's just noise. Set chat="" instead.`,
+    `- Maximum 2 AIs should agree on a word. After that, further agreement is redundant.`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
     `- Actively use markers: set 1-3 yes/maybe/no marks every turn to show your current lean.`,
@@ -1942,16 +1969,22 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
     `PERSONALITY: ${persona.label}`,
     ...persona.rules.map(r => `- ${r}`),
     ``,
-    `The team just finished discussing. Write a SHORT wrap-up before the guess happens.`,
-    `This should feel like a natural "alright let's do it" moment, NOT a formal summary.`,
+    `The team just finished discussing. Decide if a wrap-up is even needed.`,
+    ``,
+    `CRITICAL: If the team already agreed and multiple people said "let's go with WORD",`,
+    `DO NOT add another agreement message. Just set chat="" — silence is better than echoing.`,
+    `Only speak if:`,
+    `- There was genuine debate and you're acknowledging the resolution`,
+    `- You're ending turn and want to explain briefly`,
+    `- You have a last-second concern nobody raised`,
     ``,
     `STYLE:`,
-    `- If everyone agreed: "aight let's go with WORD" or "nice, WORD it is" — that's it.`,
-    `- If it was debated: briefly acknowledge the debate, like "was torn but WORD makes sense"`,
-    `- If ending turn: "yeah let's play it safe" or "not feeling great about any of these, end it"`,
-      `- Do NOT recap the entire conversation. Everyone was there. They know what was said.`,
+    `- If everyone already agreed: chat="" (they don't need ANOTHER "let's go")`,
+    `- If it was debated: briefly acknowledge, like "was torn but WORD makes sense"`,
+    `- If ending turn: "not feeling great about any of these, end it"`,
+      `- Do NOT recap the conversation. Everyone was there.`,
       `- Do NOT repeat reasoning that was already given.`,
-      `- 1 short sentence max. Casual tone.`,
+      `- 1 short sentence max if you must speak. Casual tone.`,
       `- NEVER reference card indices/numbers. Use the WORD itself.`,
       `- NEVER mention confidence numbers/percentages.`,
       ``,
@@ -3308,6 +3341,8 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `- If you'd just be saying something obvious or redundant, set msg="" instead.`,
       `- Do NOT be a yes-man. If an idea seems weak, push back clearly.`,
       `- Avoid agreement-only replies ("yeah", "same", "sounds good"). Add a reason or an alternative.`,
+      `- If 2+ people already agreed on a word, do NOT pile on. Set msg="" instead.`,
+      `- Redundant enthusiasm is worse than silence. Only speak if you add something new.`,
       isReplyContext ? `- If someone greets you, greet back naturally first.` : '',
       isReplyContext ? `- In replies, react to the latest message and add a distinct angle.` : '',
       `- 1-2 short sentences max. Keep it <=140 chars.`,
@@ -3402,6 +3437,77 @@ async function generateAIReaction(ai, revealedCard, clue) {
 }
 
 
+// ─── AI Chat Typing Animation ──────────────────────────────────────────────
+// Shows a realistic typing indicator + character-by-character reveal before
+// the actual message is persisted. This simulates the same live-typing
+// experience that spymasters see for clue drafts.
+
+function _getAIChatTypingSpeed() {
+  // Characters per ms — gives a natural feel with variance
+  const base = 28 + Math.random() * 32; // 28-60ms per char
+  return base;
+}
+
+async function _simulateAITyping(aiName, teamColor, text) {
+  const container = document.getElementById('operative-chat-messages');
+  if (!container || !text) return;
+
+  // Create a typing indicator element
+  const typingEl = document.createElement('div');
+  typingEl.className = 'chat-message ai-typing-message';
+  typingEl.innerHTML = `
+    <div class="chat-message-header">
+      <span class="chat-sender ${teamColor}">${_escHtml(aiName)}</span>
+      <span class="chat-typing-indicator">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </span>
+    </div>
+    <div class="chat-text ai-typing-text"></div>
+  `;
+  container.appendChild(typingEl);
+  container.scrollTop = container.scrollHeight;
+
+  const textEl = typingEl.querySelector('.ai-typing-text');
+  const dotsEl = typingEl.querySelector('.chat-typing-indicator');
+
+  // Show dots for a brief moment before typing starts
+  await new Promise(r => setTimeout(r, 400 + Math.random() * 600));
+
+  // Start revealing characters
+  if (dotsEl) dotsEl.style.display = 'none';
+  let revealed = '';
+  for (let i = 0; i < text.length; i++) {
+    revealed += text[i];
+    if (textEl) textEl.textContent = revealed;
+
+    // Keep scroll pinned to bottom during typing
+    const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
+    if (nearBottom) container.scrollTop = container.scrollHeight;
+
+    // Variable delay per character
+    let delay = _getAIChatTypingSpeed();
+    // Pause slightly longer after punctuation
+    if ('.!?,;:'.includes(text[i])) delay += 80 + Math.random() * 120;
+    // Speed up for spaces
+    if (text[i] === ' ') delay *= 0.5;
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  // Brief pause after finishing typing before the "real" message arrives
+  await new Promise(r => setTimeout(r, 150 + Math.random() * 250));
+
+  // Remove the typing element — the Firestore snapshot will render the real message
+  try { typingEl.remove(); } catch (_) {}
+}
+
+function _escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = String(str || '');
+  return d.innerHTML;
+}
+
 async function sendAIChatMessage(ai, game, text, opts = {}) {
   if (!text || !game?.id) return;
   if (String(ai?.seatRole || '').trim().toLowerCase() === 'spymaster') return;
@@ -3423,13 +3529,18 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
   try {
     const core = ensureAICore(ai);
     const prev = (core && Array.isArray(core.recentChat)) ? core.recentChat : [];
-    const selfTooSimilar = prev.slice(-6).some(r => _jaccard(r, text) > 0.34);
+    const selfTooSimilar = prev.slice(-6).some(r => _jaccard(r, text) > 0.28);
     if (selfTooSimilar && !force) return;
     if (core) {
       if (!Array.isArray(core.recentChat)) core.recentChat = [];
       core.recentChat.push(String(text));
       if (core.recentChat.length > 20) core.recentChat = core.recentChat.slice(-12);
     }
+  } catch (_) {}
+
+  // Simulate typing animation before sending the actual message
+  try {
+    await _simulateAITyping(`AI ${ai.name}`, teamColor, text);
   } catch (_) {}
 
   try {

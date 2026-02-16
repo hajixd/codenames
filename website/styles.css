@@ -11206,8 +11206,12 @@ body.tournament.has-team-color .input:focus {
 }
 
 .guesses-left-expanded {
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-dim);
+  opacity: 0.7;
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .clue-form-expanded {
@@ -24718,4 +24722,98 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   .clue-review-modal-card {
     width: min(94vw, 520px);
   }
+}
+
+/* ─── Unified Action Bar: merge clue form + stacking into one pill ─── */
+
+/* When stacking is active, the stacking panel merges into the action bar seamlessly */
+body.stacking-turn-active .game-action-bar .clue-stack-panel {
+  border: none;
+  background: none;
+  box-shadow: none;
+  padding: 4px 0 0;
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.stacking-turn-active .game-action-bar {
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: 14px;
+}
+
+body.light-mode.stacking-turn-active .game-action-bar .clue-stack-panel {
+  border-top-color: rgba(20, 30, 45, 0.1);
+  background: none;
+}
+
+/* Unified clue form row: form + stacking flow as one */
+body.stacking-turn-active .game-action-bar .clue-form-expanded {
+  flex: 1 1 auto;
+  max-width: none;
+}
+
+/* During operative phase, make clue display + end turn sit as one integrated row */
+.game-action-bar.row-clue-endturn {
+  border-radius: 14px;
+  padding: 6px 10px 6px 14px;
+  gap: 8px;
+}
+
+.game-action-bar.row-clue-endturn .clue-display-expanded {
+  transform: none;
+}
+
+.game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
+  border-radius: 10px;
+}
+
+/* ─── AI Chat Typing Animation ─── */
+
+.ai-typing-message {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  animation: aiTypingFadeIn 0.25s ease-out;
+}
+
+@keyframes aiTypingFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.chat-typing-indicator .typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: aiChatTypingDot 1.2s ease-in-out infinite;
+}
+
+.chat-typing-indicator .typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.chat-typing-indicator .typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes aiChatTypingDot {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1.1); }
+}
+
+.ai-typing-text {
+  min-height: 1.4em;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
 }
