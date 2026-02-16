@@ -24048,6 +24048,188 @@ body.light-mode .clue-stack-chip {
   }
 }
 
+/* ── Judge Courtroom Layout ── */
+.judge-courtroom {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  position: relative;
+  overflow: hidden;
+  min-height: 100px;
+}
+
+.judge-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  gap: 6px;
+}
+
+.judge-col-label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.judge-col-legal .judge-col-label {
+  color: #39d353;
+}
+
+.judge-col-illegal .judge-col-label {
+  color: #f85149;
+}
+
+.judge-col-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.judge-avatar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface2) 80%);
+  border: 2px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--text);
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.4s ease,
+              border-color 0.4s ease,
+              box-shadow 0.4s ease;
+  position: relative;
+}
+
+.judge-avatar-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 50%, var(--surface) 50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.judge-avatar-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  min-width: 48px;
+  text-align: center;
+}
+
+/* Center state — waiting to vote */
+.judge-avatar.judge-center {
+  transform: translateX(0);
+  animation: judgeOrbPulse 1.2s ease-in-out infinite;
+}
+
+.judge-avatar.judge-center:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.judge-avatar.judge-center:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Slide to LEGAL (left) */
+.judge-avatar.judge-legal {
+  transform: translateX(calc(-100% - 24px));
+  background: rgba(57, 211, 83, 0.15);
+  border-color: #39d353;
+  box-shadow: 0 0 12px rgba(57, 211, 83, 0.3);
+  animation: none;
+}
+
+.judge-avatar.judge-legal .judge-avatar-icon {
+  background: #2da44e;
+}
+
+.judge-avatar.judge-legal .judge-avatar-label {
+  color: #39d353;
+}
+
+/* Slide to ILLEGAL (right) */
+.judge-avatar.judge-illegal {
+  transform: translateX(calc(100% + 24px));
+  background: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
+  box-shadow: 0 0 12px rgba(248, 81, 73, 0.3);
+  animation: none;
+}
+
+.judge-avatar.judge-illegal .judge-avatar-icon {
+  background: #da3633;
+}
+
+.judge-avatar.judge-illegal .judge-avatar-label {
+  color: #f85149;
+}
+
+/* Flash animations on final verdict */
+@keyframes judgeFlashGreen {
+  0% { background-color: transparent; }
+  30% { background-color: rgba(57, 211, 83, 0.25); }
+  60% { background-color: rgba(57, 211, 83, 0.12); }
+  100% { background-color: transparent; }
+}
+
+@keyframes judgeFlashRed {
+  0% { background-color: transparent; }
+  30% { background-color: rgba(248, 81, 73, 0.25); }
+  60% { background-color: rgba(248, 81, 73, 0.12); }
+  100% { background-color: transparent; }
+}
+
+.judge-flash-green {
+  animation: judgeFlashGreen 0.8s ease-out;
+}
+
+.judge-flash-red {
+  animation: judgeFlashRed 0.8s ease-out;
+}
+
+.clue-review-modal-card.judge-flash-green {
+  animation: judgeFlashGreen 0.8s ease-out;
+  box-shadow: 0 0 40px rgba(57, 211, 83, 0.4), 0 22px 80px rgba(0, 0, 0, 0.44);
+}
+
+.clue-review-modal-card.judge-flash-red {
+  animation: judgeFlashRed 0.8s ease-out;
+  box-shadow: 0 0 40px rgba(248, 81, 73, 0.4), 0 22px 80px rgba(0, 0, 0, 0.44);
+}
+
+/* Light mode adjustments */
+body.light-mode .judge-courtroom {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+body.light-mode .judge-avatar {
+  background: color-mix(in srgb, var(--accent) 10%, #ffffff 90%);
+}
+
+body.light-mode .judge-avatar.judge-legal {
+  background: rgba(45, 164, 78, 0.1);
+}
+
+body.light-mode .judge-avatar.judge-illegal {
+  background: rgba(218, 54, 51, 0.1);
+}
+
 .game-action-bar.row-clue-endturn {
   flex-wrap: nowrap;
   justify-content: space-between;

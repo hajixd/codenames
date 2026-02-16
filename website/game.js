@@ -1305,6 +1305,7 @@ function maybeStartLocalPracticeAI() {
 }
 
 window.isLocalPracticeGameId = isLocalPracticeGameId;
+window.mutateLocalPracticeGame = mutateLocalPracticeGame;
 window.hasLocalPracticeGame = function hasLocalPracticeGame(gameId) {
   const key = String(gameId || '').trim();
   if (!isLocalPracticeGameId(key)) return false;
@@ -5119,6 +5120,7 @@ function stopGameListener() {
   _lastSentClueDraftSig = '';
   _clueChallengeActionBusy = false;
   _councilReviewRunning.clear();
+  _liveJudgeVerdicts = {};
   if (_pendingRevealRenderTimer) {
     clearTimeout(_pendingRevealRenderTimer);
     _pendingRevealRenderTimer = null;
@@ -6800,12 +6802,47 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
   }
 }
 
+function _updateJudgeCourtUI(pid) {
+  const state = _liveJudgeVerdicts[pid];
+  if (!state) return;
+  for (let i = 0; i < 3; i++) {
+    const el = document.getElementById(`judge-avatar-${i}`);
+    if (!el) continue;
+    const j = state.judges[i];
+    if (j) {
+      el.classList.remove('judge-center');
+      el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
+      el.querySelector('.judge-avatar-label').textContent = j.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
+    }
+  }
+  if (state.finalVerdict) {
+    const modalCard = document.getElementById('clue-review-modal-card');
+    if (modalCard) {
+      modalCard.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
+    }
+    // Also flash the inline panel hint area
+    const courtEl = document.getElementById('judge-courtroom');
+    if (courtEl) {
+      courtEl.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
+    }
+  }
+}
+
 async function evaluatePendingClueWithCouncil(game, pending) {
   const baseline = basicClueLegalityCheck(pending, game);
+  const pid = pending?.id || '';
+  // Initialize live judge tracking
+  _liveJudgeVerdicts[pid] = { judges: [], finalVerdict: null, flashDone: false };
+
   const judges = [];
   for (let idx = 0; idx < 3; idx += 1) {
     const verdict = await judgePendingClueWithAI(game, pending, idx, baseline);
     judges.push(verdict);
+    // Update live tracking and animate this judge sliding
+    _liveJudgeVerdicts[pid].judges = [...judges];
+    _updateJudgeCourtUI(pid);
+    // Brief pause so the slide animation is visible before next judge
+    await new Promise(r => setTimeout(r, 700));
   }
   let legalVotes = judges.filter((j) => j.verdict === 'legal').length;
   let illegalVotes = judges.length - legalVotes;
@@ -6815,6 +6852,14 @@ async function evaluatePendingClueWithCouncil(game, pending) {
     illegalVotes = Math.max(illegalVotes, 2);
     legalVotes = Math.min(legalVotes, 1);
   }
+  // Set final verdict and trigger flash animation
+  _liveJudgeVerdicts[pid].finalVerdict = verdict;
+  _updateJudgeCourtUI(pid);
+  // Wait for flash animation to play
+  await new Promise(r => setTimeout(r, 1200));
+  _liveJudgeVerdicts[pid].flashDone = true;
+  // Cleanup
+  delete _liveJudgeVerdicts[pid];
   return {
     verdict,
     legalVotes,
@@ -7230,14 +7275,32 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     } else if (pending.state === 'reviewing') {
       statusText = 'Council Reviewing';
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
+      const liveState = _liveJudgeVerdicts[pending.id];
+      const j0cls = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+      const j1cls = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+      const j2cls = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+      const j0label = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
+      const j1label = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
+      const j2label = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
+      const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
       hintHtml = `
-        <div class="judge-thinking">
-          <div class="judge-thinking-orbs" aria-hidden="true">
-            <span class="judge-orb"></span>
-            <span class="judge-orb"></span>
-            <span class="judge-orb"></span>
+        <div class="judge-courtroom ${flashCls}" id="judge-courtroom">
+          <div class="judge-col judge-col-legal"><span class="judge-col-label">LEGAL</span></div>
+          <div class="judge-col judge-col-center">
+            <div class="judge-avatar ${j0cls}" id="judge-avatar-0">
+              <span class="judge-avatar-icon">1</span>
+              <span class="judge-avatar-label">${j0label}</span>
+            </div>
+            <div class="judge-avatar ${j1cls}" id="judge-avatar-1">
+              <span class="judge-avatar-icon">2</span>
+              <span class="judge-avatar-label">${j1label}</span>
+            </div>
+            <div class="judge-avatar ${j2cls}" id="judge-avatar-2">
+              <span class="judge-avatar-icon">3</span>
+              <span class="judge-avatar-label">${j2label}</span>
+            </div>
           </div>
-          <span class="judge-thinking-text">Three AI judges are deliberating…</span>
+          <div class="judge-col judge-col-illegal"><span class="judge-col-label">ILLEGAL</span></div>
         </div>
       `;
       reviewPanelEl.classList.add('is-reviewing');
@@ -8534,6 +8597,8 @@ let _clueDraftSyncInFlight = false;
 let _lastSentClueDraftSig = '';
 let _clueChallengeActionBusy = false;
 const _councilReviewRunning = new Set();
+// Live judge verdict tracking for animated UI
+let _liveJudgeVerdicts = {}; // { pendingId: { judges: [{judge,verdict,reason},...], finalVerdict: null|'legal'|'illegal', flashDone: false } }
 let _lastCardConfirmAt = 0;
 let _lastCardConfirmIndex = -1;
 let operativeChatUnsub = null;

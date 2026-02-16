@@ -1140,16 +1140,6 @@
                       </button>
                     </div>
 
-                    <!-- Stacking Panel (above input, under clue) -->
-                    <div class="clue-stack-panel" id="clue-stack-panel" style="display:none;">
-                      <div class="clue-stack-panel-header">
-                        <span class="clue-stack-badge">STACKING</span>
-                        <span class="clue-stack-summary" id="clue-stack-summary">Tap your team's cards</span>
-                        <button type="button" class="btn small clue-stack-clear-btn" id="clue-stack-clear-btn">Clear</button>
-                      </div>
-                      <div class="clue-stack-chip-row" id="clue-stack-chip-row"></div>
-                    </div>
-
                     <!-- Spymaster Clue Input -->
                     <form class="clue-form-expanded" id="clue-form" style="display:none;">
                       <input type="text" class="input clue-input-expanded" id="clue-input" placeholder="Enter your clue..." required />
@@ -1158,6 +1148,16 @@
                       <button type="button" class="og-num-btn og-num-plus" id="og-num-plus" title="Increase number">+</button>
                       <button type="submit" class="btn primary">Give Clue</button>
                     </form>
+
+                    <!-- Stacking Panel (below input) -->
+                    <div class="clue-stack-panel" id="clue-stack-panel" style="display:none;">
+                      <div class="clue-stack-panel-header">
+                        <span class="clue-stack-badge">STACKING</span>
+                        <span class="clue-stack-summary" id="clue-stack-summary">Tap your team's cards</span>
+                        <button type="button" class="btn small clue-stack-clear-btn" id="clue-stack-clear-btn">Clear</button>
+                      </div>
+                      <div class="clue-stack-chip-row" id="clue-stack-chip-row"></div>
+                    </div>
 
                     <!-- Operative Actions -->
                     <div class="operative-actions-expanded" id="operative-actions" style="display:none;">

@@ -2500,6 +2500,117 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
   return chat ? chat.slice(0, 180) : '';
 }
 
+// ── AI Spymaster Live Thinking / Typing Simulation ──
+// Simulates the AI "thinking out loud" by typing draft clues into liveClueDraft,
+// pausing, deleting them, and finally typing the real clue — visible to the
+// opposing spymaster via the existing live typing indicator.
+
+function _pickFakeDraftWords(ai, finalClue, boardWords) {
+  const core = ensureAICore(ai);
+  // Extract candidate words from mind log
+  const mindText = (core ? core.mindLog.slice(-6).join(' ') : '');
+  const candidates = mindText
+    .replace(/[^a-zA-Z\s]/g, ' ')
+    .split(/\s+/)
+    .map(w => w.toUpperCase().trim())
+    .filter(w => w.length >= 3 && w !== finalClue && !boardWords.includes(w));
+  // Deduplicate
+  const unique = [...new Set(candidates)];
+  // Pick 1-2 random fake drafts
+  const count = Math.min(unique.length, 1 + Math.floor(Math.random() * 2));
+  const picked = [];
+  const pool = [...unique];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+  // Fallback: if no words from mind, use partial typing of final clue then backspace
+  if (!picked.length) {
+    const partial = finalClue.slice(0, Math.max(2, Math.floor(finalClue.length * 0.6)));
+    picked.push(partial);
+  }
+  return picked;
+}
+
+async function _setAILiveClueDraft(game, team, ai, word, number) {
+  const payload = word ? {
+    team,
+    word: String(word).toUpperCase().slice(0, 40),
+    number: number !== null && number !== undefined ? String(number) : '',
+    byId: String(ai?.odId || ai?.id || '').trim(),
+    byName: String(ai?.name || 'AI').trim(),
+    updatedAtMs: Date.now(),
+  } : null;
+
+  const gid = String(game?.id || '').trim();
+  if (!gid) return;
+
+  // Local practice game
+  if (typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
+    if (typeof window.mutateLocalPracticeGame === 'function') {
+      window.mutateLocalPracticeGame(gid, (draft) => {
+        draft.liveClueDraft = payload;
+      });
+    }
+    return;
+  }
+
+  // Online game — update Firestore
+  try {
+    const ref = db.collection('games').doc(gid);
+    if (payload) {
+      await ref.update({ liveClueDraft: payload });
+    } else {
+      await ref.update({ liveClueDraft: firebase.firestore.FieldValue.delete() });
+    }
+  } catch (_) {}
+}
+
+async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber) {
+  if (!ai || !game) return;
+  const team = String(ai.team || '');
+  const boardWords = (game.cards || []).map(c => String(c?.word || '').toUpperCase()).filter(Boolean);
+  const fakes = _pickFakeDraftWords(ai, finalClue, boardWords);
+
+  const typeSpeed = () => 40 + Math.floor(Math.random() * 45); // 40-85ms per char
+  const deleteSpeed = () => 25 + Math.floor(Math.random() * 20); // 25-45ms per char
+  const thinkPause = () => 800 + Math.floor(Math.random() * 900); // 800-1700ms between drafts
+
+  // Type each fake draft, pause, then delete it
+  for (const fake of fakes) {
+    // Type character by character
+    for (let i = 1; i <= fake.length; i++) {
+      await _setAILiveClueDraft(game, team, ai, fake.slice(0, i), null);
+      await sleep(typeSpeed());
+    }
+    // Pause as if considering
+    await sleep(thinkPause());
+    // Delete character by character
+    for (let i = fake.length - 1; i >= 0; i--) {
+      if (i === 0) {
+        await _setAILiveClueDraft(game, team, ai, '...', null);
+      } else {
+        await _setAILiveClueDraft(game, team, ai, fake.slice(0, i), null);
+      }
+      await sleep(deleteSpeed());
+    }
+    await sleep(300 + Math.floor(Math.random() * 400));
+  }
+
+  // Now type the real clue
+  for (let i = 1; i <= finalClue.length; i++) {
+    const showNumber = (i === finalClue.length) ? finalNumber : null;
+    await _setAILiveClueDraft(game, team, ai, finalClue.slice(0, i), showNumber);
+    await sleep(typeSpeed());
+  }
+
+  // Brief pause showing the complete clue
+  await sleep(400 + Math.floor(Math.random() * 300));
+
+  // Clear the draft (submit will follow immediately)
+  await _setAILiveClueDraft(game, team, ai, null, null);
+}
+
 async function submitClueDirect(ai, game, clueWord, clueNumber) {
   if (!ai || !game || game.winner) return;
   if (String(ai?.mode || '') !== 'autonomous') return;
@@ -2805,6 +2916,7 @@ async function runSpymasterCouncil(game, team) {
     } catch (_) {}
   }
 
+  await simulateAISpymasterThinking(executor, fresh, pick.clue, pick.number);
   await submitClueDirect(executor, fresh, pick.clue, pick.number);
 }
 async function aiGiveClue(ai, game) {
@@ -2900,6 +3012,9 @@ ${mindContext}`;
     }
 
     if (!clueWord) return;
+
+    // Simulate live thinking/typing visible to opposing spymaster
+    await simulateAISpymasterThinking(ai, game, clueWord, clueNumber);
 
     const seqField = _aiSeqField(team, 'spy');
     let clueAccepted = false;
