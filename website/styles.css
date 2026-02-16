@@ -24560,13 +24560,7 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .clue-review-modal-head {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.12);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%);
-}
-
-.clue-review-modal-body {
-  padding: 12px 14px 14px;
+  display: none;
 }
 
 .clue-review-panel-modal {
@@ -24766,6 +24760,80 @@ body.stacking-turn-active .game-action-bar .clue-form-expanded {
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
   border-radius: 10px;
+}
+
+/* ─── Desktop clue input width cap ─── */
+@media (min-width: 821px) {
+  .clue-form-expanded {
+    max-width: 400px;
+  }
+  body.stacking-turn-active .game-action-bar .clue-form-expanded {
+    max-width: 400px;
+  }
+}
+
+/* ─── Clue Review Modal: centered popup for spymasters ─── */
+.clue-review-modal-word {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--text);
+  padding: 18px 16px 6px;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.clue-review-modal-status-row {
+  display: flex;
+  justify-content: center;
+  padding: 0 0 8px;
+}
+
+.clue-review-modal-body {
+  padding: 0 16px 16px;
+}
+
+.clue-review-panel-modal .clue-review-meta {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-bottom: 4px;
+}
+
+.clue-review-panel-modal .clue-review-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.clue-review-panel-modal .clue-review-actions {
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.clue-review-accept-btn {
+  background: linear-gradient(180deg, #39d353 0%, #2da44e 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight: 800 !important;
+  font-size: 15px !important;
+  min-height: 44px !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 16px rgba(45, 164, 78, 0.3) !important;
+}
+
+.clue-review-accept-btn:hover {
+  filter: brightness(1.06);
+  transform: scale(1.02);
+}
+
+.clue-review-challenge-btn {
+  font-weight: 800 !important;
+  font-size: 15px !important;
+  min-height: 44px !important;
+  border-radius: 12px !important;
 }
 
 /* ─── AI Chat Typing Animation ─── */

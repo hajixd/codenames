@@ -6858,11 +6858,8 @@ async function runCouncilReviewForPendingClue(gameId, pendingId) {
             seqField: livePending.seqField || null,
           });
         } else {
-          draft.pendingClue = {
-            ...livePending,
-            state: 'rejected',
-            review,
-          };
+          // Clear pending clue entirely so spymaster can immediately type a new one
+          draft.pendingClue = null;
           draft.liveClueDraft = null;
           draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
           draft.log.push(buildCouncilSummaryLine(livePending, review));
@@ -6887,12 +6884,9 @@ async function runCouncilReviewForPendingClue(gameId, pendingId) {
           seqField: livePending.seqField || null,
         }));
       } else {
+        // Clear pending clue entirely so spymaster can immediately type a new one
         tx.update(ref, {
-          pendingClue: {
-            ...livePending,
-            state: 'rejected',
-            review,
-          },
+          pendingClue: firebase.firestore.FieldValue.delete(),
           liveClueDraft: firebase.firestore.FieldValue.delete(),
           log: firebase.firestore.FieldValue.arrayUnion(buildCouncilSummaryLine(livePending, review)),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -7266,9 +7260,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       else reviewHintEl.textContent = hintText;
     }
 
+    // Show modal for BOTH spymasters when clue is awaiting/reviewing
     const showSpymasterModal = !spectator
       && isSpymaster
-      && (canChallenge || pending.state === 'reviewing');
+      && (pending.state === 'awaiting' || pending.state === 'reviewing');
     if (showSpymasterModal && reviewModalEl) {
       const reviewTitle = `${pending.word} ${pending.number}`;
       if (reviewModalTitleEl) {
@@ -7281,9 +7276,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         if (hintHtml) reviewModalHintEl.innerHTML = hintHtml;
         else reviewModalHintEl.textContent = hintText;
       }
-      if (reviewModalAllowBtn) reviewModalAllowBtn.disabled = _clueChallengeActionBusy;
-      if (reviewModalChallengeBtn) reviewModalChallengeBtn.disabled = _clueChallengeActionBusy;
 
+      // Only show Accept/Challenge buttons for the OPPOSING spymaster
       if (reviewModalActionsEl) reviewModalActionsEl.style.display = canChallenge ? 'grid' : 'none';
       if (canChallenge) {
         if (reviewModalAllowBtn) reviewModalAllowBtn.disabled = _clueChallengeActionBusy;
