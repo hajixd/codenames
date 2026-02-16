@@ -610,12 +610,16 @@ function applyLocalPracticeGuessState(game, idx, actorName) {
   if (winner) {
     game.winner = winner;
     game.currentPhase = 'ended';
+    game.pendingClue = null;
+    game.liveClueDraft = null;
     const winnerName = truncateTeamNameGame(winner === 'red' ? game.redTeamName : game.blueTeamName);
     game.log.push(`${winnerName} wins!`);
   } else if (endTurn) {
     game.currentTeam = team === 'red' ? 'blue' : 'red';
     game.currentPhase = 'spymaster';
     game.currentClue = null;
+    game.pendingClue = null;
+    game.liveClueDraft = null;
     game.guessesRemaining = 0;
   }
 
@@ -855,6 +859,8 @@ function applyLocalPracticeOperativeEndTurnState(game, actorName) {
   game.currentTeam = actingTeam === 'red' ? 'blue' : 'red';
   game.currentPhase = 'spymaster';
   game.currentClue = null;
+  game.pendingClue = null;
+  game.liveClueDraft = null;
   game.guessesRemaining = 0;
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(`${actorName} (${teamName}) ended their turn.`);
@@ -1269,11 +1275,14 @@ function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
+  const stackingToggle = document.getElementById('qp-stacking-toggle');
+  const stackingEnabled = stackingToggle ? !!stackingToggle.checked : true;
   const vibe = String(document.getElementById('qp-vibe')?.value || '').trim();
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
+    stackingEnabled,
     deckId: "standard",// AI-driven words; fallback uses standard bank,
     vibe: vibe || '',
   };
@@ -1286,6 +1295,7 @@ function getQuickSettings(game) {
       blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
       clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
+      stackingEnabled: base.stackingEnabled !== false,
       deckId: normalizeDeckId(base.deckId || 'standard'),
       vibe: String(base.vibe || ''),
     };
@@ -1294,6 +1304,7 @@ function getQuickSettings(game) {
     blackCards: 1,
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
+    stackingEnabled: true,
     deckId: 'standard',
     vibe: '',
   };
@@ -1334,9 +1345,10 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, vibe: '' };
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, vibe: '' };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)}${vibeStr}`;
+  const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
+  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr}${vibeStr}`;
 }
 
 
@@ -1874,6 +1886,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
   const vibe = String(opts.vibe || '').trim();
   const deckId = normalizeDeckId(opts.deckId || 'standard');
+  const stackingEnabled = opts?.stackingEnabled !== false;
 
   const usedNames = new Set([userName]);
   const uid = getUserId();
@@ -1940,6 +1953,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     currentPhase: 'spymaster',
     currentTeam: 'red',
     currentClue: null,
+    pendingClue: null,
+    liveClueDraft: null,
     guessesRemaining: 0,
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
@@ -1957,6 +1972,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     practice: {
       size,
       yourRole: human.role,
+      stackingEnabled,
       openedAtMs: Date.now(),
     },
     // tracking for inactivity logic
@@ -2151,9 +2167,13 @@ function initGameUI() {
 
   // Clue form
   document.getElementById('clue-form')?.addEventListener('submit', handleClueSubmit);
+  document.getElementById('clue-input')?.addEventListener('input', () => queueLiveClueDraftSync());
+  document.getElementById('clue-input')?.addEventListener('blur', () => queueLiveClueDraftSync({ force: true }));
   document.getElementById('clue-stack-clear-btn')?.addEventListener('click', () => {
     clearClueTargetSelection({ refreshGame: true });
   });
+  document.getElementById('clue-review-allow-btn')?.addEventListener('click', handleAllowPendingClue);
+  document.getElementById('clue-review-challenge-btn')?.addEventListener('click', handleChallengePendingClue);
 
   // End turn button
   document.getElementById('end-turn-btn')?.addEventListener('click', handleEndTurn);
@@ -2164,6 +2184,7 @@ function initGameUI() {
     if (numInput) {
       const val = parseInt(numInput.value, 10) || 0;
       numInput.value = Math.max(0, val - 1);
+      queueLiveClueDraftSync();
     }
   });
   document.getElementById('og-num-plus')?.addEventListener('click', () => {
@@ -2171,6 +2192,7 @@ function initGameUI() {
     if (numInput) {
       const val = parseInt(numInput.value, 10) || 0;
       numInput.value = Math.min(9, val + 1);
+      queueLiveClueDraftSync();
     }
   });
   document.getElementById('clue-num-input')?.addEventListener('input', (e) => {
@@ -2183,6 +2205,7 @@ function initGameUI() {
     }
     const n = Math.max(0, Math.min(9, parseInt(raw, 10) || 0));
     el.value = String(n);
+    queueLiveClueDraftSync();
   });
 
   // OG Mode: Settings button opens settings modal
@@ -2731,10 +2754,12 @@ function openQuickSettingsModal() {
   const blackCardsEl = document.getElementById('qp-black-cards');
   const clueTimerEl = document.getElementById('qp-clue-timer');
   const guessTimerEl = document.getElementById('qp-guess-timer');
+  const stackingToggleEl = document.getElementById('qp-stacking-toggle');
 
   if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
   if (clueTimerEl) clueTimerEl.value = String(s.clueTimerSeconds ?? 0);
   if (guessTimerEl) guessTimerEl.value = String(s.guessTimerSeconds ?? 0);
+  if (stackingToggleEl) stackingToggleEl.checked = s.stackingEnabled !== false;
   setQuickDeckSelectionUI(s.deckId || 'standard');
 
   const vibeEl = document.getElementById('qp-vibe');
@@ -3210,12 +3235,15 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
+    pendingClue: null,
+    liveClueDraft: null,
     guessesRemaining: 0,
     timerEnd: null,
     quickSettings: {
       blackCards: settings.blackCards,
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
+      stackingEnabled: settings.stackingEnabled !== false,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
       vibe: settings.vibe || '',
     },
@@ -3253,8 +3281,14 @@ async function ensureQuickPlayGameExists() {
         blackCards: 1,
         clueTimerSeconds: 0,
         guessTimerSeconds: 0,
+        stackingEnabled: true,
         deckId: 'standard',
         vibe: '',
+      };
+    } else if (typeof g.quickSettings.stackingEnabled === 'undefined') {
+      updates.quickSettings = {
+        ...g.quickSettings,
+        stackingEnabled: true
       };
     }
     // Remove legacy negotiation fields if present.
@@ -3543,6 +3577,7 @@ async function maybeAutoStartQuickPlay(game) {
   const s0 = getQuickSettings(game);
   const settingsSig0 = JSON.stringify({
     blackCards: Number(s0.blackCards || 1),
+    stackingEnabled: s0.stackingEnabled !== false,
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -3568,6 +3603,7 @@ async function maybeAutoStartQuickPlay(game) {
       const s = getQuickSettings(g);
       const settingsSig1 = JSON.stringify({
         blackCards: Number(s.blackCards || 1),
+        stackingEnabled: s.stackingEnabled !== false,
         deckId: String(s.deckId || 'standard'),
         vibe: String(s.vibe || '').trim(),
       });
@@ -3599,6 +3635,8 @@ async function maybeAutoStartQuickPlay(game) {
         redCardsLeft: FIRST_TEAM_CARDS,
         blueCardsLeft: SECOND_TEAM_CARDS,
         currentClue: null,
+        pendingClue: null,
+        liveClueDraft: null,
         guessesRemaining: 0,
         timerEnd: startTimerEnd,
         winner: null,
@@ -3635,6 +3673,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
   const s0 = getQuickSettings(g0);
   const settingsSig0 = JSON.stringify({
     blackCards: Number(s0.blackCards || 1),
+    stackingEnabled: s0.stackingEnabled !== false,
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -3661,6 +3700,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
       const qs = getQuickSettings(g);
       const settingsSig1 = JSON.stringify({
         blackCards: Number(qs.blackCards || 1),
+        stackingEnabled: qs.stackingEnabled !== false,
         deckId: String(qs.deckId || 'standard'),
         vibe: String(qs.vibe || '').trim(),
       });
@@ -3689,6 +3729,8 @@ window.startQuickGame = async function startQuickGame(gameId) {
         redCardsLeft: FIRST_TEAM_CARDS,
         blueCardsLeft: SECOND_TEAM_CARDS,
         currentClue: null,
+        pendingClue: null,
+        liveClueDraft: null,
         guessesRemaining: 0,
         timerEnd: startTimerEnd,
         winner: null,
@@ -4678,6 +4720,8 @@ async function createGame(team1Id, team1Name, team2Id, team2Name) {
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     currentClue: null,
+    pendingClue: null,
+    liveClueDraft: null,
     guessesRemaining: 0,
     log: [],
     winner: null,
@@ -4743,6 +4787,7 @@ async function rejoinCurrentGame() {
 ========================= */
 function startGameListener(gameId, options = {}) {
   if (gameUnsub) gameUnsub();
+  _lastSentClueDraftSig = '';
   const localPractice = isLocalPracticeGameId(gameId);
   currentListenerEphemeral = !!(options.ephemeral || localPractice);
   let isFirstSnapshot = true;
@@ -4939,9 +4984,18 @@ window.startQuickPlayLiveBackdrop = function startQuickPlayLiveBackdrop(opts = {
 };
 
 function stopGameListener() {
+  try { void clearLiveClueDraftOwnership({ silent: true }); } catch (_) {}
   if (gameUnsub) gameUnsub();
   gameUnsub = null;
   stopLocalPracticeAI();
+  if (_clueDraftSyncTimer) {
+    clearTimeout(_clueDraftSyncTimer);
+    _clueDraftSyncTimer = null;
+  }
+  _clueDraftSyncInFlight = false;
+  _lastSentClueDraftSig = '';
+  _clueChallengeActionBusy = false;
+  _councilReviewRunning.clear();
   if (_pendingRevealRenderTimer) {
     clearTimeout(_pendingRevealRenderTimer);
     _pendingRevealRenderTimer = null;
@@ -5121,6 +5175,7 @@ function renderGame() {
   }
 
   showGameBoard();
+  maybeRunCouncilReviewFromSnapshot(currentGame);
 
   const myTeamColor = getMyTeamColor();
   const spectator = isSpectating();
@@ -5803,7 +5858,8 @@ function renderBoard(isSpymaster) {
     && currentGame.currentPhase === 'spymaster'
     && isSpymaster
     && !currentGame.winner
-    && isStackingSettingEnabledLocal();
+    && !hasBlockingPendingClue(currentGame)
+    && isStackingEnabledForGame(currentGame);
   if (!canStackTargets && clueTargetSelection.length) {
     clueTargetSelection = [];
   }
@@ -6039,6 +6095,23 @@ function isStackingSettingEnabledLocal() {
   }
 }
 
+function isStackingEnabledForGame(game = currentGame) {
+  if (!isStackingSettingEnabledLocal()) return false;
+  if (!game || typeof game !== 'object') return true;
+
+  if (String(game.type || '') === 'quick') {
+    const quick = getQuickSettings(game);
+    return quick.stackingEnabled !== false;
+  }
+
+  if (String(game.type || '') === 'practice') {
+    const practice = (game.practice && typeof game.practice === 'object') ? game.practice : {};
+    return practice.stackingEnabled !== false;
+  }
+
+  return true;
+}
+
 function normalizeClueTargetSelection(selection = [], game = currentGame, teamOverride = null, opts = {}) {
   const cards = Array.isArray(game?.cards) ? game.cards : [];
   const team = (teamOverride === 'blue' || teamOverride === 'red')
@@ -6063,11 +6136,12 @@ function normalizeClueTargetSelection(selection = [], game = currentGame, teamOv
 function canCurrentUserStackClueTargets() {
   if (!currentGame || currentGame.winner) return false;
   if (currentGame.currentPhase !== 'spymaster') return false;
+  if (hasBlockingPendingClue(currentGame)) return false;
   if (isSpectating()) return false;
   if (!isCurrentUserSpymaster()) return false;
   const myTeamColor = getMyTeamColor();
   if (!myTeamColor || currentGame.currentTeam !== myTeamColor) return false;
-  return isStackingSettingEnabledLocal();
+  return isStackingEnabledForGame(currentGame);
 }
 
 function getCurrentClueTargetSelection(game = currentGame) {
@@ -6160,11 +6234,613 @@ function renderClueStackingPanel() {
   if (plusBtn) plusBtn.disabled = true;
 }
 
+function normalizePendingClueEntry(raw, game = currentGame) {
+  if (!raw || typeof raw !== 'object') return null;
+  const team = String(raw.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+  const word = String(raw.word || '').trim().toUpperCase();
+  const number = Number(raw.number);
+  const id = String(raw.id || '').trim();
+  if (!word || !Number.isFinite(number) || !id) return null;
+  const stateRaw = String(raw.state || 'awaiting').toLowerCase();
+  const state = (stateRaw === 'reviewing' || stateRaw === 'rejected') ? stateRaw : 'awaiting';
+  const targets = getClueTargetIndicesFromEntry(raw, game);
+  const targetWords = Array.isArray(raw.targetWords)
+    ? raw.targetWords.map((w) => String(w || '').trim()).filter(Boolean)
+    : getClueTargetWords(targets, game);
+  return {
+    ...raw,
+    id,
+    team,
+    word,
+    number: Math.max(0, Math.min(9, Math.floor(number))),
+    state,
+    targets,
+    targetWords,
+    byId: String(raw.byId || '').trim(),
+    byName: String(raw.byName || '').trim(),
+    challengedById: String(raw.challengedById || '').trim(),
+    challengedByName: String(raw.challengedByName || '').trim(),
+    submittedAtMs: Number(raw.submittedAtMs || 0),
+  };
+}
+
+function hasBlockingPendingClue(game = currentGame) {
+  const pending = normalizePendingClueEntry(game?.pendingClue, game);
+  if (!pending) return false;
+  return pending.state === 'awaiting' || pending.state === 'reviewing';
+}
+
+function getTeamSpymasterPlayer(team, game = currentGame) {
+  const players = getTeamPlayers(team, game);
+  return players.find((p) => isSpymasterPlayerForTeam(p, team, game)) || null;
+}
+
+function hasHumanOpposingSpymaster(game, team) {
+  const t = team === 'blue' ? 'blue' : 'red';
+  const opp = t === 'red' ? 'blue' : 'red';
+  const oppSpy = getTeamSpymasterPlayer(opp, game);
+  return !!(oppSpy && !oppSpy.isAI);
+}
+
+function normalizeLiveClueDraft(raw, game = currentGame) {
+  if (!raw || typeof raw !== 'object') return null;
+  const team = String(raw.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+  const word = String(raw.word || '').trim().toUpperCase();
+  const numberRaw = String(raw.number ?? '').trim();
+  const number = numberRaw === '' ? '' : String(Math.max(0, Math.min(9, parseInt(numberRaw, 10) || 0)));
+  const byId = String(raw.byId || '').trim();
+  const byName = String(raw.byName || '').trim();
+  const updatedAtMs = Number(raw.updatedAtMs || 0);
+  const activeTeam = String(game?.currentTeam || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+  if (team !== activeTeam) return null;
+  if (!word && !number) return null;
+  return { team, word, number, byId, byName, updatedAtMs };
+}
+
+function canPublishLiveClueDraft(game = currentGame) {
+  if (!game || game.winner) return false;
+  if (String(game.type || '') === 'practice') return false;
+  if (String(game.currentPhase || '') !== 'spymaster') return false;
+  if (hasBlockingPendingClue(game)) return false;
+  if (isSpectating()) return false;
+  if (!isCurrentUserSpymaster()) return false;
+  const myTeam = getMyTeamColor();
+  if (!myTeam || String(game.currentTeam || '') !== myTeam) return false;
+  return true;
+}
+
+function buildLiveClueDraftPayload(game = currentGame) {
+  if (!canPublishLiveClueDraft(game)) return null;
+  const wordInput = document.getElementById('clue-input');
+  const numInput = document.getElementById('clue-num-input');
+  const word = String(wordInput?.value || '').trim().toUpperCase().slice(0, 40);
+  const numRaw = String(numInput?.value || '').trim();
+  const number = numRaw ? String(Math.max(0, Math.min(9, parseInt(numRaw, 10) || 0))) : '';
+  const team = String(game.currentTeam || '') === 'blue' ? 'blue' : 'red';
+  const byId = String(getUserId?.() || '').trim();
+  const byName = String(getUserName?.() || '').trim();
+  if (!word && !number) return null;
+  return {
+    team,
+    word,
+    number,
+    byId,
+    byName,
+    updatedAtMs: Date.now(),
+  };
+}
+
+function queueLiveClueDraftSync(opts = {}) {
+  const force = !!opts.force;
+  if (_clueDraftSyncTimer) clearTimeout(_clueDraftSyncTimer);
+  _clueDraftSyncTimer = setTimeout(() => {
+    _clueDraftSyncTimer = null;
+    void flushLiveClueDraftSync({ force });
+  }, force ? 0 : 140);
+}
+
+async function clearLiveClueDraftOwnership(opts = {}) {
+  await flushLiveClueDraftSync({ force: true, clearOnly: true, silent: !!opts.silent });
+}
+
+async function flushLiveClueDraftSync(opts = {}) {
+  if (_clueDraftSyncInFlight) return;
+  if (!currentGame?.id) return;
+  if (isCurrentLocalPracticeGame()) return;
+
+  const force = !!opts.force;
+  const clearOnly = !!opts.clearOnly;
+  const payload = clearOnly ? null : buildLiveClueDraftPayload(currentGame);
+  const sig = payload
+    ? `set|${payload.team}|${payload.word}|${payload.number}|${payload.byId}`
+    : `clear|${String(getUserId?.() || '').trim()}`;
+  if (!force && sig === _lastSentClueDraftSig) return;
+
+  _clueDraftSyncInFlight = true;
+  const gid = String(currentGame.id || '').trim();
+  const ref = db.collection('games').doc(gid);
+  try {
+    if (payload) {
+      await ref.update({
+        liveClueDraft: payload,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      const myId = String(getUserId?.() || '').trim();
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const game = snap.data() || {};
+        const live = game.liveClueDraft;
+        const owner = String(live?.byId || '').trim();
+        if (owner && myId && owner !== myId) return;
+        tx.update(ref, {
+          liveClueDraft: firebase.firestore.FieldValue.delete(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+    }
+    _lastSentClueDraftSig = sig;
+  } catch (e) {
+    if (!opts.silent) console.warn('Live clue draft sync failed:', e);
+  } finally {
+    _clueDraftSyncInFlight = false;
+  }
+}
+
+function buildClueEntryFromPending(pending) {
+  return {
+    team: pending.team,
+    word: pending.word,
+    number: pending.number,
+    targets: Array.isArray(pending.targets) ? pending.targets : [],
+    targetWords: Array.isArray(pending.targetWords) ? pending.targetWords : [],
+    results: [],
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function buildCouncilSummaryLine(pending, review) {
+  const legalVotes = Number(review?.legalVotes || 0);
+  const illegalVotes = Number(review?.illegalVotes || 0);
+  const verdict = review?.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
+  return `Council ruled "${pending.word}" for ${pending.number}: ${verdict} (${legalVotes}-${illegalVotes}).`;
+}
+
+function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
+  const teamName = pending.team === 'red'
+    ? (game.redTeamName || 'Red Team')
+    : (game.blueTeamName || 'Blue Team');
+  const clueLog = `${teamName} Spymaster: "${pending.word}" for ${pending.number}`;
+  const logLines = [clueLog];
+  if (opts.review) logLines.push(buildCouncilSummaryLine(pending, opts.review));
+  const updates = {
+    currentClue: { word: pending.word, number: pending.number },
+    pendingClue: firebase.firestore.FieldValue.delete(),
+    liveClueDraft: firebase.firestore.FieldValue.delete(),
+    guessesRemaining: (pending.number === 0 ? 0 : (pending.number + 1)),
+    currentPhase: 'operatives',
+    timerEnd: buildPhaseTimerEndValue(game, 'operatives'),
+    log: firebase.firestore.FieldValue.arrayUnion(...logLines),
+    clueHistory: firebase.firestore.FieldValue.arrayUnion(buildClueEntryFromPending(pending)),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  };
+  if (opts.seqField) updates[opts.seqField] = firebase.firestore.FieldValue.increment(1);
+  return updates;
+}
+
+function applyAcceptedClueLocalState(draft, pending, opts = {}) {
+  const teamName = pending.team === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
+  draft.currentClue = { word: pending.word, number: pending.number };
+  draft.pendingClue = null;
+  draft.liveClueDraft = null;
+  draft.guessesRemaining = (pending.number === 0 ? 0 : (pending.number + 1));
+  draft.currentPhase = 'operatives';
+  draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+  draft.log.push(`${teamName} Spymaster: "${pending.word}" for ${pending.number}`);
+  if (opts.review) draft.log.push(buildCouncilSummaryLine(pending, opts.review));
+  draft.clueHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
+  draft.clueHistory.push(buildClueEntryFromPending(pending));
+  draft.updatedAtMs = Date.now();
+  draft.lastMoveAtMs = Date.now();
+  if (opts.seqField) {
+    const cur = Number(draft?.[opts.seqField] || 0);
+    draft[opts.seqField] = Number.isFinite(cur) ? cur + 1 : 1;
+  }
+}
+
+function isUserSpymasterForTeamInGame(game, team, userId = '', userName = '') {
+  if (!game || (team !== 'red' && team !== 'blue')) return false;
+  const roster = getTeamPlayers(team, game);
+  const uid = String(userId || '').trim();
+  const unameNorm = normalizeSpyIdentity(userName || '');
+  const me = roster.find((p) => {
+    const pid = String(p?.odId || p?.userId || p?.id || '').trim();
+    if (uid && pid && pid === uid) return true;
+    if (!unameNorm) return false;
+    return normalizeSpyIdentity(p?.name) === unameNorm;
+  }) || null;
+  if (!me) return false;
+  return isSpymasterPlayerForTeam(me, team, game);
+}
+
+function canCurrentUserChallengePendingClue(pending, game = currentGame) {
+  if (!pending || !game) return false;
+  if (pending.state !== 'awaiting') return false;
+  if (isSpectating()) return false;
+  const myTeam = getMyTeamColor();
+  if (myTeam !== 'red' && myTeam !== 'blue') return false;
+  if (myTeam === pending.team) return false;
+  const uid = String(getUserId?.() || '').trim();
+  const uname = String(getUserName?.() || '').trim();
+  return isUserSpymasterForTeamInGame(game, myTeam, uid, uname);
+}
+
+function basicClueLegalityCheck(pending, game = currentGame) {
+  const word = String(pending?.word || '').trim().toUpperCase();
+  if (!word) return { legal: false, reason: 'Clue is empty.' };
+  if (word.includes(' ') || word.includes('-')) return { legal: false, reason: 'Clue must be one word.' };
+  const boardWords = new Set((game?.cards || []).map((c) => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+  if (boardWords.has(word)) return { legal: false, reason: 'Clue cannot match a board word.' };
+  const n = Number(pending?.number);
+  if (!Number.isFinite(n) || n < 0 || n > 9) return { legal: false, reason: 'Clue number must be 0-9.' };
+  return { legal: true, reason: 'Passes hard-rule checks.' };
+}
+
+async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') {
+    return {
+      judge: `AI-${judgeIdx + 1}`,
+      verdict: baseline.legal ? 'legal' : 'illegal',
+      reason: baseline.reason,
+    };
+  }
+
+  const boardWords = (game?.cards || [])
+    .map((c) => String(c?.word || '').trim().toUpperCase())
+    .filter(Boolean);
+  const system = [
+    'You are one judge in a 3-AI Codenames clue legality council.',
+    'Judge ONLY legality, not clue quality.',
+    'Strict legality rules:',
+    '- clue must be exactly one word (no spaces or hyphens)',
+    '- clue must not match any board word',
+    '- clue number must be an integer from 0 to 9',
+    'Return JSON only:',
+    '{"verdict":"legal|illegal","reason":"short reason"}',
+  ].join('\n');
+
+  const user = [
+    `CLUE: "${pending.word}"`,
+    `NUMBER: ${pending.number}`,
+    `BOARD WORDS: ${boardWords.join(', ')}`,
+    `HARD CHECK: ${baseline.legal ? 'pass' : `fail (${baseline.reason})`}`,
+    `Decide legal or illegal.`,
+  ].join('\n');
+
+  try {
+    const raw = await chatFn(
+      [{ role: 'system', content: system }, { role: 'user', content: user }],
+      {
+        temperature: [0.15, 0.35, 0.55][judgeIdx] || 0.35,
+        max_tokens: 180,
+        response_format: { type: 'json_object' },
+      }
+    );
+    const parsed = safeJsonParse(raw);
+    const verdict = String(parsed?.verdict || '').trim().toLowerCase() === 'illegal' ? 'illegal' : 'legal';
+    const reason = String(parsed?.reason || '').trim().slice(0, 160) || 'No reason provided.';
+    return { judge: `AI-${judgeIdx + 1}`, verdict, reason };
+  } catch (e) {
+    return {
+      judge: `AI-${judgeIdx + 1}`,
+      verdict: baseline.legal ? 'legal' : 'illegal',
+      reason: `Fallback: ${baseline.reason}`,
+    };
+  }
+}
+
+async function evaluatePendingClueWithCouncil(game, pending) {
+  const baseline = basicClueLegalityCheck(pending, game);
+  const judges = await Promise.all([0, 1, 2].map((idx) => judgePendingClueWithAI(game, pending, idx, baseline)));
+  let legalVotes = judges.filter((j) => j.verdict === 'legal').length;
+  let illegalVotes = judges.length - legalVotes;
+  let verdict = legalVotes >= illegalVotes ? 'legal' : 'illegal';
+  if (!baseline.legal) verdict = 'illegal';
+  if (verdict === 'illegal' && legalVotes >= illegalVotes) {
+    illegalVotes = Math.max(illegalVotes, 2);
+    legalVotes = Math.min(legalVotes, 1);
+  }
+  return {
+    verdict,
+    legalVotes,
+    illegalVotes,
+    baseline,
+    judges,
+    reviewedAtMs: Date.now(),
+  };
+}
+
+async function runCouncilReviewForPendingClue(gameId, pendingId) {
+  const gid = String(gameId || '').trim();
+  const pid = String(pendingId || '').trim();
+  if (!gid || !pid) return;
+  const runKey = `${gid}:${pid}`;
+  if (_councilReviewRunning.has(runKey)) return;
+  _councilReviewRunning.add(runKey);
+
+  try {
+    let game = null;
+    if (isLocalPracticeGameId(gid)) {
+      game = getLocalPracticeGame(gid);
+    } else {
+      const snap = await db.collection('games').doc(gid).get();
+      if (snap.exists) game = { id: snap.id, ...snap.data() };
+    }
+    if (!game) return;
+    const pending = normalizePendingClueEntry(game.pendingClue, game);
+    if (!pending || pending.id !== pid || pending.state !== 'reviewing') return;
+
+    const review = await evaluatePendingClueWithCouncil(game, pending);
+    const legal = review.verdict === 'legal';
+
+    if (isLocalPracticeGameId(gid)) {
+      mutateLocalPracticeGame(gid, (draft) => {
+        const livePending = normalizePendingClueEntry(draft.pendingClue, draft);
+        if (!livePending || livePending.id !== pid || livePending.state !== 'reviewing') return;
+        if (legal) {
+          applyAcceptedClueLocalState(draft, livePending, { review });
+        } else {
+          draft.pendingClue = {
+            ...livePending,
+            state: 'rejected',
+            review,
+          };
+          draft.liveClueDraft = null;
+          draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+          draft.log.push(buildCouncilSummaryLine(livePending, review));
+          draft.updatedAtMs = Date.now();
+          draft.lastMoveAtMs = Date.now();
+        }
+      });
+      if (legal && window.playSound) window.playSound('clueGiven');
+      return;
+    }
+
+    const ref = db.collection('games').doc(gid);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const current = snap.data() || {};
+      const livePending = normalizePendingClueEntry(current.pendingClue, current);
+      if (!livePending || livePending.id !== pid || livePending.state !== 'reviewing') return;
+      if (legal) {
+        tx.update(ref, buildAcceptedClueRemoteUpdates(current, livePending, { review }));
+      } else {
+        tx.update(ref, {
+          pendingClue: {
+            ...livePending,
+            state: 'rejected',
+            review,
+          },
+          liveClueDraft: firebase.firestore.FieldValue.delete(),
+          log: firebase.firestore.FieldValue.arrayUnion(buildCouncilSummaryLine(livePending, review)),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    });
+    if (legal && window.playSound) window.playSound('clueGiven');
+  } catch (e) {
+    console.error('Council review failed:', e);
+  } finally {
+    _councilReviewRunning.delete(runKey);
+  }
+}
+
+function maybeRunCouncilReviewFromSnapshot(game = currentGame) {
+  const pending = normalizePendingClueEntry(game?.pendingClue, game);
+  if (!pending || pending.state !== 'reviewing' || !game?.id) return;
+  const myId = String(getUserId?.() || '').trim();
+  const challengerId = String(pending.challengedById || '').trim();
+  const challengedAtMs = Number(pending.challengedAtMs || 0);
+  if (challengerId && myId && challengerId !== myId) {
+    if (challengedAtMs && (Date.now() - challengedAtMs) < 15_000) return;
+  }
+  void runCouncilReviewForPendingClue(game.id, pending.id);
+}
+
+async function handleAllowPendingClue() {
+  if (_clueChallengeActionBusy) return;
+  if (!currentGame?.id) return;
+  const pending = normalizePendingClueEntry(currentGame.pendingClue, currentGame);
+  if (!pending || pending.state !== 'awaiting') return;
+  if (!canCurrentUserChallengePendingClue(pending, currentGame)) return;
+
+  _clueChallengeActionBusy = true;
+  try {
+    if (isCurrentLocalPracticeGame()) {
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        const livePending = normalizePendingClueEntry(draft.pendingClue, draft);
+        if (!livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return;
+        applyAcceptedClueLocalState(draft, livePending);
+      });
+    } else {
+      const ref = db.collection('games').doc(currentGame.id);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const game = snap.data() || {};
+        const livePending = normalizePendingClueEntry(game.pendingClue, game);
+        if (!livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return;
+
+        const myTeam = livePending.team === 'red' ? 'blue' : 'red';
+        const uid = String(getUserId?.() || '').trim();
+        const uname = String(getUserName?.() || '').trim();
+        if (!isUserSpymasterForTeamInGame(game, myTeam, uid, uname)) return;
+
+        tx.update(ref, buildAcceptedClueRemoteUpdates(game, livePending));
+      });
+    }
+    if (window.playSound) window.playSound('clueGiven');
+  } catch (e) {
+    console.error('Allow clue failed:', e);
+  } finally {
+    _clueChallengeActionBusy = false;
+  }
+}
+
+async function handleChallengePendingClue() {
+  if (_clueChallengeActionBusy) return;
+  if (!currentGame?.id) return;
+  const pending = normalizePendingClueEntry(currentGame.pendingClue, currentGame);
+  if (!pending || pending.state !== 'awaiting') return;
+  if (!canCurrentUserChallengePendingClue(pending, currentGame)) return;
+
+  _clueChallengeActionBusy = true;
+  try {
+    if (isCurrentLocalPracticeGame()) {
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        const livePending = normalizePendingClueEntry(draft.pendingClue, draft);
+        if (!livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return;
+        draft.pendingClue = {
+          ...livePending,
+          state: 'reviewing',
+          challengedById: String(getUserId?.() || '').trim(),
+          challengedByName: String(getUserName?.() || '').trim(),
+          challengedAtMs: Date.now(),
+        };
+        draft.updatedAtMs = Date.now();
+      });
+      void runCouncilReviewForPendingClue(currentGame.id, pending.id);
+      return;
+    }
+
+    const ref = db.collection('games').doc(currentGame.id);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const game = snap.data() || {};
+      const livePending = normalizePendingClueEntry(game.pendingClue, game);
+      if (!livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return;
+
+      const myTeam = livePending.team === 'red' ? 'blue' : 'red';
+      const uid = String(getUserId?.() || '').trim();
+      const uname = String(getUserName?.() || '').trim();
+      if (!isUserSpymasterForTeamInGame(game, myTeam, uid, uname)) return;
+
+      tx.update(ref, {
+        pendingClue: {
+          ...livePending,
+          state: 'reviewing',
+          challengedById: uid,
+          challengedByName: uname,
+          challengedAtMs: Date.now(),
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    void runCouncilReviewForPendingClue(currentGame.id, pending.id);
+  } catch (e) {
+    console.error('Challenge clue failed:', e);
+  } finally {
+    _clueChallengeActionBusy = false;
+  }
+}
+
+async function submitClueForReviewFlow(opts = {}) {
+  const game = opts.game || currentGame;
+  if (!game || !game.id) throw new Error('Missing game state.');
+
+  const team = String(game.currentTeam || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+  const word = String(opts.word || '').trim().toUpperCase();
+  const number = Math.max(0, Math.min(9, Number(opts.number || 0)));
+  const byId = String(opts.byId || getUserId?.() || '').trim();
+  const byName = String(opts.byName || getUserName?.() || '').trim() || 'Spymaster';
+  const selectedTargets = normalizeClueTargetSelection(opts.targets || [], game, team);
+  const targetWords = Array.isArray(opts.targetWords) && opts.targetWords.length
+    ? opts.targetWords.map((w) => String(w || '').trim()).filter(Boolean)
+    : getClueTargetWords(selectedTargets, game);
+  const seqField = String(opts.seqField || '').trim();
+
+  const pending = {
+    id: `clue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    team,
+    word,
+    number,
+    targets: selectedTargets,
+    targetWords,
+    byId,
+    byName,
+    submittedAtMs: Date.now(),
+    state: 'awaiting',
+  };
+
+  const shouldOfferChallenge = hasHumanOpposingSpymaster(game, team);
+
+  if (isLocalPracticeGameId(game.id)) {
+    if (!shouldOfferChallenge) {
+      mutateLocalPracticeGame(game.id, (draft) => {
+        applyAcceptedClueLocalState(draft, pending, { seqField: seqField || null });
+      });
+      return { accepted: true, pending: false };
+    }
+
+    mutateLocalPracticeGame(game.id, (draft) => {
+      draft.pendingClue = pending;
+      draft.liveClueDraft = null;
+      draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+      draft.log.push(`${byName} proposed "${pending.word}" for ${pending.number}.`);
+      draft.updatedAtMs = Date.now();
+    });
+    return { accepted: false, pending: true };
+  }
+
+  const ref = db.collection('games').doc(game.id);
+  let result = { accepted: false, pending: false, rejected: false };
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const current = snap.data() || {};
+    if (current.winner) return;
+    if (String(current.currentPhase || '') !== 'spymaster') return;
+    if (String(current.currentTeam || '') !== team) return;
+    if (hasBlockingPendingClue(current)) return;
+
+    const offerChallenge = hasHumanOpposingSpymaster(current, team);
+    if (offerChallenge) {
+      tx.update(ref, {
+        pendingClue: pending,
+        liveClueDraft: firebase.firestore.FieldValue.delete(),
+        log: firebase.firestore.FieldValue.arrayUnion(`${byName} proposed "${pending.word}" for ${pending.number}.`),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      result = { accepted: false, pending: true, rejected: false };
+      return;
+    }
+
+    tx.update(ref, buildAcceptedClueRemoteUpdates(current, pending, { seqField: seqField || null }));
+    result = { accepted: true, pending: false, rejected: false };
+  });
+
+  return result;
+}
+window.submitClueForReviewFlow = submitClueForReviewFlow;
+
 function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const currentClueEl = document.getElementById('current-clue');
   const clueFormEl = document.getElementById('clue-form');
   const operativeActionsEl = document.getElementById('operative-actions');
   const waitingEl = document.getElementById('waiting-message');
+  const typingLiveEl = document.getElementById('clue-live-typing');
+  const reviewPanelEl = document.getElementById('clue-review-panel');
+  const reviewTitleEl = document.getElementById('clue-review-title');
+  const reviewStatusEl = document.getElementById('clue-review-status');
+  const reviewMetaEl = document.getElementById('clue-review-meta');
+  const reviewActionsEl = document.getElementById('clue-review-actions');
+  const reviewHintEl = document.getElementById('clue-review-hint');
+  const allowBtn = document.getElementById('clue-review-allow-btn');
+  const challengeBtn = document.getElementById('clue-review-challenge-btn');
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
   const waitingForEl = document.getElementById('waiting-for');
   const clueWordEl = document.getElementById('clue-word');
@@ -6187,19 +6863,87 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
   clueFormEl.style.display = 'none';
   waitingEl.style.display = 'none';
+  if (typingLiveEl) typingLiveEl.style.display = 'none';
+  if (reviewPanelEl) reviewPanelEl.style.display = 'none';
+  if (reviewActionsEl) reviewActionsEl.style.display = 'none';
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
   renderClueStackingPanel();
+
+  const pending = normalizePendingClueEntry(currentGame?.pendingClue, currentGame);
+  const pendingBlocking = !!(pending && (pending.state === 'awaiting' || pending.state === 'reviewing'));
+  const pendingRejected = !!(pending && pending.state === 'rejected');
+  const pendingReview = (pending && pending.review && typeof pending.review === 'object') ? pending.review : null;
+  const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
+  const myActiveSpymaster = !!(!spectator && isMyTurn && isSpymaster);
+  const opposingSpymaster = !!(!spectator && isSpymaster && myTeamColor && myTeamColor !== activeTeam);
 
   let clueWord = '—';
   let clueNumber = '—';
   if (currentGame?.currentClue) {
     clueWord = String(currentGame.currentClue.word || '—');
     clueNumber = String(currentGame.currentClue.number ?? '—');
+  } else if (pending) {
+    clueWord = String(pending.word || '—');
+    clueNumber = String(pending.number ?? '—');
   }
   clueWordEl.textContent = clueWord;
   clueNumberEl.textContent = clueNumber;
   guessesLeftEl.textContent = '';
+
+  const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
+  if (typingLiveEl && currentGame?.currentPhase === 'spymaster' && opposingSpymaster && liveDraft && !pendingBlocking) {
+    const teamName = liveDraft.team === 'red' ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team');
+    const draftWord = liveDraft.word || '...';
+    const draftNumber = liveDraft.number === '' ? '…' : liveDraft.number;
+    typingLiveEl.innerHTML = `
+      <span class="clue-typing-dot" aria-hidden="true"></span>
+      <span class="clue-typing-text">${escapeHtml(teamName)} spymaster typing: ${escapeHtml(draftWord)} ${escapeHtml(draftNumber)}</span>
+    `;
+    typingLiveEl.style.display = 'flex';
+  }
+
+  if (reviewPanelEl && pending) {
+    reviewPanelEl.style.display = 'flex';
+    if (reviewTitleEl) reviewTitleEl.textContent = `Review: ${pending.word} ${pending.number}`;
+
+    let statusText = '';
+    let hintText = '';
+    let metaText = '';
+
+    if (pending.state === 'awaiting') {
+      statusText = 'Awaiting Decision';
+      metaText = `Submitted by ${pending.byName || 'Spymaster'}`;
+      if (canCurrentUserChallengePendingClue(pending, currentGame)) {
+        hintText = 'Challenge sends this clue to a 3-AI legality council.';
+        if (reviewActionsEl) reviewActionsEl.style.display = 'flex';
+        if (allowBtn) allowBtn.disabled = _clueChallengeActionBusy;
+        if (challengeBtn) challengeBtn.disabled = _clueChallengeActionBusy;
+      } else if (myActiveSpymaster && myTeamColor === pending.team) {
+        hintText = 'Waiting for the opposing spymaster to allow or challenge.';
+      } else {
+        hintText = 'Clue is pending review.';
+      }
+    } else if (pending.state === 'reviewing') {
+      statusText = 'Council Reviewing';
+      metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
+      hintText = 'Three AI judges are checking clue legality.';
+    } else if (pending.state === 'rejected') {
+      statusText = 'Rejected';
+      const legalVotes = Number(pendingReview?.legalVotes || 0);
+      const illegalVotes = Number(pendingReview?.illegalVotes || 0);
+      metaText = (pendingReview && (legalVotes || illegalVotes))
+        ? `Council vote: legal ${legalVotes} · illegal ${illegalVotes}`
+        : 'The clue was judged illegal.';
+      hintText = myActiveSpymaster && myTeamColor === pending.team
+        ? 'Submit a new clue.'
+        : 'Waiting for a replacement clue.';
+    }
+
+    if (reviewStatusEl) reviewStatusEl.textContent = statusText;
+    if (reviewMetaEl) reviewMetaEl.textContent = metaText;
+    if (reviewHintEl) reviewHintEl.textContent = hintText;
+  }
 
   // Update OG mode phase banner
   const ogBanner = document.getElementById('og-phase-banner');
@@ -6226,7 +6970,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     }
   }
 
-  const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canEndTurn = !spectator
     && !currentGame?.winner
     && currentGame?.currentPhase === 'operatives'
@@ -6235,10 +6978,14 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   endTurnBtn.disabled = !canEndTurn;
   endTurnBtn.classList.toggle('disabled', !canEndTurn);
 
-  if (currentGame.winner) return;
+  if (currentGame.winner) {
+    void clearLiveClueDraftOwnership({ silent: true });
+    return;
+  }
 
   // Quick Play waiting phase
   if (currentGame.currentPhase === 'waiting') {
+    void clearLiveClueDraftOwnership({ silent: true });
     const redCount = (currentGame.redPlayers || []).length;
     const blueCount = (currentGame.bluePlayers || []).length;
     const hasPlayers = redCount > 0 && blueCount > 0;
@@ -6256,22 +7003,44 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
 
   if (currentGame.currentPhase === 'role-selection') {
+    void clearLiveClueDraftOwnership({ silent: true });
     waitingEl.style.display = 'none';
     return;
   }
 
   if (currentGame.currentPhase === 'spymaster') {
-    if (!spectator && isMyTurn && isSpymaster) {
+    if (pendingBlocking) {
+      waitingEl.style.display = 'block';
+      if (waitingForEl) {
+        if (pending.state === 'reviewing') {
+          waitingForEl.textContent = 'AI council verdict…';
+        } else if (myActiveSpymaster && myTeamColor === pending.team) {
+          waitingForEl.textContent = 'opposing spymaster decision…';
+        } else if (canCurrentUserChallengePendingClue(pending, currentGame)) {
+          waitingForEl.textContent = 'your allow/challenge decision…';
+        } else {
+          waitingForEl.textContent = 'clue review…';
+        }
+      }
+      void clearLiveClueDraftOwnership({ silent: true });
+      return;
+    }
+
+    if (myActiveSpymaster) {
       // Active spymaster: clue input replaces the clue pill while typing.
-      currentClueEl.style.display = 'none';
+      if (!pendingRejected) currentClueEl.style.display = 'none';
       clueFormEl.style.display = 'flex';
       const numInput = document.getElementById('clue-num-input');
       if (numInput && !String(numInput.value || '').trim()) numInput.value = '1';
       renderClueStackingPanel();
+      queueLiveClueDraftSync();
+      return;
     }
+    void clearLiveClueDraftOwnership({ silent: true });
     return;
   }
 
+  void clearLiveClueDraftOwnership({ silent: true });
   if (currentGame.currentPhase === 'operatives') return;
 }
 
@@ -6627,10 +7396,12 @@ async function handleClueSubmit(e) {
 
   if (!currentGame || currentGame.currentPhase !== 'spymaster') return;
   if (!isCurrentUserSpymaster()) return;
+  if (hasBlockingPendingClue(currentGame)) return;
 
   const wordInput = document.getElementById('clue-input');
   const numInput = document.getElementById('clue-num-input');
   const submitBtn = document.querySelector('#clue-form button[type="submit"]');
+  if (!wordInput || !numInput) return;
 
   const word = (wordInput.value || '').trim().toUpperCase();
   const parsed = parseInt(numInput.value, 10);
@@ -6672,57 +7443,24 @@ async function handleClueSubmit(e) {
   _processingClue = true;
   if (submitBtn) submitBtn.disabled = true;
   try {
-    const teamName = currentGame.currentTeam === 'red'
-      ? (currentGame.redTeamName || 'Red Team')
-      : (currentGame.blueTeamName || 'Blue Team');
-
-    // Add clue to history
-    const clueEntry = {
-      team: currentGame.currentTeam,
-      word: word,
-      number: number,
+    const result = await submitClueForReviewFlow({
+      game: currentGame,
+      word,
+      number,
       targets: selectedTargets,
       targetWords: selectedTargetWords,
-      results: [],
-      timestamp: new Date().toISOString()
-    };
-
-    if (isCurrentLocalPracticeGame()) {
-      mutateLocalPracticeGame(currentGame.id, (draft) => {
-        draft.currentClue = { word, number };
-        draft.guessesRemaining = (number === 0 ? 0 : (number + 1));
-        draft.currentPhase = 'operatives';
-        draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
-        draft.log.push(`${teamName} Spymaster: "${word}" for ${number}`);
-        draft.clueHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
-        draft.clueHistory.push(clueEntry);
-        draft.updatedAtMs = Date.now();
-        draft.lastMoveAtMs = Date.now();
-      });
-      clearClueTargetSelection({ skipPanelSync: true });
-      wordInput.value = '';
-      numInput.value = '';
-      if (window.playSound) window.playSound('clueGiven');
-      maybeStartLocalPracticeAI();
-      return;
-    }
-
-    await db.collection('games').doc(currentGame.id).update({
-      currentClue: { word, number },
-      guessesRemaining: (number === 0 ? 0 : (number + 1)), // guesses = number + 1 (0 means no guesses)
-      currentPhase: 'operatives',
-      timerEnd: buildPhaseTimerEndValue(currentGame, 'operatives'),
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${word}" for ${number}`),
-      clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      byId: String(getUserId?.() || '').trim(),
+      byName: String(getUserName?.() || '').trim() || 'Spymaster',
     });
 
+    void clearLiveClueDraftOwnership({ silent: true });
     clearClueTargetSelection({ skipPanelSync: true });
     wordInput.value = '';
     numInput.value = '';
+    _lastSentClueDraftSig = '';
 
-    // Play clue given sound
-    if (window.playSound) window.playSound('clueGiven');
+    if (result?.accepted && window.playSound) window.playSound('clueGiven');
+    if (isCurrentLocalPracticeGame() && result?.accepted) maybeStartLocalPracticeAI();
   } catch (e) {
     console.error('Failed to give clue:', e);
   } finally {
@@ -6890,6 +7628,8 @@ async function handleCardClick(cardIndex) {
       if (winner) {
         updates.winner = winner;
         updates.currentPhase = 'ended';
+        updates.pendingClue = firebase.firestore.FieldValue.delete();
+        updates.liveClueDraft = firebase.firestore.FieldValue.delete();
         updates.timerEnd = null;
         const winnerName = truncateTeamNameGame(winner === 'red' ? liveGame.redTeamName : liveGame.blueTeamName);
         logEntries.push(`${winnerName} wins!`);
@@ -6897,6 +7637,8 @@ async function handleCardClick(cardIndex) {
         updates.currentTeam = teamLive === 'red' ? 'blue' : 'red';
         updates.currentPhase = 'spymaster';
         updates.currentClue = null;
+        updates.pendingClue = firebase.firestore.FieldValue.delete();
+        updates.liveClueDraft = firebase.firestore.FieldValue.delete();
         updates.guessesRemaining = 0;
         updates.timerEnd = buildPhaseTimerEndValue(liveGame, 'spymaster');
       }
@@ -6977,6 +7719,8 @@ async function handleEndTurn() {
       draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
       draft.currentPhase = 'spymaster';
       draft.currentClue = null;
+      draft.pendingClue = null;
+      draft.liveClueDraft = null;
       draft.guessesRemaining = 0;
       draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
       draft.log.push(`${userName} (${draftTeamName}) ended their turn.`);
@@ -6992,6 +7736,8 @@ async function handleEndTurn() {
       currentTeam: currentGame.currentTeam === 'red' ? 'blue' : 'red',
       currentPhase: 'spymaster',
       currentClue: null,
+      pendingClue: firebase.firestore.FieldValue.delete(),
+      liveClueDraft: firebase.firestore.FieldValue.delete(),
       guessesRemaining: 0,
       timerEnd: buildPhaseTimerEndValue(currentGame, 'spymaster'),
       log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ended their turn.`),
@@ -7423,6 +8169,11 @@ let revealedPeekCardIndex = null; // one revealed card can be "stood up" at a ti
 let activeTagMode = null; // 'yes'|'maybe'|'no'|'clear'|null
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
+let _clueDraftSyncTimer = null;
+let _clueDraftSyncInFlight = false;
+let _lastSentClueDraftSig = '';
+let _clueChallengeActionBusy = false;
+const _councilReviewRunning = new Set();
 let _lastCardConfirmAt = 0;
 let _lastCardConfirmIndex = -1;
 let operativeChatUnsub = null;
@@ -9627,6 +10378,13 @@ async function addGuessToClueHistory(gameId, team, clueWord, clueNumber, guess) 
 function cleanupAdvancedFeatures() {
   stopGameTimer();
   try { syncTeamConsidering(null); } catch (_) {}
+  try { void clearLiveClueDraftOwnership({ silent: true }); } catch (_) {}
+  if (_clueDraftSyncTimer) {
+    clearTimeout(_clueDraftSyncTimer);
+    _clueDraftSyncTimer = null;
+  }
+  _lastSentClueDraftSig = '';
+  _clueChallengeActionBusy = false;
 
   if (operativeChatUnsub) {
     operativeChatUnsub();

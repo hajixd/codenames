@@ -271,6 +271,13 @@ async function aiChatCompletion(messages, options = {}) {
 }
 window.aiChatCompletion = aiChatCompletion;
 
+function hasBlockingPendingClueReview(game) {
+  const pending = game?.pendingClue;
+  if (!pending || typeof pending !== 'object') return false;
+  const state = String(pending.state || '').toLowerCase();
+  return state === 'awaiting' || state === 'reviewing';
+}
+
 // ─── Fetch Recent Team Chat (so AI can see human messages) ──────────────────
 
 async function fetchRecentTeamChat(gameId, teamColor, limit = 15) {
@@ -2466,42 +2473,57 @@ async function submitClueDirect(ai, game, clueWord, clueNumber) {
   if (String(ai?.seatRole || '') !== 'spymaster') return;
   if (String(game.currentPhase || '') !== 'spymaster') return;
   if (String(game.currentTeam || '') !== String(ai?.team || '')) return;
+  if (hasBlockingPendingClueReview(game)) return;
   const team = ai.team;
   const ref = db.collection('games').doc(game.id);
-
-  const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
-  const clueEntry = {
-    team: game.currentTeam,
-    word: clueWord,
-    number: clueNumber,
-    results: [],
-    timestamp: new Date().toISOString(),
-  };
-
   const seqField = _aiSeqField(team, 'spy');
   let clueAccepted = false;
 
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) return;
-    const current = snap.data();
-    if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
-
-    const spymasterKey = team === 'red' ? 'redSpymaster' : 'blueSpymaster';
-
-    tx.update(ref, {
-      [spymasterKey]: ai.name,
-      currentClue: { word: clueWord, number: clueNumber },
-      guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
-      currentPhase: 'operatives',
-      timerEnd: buildPhaseTimerEndForGame(current, 'operatives'),
-      log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
-      clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
-      [seqField]: firebase.firestore.FieldValue.increment(1),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  const submitWithReview = window.submitClueForReviewFlow;
+  if (typeof submitWithReview === 'function') {
+    const result = await submitWithReview({
+      game,
+      word: clueWord,
+      number: clueNumber,
+      targets: [],
+      targetWords: [],
+      byId: String(ai?.odId || ai?.id || '').trim(),
+      byName: String(ai?.name || 'AI').trim() || 'AI',
+      seqField,
     });
-    clueAccepted = true;
-  });
+    clueAccepted = !!result?.accepted;
+  } else {
+    const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+    const clueEntry = {
+      team: game.currentTeam,
+      word: clueWord,
+      number: clueNumber,
+      results: [],
+      timestamp: new Date().toISOString(),
+    };
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const current = snap.data();
+      if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
+
+      const spymasterKey = team === 'red' ? 'redSpymaster' : 'blueSpymaster';
+
+      tx.update(ref, {
+        [spymasterKey]: ai.name,
+        currentClue: { word: clueWord, number: clueNumber },
+        guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
+        currentPhase: 'operatives',
+        timerEnd: buildPhaseTimerEndForGame(current, 'operatives'),
+        log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
+        clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+        [seqField]: firebase.firestore.FieldValue.increment(1),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      clueAccepted = true;
+    });
+  }
 
   if (clueAccepted && window.playSound) window.playSound('clueGiven');
 }
@@ -2612,6 +2634,7 @@ async function runSpymasterCouncil(game, team) {
   if (!game || game.winner) return;
   if (String(game.currentPhase || '') !== 'spymaster') return;
   if (String(game.currentTeam || '') !== String(team || '')) return;
+  if (hasBlockingPendingClueReview(game)) return;
   const spies = (getAISpymasters(team) || []).filter(a => a && a.mode === 'autonomous');
   if (!spies.length) return;
 
@@ -2766,6 +2789,7 @@ async function aiGiveClue(ai, game) {
     if (String(ai?.seatRole || '') !== 'spymaster') return;
     if (String(game.currentPhase || '') !== 'spymaster') return;
     if (String(game.currentTeam || '') !== String(ai?.team || '')) return;
+    if (hasBlockingPendingClueReview(game)) return;
 
     const core = ensureAICore(ai);
     if (!core) return;
@@ -2844,36 +2868,50 @@ ${mindContext}`;
 
     if (!clueWord) return;
 
-    // Submit clue (transaction prevents stale writes)
-    const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
-    const clueEntry = {
-      team: game.currentTeam,
-      word: clueWord,
-      number: clueNumber,
-      results: [],
-      timestamp: new Date().toISOString(),
-    };
-
-    const ref = db.collection('games').doc(game.id);
     const seqField = _aiSeqField(team, 'spy');
     let clueAccepted = false;
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const current = snap.data();
-      if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
-
-      tx.update(ref, {
-        currentClue: { word: clueWord, number: clueNumber },
-        guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
-        currentPhase: 'operatives',
-        log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
-        clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
-        [seqField]: firebase.firestore.FieldValue.increment(1),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    const submitWithReview = window.submitClueForReviewFlow;
+    if (typeof submitWithReview === 'function') {
+      const result = await submitWithReview({
+        game,
+        word: clueWord,
+        number: clueNumber,
+        targets: [],
+        targetWords: [],
+        byId: String(ai?.odId || ai?.id || '').trim(),
+        byName: String(ai?.name || 'AI').trim() || 'AI',
+        seqField,
       });
-      clueAccepted = true;
-    });
+      clueAccepted = !!result?.accepted;
+    } else {
+      const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+      const clueEntry = {
+        team: game.currentTeam,
+        word: clueWord,
+        number: clueNumber,
+        results: [],
+        timestamp: new Date().toISOString(),
+      };
+
+      const ref = db.collection('games').doc(game.id);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const current = snap.data();
+        if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
+
+        tx.update(ref, {
+          currentClue: { word: clueWord, number: clueNumber },
+          guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
+          currentPhase: 'operatives',
+          log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
+          clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+          [seqField]: firebase.firestore.FieldValue.increment(1),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        clueAccepted = true;
+      });
+    }
 
     if (clueAccepted && window.playSound) window.playSound('clueGiven');
   } catch (err) {
@@ -3810,6 +3848,7 @@ function startAIGameLoop() {
 
     // Spymaster phase
     if (game.currentPhase === 'spymaster') {
+      if (hasBlockingPendingClueReview(game)) return;
       const spies = (getAISpymasters(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
       if (!spies.length) return;
       if (spies.length === 1) {

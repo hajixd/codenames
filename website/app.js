@@ -1852,6 +1852,82 @@ function initLaunchScreen() {
   refreshNameUI();
 }
 
+const GAME_RUNTIME_CORE_APIS = ['showQuickPlayLobby', 'startGameListener', 'createPracticeGame'];
+let _gameRuntimeBootstrapPromise = null;
+
+function hasGameRuntimeApis(required = GAME_RUNTIME_CORE_APIS) {
+  const list = Array.isArray(required) && required.length ? required : GAME_RUNTIME_CORE_APIS;
+  return list.every((name) => typeof window?.[name] === 'function');
+}
+
+function showQuickPlayFallbackState(statusText = '') {
+  const setDisplay = (id, display) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  };
+
+  setDisplay('play-mode-select', 'none');
+  setDisplay('quick-play-lobby', 'block');
+  setDisplay('tournament-lobby', 'none');
+  setDisplay('game-board-container', 'none');
+
+  const hasName = !!getUserName();
+  const nameCheck = document.getElementById('quick-name-check');
+  const setup = document.getElementById('quick-setup');
+  if (nameCheck) nameCheck.style.display = hasName ? 'none' : 'block';
+  if (setup) setup.style.display = hasName ? 'block' : 'none';
+
+  const hint = document.getElementById('quick-lobby-hint');
+  if (hint) hint.textContent = String(statusText || '').trim();
+}
+
+async function ensureGameRuntimeApis(required = GAME_RUNTIME_CORE_APIS, opts = {}) {
+  if (hasGameRuntimeApis(required)) return true;
+
+  if (_gameRuntimeBootstrapPromise) {
+    await _gameRuntimeBootstrapPromise.catch(() => {});
+    return hasGameRuntimeApis(required);
+  }
+
+  _gameRuntimeBootstrapPromise = (async () => {
+    const settleMs = Number.isFinite(opts?.settleMs) ? Math.max(0, opts.settleMs) : 450;
+    const timeoutMs = Number.isFinite(opts?.timeoutMs) ? Math.max(1000, opts.timeoutMs) : 3800;
+    const startAt = Date.now();
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const waitUntil = async (limitMs) => {
+      while ((Date.now() - startAt) < limitMs) {
+        if (hasGameRuntimeApis(required)) return true;
+        await wait(60);
+      }
+      return hasGameRuntimeApis(required);
+    };
+
+    if (await waitUntil(settleMs)) return true;
+
+    try {
+      const existingRetry = document.querySelector('script[data-ct-game-runtime-retry="1"]');
+      if (!existingRetry) {
+        const script = document.createElement('script');
+        script.src = `game.js?retry=${Date.now()}`;
+        script.async = true;
+        script.dataset.ctGameRuntimeRetry = '1';
+        (document.body || document.head || document.documentElement)?.appendChild(script);
+      }
+    } catch (e) {
+      console.warn('Failed to retry-load game runtime:', e);
+    }
+
+    return waitUntil(timeoutMs);
+  })();
+
+  try {
+    return await _gameRuntimeBootstrapPromise;
+  } finally {
+    _gameRuntimeBootstrapPromise = null;
+  }
+}
+
 function enterAppFromLaunch(mode, opts = {}) {
   const screen = document.getElementById('launch-screen');
   if (screen) screen.style.display = 'none';
@@ -1880,6 +1956,17 @@ function enterAppFromLaunch(mode, opts = {}) {
     }
     switchToPanel('panel-game');
 
+    const hasQuickLobbyApi = (typeof window.showQuickPlayLobby === 'function');
+    if (!hasQuickLobbyApi) {
+      try { showQuickPlayFallbackState('Loading multiplayer…'); } catch (_) {}
+      void ensureGameRuntimeApis(['showQuickPlayLobby'], { timeoutMs: 4200 }).then((ok) => {
+        if (!ok) return;
+        if (!document.body.classList.contains('quickplay')) return;
+        if (activePanelId !== 'panel-game') return;
+        try { window.showQuickPlayLobby?.(); } catch (_) {}
+      });
+    }
+
     // Defensive: ensure the generic mode chooser is never visible in Quick Play.
     // (On slow loads or if game.js hasn't initialized yet, the default UI can
     // briefly show the Quick/Tournament chooser, which looks like the click
@@ -1887,7 +1974,7 @@ function enterAppFromLaunch(mode, opts = {}) {
     if (!opts || !opts.skipQuickLobby) {
       try {
         const chooser = document.getElementById('play-mode-select');
-        if (chooser) chooser.style.display = 'none';
+        if (chooser && hasQuickLobbyApi) chooser.style.display = 'none';
       } catch (_) {}
     }
     try { window.bumpPresence?.(); } catch (_) {}
@@ -2160,6 +2247,14 @@ function switchToPanel(panelId) {
           window.showQuickPlayLobby();
         }
         skipQuickPlayLobbyOnce = false;
+      } else if (document.body.classList.contains('quickplay')) {
+        showQuickPlayFallbackState('Loading multiplayer…');
+        void ensureGameRuntimeApis(['showQuickPlayLobby'], { timeoutMs: 4200 }).then((ok) => {
+          if (!ok) return;
+          if (!document.body.classList.contains('quickplay')) return;
+          if (activePanelId !== 'panel-game') return;
+          try { window.showQuickPlayLobby?.(); } catch (_) {}
+        });
       }
     } catch (_) {}
   }
@@ -7690,7 +7785,7 @@ let settingsAnimations = true;
 let settingsSounds = true;
 let settingsVolume = 70;
 let settingsStyleMode = 'online'; // only supported style
-let settingsStacking = false;
+let settingsStacking = true;
 // Audio context for sound effects
 let audioCtx = null;
 let audioUnlocked = false;
@@ -7730,7 +7825,8 @@ function initSettings() {
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
-  settingsStacking = savedStacking === 'true';
+  settingsStacking = savedStacking !== 'false';
+  if (savedStacking == null) safeLSSet(LS_SETTINGS_STACKING, 'true');
 
   // Only Codenames Online style is supported.
   settingsStyleMode = normalizeStyleMode(savedStyleMode);
@@ -11993,16 +12089,21 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   }
 
   if (hintEl) hintEl.textContent = 'Starting…';
-  const createFn = window.createPracticeGame;
-  if (typeof createFn !== 'function') throw new Error('Practice not available');
+  let createFn = window.createPracticeGame;
+  if (typeof createFn !== 'function') {
+    await ensureGameRuntimeApis(['createPracticeGame', 'startGameListener'], { timeoutMs: 4200 });
+    createFn = window.createPracticeGame;
+  }
+  if (typeof createFn !== 'function') throw new Error('Practice is still loading. Please try again.');
 
   const sizeNum = parseInt(opts?.size, 10);
   const size = (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
   const role = String(opts?.role || 'operative');
   const vibe = String(opts?.vibe || '').trim();
   const deckId = String(opts?.deckId || 'standard');
+  const stackingEnabled = opts?.stackingEnabled !== false;
 
-  const gameId = await createFn({ size, role, vibe, deckId });
+  const gameId = await createFn({ size, role, vibe, deckId, stackingEnabled });
   openPracticeGameInApp(gameId);
   return gameId;
 }
@@ -12016,6 +12117,7 @@ function initPracticePage() {
   const roleBtns = Array.from(panel.querySelectorAll('[data-practice-role]'));
   const sizeBtns = Array.from(panel.querySelectorAll('[data-practice-size]'));
   const vibeInput = document.getElementById('practice-page-vibe');
+  const stackingToggle = document.getElementById('practice-page-stacking-toggle');
   const startBtn = document.getElementById('practice-page-start');
   const hintEl = document.getElementById('practice-page-hint');
   const stepSize = document.getElementById('practice-step-size');
@@ -12057,14 +12159,21 @@ function initPracticePage() {
     });
   });
 
+  try {
+    if (stackingToggle) stackingToggle.checked = (typeof window.isStackingEnabled === 'function')
+      ? !!window.isStackingEnabled()
+      : true;
+  } catch (_) {}
+
   const start = async () => {
     if (!state.role || !state.size) return;
 
     const vibe = String(vibeInput?.value || '').trim();
     const deckId = 'standard';
+    const stackingEnabled = stackingToggle ? !!stackingToggle.checked : true;
 
     try {
-      await startPracticeInApp({ size: state.size, role: state.role, vibe, deckId }, hintEl);
+      await startPracticeInApp({ size: state.size, role: state.role, vibe, deckId, stackingEnabled }, hintEl);
     } catch (e) {
       console.error(e);
       if (hintEl) hintEl.textContent = (e?.message || 'Could not start practice.');
@@ -12091,6 +12200,13 @@ function openPracticeModal() {
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
   requestAnimationFrame(() => modal.classList.add('modal-open'));
+  try {
+    const enabled = (typeof window.isStackingEnabled === 'function')
+      ? !!window.isStackingEnabled()
+      : true;
+    const toggle = document.getElementById('practice-stacking-toggle');
+    if (toggle) toggle.checked = enabled;
+  } catch (_) {}
   try { document.getElementById('practice-vibe')?.focus?.(); } catch (_) {}
 }
 
@@ -12119,9 +12235,10 @@ function initPracticeModal() {
     const role = String(document.getElementById('practice-role')?.value || 'operative');
     const vibe = String(document.getElementById('practice-vibe')?.value || '').trim();
     const deckId = String(document.getElementById('practice-deck')?.value || 'standard');
+    const stackingEnabled = !!document.getElementById('practice-stacking-toggle')?.checked;
 
     try {
-      await startPracticeInApp({ size, role, vibe, deckId }, hintEl);
+      await startPracticeInApp({ size, role, vibe, deckId, stackingEnabled }, hintEl);
       closePracticeModal();
     } catch (e) {
       console.error(e);
