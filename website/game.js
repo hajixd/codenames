@@ -836,6 +836,7 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
   game.currentClue = { word: clueWord, number: clueNumber };
   game.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
   game.currentPhase = 'operatives';
+  game.timerEnd = buildPhaseTimerEndValue(game, 'operatives');
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
   game.clueHistory = Array.isArray(game.clueHistory) ? [...game.clueHistory] : [];
@@ -862,6 +863,7 @@ function applyLocalPracticeOperativeEndTurnState(game, actorName) {
   game.pendingClue = null;
   game.liveClueDraft = null;
   game.guessesRemaining = 0;
+  game.timerEnd = buildPhaseTimerEndValue(game, 'spymaster');
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(`${actorName} (${teamName}) ended their turn.`);
   game.updatedAtMs = Date.now();
@@ -877,12 +879,6 @@ function localPracticePause(ms) {
   const delay = Math.max(0, Number(ms) || 0);
   if (!delay) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, delay));
-}
-
-function randomDelayMs(minMs, maxMs) {
-  const min = Math.max(0, Number(minMs) || 0);
-  const max = Math.max(min, Number(maxMs) || min);
-  return min + Math.floor(Math.random() * (max - min + 1));
 }
 
 async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpy = null) {
@@ -1344,6 +1340,17 @@ function getQuickSettings(game) {
       stackingEnabled: base.stackingEnabled !== false,
       deckId: normalizeDeckId(base.deckId || 'standard'),
       vibe: String(base.vibe || ''),
+    };
+  }
+  if (String(game?.type || '') === 'practice') {
+    const practice = (game?.practice && typeof game.practice === 'object') ? game.practice : {};
+    return {
+      blackCards: Number.isFinite(+practice.blackCards) ? +practice.blackCards : 1,
+      clueTimerSeconds: Number.isFinite(+practice.clueTimerSeconds) ? +practice.clueTimerSeconds : 0,
+      guessTimerSeconds: Number.isFinite(+practice.guessTimerSeconds) ? +practice.guessTimerSeconds : 0,
+      stackingEnabled: practice.stackingEnabled !== false,
+      deckId: normalizeDeckId(game?.deckId || practice.deckId || 'standard'),
+      vibe: String(game?.vibe || practice.vibe || ''),
     };
   }
   return {
@@ -1932,7 +1939,21 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
   const vibe = String(opts.vibe || '').trim();
   const deckId = normalizeDeckId(opts.deckId || 'standard');
+  const blackCardsRaw = parseInt(opts.blackCards, 10);
+  const blackCards = (blackCardsRaw === 2 || blackCardsRaw === 3) ? blackCardsRaw : 1;
+  const clueTimerRaw = parseInt(opts.clueTimerSeconds, 10);
+  const clueTimerSeconds = Number.isFinite(clueTimerRaw) ? Math.max(0, clueTimerRaw) : 0;
+  const guessTimerRaw = parseInt(opts.guessTimerSeconds, 10);
+  const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
+  const quickSettings = {
+    blackCards,
+    clueTimerSeconds,
+    guessTimerSeconds,
+    stackingEnabled,
+    deckId,
+    vibe,
+  };
 
   const usedNames = new Set([userName]);
   const uid = getUserId();
@@ -1941,7 +1962,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const cardSettings = {
     vibe,
     deckId,
-    blackCards: 1
+    blackCards
   };
   const cards = await buildQuickPlayCardsFromSettings(cardSettings);
 
@@ -2002,6 +2023,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     pendingClue: null,
     liveClueDraft: null,
     guessesRemaining: 0,
+    timerEnd: null,
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     winner: null,
@@ -2014,17 +2036,24 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     redChat: [],
     blueChat: [],
     clueHistory: [],
+    quickSettings: { ...quickSettings },
     // practice knobs
     practice: {
       size,
       yourRole: human.role,
+      blackCards,
+      clueTimerSeconds,
+      guessTimerSeconds,
       stackingEnabled,
+      deckId,
+      vibe,
       openedAtMs: Date.now(),
     },
     // tracking for inactivity logic
     lastMoveAtMs: Date.now(),
     updatedAtMs: Date.now(),
   };
+  gameData.timerEnd = buildPhaseTimerEndValue(gameData, 'spymaster');
 
   setLocalPracticeGame(gameData.id, gameData, { skipRender: true });
   return gameData.id;
@@ -2220,6 +2249,8 @@ function initGameUI() {
   });
   document.getElementById('clue-review-allow-btn')?.addEventListener('click', handleAllowPendingClue);
   document.getElementById('clue-review-challenge-btn')?.addEventListener('click', handleChallengePendingClue);
+  document.getElementById('clue-review-modal-allow-btn')?.addEventListener('click', handleAllowPendingClue);
+  document.getElementById('clue-review-modal-challenge-btn')?.addEventListener('click', handleChallengePendingClue);
 
   // End turn button
   document.getElementById('end-turn-btn')?.addEventListener('click', handleEndTurn);
@@ -2338,6 +2369,14 @@ function bindGameLogTabControls() {
   if (_gameLogTabBindingsReady) return;
   _gameLogTabBindingsReady = true;
   const selector = '.gamelog-tab-btn[data-gamelog-tab]';
+  const activateTabFromEvent = (e) => {
+    const btn = resolveBtn(e.target);
+    if (!btn) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    setGameLogTab(btn.getAttribute('data-gamelog-tab'));
+    return true;
+  };
   const resolveBtn = (evtTarget) => {
     if (!evtTarget) return null;
     const base = (typeof evtTarget.closest === 'function')
@@ -2353,17 +2392,13 @@ function bindGameLogTabControls() {
       if (!btn || btn.dataset.gamelogTabBound === '1') return;
       btn.dataset.gamelogTabBound = '1';
       btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setGameLogTab(btn.getAttribute('data-gamelog-tab'));
+        activateTabFromEvent(e);
       });
       btn.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
       });
       btn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setGameLogTab(btn.getAttribute('data-gamelog-tab'));
+        activateTabFromEvent(e);
       }, { passive: false });
     });
   };
@@ -2371,11 +2406,13 @@ function bindGameLogTabControls() {
 
   // Delegated fallback in case tab nodes are re-rendered.
   document.addEventListener('click', (e) => {
-    const btn = resolveBtn(e.target);
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setGameLogTab(btn.getAttribute('data-gamelog-tab'));
+    activateTabFromEvent(e);
+  });
+  document.addEventListener('touchend', (e) => {
+    activateTabFromEvent(e);
+  }, { passive: false });
+  document.addEventListener('pointerup', (e) => {
+    activateTabFromEvent(e);
   });
 }
 
@@ -5405,8 +5442,12 @@ function renderAdvancedFeatures() {
   maybeBackfillCurrentTurnTimer(currentGame);
 
   // Handle timer if present
-  if (currentGame?.timerEnd) {
-    startGameTimer(currentGame.timerEnd, currentGame.currentPhase);
+  const timerPhase = String(currentGame?.currentPhase || '');
+  if (currentGame?.winner) {
+    stopGameTimer();
+  } else if (timerPhase === 'spymaster' || timerPhase === 'operatives') {
+    if (currentGame?.timerEnd) startGameTimer(currentGame.timerEnd, timerPhase);
+    else showStaticGameTimer(timerPhase);
   } else {
     stopGameTimer();
   }
@@ -6532,6 +6573,7 @@ function applyAcceptedClueLocalState(draft, pending, opts = {}) {
   draft.liveClueDraft = null;
   draft.guessesRemaining = (pending.number === 0 ? 0 : (pending.number + 1));
   draft.currentPhase = 'operatives';
+  draft.timerEnd = buildPhaseTimerEndValue(draft, 'operatives');
   draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
   draft.log.push(`${teamName} Spymaster: "${pending.word}" for ${pending.number}`);
   if (opts.review) draft.log.push(buildCouncilSummaryLine(pending, opts.review));
@@ -6657,7 +6699,6 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
   if (!opposingSpy || !opposingSpy.isAI) return false;
 
   const aiSpy = toLocalPracticeRuntimeAI(opposingSpy, opposingTeam);
-  await localPracticePause(randomDelayMs(2200, 4200));
   const live = getLocalPracticeGame(gameId);
   const livePending = normalizePendingClueEntry(live?.pendingClue, live);
   if (!live || !livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return false;
@@ -6758,11 +6799,8 @@ async function evaluatePendingClueWithCouncil(game, pending) {
   const baseline = basicClueLegalityCheck(pending, game);
   const judges = [];
   for (let idx = 0; idx < 3; idx += 1) {
-    // Add deliberate deliberation so council review feels like a real decision.
-    await localPracticePause(randomDelayMs(1050, 1850));
     const verdict = await judgePendingClueWithAI(game, pending, idx, baseline);
     judges.push(verdict);
-    if (idx < 2) await localPracticePause(randomDelayMs(320, 760));
   }
   let legalVotes = judges.filter((j) => j.verdict === 'legal').length;
   let illegalVotes = judges.length - legalVotes;
@@ -6870,8 +6908,10 @@ function maybeRunCouncilReviewFromSnapshot(game = currentGame) {
   const myId = String(getUserId?.() || '').trim();
   const challengerId = String(pending.challengedById || '').trim();
   const challengedAtMs = Number(pending.challengedAtMs || 0);
+  const fallbackHoldMs = 2_500;
   if (challengerId && myId && challengerId !== myId) {
-    if (challengedAtMs && (Date.now() - challengedAtMs) < 15_000) return;
+    // Let the challenger device start the council first, but keep fallback quick.
+    if (challengedAtMs && (Date.now() - challengedAtMs) < fallbackHoldMs) return;
   }
   void runCouncilReviewForPendingClue(game.id, pending.id);
 }
@@ -7073,6 +7113,16 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const reviewHintEl = document.getElementById('clue-review-hint');
   const allowBtn = document.getElementById('clue-review-allow-btn');
   const challengeBtn = document.getElementById('clue-review-challenge-btn');
+  const reviewModalEl = document.getElementById('clue-review-modal');
+  const reviewModalCardEl = document.getElementById('clue-review-modal-card');
+  const reviewModalPanelEl = document.getElementById('clue-review-modal-panel');
+  const reviewModalTitleEl = document.getElementById('clue-review-modal-title');
+  const reviewModalStatusEl = document.getElementById('clue-review-modal-status');
+  const reviewModalMetaEl = document.getElementById('clue-review-modal-meta');
+  const reviewModalActionsEl = document.getElementById('clue-review-modal-actions');
+  const reviewModalHintEl = document.getElementById('clue-review-modal-hint');
+  const reviewModalAllowBtn = document.getElementById('clue-review-modal-allow-btn');
+  const reviewModalChallengeBtn = document.getElementById('clue-review-modal-challenge-btn');
   if (!currentClueEl || !clueFormEl || !operativeActionsEl || !waitingEl) return;
   const waitingForEl = document.getElementById('waiting-for');
   const clueWordEl = document.getElementById('clue-word');
@@ -7099,6 +7149,14 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   if (reviewPanelEl) reviewPanelEl.style.display = 'none';
   if (reviewActionsEl) reviewActionsEl.style.display = 'none';
   if (reviewPanelEl) reviewPanelEl.classList.remove('is-reviewing');
+  if (reviewModalActionsEl) reviewModalActionsEl.style.display = 'none';
+  if (reviewModalPanelEl) reviewModalPanelEl.classList.remove('is-reviewing');
+  if (reviewModalCardEl) reviewModalCardEl.classList.remove('is-reviewing');
+  if (reviewModalEl) {
+    reviewModalEl.classList.remove('modal-open');
+    reviewModalEl.setAttribute('aria-hidden', 'true');
+    reviewModalEl.style.display = 'none';
+  }
   if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
@@ -7149,11 +7207,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     let hintText = '';
     let hintHtml = '';
     let metaText = '';
+    const canChallenge = canCurrentUserChallengePendingClue(pending, currentGame);
 
     if (pending.state === 'awaiting') {
       statusText = 'Awaiting Decision';
       metaText = `Submitted by ${pending.byName || 'Spymaster'}`;
-      if (canCurrentUserChallengePendingClue(pending, currentGame)) {
+      if (canChallenge) {
         hintText = 'Challenge sends this clue to a 3-AI legality council.';
         if (reviewActionsEl) reviewActionsEl.style.display = 'flex';
         if (allowBtn) allowBtn.disabled = _clueChallengeActionBusy;
@@ -7194,6 +7253,42 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     if (reviewHintEl) {
       if (hintHtml) reviewHintEl.innerHTML = hintHtml;
       else reviewHintEl.textContent = hintText;
+    }
+
+    const showSpymasterModal = !spectator
+      && isSpymaster
+      && (canChallenge || pending.state === 'reviewing');
+    if (showSpymasterModal && reviewModalEl) {
+      const reviewTitle = `${pending.word} ${pending.number}`;
+      if (reviewModalTitleEl) {
+        reviewModalTitleEl.textContent = reviewTitle;
+        reviewModalTitleEl.title = reviewTitle;
+      }
+      if (reviewModalStatusEl) reviewModalStatusEl.textContent = statusText;
+      if (reviewModalMetaEl) reviewModalMetaEl.textContent = metaText;
+      if (reviewModalHintEl) {
+        if (hintHtml) reviewModalHintEl.innerHTML = hintHtml;
+        else reviewModalHintEl.textContent = hintText;
+      }
+      if (reviewModalAllowBtn) reviewModalAllowBtn.disabled = _clueChallengeActionBusy;
+      if (reviewModalChallengeBtn) reviewModalChallengeBtn.disabled = _clueChallengeActionBusy;
+
+      if (reviewModalActionsEl) reviewModalActionsEl.style.display = canChallenge ? 'grid' : 'none';
+      if (canChallenge) {
+        if (reviewModalAllowBtn) reviewModalAllowBtn.disabled = _clueChallengeActionBusy;
+        if (reviewModalChallengeBtn) reviewModalChallengeBtn.disabled = _clueChallengeActionBusy;
+      }
+
+      if (pending.state === 'reviewing') {
+        reviewModalPanelEl?.classList.add('is-reviewing');
+        reviewModalCardEl?.classList.add('is-reviewing');
+      }
+
+      reviewPanelEl.style.display = 'none';
+      reviewModalEl.style.display = 'flex';
+      void reviewModalEl.offsetWidth;
+      reviewModalEl.classList.add('modal-open');
+      reviewModalEl.setAttribute('aria-hidden', 'false');
     }
   }
 
@@ -9584,6 +9679,37 @@ function startGameTimer(endTime, phase) {
       stopGameTimer();
     }
   }, 100);
+}
+
+function showStaticGameTimer(phase) {
+  if (gameTimerInterval) {
+    clearInterval(gameTimerInterval);
+    gameTimerInterval = null;
+  }
+  gameTimerEnd = null;
+
+  const timerEl = document.getElementById('game-timer');
+  const fillEl = document.getElementById('timer-fill');
+  const textEl = document.getElementById('timer-text');
+  const ogTimerEl = document.getElementById('og-topbar-timer');
+  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
+  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
+  if (!timerEl || !fillEl || !textEl) return;
+
+  timerEl.style.display = 'flex';
+  fillEl.style.width = '100%';
+  fillEl.classList.remove('warning', 'danger');
+  textEl.classList.remove('warning', 'danger');
+  textEl.textContent = '∞';
+
+  if (ogTimerEl) {
+    ogTimerEl.style.display = 'inline-flex';
+    ogTimerEl.classList.remove('warning', 'danger');
+  }
+  if (ogTimerTextEl) ogTimerTextEl.textContent = '∞';
+  if (ogTimerPhaseEl) {
+    ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
+  }
 }
 
 function stopGameTimer() {

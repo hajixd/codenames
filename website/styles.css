@@ -10615,8 +10615,7 @@ body.tournament.has-team-color .input:focus {
 }
 
 .timer-fill {
-  height: 100dvh;
-  height: 100vh; /* fallback */
+  height: 100%;
   background: var(--accent);
   border-radius: 2px;
   transition: width 1s linear, background 0.3s;
@@ -24472,5 +24471,251 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 
   .clue-word-expanded {
     max-width: calc(100% - 88px);
+  }
+}
+
+/* Singleplayer step-3 now uses a full settings modal (parity with Multiplayer). */
+.practice-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.practice-settings-summary {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  background:
+    radial-gradient(150% 120% at 0% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 52%),
+    color-mix(in srgb, var(--surface2) 92%, var(--surface) 8%);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#practice-page-settings-modal {
+  align-items: center;
+}
+
+#practice-page-settings-modal .modal-card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
+  width: min(460px, calc(100vw - 24px));
+  max-height: calc(100vh - 120px);
+}
+
+#practice-page-settings-modal .modal-head {
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(34,197,94,0.14));
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+#practice-page-settings-modal .modal-body {
+  padding: 12px 14px 14px;
+}
+
+#practice-page-settings-modal .qp-settings-grid {
+  gap: 6px;
+}
+
+#practice-page-settings-modal .qp-setting {
+  padding: 10px 10px;
+  border-radius: 14px;
+}
+
+#practice-page-settings-modal .qp-neg-actions {
+  margin-top: 8px;
+}
+
+#practice-page-settings-modal .qp-neg-btn {
+  border-radius: 12px;
+}
+
+/* Spymaster clue-review prompt as a centered modal. */
+.clue-review-modal {
+  z-index: 2700;
+  align-items: center;
+}
+
+.clue-review-modal-backdrop {
+  background: rgba(5, 8, 14, 0.62);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+.clue-review-modal-card {
+  width: min(560px, calc(100vw - 24px));
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, rgba(255,255,255,0.16));
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.44);
+}
+
+.clue-review-modal-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%);
+}
+
+.clue-review-modal-body {
+  padding: 12px 14px 14px;
+}
+
+.clue-review-panel-modal {
+  margin: 0;
+}
+
+/* Timer polish + unlimited (∞) visibility in turn phases. */
+.game-timer-display.topbar-timer {
+  width: min(156px, 44vw);
+  min-width: 112px;
+}
+
+.topbar-timer .timer-text {
+  font-size: clamp(12px, 1.5vw, 14px);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.topbar-timer .timer-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface2) 84%, var(--border) 16%);
+}
+
+.topbar-timer .timer-fill {
+  border-radius: 999px;
+}
+
+/* Mobile proportional-fit behavior with scroll preserved and no overlap. */
+@media (max-width: 1024px) {
+  .panel-game.game-active {
+    --mobile-game-scale: 1;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  #game-board-container.game-container-expanded {
+    zoom: var(--mobile-game-scale);
+    height: auto;
+    max-height: none;
+    min-height: calc(100dvh - 60px);
+    overflow: visible;
+    margin-top: clamp(0px, calc((1 - var(--mobile-game-scale, 1)) * 16vh), 52px);
+  }
+
+  @supports not (zoom: 1) {
+    #game-board-container.game-container-expanded {
+      transform: scale(var(--mobile-game-scale));
+      transform-origin: top center;
+      width: calc(100% / var(--mobile-game-scale));
+      margin-inline: auto;
+    }
+  }
+
+  .panel-game.game-active .game-main-layout {
+    overflow: visible;
+    align-items: start;
+  }
+
+  .game-header-expanded,
+  .game-topbar,
+  .topbar-team,
+  .topbar-center,
+  .topbar-score,
+  .game-action-bar,
+  .clue-form-expanded,
+  .clue-display-expanded,
+  .operative-actions-expanded {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .game-header-expanded {
+    padding: clamp(6px, 2vw, 10px) clamp(8px, 2.6vw, 14px);
+  }
+
+  .game-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(6px, 1.7vw, 10px);
+  }
+
+  .topbar-team {
+    gap: 6px;
+    padding: 5px 6px;
+  }
+
+  .topbar-team-status {
+    max-width: 100%;
+    font-size: clamp(10px, 2.4vw, 12px);
+  }
+
+  .topbar-score-num {
+    font-size: clamp(16px, 4.8vw, 22px);
+  }
+
+  .topbar-timer {
+    width: min(148px, 48vw);
+  }
+
+  .game-center-area {
+    overflow: visible;
+  }
+
+  .game-center-area .game-board-wrapper {
+    padding-top: clamp(6px, 1.8vw, 12px);
+  }
+
+  .game-center-area .game-board {
+    max-width: min(100%, 820px);
+    gap: clamp(3px, 1vw, 8px);
+  }
+
+  .game-center-area .game-card {
+    padding: clamp(4px, 1vw, 8px);
+  }
+
+  .game-center-area .game-card .card-word {
+    font-size: clamp(8px, 2.5vw, 13px);
+    line-height: 1.15;
+  }
+
+  .waiting-expanded {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 1024px) and (max-height: 900px), (max-width: 600px) {
+  .panel-game.game-active {
+    --mobile-game-scale: 0.94;
+  }
+}
+
+@media (max-width: 1024px) and (max-height: 800px), (max-width: 430px) {
+  .panel-game.game-active {
+    --mobile-game-scale: 0.88;
+  }
+}
+
+@media (max-width: 720px) {
+  .practice-settings-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .practice-settings-row .btn {
+    width: 100%;
+  }
+
+  .clue-review-modal-card {
+    width: min(94vw, 520px);
   }
 }

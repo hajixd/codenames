@@ -12101,9 +12101,24 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const role = String(opts?.role || 'operative');
   const vibe = String(opts?.vibe || '').trim();
   const deckId = String(opts?.deckId || 'standard');
+  const blackCardsNum = parseInt(opts?.blackCards, 10);
+  const blackCards = (blackCardsNum === 2 || blackCardsNum === 3) ? blackCardsNum : 1;
+  const clueTimerRaw = parseInt(opts?.clueTimerSeconds, 10);
+  const clueTimerSeconds = Number.isFinite(clueTimerRaw) ? Math.max(0, clueTimerRaw) : 0;
+  const guessTimerRaw = parseInt(opts?.guessTimerSeconds, 10);
+  const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
 
-  const gameId = await createFn({ size, role, vibe, deckId, stackingEnabled });
+  const gameId = await createFn({
+    size,
+    role,
+    vibe,
+    deckId,
+    blackCards,
+    clueTimerSeconds,
+    guessTimerSeconds,
+    stackingEnabled
+  });
   openPracticeGameInApp(gameId);
   return gameId;
 }
@@ -12116,14 +12131,91 @@ function initPracticePage() {
 
   const roleBtns = Array.from(panel.querySelectorAll('[data-practice-role]'));
   const sizeBtns = Array.from(panel.querySelectorAll('[data-practice-size]'));
-  const vibeInput = document.getElementById('practice-page-vibe');
-  const stackingToggle = document.getElementById('practice-page-stacking-toggle');
+  const rulesTextEl = document.getElementById('practice-page-rules-text');
+  const settingsBtn = document.getElementById('practice-page-settings-btn');
   const startBtn = document.getElementById('practice-page-start');
   const hintEl = document.getElementById('practice-page-hint');
   const stepSize = document.getElementById('practice-step-size');
   const stepVibe = document.getElementById('practice-step-vibe');
+  const settingsModal = document.getElementById('practice-page-settings-modal');
+  const settingsBackdrop = document.getElementById('practice-page-settings-backdrop');
+  const settingsCloseBtn = document.getElementById('practice-page-settings-close');
+  const settingsApplyBtn = document.getElementById('practice-page-settings-apply');
+  const settingsStatusEl = document.getElementById('practice-page-settings-status');
+  const settingsVibeEl = document.getElementById('practice-page-vibe');
+  const settingsBlackCardsEl = document.getElementById('practice-page-black-cards');
+  const settingsClueTimerEl = document.getElementById('practice-page-clue-timer');
+  const settingsGuessTimerEl = document.getElementById('practice-page-guess-timer');
+  const settingsStackingToggleEl = document.getElementById('practice-page-stacking-toggle');
 
-  const state = { role: null, size: null };
+  const state = {
+    role: null,
+    size: null,
+    settings: {
+      vibe: '',
+      deckId: 'standard',
+      blackCards: 1,
+      clueTimerSeconds: 0,
+      guessTimerSeconds: 0,
+      stackingEnabled: true
+    }
+  };
+
+  const normalizeInt = (value, fallback, min = 0, max = 600) => {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  };
+
+  const formatSeconds = (sec) => {
+    const s = normalizeInt(sec, 0, 0, 600);
+    if (!s) return '∞';
+    if (s % 60 === 0) return `${s / 60}m`;
+    return `${s}s`;
+  };
+
+  const formatRules = (settings) => {
+    const s = settings || state.settings;
+    const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
+    const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
+    return `Rules: Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr}${vibeStr}`;
+  };
+
+  const syncModalFromState = () => {
+    if (settingsVibeEl) settingsVibeEl.value = state.settings.vibe || '';
+    if (settingsBlackCardsEl) settingsBlackCardsEl.value = String(state.settings.blackCards || 1);
+    if (settingsClueTimerEl) settingsClueTimerEl.value = String(state.settings.clueTimerSeconds || 0);
+    if (settingsGuessTimerEl) settingsGuessTimerEl.value = String(state.settings.guessTimerSeconds || 0);
+    if (settingsStackingToggleEl) settingsStackingToggleEl.checked = state.settings.stackingEnabled !== false;
+  };
+
+  const syncStateFromModal = () => {
+    state.settings.vibe = String(settingsVibeEl?.value || '').trim();
+    state.settings.blackCards = normalizeInt(settingsBlackCardsEl?.value, 1, 1, 3);
+    state.settings.clueTimerSeconds = normalizeInt(settingsClueTimerEl?.value, 0, 0, 600);
+    state.settings.guessTimerSeconds = normalizeInt(settingsGuessTimerEl?.value, 0, 0, 600);
+    state.settings.stackingEnabled = !!settingsStackingToggleEl?.checked;
+  };
+
+  const openSettingsModal = () => {
+    if (!settingsModal) return;
+    syncModalFromState();
+    settingsModal.style.display = 'flex';
+    void settingsModal.offsetWidth;
+    settingsModal.classList.add('modal-open');
+    settingsModal.setAttribute('aria-hidden', 'false');
+    if (settingsStatusEl) settingsStatusEl.textContent = 'Applies to the next Singleplayer game.';
+    try { settingsVibeEl?.focus?.(); } catch (_) {}
+  };
+
+  const closeSettingsModal = () => {
+    if (!settingsModal) return;
+    settingsModal.classList.remove('modal-open');
+    settingsModal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (!settingsModal.classList.contains('modal-open')) settingsModal.style.display = 'none';
+    }, 200);
+  };
 
   const setSelected = (btns, activeBtn) => {
     btns.forEach(b => b.classList.toggle('is-selected', b === activeBtn));
@@ -12134,6 +12226,7 @@ function initPracticePage() {
     if (stepSize) stepSize.style.display = state.role ? "" : "none";
     if (stepVibe) stepVibe.style.display = ok ? "" : "none";
     if (startBtn) startBtn.disabled = !ok;
+    if (rulesTextEl) rulesTextEl.textContent = formatRules(state.settings);
     if (hintEl) {
       hintEl.textContent = ok
         ? ''
@@ -12160,33 +12253,51 @@ function initPracticePage() {
   });
 
   try {
-    if (stackingToggle) stackingToggle.checked = (typeof window.isStackingEnabled === 'function')
+    state.settings.stackingEnabled = (typeof window.isStackingEnabled === 'function')
       ? !!window.isStackingEnabled()
       : true;
-  } catch (_) {}
+  } catch (_) {
+    state.settings.stackingEnabled = true;
+  }
+  syncModalFromState();
 
   const start = async () => {
     if (!state.role || !state.size) return;
 
-    const vibe = String(vibeInput?.value || '').trim();
-    const deckId = 'standard';
-    const stackingEnabled = stackingToggle ? !!stackingToggle.checked : true;
-
     try {
-      await startPracticeInApp({ size: state.size, role: state.role, vibe, deckId, stackingEnabled }, hintEl);
+      await startPracticeInApp({
+        size: state.size,
+        role: state.role,
+        vibe: state.settings.vibe,
+        deckId: state.settings.deckId || 'standard',
+        blackCards: state.settings.blackCards,
+        clueTimerSeconds: state.settings.clueTimerSeconds,
+        guessTimerSeconds: state.settings.guessTimerSeconds,
+        stackingEnabled: state.settings.stackingEnabled !== false
+      }, hintEl);
     } catch (e) {
       console.error(e);
       if (hintEl) hintEl.textContent = (e?.message || 'Could not start practice.');
     }
   };
 
-  startBtn?.addEventListener('click', start);
-  vibeInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (!startBtn?.disabled) start();
-    }
+  settingsBtn?.addEventListener('click', openSettingsModal);
+  settingsCloseBtn?.addEventListener('click', closeSettingsModal);
+  settingsBackdrop?.addEventListener('click', closeSettingsModal);
+  settingsApplyBtn?.addEventListener('click', () => {
+    syncStateFromModal();
+    refresh();
+    closeSettingsModal();
   });
+  settingsVibeEl?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    syncStateFromModal();
+    refresh();
+    closeSettingsModal();
+  });
+
+  startBtn?.addEventListener('click', start);
 
   refresh();
 }
