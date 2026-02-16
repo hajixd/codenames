@@ -330,7 +330,6 @@ let quickPlayEnsurePromise = null;
 // Practice is fully local-only (no Firestore reads/writes).
 const LOCAL_PRACTICE_ID_PREFIX = 'practice_local_';
 const LS_LOCAL_PRACTICE_GAMES = 'ct_localPracticeGames_v1';
-const LS_SETTINGS_STACKING = 'ct_stacking_v1';
 const localPracticeGames = new Map();
 let localPracticeAiTimer = null;
 let localPracticeAiBusy = false;
@@ -6025,13 +6024,16 @@ if (document.fonts && document.fonts.ready) {
 }
 
 function isStackingSettingEnabledLocal() {
+  const key = (typeof LS_SETTINGS_STACKING === 'string' && LS_SETTINGS_STACKING)
+    ? LS_SETTINGS_STACKING
+    : 'ct_stacking_v1';
   try {
     if (typeof window.isStackingEnabled === 'function') {
       return !!window.isStackingEnabled();
     }
   } catch (_) {}
   try {
-    return String(localStorage.getItem(LS_SETTINGS_STACKING) || '').toLowerCase() === 'true';
+    return String(localStorage.getItem(key) || '').toLowerCase() === 'true';
   } catch (_) {
     return false;
   }
