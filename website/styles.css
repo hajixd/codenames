@@ -23839,11 +23839,13 @@ body.light-mode .clue-stack-chip {
 }
 
 .clue-display-expanded {
+  position: relative;
+  justify-content: center;
   min-width: clamp(220px, 44vw, 430px);
   min-height: 34px;
   padding: 4px 16px;
   border-radius: 999px;
-  transform: translateY(-4px);
+  transform: translateY(-6px);
   gap: 10px;
 }
 
@@ -23857,6 +23859,13 @@ body.light-mode .clue-stack-chip {
   width: 28px;
   height: 28px;
   font-size: 14px;
+}
+
+.guesses-left-expanded {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .clue-typing-live {
@@ -23963,7 +23972,7 @@ body.light-mode .clue-stack-chip {
     min-width: min(100%, 320px);
     min-height: 30px;
     padding: 3px 12px;
-    transform: translateY(-2px);
+    transform: translateY(-3px);
   }
 
   .clue-word-expanded {
@@ -24008,5 +24017,5 @@ body.light-mode .clue-stack-chip {
 body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   min-height: 34px;
   padding: 5px 16px;
-  transform: translateY(-5px);
+  transform: translateY(-6px);
 }

@@ -879,6 +879,39 @@ function localPracticePause(ms) {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
+async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpy = null) {
+  const live = getLocalPracticeGame(gameId);
+  if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) return false;
+
+  const byId = String(aiSpy?.odId || aiSpy?.id || aiSpy?.aiId || '').trim();
+  const byName = String(aiSpy?.name || 'AI').trim() || 'AI';
+  const seqField = getLocalPracticeSeqField(team, 'spy');
+  const submitWithReview = window.submitClueForReviewFlow;
+
+  if (typeof submitWithReview === 'function') {
+    const result = await submitWithReview({
+      game: live,
+      word: clueWord,
+      number: clueNumber,
+      targets: [],
+      targetWords: [],
+      byId,
+      byName,
+      seqField,
+    });
+    if (result?.accepted && window.playSound) window.playSound('clueGiven');
+    return !!(result?.accepted || result?.pending);
+  }
+
+  mutateLocalPracticeGame(gameId, (draft) => {
+    if (!draft || draft.winner || draft.currentPhase !== 'spymaster' || draft.currentTeam !== team) return;
+    applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
+    bumpLocalPracticeAISeq(draft, team, 'spy');
+  });
+  if (window.playSound) window.playSound('clueGiven');
+  return true;
+}
+
 async function runLocalPracticeSpymasterTurn(gameId, game, team) {
   const aiSpies = getLocalPracticeRuntimeAIs(game, team, 'spymaster');
   if (!aiSpies.length) return false;
@@ -892,13 +925,10 @@ async function runLocalPracticeSpymasterTurn(gameId, game, team) {
   // Fallback if AI council helpers are unavailable.
   if (!useRealCouncil) {
     const fallbackPlan = await generateLocalPracticeAICluePlan(game, team, aiSpies[0]);
-    mutateLocalPracticeGame(gameId, (draft) => {
-      const boardWordSet = new Set((draft?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
-      const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(draft);
-      const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
-      applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
-      bumpLocalPracticeAISeq(draft, team, 'spy');
-    });
+    const boardWordSet = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+    const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(game);
+    const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
+    await submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpies[0]);
     return true;
   }
 
@@ -951,13 +981,10 @@ async function runLocalPracticeSpymasterTurn(gameId, game, team) {
 
   if (!proposalsByAi.size) {
     const fallbackPlan = await generateLocalPracticeAICluePlan(game, team, aiSpies[0]);
-    mutateLocalPracticeGame(gameId, (draft) => {
-      const boardWordSet = new Set((draft?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
-      const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(draft);
-      const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
-      applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
-      bumpLocalPracticeAISeq(draft, team, 'spy');
-    });
+    const boardWordSet = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
+    const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(game);
+    const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
+    await submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpies[0]);
     return true;
   }
 
@@ -994,11 +1021,7 @@ async function runLocalPracticeSpymasterTurn(gameId, game, team) {
     } catch (_) {}
   }
 
-  mutateLocalPracticeGame(gameId, (draft) => {
-    if (!draft || draft.winner || draft.currentPhase !== 'spymaster' || draft.currentTeam !== team) return;
-    applyLocalPracticeSpymasterClueState(draft, team, clueWord, clueNumber);
-    bumpLocalPracticeAISeq(draft, team, 'spy');
-  });
+  await submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, executor || aiSpies[0]);
   return true;
 }
 
@@ -1008,6 +1031,14 @@ function canLocalPracticeAIActAsOperatives(game, team) {
 
 function localPracticeNeedsAIAction(game) {
   if (!game || game.winner || game.currentPhase === 'ended') return false;
+  const pending = normalizePendingClueEntry(game.pendingClue, game);
+  if (pending?.state === 'reviewing') return true;
+  if (pending?.state === 'awaiting') {
+    const opposingTeam = pending.team === 'red' ? 'blue' : 'red';
+    const opposingSpy = getTeamSpymasterPlayer(opposingTeam, game);
+    if (opposingSpy?.isAI) return true;
+  }
+
   const team = game.currentTeam === 'blue' ? 'blue' : 'red';
   const roster = team === 'red' ? (game.redPlayers || []) : (game.bluePlayers || []);
   if (game.currentPhase === 'spymaster') {
@@ -1222,6 +1253,15 @@ async function runLocalPracticeAIOnce() {
     }
     if (game.winner || game.currentPhase === 'ended') {
       stopLocalPracticeAI();
+      return;
+    }
+
+    const pending = normalizePendingClueEntry(game.pendingClue, game);
+    if (pending?.state === 'awaiting') {
+      const handled = await maybeResolveLocalPracticePendingClue(gid, game);
+      if (handled) return;
+    } else if (pending?.state === 'reviewing') {
+      void runCouncilReviewForPendingClue(gid, pending.id);
       return;
     }
 
@@ -2291,11 +2331,40 @@ function setGameLogTab(tab) {
 function bindGameLogTabControls() {
   if (_gameLogTabBindingsReady) return;
   _gameLogTabBindingsReady = true;
+  const selector = '.gamelog-tab-btn[data-gamelog-tab]';
+  const resolveBtn = (evtTarget) => {
+    if (!evtTarget) return null;
+    const base = (typeof evtTarget.closest === 'function')
+      ? evtTarget
+      : (evtTarget.parentElement || null);
+    if (!base || typeof base.closest !== 'function') return null;
+    return base.closest(selector);
+  };
+
+  // Direct binding for reliability on desktop/mobile (text-node targets, touch).
+  const wireButtons = () => {
+    document.querySelectorAll(selector).forEach((btn) => {
+      if (!btn || btn.dataset.gamelogTabBound === '1') return;
+      btn.dataset.gamelogTabBound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setGameLogTab(btn.getAttribute('data-gamelog-tab'));
+      });
+      btn.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+    });
+  };
+  wireButtons();
+
+  // Delegated fallback in case tab nodes are re-rendered.
   document.addEventListener('click', (e) => {
-    const btn = e.target?.closest?.('.gamelog-tab-btn[data-gamelog-tab]');
+    const btn = resolveBtn(e.target);
     if (!btn) return;
-    const tab = btn.getAttribute('data-gamelog-tab');
-    setGameLogTab(tab);
+    e.preventDefault();
+    e.stopPropagation();
+    setGameLogTab(btn.getAttribute('data-gamelog-tab'));
   });
 }
 
@@ -6020,7 +6089,7 @@ function fitAllCardWords() {
     const baseLS = parseFloat(cs.letterSpacing) || 0;
 
     let size = baseSize;
-    const minSize = window.innerWidth <= 768 ? 6 : 10;
+    const minSize = window.innerWidth <= 768 ? 5 : 8;
     let guard = 0;
 
     // Use the container as the constraint box (this is the visible label strip)
@@ -6031,8 +6100,8 @@ function fitAllCardWords() {
     const overflows = () => (textEl.scrollWidth > boxW || textEl.scrollHeight > boxH);
 
     // First pass: reduce font-size until it fits
-    while (guard < 48 && size > minSize && overflows()) {
-      size -= 1;
+    while (guard < 80 && size > minSize && overflows()) {
+      size -= 0.5;
       textEl.style.fontSize = size + 'px';
       // Reduce tracking a bit as we shrink (helps long words feel less cramped)
       const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.85);
@@ -6040,15 +6109,17 @@ function fitAllCardWords() {
       guard++;
     }
 
-    // Second pass: if we still overflow (very long words), compress horizontally a touch.
+    // Second pass: if we still overflow (very long words), compress in X/Y slightly.
     // This keeps the label box geometry consistent without clipping.
     if (overflows()) {
-      // Ensure measurements update before we compute the ratio
       const sw = textEl.scrollWidth || 1;
-      const minRatio = window.innerWidth <= 768 ? 0.65 : 0.78;
-      const ratio = Math.max(minRatio, Math.min(1, boxW / sw));
+      const sh = textEl.scrollHeight || 1;
+      const minRatioX = window.innerWidth <= 768 ? 0.58 : 0.72;
+      const minRatioY = window.innerWidth <= 768 ? 0.72 : 0.82;
+      const ratioX = Math.max(minRatioX, Math.min(1, (boxW - 1) / sw));
+      const ratioY = Math.max(minRatioY, Math.min(1, (boxH - 1) / sh));
       textEl.style.transformOrigin = 'center';
-      textEl.style.transform = `scaleX(${ratio})`;
+      textEl.style.transform = `scale(${ratioX}, ${ratioY})`;
       // Slightly reduce tracking to avoid "smeared" look when scaled
       const tighterLS = Math.max(0, (parseFloat(getComputedStyle(textEl).letterSpacing) || 0) * 0.85);
       textEl.style.letterSpacing = tighterLS + 'px';
@@ -6258,6 +6329,7 @@ function normalizePendingClueEntry(raw, game = currentGame) {
     targetWords,
     byId: String(raw.byId || '').trim(),
     byName: String(raw.byName || '').trim(),
+    seqField: String(raw.seqField || '').trim(),
     challengedById: String(raw.challengedById || '').trim(),
     challengedByName: String(raw.challengedByName || '').trim(),
     submittedAtMs: Number(raw.submittedAtMs || 0),
@@ -6280,6 +6352,18 @@ function hasHumanOpposingSpymaster(game, team) {
   const opp = t === 'red' ? 'blue' : 'red';
   const oppSpy = getTeamSpymasterPlayer(opp, game);
   return !!(oppSpy && !oppSpy.isAI);
+}
+
+function hasOpposingSpymaster(game, team) {
+  const t = team === 'blue' ? 'blue' : 'red';
+  const opp = t === 'red' ? 'blue' : 'red';
+  return !!getTeamSpymasterPlayer(opp, game);
+}
+
+function shouldOfferChallengeForPendingClue(game, team) {
+  const isPractice = String(game?.type || '') === 'practice';
+  if (isPractice) return hasOpposingSpymaster(game, team);
+  return hasHumanOpposingSpymaster(game, team);
 }
 
 function normalizeLiveClueDraft(raw, game = currentGame) {
@@ -6487,6 +6571,123 @@ function basicClueLegalityCheck(pending, game = currentGame) {
   return { legal: true, reason: 'Passes hard-rule checks.' };
 }
 
+async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
+  const baseline = basicClueLegalityCheck(pending, game);
+  if (!baseline.legal) {
+    return {
+      decision: 'challenge',
+      reason: baseline.reason,
+      baseline,
+    };
+  }
+
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') {
+    return {
+      decision: 'allow',
+      reason: 'Fallback allow (hard checks passed).',
+      baseline,
+    };
+  }
+
+  const boardWords = (game?.cards || [])
+    .map((c) => String(c?.word || '').trim().toUpperCase())
+    .filter(Boolean);
+  const system = [
+    'You are a Codenames spymaster deciding whether to challenge an opponent clue for legality.',
+    'Challenge only for likely ILLEGAL clues. Do not challenge for strategy disagreement.',
+    'Hard rules:',
+    '- one word only (no spaces or hyphens)',
+    '- cannot match any board word',
+    '- clue number must be 0-9',
+    'Return JSON only:',
+    '{"decision":"allow|challenge","reason":"short reason"}',
+  ].join('\n');
+  const user = [
+    `YOUR NAME: ${String(aiSpy?.name || 'AI').trim() || 'AI'}`,
+    `CLUE: "${pending.word}"`,
+    `NUMBER: ${pending.number}`,
+    `BOARD WORDS: ${boardWords.join(', ')}`,
+    `HARD CHECK: pass`,
+    'Would you ALLOW or CHALLENGE this clue for legality?',
+  ].join('\n');
+
+  try {
+    const raw = await chatFn(
+      [{ role: 'system', content: system }, { role: 'user', content: user }],
+      {
+        temperature: 0.35,
+        max_tokens: 140,
+        response_format: { type: 'json_object' },
+      }
+    );
+    const parsed = safeJsonParse(raw);
+    const decisionRaw = String(parsed?.decision || '').trim().toLowerCase();
+    const decision = decisionRaw === 'challenge' ? 'challenge' : 'allow';
+    const reason = String(parsed?.reason || '').trim().slice(0, 140) || 'No reason provided.';
+    return { decision, reason, baseline };
+  } catch (_) {
+    return {
+      decision: 'allow',
+      reason: 'Fallback allow (judge unavailable).',
+      baseline,
+    };
+  }
+}
+
+async function maybeResolveLocalPracticePendingClue(gameId, game) {
+  if (!isLocalPracticeGameId(gameId)) return false;
+  const pending = normalizePendingClueEntry(game?.pendingClue, game);
+  if (!pending || pending.state !== 'awaiting') return false;
+
+  const opposingTeam = pending.team === 'red' ? 'blue' : 'red';
+  const opposingSpy = getTeamSpymasterPlayer(opposingTeam, game);
+  if (!opposingSpy || !opposingSpy.isAI) return false;
+
+  const aiSpy = toLocalPracticeRuntimeAI(opposingSpy, opposingTeam);
+  await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.beforeDecisionMs);
+  const live = getLocalPracticeGame(gameId);
+  const livePending = normalizePendingClueEntry(live?.pendingClue, live);
+  if (!live || !livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return false;
+
+  const decision = await decidePracticeAISpymasterPendingAction(aiSpy, live, livePending);
+  const actorName = String(opposingSpy?.name || aiSpy?.name || 'AI').trim() || 'AI';
+
+  if (decision.decision === 'challenge') {
+    mutateLocalPracticeGame(gameId, (draft) => {
+      const currentPending = normalizePendingClueEntry(draft.pendingClue, draft);
+      if (!currentPending || currentPending.id !== livePending.id || currentPending.state !== 'awaiting') return;
+      draft.pendingClue = {
+        ...currentPending,
+        state: 'reviewing',
+        challengedById: String(opposingSpy?.odId || opposingSpy?.id || aiSpy?.id || '').trim(),
+        challengedByName: actorName,
+        challengedAtMs: Date.now(),
+      };
+      draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+      draft.log.push(`${actorName} challenged "${currentPending.word}" (${decision.reason}).`);
+      draft.updatedAtMs = Date.now();
+    });
+    const after = getLocalPracticeGame(gameId);
+    const afterPending = normalizePendingClueEntry(after?.pendingClue, after);
+    if (afterPending && afterPending.state === 'reviewing') {
+      void runCouncilReviewForPendingClue(gameId, afterPending.id);
+      return true;
+    }
+    return false;
+  }
+
+  mutateLocalPracticeGame(gameId, (draft) => {
+    const currentPending = normalizePendingClueEntry(draft.pendingClue, draft);
+    if (!currentPending || currentPending.id !== livePending.id || currentPending.state !== 'awaiting') return;
+    draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+    draft.log.push(`${actorName} allowed "${currentPending.word}".`);
+    applyAcceptedClueLocalState(draft, currentPending);
+  });
+  if (window.playSound) window.playSound('clueGiven');
+  return true;
+}
+
 async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
   const chatFn = window.aiChatCompletion;
   if (typeof chatFn !== 'function') {
@@ -6590,7 +6791,10 @@ async function runCouncilReviewForPendingClue(gameId, pendingId) {
         const livePending = normalizePendingClueEntry(draft.pendingClue, draft);
         if (!livePending || livePending.id !== pid || livePending.state !== 'reviewing') return;
         if (legal) {
-          applyAcceptedClueLocalState(draft, livePending, { review });
+          applyAcceptedClueLocalState(draft, livePending, {
+            review,
+            seqField: livePending.seqField || null,
+          });
         } else {
           draft.pendingClue = {
             ...livePending,
@@ -6616,7 +6820,10 @@ async function runCouncilReviewForPendingClue(gameId, pendingId) {
       const livePending = normalizePendingClueEntry(current.pendingClue, current);
       if (!livePending || livePending.id !== pid || livePending.state !== 'reviewing') return;
       if (legal) {
-        tx.update(ref, buildAcceptedClueRemoteUpdates(current, livePending, { review }));
+        tx.update(ref, buildAcceptedClueRemoteUpdates(current, livePending, {
+          review,
+          seqField: livePending.seqField || null,
+        }));
       } else {
         tx.update(ref, {
           pendingClue: {
@@ -6663,7 +6870,9 @@ async function handleAllowPendingClue() {
       mutateLocalPracticeGame(currentGame.id, (draft) => {
         const livePending = normalizePendingClueEntry(draft.pendingClue, draft);
         if (!livePending || livePending.id !== pending.id || livePending.state !== 'awaiting') return;
-        applyAcceptedClueLocalState(draft, livePending);
+        applyAcceptedClueLocalState(draft, livePending, {
+          seqField: livePending.seqField || null,
+        });
       });
     } else {
       const ref = db.collection('games').doc(currentGame.id);
@@ -6679,7 +6888,9 @@ async function handleAllowPendingClue() {
         const uname = String(getUserName?.() || '').trim();
         if (!isUserSpymasterForTeamInGame(game, myTeam, uid, uname)) return;
 
-        tx.update(ref, buildAcceptedClueRemoteUpdates(game, livePending));
+        tx.update(ref, buildAcceptedClueRemoteUpdates(game, livePending, {
+          seqField: livePending.seqField || null,
+        }));
       });
     }
     if (window.playSound) window.playSound('clueGiven');
@@ -6772,11 +6983,12 @@ async function submitClueForReviewFlow(opts = {}) {
     targetWords,
     byId,
     byName,
+    seqField,
     submittedAtMs: Date.now(),
     state: 'awaiting',
   };
 
-  const shouldOfferChallenge = hasHumanOpposingSpymaster(game, team);
+  const shouldOfferChallenge = shouldOfferChallengeForPendingClue(game, team);
 
   if (isLocalPracticeGameId(game.id)) {
     if (!shouldOfferChallenge) {
@@ -6807,7 +7019,7 @@ async function submitClueForReviewFlow(opts = {}) {
     if (String(current.currentTeam || '') !== team) return;
     if (hasBlockingPendingClue(current)) return;
 
-    const offerChallenge = hasHumanOpposingSpymaster(current, team);
+    const offerChallenge = shouldOfferChallengeForPendingClue(current, team);
     if (offerChallenge) {
       tx.update(ref, {
         pendingClue: pending,
