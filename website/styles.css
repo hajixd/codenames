@@ -11169,7 +11169,7 @@ body.tournament.has-team-color .input:focus {
 .game-center-area .game-action-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   padding: 7px 12px;
   background: var(--surface);
@@ -23879,11 +23879,10 @@ body.light-mode .clue-stack-chip {
 .clue-display-expanded {
   position: relative;
   justify-content: center;
-  min-width: clamp(220px, 44vw, 430px);
+  min-width: clamp(180px, 26vw, 320px);
   min-height: 34px;
   padding: 4px 16px;
   border-radius: 999px;
-  transform: translateY(-6px);
   gap: 10px;
 }
 
@@ -23900,10 +23899,8 @@ body.light-mode .clue-stack-chip {
 }
 
 .guesses-left-expanded {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
+  margin-left: 8px;
+  white-space: nowrap;
 }
 
 .clue-typing-live {
@@ -24323,7 +24320,7 @@ body.light-mode .judge-avatar.judge-illegal {
 
 .game-action-bar.row-clue-endturn {
   flex-wrap: nowrap;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
 }
 
@@ -24351,7 +24348,6 @@ body.light-mode .judge-avatar.judge-illegal {
     min-width: min(100%, 320px);
     min-height: 30px;
     padding: 3px 12px;
-    transform: translateY(-3px);
   }
 
   .clue-word-expanded {
@@ -24415,7 +24411,6 @@ body.light-mode .judge-avatar.judge-illegal {
 body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   min-height: 34px;
   padding: 5px 16px;
-  transform: translateY(-6px);
 }
 
 /* Final polish pass: space-aware layout for stacking/review/log UI */
@@ -24472,20 +24467,20 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .game-action-bar.row-clue-endturn {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  justify-content: center;
   align-items: center;
+  flex-wrap: nowrap;
   gap: clamp(8px, 1.3vw, 14px);
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  width: 100%;
-  max-width: none;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
-  margin-left: 0;
+  flex: 0 0 auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
@@ -24696,7 +24691,6 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   .clue-display-expanded {
     min-height: 32px;
     padding: 3px 10px;
-    transform: translateY(-4px);
   }
 
   .clue-word-expanded {
@@ -25028,39 +25022,30 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 /* During operative phase, make clue display + end turn sit as one integrated row */
 .game-action-bar.row-clue-endturn {
   border-radius: 14px;
-  padding: 6px 10px 6px 14px;
+  padding: 6px 14px;
   gap: 8px;
-}
-
-.game-action-bar.row-clue-endturn .clue-display-expanded {
-  transform: none;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
   border-radius: 10px;
 }
 
-/* ─── Center the clue pill (and End Turn) as a single group on desktop ───
-   Earlier rules set this row to use grid/space-between, which causes the clue
-   pill to hug the left edge when the End Turn container is hidden (spymasters)
-   or to separate the pill and button. Override those layouts on desktop.
-*/
+/* ─── Desktop clue pill centering ─── */
 @media (min-width: 821px) {
   .game-action-bar.row-clue-endturn {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center;
-    flex-wrap: nowrap;
+    position: relative;
+    justify-content: center;
   }
 
   .game-action-bar.row-clue-endturn .clue-display-expanded {
-    flex: 0 1 auto !important;
+    flex: 0 1 auto;
     width: auto;
   }
 
   .game-action-bar.row-clue-endturn .operative-actions-expanded {
+    position: absolute;
+    right: 14px;
     flex: 0 0 auto;
-    margin-left: 0 !important;
   }
 }
 

@@ -9733,23 +9733,32 @@ function renderClueHistory() {
   if (!container || !currentGame) return;
 
   const history = currentGame.clueHistory || [];
+  const myTeam = getMyTeamColor();
+  const isSpy = isCurrentUserSpymaster();
 
-  if (history.length === 0) {
+  // Only show clues from the player's own team
+  const teamHistory = myTeam ? history.filter(clue => clue.team === myTeam) : history;
+
+  if (teamHistory.length === 0) {
     container.innerHTML = '<div class="clue-history-empty">No clues given yet</div>';
     return;
   }
 
-  container.innerHTML = history.map(clue => {
-    const resultsHtml = (clue.results || []).map((r, idx) => {
-      const res = (r.result || (r.correct ? 'correct' : (r.wrong ? 'wrong' : 'neutral')));
-      let className = 'neutral';
-      if (res === 'correct') className = 'correct';
-      else if (res === 'wrong') className = 'wrong';
-      else if (res === 'assassin') className = 'assassin';
-      const word = String(r.word || '').trim();
-      const label = `${idx + 1}. ${word}`;
-      return `<span class="guess-chip ${className}">${escapeHtml(label)}</span>`;
-    }).join('');
+  container.innerHTML = teamHistory.map(clue => {
+    // Only spymasters see the specific words that were guessed
+    let resultsHtml = '';
+    if (isSpy) {
+      resultsHtml = (clue.results || []).map((r, idx) => {
+        const res = (r.result || (r.correct ? 'correct' : (r.wrong ? 'wrong' : 'neutral')));
+        let className = 'neutral';
+        if (res === 'correct') className = 'correct';
+        else if (res === 'wrong') className = 'wrong';
+        else if (res === 'assassin') className = 'assassin';
+        const word = String(r.word || '').trim();
+        const label = `${idx + 1}. ${word}`;
+        return `<span class="guess-chip ${className}">${escapeHtml(label)}</span>`;
+      }).join('');
+    }
 
     return `
       <div class="clue-history-item ${clue.team}">
