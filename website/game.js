@@ -6817,6 +6817,31 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
 function _updateJudgeCourtUI(pid) {
   const state = _liveJudgeVerdicts[pid];
   if (!state) return;
+
+  const renderVoteHtml = (verdict) => {
+    // A = Agree with the challenge (clue is ILLEGAL)
+    // D = Disagree with the challenge (clue is LEGAL)
+    const letter = verdict === 'illegal' ? 'A' : 'D';
+    const word = verdict === 'illegal' ? 'AGREE' : 'DISAGREE';
+    return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
+  };
+
+  const ensureVerdictStamp = (containerEl, finalVerdict) => {
+    if (!containerEl) return;
+    containerEl.classList.add('verdict-show');
+    const stampId = 'council-verdict-stamp';
+    let stamp = containerEl.querySelector(`#${stampId}`);
+    if (!stamp) {
+      stamp = document.createElement('div');
+      stamp.id = stampId;
+      stamp.className = 'council-verdict-stamp';
+      containerEl.appendChild(stamp);
+    }
+    const accepted = finalVerdict === 'illegal';
+    stamp.classList.toggle('accepted', accepted);
+    stamp.classList.toggle('denied', !accepted);
+    stamp.textContent = accepted ? 'CHALLENGE ACCEPTED' : 'CHALLENGE DENIED';
+  };
   for (let i = 0; i < 3; i++) {
     const el = document.getElementById(`judge-avatar-${i}`);
     if (!el) continue;
@@ -6825,7 +6850,7 @@ function _updateJudgeCourtUI(pid) {
       el.classList.remove('judge-center');
       el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
       const labelEl = el.querySelector('.council-judge-verdict');
-      if (labelEl) labelEl.textContent = j.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
+      if (labelEl) labelEl.innerHTML = renderVoteHtml(j.verdict);
     }
   }
   if (state.finalVerdict) {
@@ -6837,6 +6862,7 @@ function _updateJudgeCourtUI(pid) {
     const courtEl = document.getElementById('judge-courtroom');
     if (courtEl) {
       courtEl.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
+      ensureVerdictStamp(courtEl, state.finalVerdict);
     }
   }
 }
@@ -7289,16 +7315,30 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       statusText = 'Council Reviewing';
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
       const liveState = _liveJudgeVerdicts[pending.id];
+      const voteHtml = (verdict) => {
+        const v = verdict === 'illegal' ? 'illegal' : 'legal';
+        const letter = v === 'illegal' ? 'A' : 'D';
+        const word = v === 'illegal' ? 'AGREE' : 'DISAGREE';
+        return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
+      };
       const j0cls = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
       const j1cls = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
       const j2cls = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
       const judgeNames = ['Aria', 'Kai', 'Nova'];
-      const j0label = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
-      const j1label = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
-      const j2label = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
+      const j0label = liveState?.judges[0] ? voteHtml(liveState.judges[0].verdict) : '';
+      const j1label = liveState?.judges[1] ? voteHtml(liveState.judges[1].verdict) : '';
+      const j2label = liveState?.judges[2] ? voteHtml(liveState.judges[2].verdict) : '';
       const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
+      const verdictShowCls = liveState?.finalVerdict ? 'verdict-show' : '';
+      const stampText = liveState?.finalVerdict
+        ? (liveState.finalVerdict === 'illegal' ? 'CHALLENGE ACCEPTED' : 'CHALLENGE DENIED')
+        : '';
+      const stampCls = liveState?.finalVerdict
+        ? (liveState.finalVerdict === 'illegal' ? 'accepted' : 'denied')
+        : '';
       hintHtml = `
-        <div class="council-tribunal ${flashCls}" id="judge-courtroom">
+        <div class="council-tribunal ${flashCls} ${verdictShowCls}" id="judge-courtroom">
+          ${stampText ? `<div class="council-verdict-stamp ${stampCls}" id="council-verdict-stamp">${stampText}</div>` : ''}
           <div class="council-judges-row" aria-label="AI legality council">
             <div class="council-judge-card ${j0cls}" id="judge-avatar-0" style="--judge-idx:0">
               <div class="council-judge-avatar">
