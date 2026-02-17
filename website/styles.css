@@ -25118,6 +25118,35 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   transform: scale(1.02);
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Center operative clue pill + End Turn
+
+   The expanded action bar spans the full center column. When the
+   side panels are wide, this can visually pull the clue pill left
+   of the board center and push End Turn to the far edge. Keep the
+   operative row as a centered cluster so both elements stay aligned
+   under the board.
+   ───────────────────────────────────────────────────────────── */
+
+.game-action-bar.row-clue-endturn {
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: center !important;
+  align-items: center;
+}
+
+.game-action-bar.row-clue-endturn .clue-display-expanded {
+  flex: 0 1 auto !important;
+  width: auto !important;
+  min-width: clamp(180px, 26vw, 320px);
+  max-width: min(72vw, 520px) !important;
+}
+
+.game-action-bar.row-clue-endturn .operative-actions-expanded {
+  flex: 0 0 auto !important;
+  margin-left: 0 !important;
+}
+
 .clue-review-challenge-btn {
   font-weight: 800 !important;
   font-size: 15px !important;
