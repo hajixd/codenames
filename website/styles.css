@@ -10055,6 +10055,17 @@ body.tournament.has-team-color .input:focus {
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
   }
+
+  /*
+    Mobile: keep the current clue/action controls reachable.
+    On small screens the top UI can grow (chat/log/roster), and without a
+    sticky action bar the clue pill can end up off-screen.
+  */
+  .game-center-area .game-action-bar{
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    z-index: 30;
+  }
   .game-center-area .game-board-wrapper{
     align-items: flex-start;
     justify-content: flex-start;
@@ -11684,9 +11695,19 @@ body.tournament.has-team-color .input:focus {
     grid-column: 1;
   }
 
+  /*
+    IMPORTANT (mobile Safari + small screens):
+    Do not enforce a fixed viewport height here.
+    A fixed `height/max-height` at this breakpoint can clip the in-game
+    action bar (where the current clue is shown) on phones.
+
+    Use a minimum height instead so the layout can grow and the page can
+    scroll naturally when the top UI (chat/log + roster) takes more space.
+  */
   .game-container-expanded {
-    height: calc(100dvh - 60px);
-    max-height: calc(100dvh - 60px);
+    min-height: calc(100dvh - 60px);
+    height: auto;
+    max-height: none;
     padding: 8px;
     gap: 8px;
   }
