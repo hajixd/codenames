@@ -24318,6 +24318,40 @@ body.light-mode .judge-avatar.judge-illegal {
   background: rgba(218, 54, 51, 0.1);
 }
 
+/* Light mode council tribunal */
+body.light-mode .council-tribunal {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .council-judge-card {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .council-judge-card.judge-center {
+  animation: none;
+}
+
+body.light-mode .clue-review-modal-card {
+  background: linear-gradient(180deg, #f8f9fc 0%, #eef0f4 100%);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-mode .council-status-badge {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Council tribunal flash animations */
+.council-tribunal.judge-flash-green {
+  animation: judgeFlashGreen 0.8s ease-out;
+}
+
+.council-tribunal.judge-flash-red {
+  animation: judgeFlashRed 0.8s ease-out;
+}
+
 .game-action-bar.row-clue-endturn {
   flex-wrap: nowrap;
   justify-content: center;
@@ -24799,23 +24833,29 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   border-radius: 12px;
 }
 
-/* Spymaster clue-review prompt as a centered modal. */
+/* ─── Council Review Modal: complete redesign ─── */
 .clue-review-modal {
   z-index: 2700;
   align-items: center;
+  justify-content: center;
 }
 
 .clue-review-modal-backdrop {
-  background: rgba(5, 8, 14, 0.62);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
+  background: rgba(2, 4, 10, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .clue-review-modal-card {
-  width: min(560px, calc(100vw - 24px));
-  border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, rgba(255,255,255,0.16));
-  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.44);
+  width: min(420px, calc(100vw - 32px));
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 32px 100px rgba(0, 0, 0, 0.6),
+    0 0 80px rgba(var(--accent-rgb, 99, 102, 241), 0.08);
+  background: linear-gradient(180deg, rgba(22, 24, 32, 0.98) 0%, rgba(14, 16, 22, 0.99) 100%);
+  overflow: hidden;
 }
 
 .clue-review-modal-head {
@@ -24824,6 +24864,360 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 
 .clue-review-panel-modal {
   margin: 0;
+  padding: 0 0 20px;
+  border: none;
+  background: none;
+  gap: 0;
+}
+
+/* Council Header */
+.council-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 20px 0;
+}
+
+.council-modal-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.5;
+  stroke: var(--text-dim);
+}
+
+.council-modal-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* Clue Spotlight */
+.council-clue-spotlight {
+  text-align: center;
+  padding: 18px 24px 14px;
+}
+
+.council-clue-word {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text);
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+/* Status Row */
+.council-status-row {
+  display: flex;
+  justify-content: center;
+  padding: 0 24px 4px;
+}
+
+.council-status-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: color-mix(in srgb, var(--accent) 78%, var(--text) 22%);
+}
+
+/* Meta */
+.council-meta {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 6px 24px 12px;
+  font-weight: 500;
+}
+
+/* Judges Wrapper */
+.council-judges-wrapper {
+  padding: 0 20px 16px;
+}
+
+/* Council Tribunal (new judge cards) */
+.council-tribunal {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 16px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.council-judges-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+
+.council-judge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease, transform 0.3s ease;
+  position: relative;
+}
+
+.council-judge-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,0.08) 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+}
+
+.council-judge-initial {
+  font-size: 16px;
+  font-weight: 900;
+  color: #fff;
+  opacity: 0.9;
+}
+
+.council-judge-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  transition: color 0.5s ease;
+}
+
+.council-judge-verdict {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  min-height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.5s ease;
+}
+
+/* Pending dots animation */
+.council-judge-pending-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.council-judge-pending-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.4;
+  animation: councilDotPulse 1.4s ease-in-out infinite;
+}
+
+.council-judge-pending-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.council-judge-pending-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes councilDotPulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Judge pending state */
+.council-judge-card.judge-center {
+  animation: councilCardPulse 2s ease-in-out infinite;
+  animation-delay: calc(var(--judge-idx, 0) * 0.3s);
+}
+
+@keyframes councilCardPulse {
+  0%, 100% { background: rgba(255, 255, 255, 0.04); }
+  50% { background: rgba(255, 255, 255, 0.07); }
+}
+
+/* Judge legal verdict */
+.council-judge-card.judge-legal {
+  background: rgba(57, 211, 83, 0.1);
+  border-color: rgba(57, 211, 83, 0.3);
+  box-shadow: 0 0 20px rgba(57, 211, 83, 0.1);
+}
+
+.council-judge-card.judge-legal .council-judge-avatar {
+  background: rgba(57, 211, 83, 0.2);
+  border-color: #39d353;
+  box-shadow: 0 0 12px rgba(57, 211, 83, 0.3);
+}
+
+.council-judge-card.judge-legal .council-judge-name {
+  color: #39d353;
+}
+
+.council-judge-card.judge-legal .council-judge-verdict {
+  color: #39d353;
+}
+
+/* Judge illegal verdict */
+.council-judge-card.judge-illegal {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: rgba(248, 81, 73, 0.3);
+  box-shadow: 0 0 20px rgba(248, 81, 73, 0.1);
+}
+
+.council-judge-card.judge-illegal .council-judge-avatar {
+  background: rgba(248, 81, 73, 0.2);
+  border-color: #f85149;
+  box-shadow: 0 0 12px rgba(248, 81, 73, 0.3);
+}
+
+.council-judge-card.judge-illegal .council-judge-name {
+  color: #f85149;
+}
+
+.council-judge-card.judge-illegal .council-judge-verdict {
+  color: #f85149;
+}
+
+/* Council Actions */
+.council-modal-actions {
+  padding: 0 20px 6px;
+  gap: 10px;
+}
+
+.council-accept-btn {
+  background: linear-gradient(180deg, #2dd4a8 0%, #22a884 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  min-height: 46px !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 20px rgba(34, 168, 132, 0.25) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.3px;
+  transition: filter 0.2s, transform 0.2s;
+}
+
+.council-accept-btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.council-challenge-btn {
+  background: rgba(248, 81, 73, 0.12) !important;
+  color: #f85149 !important;
+  border: 1px solid rgba(248, 81, 73, 0.3) !important;
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  min-height: 46px !important;
+  border-radius: 14px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.3px;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.council-challenge-btn:hover {
+  background: rgba(248, 81, 73, 0.2) !important;
+  transform: translateY(-1px);
+}
+
+.council-btn-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Reviewing state shimmer on modal card */
+.clue-review-modal-card.is-reviewing {
+  border-color: color-mix(in srgb, var(--accent) 40%, rgba(255,255,255,0.12));
+}
+
+.clue-review-panel-modal.is-reviewing {
+  background: none;
+  animation: none;
+}
+
+/* Footer hint text inside modal */
+.clue-review-panel-modal > .council-judges-wrapper .clue-review-hint:not(:has(.council-tribunal)) {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 0 8px;
+  line-height: 1.5;
+}
+
+/* Council modal mobile adjustments */
+@media (max-width: 420px) {
+  .council-clue-spotlight {
+    padding: 14px 16px 10px;
+  }
+
+  .council-clue-word {
+    font-size: 26px;
+    letter-spacing: 1.5px;
+  }
+
+  .council-judges-wrapper {
+    padding: 0 12px 12px;
+  }
+
+  .council-judges-row {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .council-judge-card {
+    padding: 12px 6px 10px;
+    gap: 6px;
+  }
+
+  .council-judge-avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .council-judge-initial {
+    font-size: 14px;
+  }
+
+  .council-judge-name {
+    font-size: 10px;
+  }
+
+  .council-modal-actions {
+    padding: 0 12px 6px;
+  }
+
+  .council-accept-btn,
+  .council-challenge-btn {
+    min-height: 42px !important;
+    font-size: 13px !important;
+  }
 }
 
 /* Timer polish + unlimited (∞) visibility in turn phases. */
@@ -24980,7 +25374,7 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   }
 
   .clue-review-modal-card {
-    width: min(94vw, 520px);
+    width: min(94vw, 400px);
   }
 }
 
@@ -25014,13 +25408,16 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* During operative phase, make clue display + end turn sit as one integrated row */
 .game-action-bar.row-clue-endturn {
-  border-radius: 14px;
-  padding: 6px 14px;
-  gap: 8px;
+  border-radius: 999px;
+  padding: 5px 6px 5px 6px;
+  gap: 6px;
+  width: fit-content;
+  margin-inline: auto;
+  justify-content: center;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
-  border-radius: 10px;
+  border-radius: 999px;
 }
 
 /* ─── Desktop clue pill centering ─── */
@@ -25073,15 +25470,15 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   }
 }
 
-/* ─── Clue Review Modal: centered popup for spymasters ─── */
-.clue-review-modal-word {
-  font-size: 28px;
+/* ─── Clue Review Modal: old class overrides for new structure ─── */
+.clue-review-modal-word,
+.council-clue-word {
+  font-size: 32px;
   font-weight: 900;
-  letter-spacing: 1.2px;
+  letter-spacing: 2px;
   text-transform: uppercase;
   text-align: center;
   color: var(--text);
-  padding: 18px 16px 6px;
   line-height: 1.2;
   word-break: break-word;
 }
@@ -25093,10 +25490,11 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 }
 
 .clue-review-modal-body {
-  padding: 0 16px 16px;
+  padding: 0;
 }
 
-.clue-review-panel-modal .clue-review-meta {
+.clue-review-panel-modal .clue-review-meta,
+.clue-review-panel-modal .council-meta {
   text-align: center;
   font-size: 12px;
   color: var(--text-dim);
@@ -25114,7 +25512,8 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   padding: 4px 0;
 }
 
-.clue-review-accept-btn {
+/* Keep old accept/challenge classes as fallback */
+.clue-review-accept-btn:not(.council-accept-btn) {
   background: linear-gradient(180deg, #39d353 0%, #2da44e 100%) !important;
   color: #fff !important;
   border: none !important;
@@ -25125,12 +25524,12 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   box-shadow: 0 6px 16px rgba(45, 164, 78, 0.3) !important;
 }
 
-.clue-review-accept-btn:hover {
+.clue-review-accept-btn:not(.council-accept-btn):hover {
   filter: brightness(1.06);
   transform: scale(1.02);
 }
 
-.clue-review-challenge-btn {
+.clue-review-challenge-btn:not(.council-challenge-btn) {
   font-weight: 800 !important;
   font-size: 15px !important;
   min-height: 44px !important;

@@ -7298,28 +7298,28 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       const j2label = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
       const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
       hintHtml = `
-        <div class="judge-courtroom ${flashCls}" id="judge-courtroom">
-          <div class="judge-top" aria-hidden="true">
-            <div class="judge-top-label judge-top-legal">LEGAL</div>
-            <div class="judge-top-label judge-top-illegal">ILLEGAL</div>
-          </div>
-          <div class="judge-stage" aria-label="AI legality council">
-            <div class="judge-lane judge-lane-legal" aria-hidden="true"></div>
-            <div class="judge-lane judge-lane-illegal" aria-hidden="true"></div>
-            <div class="judge-avatar ${j0cls}" id="judge-avatar-0" style="--judge-row:0">
-              <span class="judge-avatar-icon">${judgeNames[0][0]}</span>
-              <span class="judge-avatar-name">${judgeNames[0]}</span>
-              <span class="judge-avatar-label">${j0label}</span>
+        <div class="council-tribunal ${flashCls}" id="judge-courtroom">
+          <div class="council-judges-row" aria-label="AI legality council">
+            <div class="council-judge-card ${j0cls}" id="judge-avatar-0" style="--judge-idx:0">
+              <div class="council-judge-avatar">
+                <span class="council-judge-initial">${judgeNames[0][0]}</span>
+              </div>
+              <div class="council-judge-name">${judgeNames[0]}</div>
+              <div class="council-judge-verdict">${j0label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
             </div>
-            <div class="judge-avatar ${j1cls}" id="judge-avatar-1" style="--judge-row:1">
-              <span class="judge-avatar-icon">${judgeNames[1][0]}</span>
-              <span class="judge-avatar-name">${judgeNames[1]}</span>
-              <span class="judge-avatar-label">${j1label}</span>
+            <div class="council-judge-card ${j1cls}" id="judge-avatar-1" style="--judge-idx:1">
+              <div class="council-judge-avatar">
+                <span class="council-judge-initial">${judgeNames[1][0]}</span>
+              </div>
+              <div class="council-judge-name">${judgeNames[1]}</div>
+              <div class="council-judge-verdict">${j1label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
             </div>
-            <div class="judge-avatar ${j2cls}" id="judge-avatar-2" style="--judge-row:2">
-              <span class="judge-avatar-icon">${judgeNames[2][0]}</span>
-              <span class="judge-avatar-name">${judgeNames[2]}</span>
-              <span class="judge-avatar-label">${j2label}</span>
+            <div class="council-judge-card ${j2cls}" id="judge-avatar-2" style="--judge-idx:2">
+              <div class="council-judge-avatar">
+                <span class="council-judge-initial">${judgeNames[2][0]}</span>
+              </div>
+              <div class="council-judge-name">${judgeNames[2]}</div>
+              <div class="council-judge-verdict">${j2label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
             </div>
           </div>
         </div>

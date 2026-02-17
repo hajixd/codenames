@@ -1362,19 +1362,46 @@
 
       <div class="modal clue-review-modal" id="clue-review-modal" aria-hidden="true" style="display:none;">
         <div class="modal-backdrop clue-review-modal-backdrop" id="clue-review-modal-backdrop"></div>
-        <div class="modal-card clue-review-modal-card" id="clue-review-modal-card" role="dialog" aria-modal="true" aria-label="Clue Review">
+        <div class="modal-card clue-review-modal-card" id="clue-review-modal-card" role="dialog" aria-modal="true" aria-label="Council Review">
           <div class="modal-body clue-review-modal-body">
             <div class="clue-review-panel clue-review-panel-modal" id="clue-review-modal-panel">
-              <div class="clue-review-modal-word" id="clue-review-modal-title">—</div>
-              <div class="clue-review-modal-status-row">
-                <span class="clue-review-status" id="clue-review-modal-status"></span>
+              <!-- Council Header -->
+              <div class="council-modal-header">
+                <svg class="council-modal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                  <path d="M2 17l10 5 10-5"/>
+                  <path d="M2 12l10 5 10-5"/>
+                </svg>
+                <span class="council-modal-title">THE COUNCIL</span>
               </div>
-              <div class="clue-review-meta" id="clue-review-modal-meta"></div>
-              <div class="clue-review-actions" id="clue-review-modal-actions" style="display:none;">
-                <button type="button" class="btn clue-review-accept-btn" id="clue-review-modal-allow-btn">Accept</button>
-                <button type="button" class="btn danger clue-review-challenge-btn" id="clue-review-modal-challenge-btn">Challenge</button>
+
+              <!-- Clue Word Spotlight -->
+              <div class="council-clue-spotlight">
+                <div class="council-clue-word" id="clue-review-modal-title">—</div>
               </div>
-              <div class="clue-review-hint" id="clue-review-modal-hint"></div>
+
+              <!-- Status & Meta -->
+              <div class="council-status-row">
+                <span class="clue-review-status council-status-badge" id="clue-review-modal-status"></span>
+              </div>
+              <div class="council-meta" id="clue-review-modal-meta"></div>
+
+              <!-- Judges Area (populated by JS) -->
+              <div class="council-judges-wrapper">
+                <div class="clue-review-hint" id="clue-review-modal-hint"></div>
+              </div>
+
+              <!-- Actions -->
+              <div class="clue-review-actions council-modal-actions" id="clue-review-modal-actions" style="display:none;">
+                <button type="button" class="btn council-accept-btn" id="clue-review-modal-allow-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="council-btn-icon"><polyline points="20 6 9 17 4 12"/></svg>
+                  Accept
+                </button>
+                <button type="button" class="btn council-challenge-btn" id="clue-review-modal-challenge-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="council-btn-icon"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                  Challenge
+                </button>
+              </div>
             </div>
           </div>
         </div>
