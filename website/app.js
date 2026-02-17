@@ -12246,7 +12246,7 @@ function initPracticePage() {
   sizeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const n = parseInt(btn.getAttribute('data-practice-size') || '0', 10);
-      state.size = (n === 2 || n === 3 || n === 4) ? n : null;
+      state.size = (n === 2 || n === 3 || n === 4 || n === 5) ? n : null;
       setSelected(sizeBtns, btn);
       refresh();
     });

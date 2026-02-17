@@ -1936,7 +1936,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const userName = (getUserName() || u.displayName || 'Player').trim();
   if (!userName) throw new Error('Set a name first.');
 
-  const size = Math.max(2, Math.min(4, parseInt(opts.size, 10) || 2)); // 2, 3, or 4
+  const size = Math.max(2, Math.min(5, parseInt(opts.size, 10) || 2)); // 2, 3, 4, or 5
   const yourRole = String(opts.role || 'operative'); // 'operative' | 'spymaster'
   const vibe = String(opts.vibe || '').trim();
   const deckId = normalizeDeckId(opts.deckId || 'standard');
@@ -7641,6 +7641,18 @@ function buildCluesLeftLogHtml() {
     return '<div class="gamelog-empty">No stacked clues yet. Turn on Stacking in Settings and pick target cards when giving clues.</div>';
   }
 
+  // Spymasters can see the specific target words. Operatives should still see
+  // the clue and how many words are associated with it.
+  const spectator = isSpectating();
+  const canSeeWords = !spectator && isCurrentUserSpymaster();
+
+  // Build a fast word -> index map (cards are unique words).
+  const wordIndex = new Map();
+  for (let i = 0; i < cards.length; i += 1) {
+    const w = String(cards[i]?.word || '').trim().toUpperCase();
+    if (w) wordIndex.set(w, i);
+  }
+
   const rows = [];
   for (let i = history.length - 1; i >= 0; i -= 1) {
     const clue = history[i];
@@ -7648,25 +7660,60 @@ function buildCluesLeftLogHtml() {
     const team = String(clue.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
     const clueWord = String(clue.word || '').trim() || 'CLUE';
     const targetIndices = getClueTargetIndicesFromEntry(clue, currentGame);
-    if (!targetIndices.length) continue;
+    const targetWords = Array.isArray(clue.targetWords)
+      ? clue.targetWords.map((w) => String(w || '').trim()).filter(Boolean)
+      : [];
 
-    const remainingIndices = targetIndices.filter((idx) => {
-      const card = cards[idx];
-      return !!card && !card.revealed;
-    });
-    if (!remainingIndices.length) continue;
+    // Total targets: prefer indices, then explicit words, then the clue number.
+    const clueNumberRaw = parseInt(clue.number, 10);
+    const clueNumber = Number.isFinite(clueNumberRaw) ? Math.max(0, Math.min(9, clueNumberRaw)) : 0;
+    let total = targetIndices.length || targetWords.length || clueNumber;
+    if (!total) continue;
 
-    const remainingWords = remainingIndices
-      .map((idx) => String(cards[idx]?.word || '').trim())
-      .filter(Boolean);
-    const total = targetIndices.length;
-    const remainingCount = remainingIndices.length;
-    const foundCount = Math.max(0, total - remainingCount);
-    const statusText = `${remainingCount} left`;
-    const progressText = `${foundCount}/${total} found`;
-    const wordsHtml = remainingWords.length
-      ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
-      : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>';
+    // If we have indices, we can compute remaining precisely. If we only have
+    // words, map them back to indices so we can still compute remaining.
+    let computedIndices = targetIndices;
+    if (!computedIndices.length && targetWords.length) {
+      const mapped = [];
+      targetWords.forEach((w) => {
+        const idx = wordIndex.get(String(w).trim().toUpperCase());
+        if (Number.isInteger(idx)) mapped.push(idx);
+      });
+      computedIndices = Array.from(new Set(mapped));
+      if (computedIndices.length) total = computedIndices.length;
+    }
+
+    let remainingCount = null;
+    let foundCount = null;
+    let remainingWords = [];
+    if (computedIndices.length) {
+      const remainingIndices = computedIndices.filter((idx) => {
+        const card = cards[idx];
+        return !!card && !card.revealed;
+      });
+
+      // If everything is found, hide it from "Clues Left".
+      if (!remainingIndices.length) continue;
+
+      remainingCount = remainingIndices.length;
+      foundCount = Math.max(0, total - remainingCount);
+      remainingWords = remainingIndices
+        .map((idx) => String(cards[idx]?.word || '').trim())
+        .filter(Boolean);
+    }
+
+    const statusText = (remainingCount === null)
+      ? `${total} word${total === 1 ? '' : 's'}`
+      : `${remainingCount} left`;
+    const progressText = (remainingCount === null || foundCount === null)
+      ? ''
+      : `${foundCount}/${total} found`;
+
+    const wordsHtml = canSeeWords
+      ? (remainingWords.length
+          ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
+          : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>')
+      : '<span class="gamelog-left-word-chip empty">Words hidden from operatives</span>';
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">
