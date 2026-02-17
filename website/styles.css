@@ -25053,6 +25053,17 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     width: min(100%, 420px);
     max-width: 420px;
   }
+
+  /* Cap stacking panel width on desktop so helper text doesn't span the whole board */
+  .game-center-area .game-action-bar > .clue-stack-panel,
+  body.stacking-turn-active .game-action-bar .clue-stack-panel {
+    flex: 0 0 auto;
+    width: min(100%, 820px);
+    max-width: 820px;
+    align-self: center;
+    margin-inline: auto;
+  }
+
   .clue-display-expanded {
     min-width: clamp(180px, 26vw, 320px);
     max-width: 360px;
