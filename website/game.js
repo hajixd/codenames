@@ -7260,7 +7260,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   if (reviewPanelEl && pending) {
     reviewPanelEl.style.display = 'flex';
     if (reviewTitleEl) {
-      const reviewTitle = `${pending.word} ${pending.number}`;
+      const inlineMaskedWord = isSpymaster ? pending.word : '*****';
+      const reviewTitle = `${inlineMaskedWord} ${pending.number}`;
       reviewTitleEl.textContent = reviewTitle;
       reviewTitleEl.title = reviewTitle;
     }
@@ -7343,12 +7344,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       else reviewHintEl.textContent = hintText;
     }
 
-    // Show modal for BOTH spymasters when clue is awaiting/reviewing
-    const showSpymasterModal = !spectator
-      && isSpymaster
+    // Show modal for ALL players when clue is awaiting/reviewing
+    const showReviewModal = !spectator
       && (pending.state === 'awaiting' || pending.state === 'reviewing');
-    if (showSpymasterModal && reviewModalEl) {
-      const reviewTitle = `${pending.word} ${pending.number}`;
+    if (showReviewModal && reviewModalEl) {
+      const maskedWord = isSpymaster ? pending.word : '*****';
+      const reviewTitle = `${maskedWord} ${pending.number}`;
       if (reviewModalTitleEl) {
         reviewModalTitleEl.textContent = reviewTitle;
         reviewModalTitleEl.title = reviewTitle;

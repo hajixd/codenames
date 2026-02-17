@@ -12097,7 +12097,7 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   if (typeof createFn !== 'function') throw new Error('Practice is still loading. Please try again.');
 
   const sizeNum = parseInt(opts?.size, 10);
-  const size = (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
+  const size = (sizeNum === 5) ? 5 : (sizeNum === 4) ? 4 : ((sizeNum === 3) ? 3 : 2);
   const role = String(opts?.role || 'operative');
   const vibe = String(opts?.vibe || '').trim();
   const deckId = String(opts?.deckId || 'standard');
