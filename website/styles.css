@@ -23883,7 +23883,7 @@ body.light-mode .clue-stack-chip {
 
 .clue-display-expanded {
   position: relative;
-  justify-content: center;
+  justify-content: space-between;
   min-width: clamp(180px, 26vw, 320px);
   min-height: 34px;
   padding: 4px 16px;
@@ -23895,18 +23895,23 @@ body.light-mode .clue-stack-chip {
   font-size: clamp(18px, 2.15vw, 24px);
   font-weight: 900;
   letter-spacing: 0.7px;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .clue-number-expanded {
   width: 28px;
   height: 28px;
   font-size: 14px;
+  flex: 0 0 auto;
 }
 
-.guesses-left-expanded {
-  margin-left: 8px;
-  white-space: nowrap;
-}
+/* Unlimited guesses: the old "X left" chip is removed. */
+.guesses-left-expanded { display: none !important; }
 
 .clue-typing-live {
   display: flex;
@@ -24480,8 +24485,10 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   transform: none;
   min-width: 0;
   white-space: nowrap;
-  text-align: left;
-  flex-shrink: 0;
+  text-align: center;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .clue-number-expanded {
@@ -24489,19 +24496,7 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   margin-left: 10px;
 }
 
-.guesses-left-expanded {
-  position: static;
-  transform: none;
-  margin-left: 8px;
-  max-width: 48%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.guesses-left-expanded:empty {
-  display: none;
-}
+/* (guesses-left-expanded removed) */
 
 .game-action-bar.row-clue-endturn {
   display: flex;
