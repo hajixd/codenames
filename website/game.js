@@ -6824,7 +6824,8 @@ function _updateJudgeCourtUI(pid) {
     if (j) {
       el.classList.remove('judge-center');
       el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
-      el.querySelector('.judge-avatar-label').textContent = j.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
+      const labelEl = el.querySelector('.council-judge-verdict');
+      if (labelEl) labelEl.textContent = j.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
     }
   }
   if (state.finalVerdict) {
