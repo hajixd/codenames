@@ -6814,6 +6814,65 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
   }
 }
 
+
+
+function buildCouncilTribunalHtml(liveState, scope) {
+  const voteHtml = (verdict) => {
+    const v = verdict === 'illegal' ? 'illegal' : 'legal';
+    const letter = v === 'illegal' ? 'A' : 'D';
+    const word = v === 'illegal' ? 'AGREE' : 'DISAGREE';
+    return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
+  };
+
+  const judgeNames = ['Aria', 'Kai', 'Nova'];
+  const safeScope = scope ? String(scope) : 'panel';
+  const j0cls = liveState?.judges?.[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+  const j1cls = liveState?.judges?.[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+  const j2cls = liveState?.judges?.[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+  const j0label = liveState?.judges?.[0] ? voteHtml(liveState.judges[0].verdict) : '';
+  const j1label = liveState?.judges?.[1] ? voteHtml(liveState.judges[1].verdict) : '';
+  const j2label = liveState?.judges?.[2] ? voteHtml(liveState.judges[2].verdict) : '';
+
+  const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
+  const verdictShowCls = liveState?.finalVerdict ? 'verdict-show' : '';
+  const stampText = liveState?.finalVerdict
+    ? (liveState.finalVerdict === 'illegal' ? 'CHALLENGE ACCEPTED' : 'CHALLENGE OVERRULED')
+    : '';
+  const stampCls = liveState?.finalVerdict
+    ? (liveState.finalVerdict === 'illegal' ? 'accepted' : 'denied')
+    : '';
+
+  const pendingDots = '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>';
+
+  return `
+    <div class="council-tribunal ${flashCls} ${verdictShowCls}" id="judge-courtroom-${safeScope}">
+      ${stampText ? `<div class="council-verdict-stamp ${stampCls}" id="council-verdict-stamp-${safeScope}">${stampText}</div>` : ''}
+      <div class="council-judges-row" aria-label="AI legality council">
+        <div class="council-judge-card ${j0cls}" id="judge-avatar-${safeScope}-0" style="--judge-idx:0">
+          <div class="council-judge-avatar">
+            <span class="council-judge-initial">${judgeNames[0][0]}</span>
+          </div>
+          <div class="council-judge-name">${judgeNames[0]}</div>
+          <div class="council-judge-verdict">${j0label || pendingDots}</div>
+        </div>
+        <div class="council-judge-card ${j1cls}" id="judge-avatar-${safeScope}-1" style="--judge-idx:1">
+          <div class="council-judge-avatar">
+            <span class="council-judge-initial">${judgeNames[1][0]}</span>
+          </div>
+          <div class="council-judge-name">${judgeNames[1]}</div>
+          <div class="council-judge-verdict">${j1label || pendingDots}</div>
+        </div>
+        <div class="council-judge-card ${j2cls}" id="judge-avatar-${safeScope}-2" style="--judge-idx:2">
+          <div class="council-judge-avatar">
+            <span class="council-judge-initial">${judgeNames[2][0]}</span>
+          </div>
+          <div class="council-judge-name">${judgeNames[2]}</div>
+          <div class="council-judge-verdict">${j2label || pendingDots}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
 function _updateJudgeCourtUI(pid) {
   const state = _liveJudgeVerdicts[pid];
   if (!state) return;
@@ -6826,10 +6885,12 @@ function _updateJudgeCourtUI(pid) {
     return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
   };
 
-  const ensureVerdictStamp = (containerEl, finalVerdict) => {
+  const verdictLabel = (finalVerdict) => (finalVerdict === 'illegal' ? 'CHALLENGE ACCEPTED' : 'CHALLENGE OVERRULED');
+
+  const ensureVerdictStamp = (containerEl, finalVerdict, scope) => {
     if (!containerEl) return;
     containerEl.classList.add('verdict-show');
-    const stampId = 'council-verdict-stamp';
+    const stampId = scope ? `council-verdict-stamp-${scope}` : 'council-verdict-stamp';
     let stamp = containerEl.querySelector(`#${stampId}`);
     if (!stamp) {
       stamp = document.createElement('div');
@@ -6840,29 +6901,35 @@ function _updateJudgeCourtUI(pid) {
     const accepted = finalVerdict === 'illegal';
     stamp.classList.toggle('accepted', accepted);
     stamp.classList.toggle('denied', !accepted);
-    stamp.textContent = accepted ? 'CHALLENGE ACCEPTED' : 'CHALLENGE DENIED';
+    stamp.textContent = verdictLabel(finalVerdict);
   };
-  for (let i = 0; i < 3; i++) {
-    const el = document.getElementById(`judge-avatar-${i}`);
-    if (!el) continue;
-    const j = state.judges[i];
-    if (j) {
-      el.classList.remove('judge-center');
-      el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
-      const labelEl = el.querySelector('.council-judge-verdict');
-      if (labelEl) labelEl.innerHTML = renderVoteHtml(j.verdict);
+
+  const scopes = ['panel', 'modal', null]; // null supports any legacy ids
+  for (const scope of scopes) {
+    for (let i = 0; i < 3; i++) {
+      const el = scope ? document.getElementById(`judge-avatar-${scope}-${i}`) : document.getElementById(`judge-avatar-${i}`);
+      if (!el) continue;
+      const j = state.judges[i];
+      if (j) {
+        el.classList.remove('judge-center');
+        el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
+        const labelEl = el.querySelector('.council-judge-verdict');
+        if (labelEl) labelEl.innerHTML = renderVoteHtml(j.verdict);
+      }
     }
   }
+
   if (state.finalVerdict) {
     const modalCard = document.getElementById('clue-review-modal-card');
     if (modalCard) {
       modalCard.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
     }
-    // Also flash the inline panel hint area
-    const courtEl = document.getElementById('judge-courtroom');
-    if (courtEl) {
+
+    for (const scope of scopes) {
+      const courtEl = scope ? document.getElementById(`judge-courtroom-${scope}`) : document.getElementById('judge-courtroom');
+      if (!courtEl) continue;
       courtEl.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
-      ensureVerdictStamp(courtEl, state.finalVerdict);
+      ensureVerdictStamp(courtEl, state.finalVerdict, scope || undefined);
     }
   }
 }
@@ -7241,8 +7308,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     reviewModalEl.setAttribute('aria-hidden', 'true');
     reviewModalEl.style.display = 'none';
   }
-  // If the council/review modal was previously shown, restore the background layout.
-  document.body.classList.remove('council-open');
   if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
@@ -7297,6 +7362,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     let statusText = '';
     let hintText = '';
     let hintHtml = '';
+    let hintHtmlModal = '';
     let metaText = '';
     const canChallenge = canCurrentUserChallengePendingClue(pending, currentGame);
 
@@ -7317,55 +7383,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       statusText = 'Council Reviewing';
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
       const liveState = _liveJudgeVerdicts[pending.id];
-      const voteHtml = (verdict) => {
-        const v = verdict === 'illegal' ? 'illegal' : 'legal';
-        const letter = v === 'illegal' ? 'A' : 'D';
-        const word = v === 'illegal' ? 'AGREE' : 'DISAGREE';
-        return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
-      };
-      const j0cls = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-      const j1cls = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-      const j2cls = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-      const judgeNames = ['Aria', 'Kai', 'Nova'];
-      const j0label = liveState?.judges[0] ? voteHtml(liveState.judges[0].verdict) : '';
-      const j1label = liveState?.judges[1] ? voteHtml(liveState.judges[1].verdict) : '';
-      const j2label = liveState?.judges[2] ? voteHtml(liveState.judges[2].verdict) : '';
-      const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
-      const verdictShowCls = liveState?.finalVerdict ? 'verdict-show' : '';
-      const stampText = liveState?.finalVerdict
-        ? (liveState.finalVerdict === 'illegal' ? 'CHALLENGE ACCEPTED' : 'CHALLENGE DENIED')
-        : '';
-      const stampCls = liveState?.finalVerdict
-        ? (liveState.finalVerdict === 'illegal' ? 'accepted' : 'denied')
-        : '';
-      hintHtml = `
-        <div class="council-tribunal ${flashCls} ${verdictShowCls}" id="judge-courtroom">
-          ${stampText ? `<div class="council-verdict-stamp ${stampCls}" id="council-verdict-stamp">${stampText}</div>` : ''}
-          <div class="council-judges-row" aria-label="AI legality council">
-            <div class="council-judge-card ${j0cls}" id="judge-avatar-0" style="--judge-idx:0">
-              <div class="council-judge-avatar">
-                <span class="council-judge-initial">${judgeNames[0][0]}</span>
-              </div>
-              <div class="council-judge-name">${judgeNames[0]}</div>
-              <div class="council-judge-verdict">${j0label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
-            </div>
-            <div class="council-judge-card ${j1cls}" id="judge-avatar-1" style="--judge-idx:1">
-              <div class="council-judge-avatar">
-                <span class="council-judge-initial">${judgeNames[1][0]}</span>
-              </div>
-              <div class="council-judge-name">${judgeNames[1]}</div>
-              <div class="council-judge-verdict">${j1label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
-            </div>
-            <div class="council-judge-card ${j2cls}" id="judge-avatar-2" style="--judge-idx:2">
-              <div class="council-judge-avatar">
-                <span class="council-judge-initial">${judgeNames[2][0]}</span>
-              </div>
-              <div class="council-judge-name">${judgeNames[2]}</div>
-              <div class="council-judge-verdict">${j2label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
-            </div>
-          </div>
-        </div>
-      `;
+      hintHtml = buildCouncilTribunalHtml(liveState, 'panel');
+      hintHtmlModal = buildCouncilTribunalHtml(liveState, 'modal');
       reviewPanelEl.classList.add('is-reviewing');
     } else if (pending.state === 'rejected') {
       statusText = 'Rejected';
@@ -7390,8 +7409,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const showReviewModal = !spectator
       && (pending.state === 'awaiting' || pending.state === 'reviewing');
     if (showReviewModal && reviewModalEl) {
-      // While the council popup is up, keep the background layout centered.
-      document.body.classList.add('council-open');
       // While the council popup is up, keep the clue pill centered in the action bar.
       if (actionBarEl) actionBarEl.classList.add('row-clue-endturn');
 
@@ -7404,7 +7421,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       if (reviewModalStatusEl) reviewModalStatusEl.textContent = statusText;
       if (reviewModalMetaEl) reviewModalMetaEl.textContent = metaText;
       if (reviewModalHintEl) {
-        if (hintHtml) reviewModalHintEl.innerHTML = hintHtml;
+        const modalHtml = hintHtmlModal || hintHtml;
+        if (modalHtml) reviewModalHintEl.innerHTML = modalHtml;
         else reviewModalHintEl.textContent = hintText;
       }
 

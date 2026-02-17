@@ -25713,23 +25713,3 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     bottom: 4px;
   }
 }
-
-/* ─── Council modal: keep the blurred background centered ───
-   The desktop layout uses asymmetric sidebars (left vs right widths), which can
-   make the centered clue pill look shifted under a centered modal. When the
-   council popup is open, collapse sidebars to keep the board/clue centered. */
-body.council-open .game-main-layout {
-  grid-template-columns: 0 1fr 0 !important;
-}
-
-body.council-open .game-sidebar {
-  display: none !important;
-}
-
-body.council-open .sidebar-backdrop {
-  display: none !important;
-}
-
-body.council-open .game-center-area .game-action-bar {
-  justify-content: center !important;
-}
