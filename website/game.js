@@ -7646,6 +7646,9 @@ function buildCluesLeftLogHtml() {
   const spectator = isSpectating();
   const canSeeWords = !spectator && isCurrentUserSpymaster();
 
+  // Only show clues from the current user's team (spectators see all).
+  const myTeamColor = getMyTeamColor();
+
   // Build a fast word -> index map (cards are unique words).
   const wordIndex = new Map();
   for (let i = 0; i < cards.length; i += 1) {
@@ -7658,6 +7661,10 @@ function buildCluesLeftLogHtml() {
     const clue = history[i];
     if (!clue || typeof clue !== 'object') continue;
     const team = String(clue.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+
+    // Filter: only show clues from your own team (spectators see all).
+    if (myTeamColor && team !== myTeamColor) continue;
+
     const clueWord = String(clue.word || '').trim() || 'CLUE';
     const targetIndices = getClueTargetIndicesFromEntry(clue, currentGame);
     const targetWords = Array.isArray(clue.targetWords)

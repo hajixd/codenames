@@ -17494,7 +17494,7 @@ body.og-mode .og-game-log .game-log-entry {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 285px;
+  max-height: 200px;
   gap: 6px;
 }
 
@@ -17502,8 +17502,8 @@ body.og-mode .og-game-log .game-log-entry {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 120px;
-  max-height: 230px;
+  min-height: 80px;
+  max-height: 155px;
 }
 
 /* Mount the existing .operative-chat-panel into the OG host */
@@ -21614,7 +21614,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
     right: clamp(10px, 1.1vw, 20px);
     bottom: clamp(10px, 1.1vw, 20px);
     width: clamp(300px, 19vw, 350px);
-    max-height: clamp(220px, 33vh, 330px);
+    max-height: clamp(170px, 25vh, 250px);
     z-index: 220;
     overflow: hidden;
     border-radius: 16px;
@@ -21626,7 +21626,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 
   body.og-mode .og-gamelog-slidedown.open,
   body.cozy-mode .og-gamelog-slidedown.open{
-    max-height: clamp(220px, 33vh, 330px);
+    max-height: clamp(170px, 25vh, 250px);
     opacity: 1;
     transform: none;
   }
@@ -21639,7 +21639,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   body.og-mode .og-gamelog-slidedown-inner,
   body.cozy-mode .og-gamelog-slidedown-inner{
     margin: 0;
-    max-height: clamp(220px, 33vh, 330px);
+    max-height: clamp(170px, 25vh, 250px);
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: linear-gradient(180deg, rgba(56, 59, 65, 0.96) 0%, rgba(36, 39, 44, 0.96) 100%);
@@ -21663,7 +21663,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 
   body.og-mode .og-gamelog-slidedown-inner .gamelog-entries,
   body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries{
-    max-height: calc(clamp(220px, 33vh, 330px) - 46px);
+    max-height: calc(clamp(170px, 25vh, 250px) - 46px);
     padding: 8px 10px 10px;
     gap: 8px;
   }
@@ -22956,7 +22956,7 @@ body.light-mode .brx-pop-card{
 
 /* Move clue row and cards slightly lower. */
 body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
-  margin-top: 4px;
+  margin-top: 10px;
 }
 
 body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
@@ -23253,7 +23253,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 /* Desktop OG/Cozy: keep docked Game Log as tall as docked Team Chat. */
 @media (min-width: 1024px) {
   body:is(.og-mode, .cozy-mode) {
-    --og-docked-panel-h: clamp(220px, 33vh, 330px);
+    --og-docked-panel-h: clamp(170px, 25vh, 250px);
   }
 
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
@@ -23334,7 +23334,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .game-log-panel,
   .operative-chat-panel {
-    min-height: clamp(200px, 36vh, 320px);
+    min-height: clamp(160px, 28vh, 240px);
   }
 
   .voting-panel {
