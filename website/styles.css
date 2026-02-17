@@ -24231,6 +24231,37 @@ body.light-mode .clue-stack-chip {
 }
 
 @media (min-width: 821px) {
+  /* Slightly thinner stacking panel on desktop */
+  body.stacking-turn-active .game-action-bar .clue-stack-panel {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  body.stacking-turn-active .game-action-bar {
+    padding: 6px 12px;
+  }
+
+  .clue-stack-panel-header {
+    gap: 6px;
+  }
+
+  .clue-stack-badge {
+    padding: 2px 8px;
+  }
+
+  .clue-stack-clear-btn {
+    min-height: 24px;
+    padding: 3px 8px;
+  }
+
+  .clue-stack-chip-row {
+    gap: 5px;
+  }
+
+  .clue-stack-chip {
+    padding: 3px 7px;
+  }
+
   .judge-stage {
     --judge-left-legal: 14%;
     --judge-left-illegal: 86%;
