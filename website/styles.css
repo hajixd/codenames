@@ -24231,37 +24231,6 @@ body.light-mode .clue-stack-chip {
 }
 
 @media (min-width: 821px) {
-  /* Slightly thinner stacking panel on desktop */
-  body.stacking-turn-active .game-action-bar .clue-stack-panel {
-    padding: 6px 10px;
-    gap: 6px;
-  }
-
-  body.stacking-turn-active .game-action-bar {
-    padding: 6px 12px;
-  }
-
-  .clue-stack-panel-header {
-    gap: 6px;
-  }
-
-  .clue-stack-badge {
-    padding: 2px 8px;
-  }
-
-  .clue-stack-clear-btn {
-    min-height: 24px;
-    padding: 3px 8px;
-  }
-
-  .clue-stack-chip-row {
-    gap: 5px;
-  }
-
-  .clue-stack-chip {
-    padding: 3px 7px;
-  }
-
   .judge-stage {
     --judge-left-legal: 14%;
     --judge-left-illegal: 86%;
@@ -24354,9 +24323,8 @@ body.light-mode .judge-avatar.judge-illegal {
 
 .game-action-bar.row-clue-endturn {
   flex-wrap: nowrap;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
 }
 
 .game-action-bar.row-clue-endturn .mobile-game-actions {
@@ -24364,25 +24332,14 @@ body.light-mode .judge-avatar.judge-illegal {
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: min(78%, 520px);
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
   flex: 0 0 auto;
-  margin-left: 0;
-}
-
-/* Center the clue pill when it's the primary/only action (e.g., non-active spymasters) */
-.game-action-bar.row-clue-centered {
-  justify-content: center;
-}
-
-.game-action-bar.row-clue-centered .clue-display-expanded {
-  flex: 0 1 auto;
-  max-width: min(78%, 520px);
-  margin: 0 auto;
+  margin-left: auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
@@ -24484,21 +24441,20 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .clue-word-expanded {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Inline word (left of number) so the clue is always visible */
+  position: static;
+  transform: none;
   min-width: 0;
-  max-width: calc(100% - 126px);
+  max-width: calc(100% - 110px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
-  pointer-events: none;
+  text-align: left;
 }
 
 .clue-number-expanded {
-  margin-left: auto;
   flex: 0 0 auto;
+  margin-left: 10px;
 }
 
 .guesses-left-expanded {
@@ -24516,16 +24472,15 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .game-action-bar.row-clue-endturn {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: clamp(8px, 1.3vw, 14px);
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 0 1 auto;
-  width: auto;
-  max-width: min(78%, 520px);
+  width: 100%;
+  max-width: none;
   min-width: 0;
 }
 

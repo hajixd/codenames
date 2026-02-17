@@ -7213,7 +7213,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     reviewModalEl.setAttribute('aria-hidden', 'true');
     reviewModalEl.style.display = 'none';
   }
-  if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn', 'row-clue-centered');
+  if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
   renderClueStackingPanel();
@@ -7476,9 +7476,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       queueLiveClueDraftSync();
       return;
     }
-
-    // Non-active spymasters keep the current clue pill visible. Center it in the action bar.
-    if (actionBarEl) actionBarEl.classList.add('row-clue-centered');
     void clearLiveClueDraftOwnership({ silent: true });
     return;
   }
