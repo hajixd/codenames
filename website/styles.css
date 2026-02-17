@@ -24354,8 +24354,9 @@ body.light-mode .judge-avatar.judge-illegal {
 
 .game-action-bar.row-clue-endturn {
   flex-wrap: nowrap;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: 12px;
 }
 
 .game-action-bar.row-clue-endturn .mobile-game-actions {
@@ -24363,14 +24364,25 @@ body.light-mode .judge-avatar.judge-illegal {
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: min(78%, 520px);
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
   flex: 0 0 auto;
-  margin-left: auto;
+  margin-left: 0;
+}
+
+/* Center the clue pill when it's the primary/only action (e.g., non-active spymasters) */
+.game-action-bar.row-clue-centered {
+  justify-content: center;
+}
+
+.game-action-bar.row-clue-centered .clue-display-expanded {
+  flex: 0 1 auto;
+  max-width: min(78%, 520px);
+  margin: 0 auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
@@ -24504,15 +24516,16 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .game-action-bar.row-clue-endturn {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  justify-content: center;
   align-items: center;
   gap: clamp(8px, 1.3vw, 14px);
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  width: 100%;
-  max-width: none;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: min(78%, 520px);
   min-width: 0;
 }
 
