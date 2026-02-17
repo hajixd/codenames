@@ -7186,7 +7186,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const clueNumberEl = document.getElementById('clue-number');
   const guessesLeftEl = document.getElementById('guesses-left');
   const endTurnBtn = document.getElementById('end-turn-btn');
-  if (!clueWordEl || !clueNumberEl || !guessesLeftEl || !endTurnBtn) return;
+  // guessesLeftEl is optional (we hide/remove it for unlimited guesses)
+  if (!clueWordEl || !clueNumberEl || !endTurnBtn) return;
 
   syncClueSubmitButtonAppearance();
 
@@ -7238,12 +7239,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
   clueWordEl.textContent = clueWord;
   clueNumberEl.textContent = clueNumber;
-  // Show guesses remaining inline in the pill during operative phase
-  const gr = Number(currentGame?.guessesRemaining);
-  if (currentGame?.currentPhase === 'operatives' && currentGame?.currentClue && Number.isFinite(gr) && gr > 0) {
-    guessesLeftEl.textContent = `${gr} left`;
-  } else {
+  // Unlimited guesses: remove/hide guesses remaining text.
+  if (guessesLeftEl) {
     guessesLeftEl.textContent = '';
+    guessesLeftEl.style.display = 'none';
   }
 
   const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
@@ -7714,12 +7713,10 @@ function buildCluesLeftLogHtml() {
         .filter(Boolean);
     }
 
-    const statusText = (remainingCount === null)
-      ? `${total} word${total === 1 ? '' : 's'}`
-      : `${remainingCount} left`;
-    const progressText = (remainingCount === null || foundCount === null)
-      ? ''
-      : `${foundCount}/${total} found`;
+	    // Remove "X left" text (unlimited guesses / no guesses-left UI)
+	    const progressText = (remainingCount === null || foundCount === null)
+	      ? ''
+	      : `${foundCount}/${total} found`;
 
     const wordsHtml = canSeeWords
       ? (remainingWords.length
@@ -7729,10 +7726,9 @@ function buildCluesLeftLogHtml() {
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">
-        <div class="gamelog-left-head">
-          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
-          <span class="gamelog-left-clue-count">${escapeHtml(statusText)}</span>
-        </div>
+	        <div class="gamelog-left-head">
+	          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
+	        </div>
         <div class="gamelog-left-meta">${escapeHtml(progressText)}</div>
         <div class="gamelog-left-word-list">${wordsHtml}</div>
       </div>

@@ -11209,6 +11209,12 @@ body.tournament.has-team-color .input:focus {
   font-size: 16px;
 }
 
+@media (min-width: 1024px) {
+  .clue-display-expanded {
+    width: min(100%, 460px);
+  }
+}
+
 .guesses-left-expanded {
   font-size: 11px;
   font-weight: 600;
@@ -23882,30 +23888,52 @@ body.light-mode .clue-stack-chip {
 }
 
 .clue-display-expanded {
+  /* Fixed-size pill that stays centered and doesn't shrink to content */
   position: relative;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  min-width: clamp(180px, 26vw, 320px);
+  width: min(100%, 380px);
   min-height: 34px;
-  padding: 4px 16px;
+  padding: 6px 52px 6px 18px; /* extra right padding for the number */
   border-radius: 999px;
-  gap: 10px;
 }
 
 .clue-word-expanded {
   font-size: clamp(18px, 2.15vw, 24px);
   font-weight: 900;
   letter-spacing: 0.7px;
+  /* Keep the clue word perfectly centered in the pill */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: calc(100% - 96px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .clue-number-expanded {
   width: 28px;
   height: 28px;
   font-size: 14px;
+  /* Pin the number to the right side of the pill */
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .guesses-left-expanded {
-  margin-left: 8px;
-  white-space: nowrap;
+  display: none !important;
+}
+
+@media (min-width: 1024px) {
+  .clue-display-expanded {
+    width: 460px;
+  }
 }
 
 .clue-typing-live {
@@ -24368,9 +24396,8 @@ body.light-mode .council-status-badge {
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: min(78%, 520px);
+  /* Keep clue pill a consistent size even when end-turn is visible */
+  flex: 0 0 auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
@@ -24384,9 +24411,9 @@ body.light-mode .council-status-badge {
 
 @media (max-width: 768px) {
   .clue-display-expanded {
-    min-width: min(100%, 320px);
+    width: min(100%, 320px);
     min-height: 30px;
-    padding: 3px 12px;
+    padding: 3px 44px 3px 12px;
   }
 
   .clue-word-expanded {
@@ -24467,55 +24494,50 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 
 .clue-display-expanded {
   min-height: clamp(34px, 3.4vw, 40px);
-  padding: 4px clamp(12px, 1.8vw, 18px);
+  /* Extra right padding reserves space for the clue number on the right */
+  padding: 4px 52px 4px 18px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.11),
     0 8px 20px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 
   /* Keep the clue pill a consistent width (don't shrink to content). */
-  width: min(92vw, 320px);
-  max-width: min(92vw, 320px);
+  width: min(100%, 380px);
+  max-width: min(100%, 380px);
   justify-content: center;
 }
 
 .clue-word-expanded {
-  /* Inline word (left of number) so the clue is always visible */
-  position: static;
-  transform: none;
-  min-width: 0;
-  white-space: nowrap;
-  text-align: left;
-  flex: 1 1 auto;
+  /* Keep the clue word perfectly centered in the pill */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: calc(100% - 96px);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .clue-number-expanded {
-  flex: 0 0 auto;
-  margin-left: auto;
+  /* Pin the number to the right side of the pill */
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* Wider fixed clue pill on desktop */
 @media (min-width: 821px) {
   .clue-display-expanded {
-    width: min(520px, 460px);
-    max-width: min(520px, 460px);
+    width: min(100%, 460px);
+    max-width: min(100%, 460px);
   }
 }
 
 .guesses-left-expanded {
-  position: static;
-  transform: none;
-  margin-left: 8px;
-  max-width: 48%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.guesses-left-expanded:empty {
-  display: none;
+  display: none !important;
 }
 
 .game-action-bar.row-clue-endturn {
@@ -24527,8 +24549,7 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
