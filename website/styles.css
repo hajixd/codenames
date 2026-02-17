@@ -25040,6 +25040,30 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   border-radius: 10px;
 }
 
+/* ─── Center the clue pill (and End Turn) as a single group on desktop ───
+   Earlier rules set this row to use grid/space-between, which causes the clue
+   pill to hug the left edge when the End Turn container is hidden (spymasters)
+   or to separate the pill and button. Override those layouts on desktop.
+*/
+@media (min-width: 821px) {
+  .game-action-bar.row-clue-endturn {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+
+  .game-action-bar.row-clue-endturn .clue-display-expanded {
+    flex: 0 1 auto !important;
+    width: auto;
+  }
+
+  .game-action-bar.row-clue-endturn .operative-actions-expanded {
+    flex: 0 0 auto;
+    margin-left: 0 !important;
+  }
+}
+
 /* ─── Desktop clue width cap ─── */
 @media (min-width: 821px) {
   .clue-form-expanded {
