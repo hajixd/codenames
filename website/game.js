@@ -6441,7 +6441,14 @@ function shouldOfferChallengeForPendingClue(game, team) {
 function normalizeLiveClueDraft(raw, game = currentGame) {
   if (!raw || typeof raw !== 'object') return null;
   const team = String(raw.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
-  const word = String(raw.word || '').trim().toUpperCase();
+  // Live clue drafts are for realtime UX while a spymaster types.
+  // Operatives should see masked progress, but opposing spymasters may see the exact text.
+  const word = String(raw.word || '').trim().toUpperCase().slice(0, 40);
+  const wordLenRaw = (raw.wordLen ?? raw.len ?? raw.wordLength);
+  const wordLen = Number.isFinite(Number(wordLenRaw))
+    ? Math.max(0, Math.min(40, Math.floor(Number(wordLenRaw))))
+    : Math.max(0, Math.min(40, word.length));
+
   const numberRaw = String(raw.number ?? '').trim();
   const number = numberRaw === '' ? '' : String(Math.max(0, Math.min(9, parseInt(numberRaw, 10) || 0)));
   const byId = String(raw.byId || '').trim();
@@ -6450,7 +6457,7 @@ function normalizeLiveClueDraft(raw, game = currentGame) {
   const activeTeam = String(game?.currentTeam || '').toLowerCase() === 'blue' ? 'blue' : 'red';
   if (team !== activeTeam) return null;
   if (!word && !number) return null;
-  return { team, word, number, byId, byName, updatedAtMs };
+  return { team, word, wordLen, number, byId, byName, updatedAtMs };
 }
 
 function canPublishLiveClueDraft(game = currentGame) {
@@ -6470,6 +6477,7 @@ function buildLiveClueDraftPayload(game = currentGame) {
   const wordInput = document.getElementById('clue-input');
   const numInput = document.getElementById('clue-num-input');
   const word = String(wordInput?.value || '').trim().toUpperCase().slice(0, 40);
+  const wordLen = word.length;
   const numRaw = String(numInput?.value || '').trim();
   const number = numRaw ? String(Math.max(0, Math.min(9, parseInt(numRaw, 10) || 0))) : '';
   const team = String(game.currentTeam || '') === 'blue' ? 'blue' : 'red';
@@ -6479,6 +6487,7 @@ function buildLiveClueDraftPayload(game = currentGame) {
   return {
     team,
     word,
+    wordLen,
     number,
     byId,
     byName,
@@ -6508,7 +6517,7 @@ async function flushLiveClueDraftSync(opts = {}) {
   const clearOnly = !!opts.clearOnly;
   const payload = clearOnly ? null : buildLiveClueDraftPayload(currentGame);
   const sig = payload
-    ? `set|${payload.team}|${payload.word}|${payload.number}|${payload.byId}`
+    ? `set|${payload.team}|${payload.word}|${payload.wordLen}|${payload.number}|${payload.byId}`
     : `clear|${String(getUserId?.() || '').trim()}`;
   if (!force && sig === _lastSentClueDraftSig) return;
 
@@ -7339,15 +7348,24 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
 
   const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
-  if (typingLiveEl && currentGame?.currentPhase === 'spymaster' && opposingSpymaster && liveDraft && !pendingBlocking) {
-    const teamName = liveDraft.team === 'red' ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team');
-    const draftWord = liveDraft.word || '...';
-    const draftNumber = liveDraft.number === '' ? '…' : liveDraft.number;
-    typingLiveEl.innerHTML = `
-      <span class="clue-typing-dot" aria-hidden="true"></span>
-      <span class="clue-typing-text">${escapeHtml(teamName)} spymaster typing: ${escapeHtml(draftWord)} ${escapeHtml(draftNumber)}</span>
-    `;
-    typingLiveEl.style.display = 'flex';
+  const isOperativeViewer = !!(!spectator && !isSpymaster);
+  const isSpectatorViewer = !!spectator;
+
+  // While a spymaster is typing, show masked progress to operatives (and spectators),
+  // while opposing spymasters can see the exact text in real time.
+  if (currentGame?.currentPhase === 'spymaster' && liveDraft && !pendingBlocking) {
+    // Operatives see one "*" per character as it is typed.
+    if (isOperativeViewer || isSpectatorViewer) {
+      const n = Math.max(0, Math.min(40, Number(liveDraft.wordLen || 0)));
+      clueWordEl.textContent = n ? '*'.repeat(n) : '—';
+      clueNumberEl.textContent = liveDraft.number === '' ? '…' : String(liveDraft.number || '—');
+    }
+
+    // Opposing spymaster sees the exact word/number as it is typed.
+    if (opposingSpymaster) {
+      clueWordEl.textContent = liveDraft.word || '—';
+      clueNumberEl.textContent = liveDraft.number === '' ? '…' : String(liveDraft.number || '—');
+    }
   }
 
   if (reviewPanelEl && pending) {
