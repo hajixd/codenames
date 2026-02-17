@@ -584,7 +584,15 @@ function applyLocalPracticeGuessState(game, idx, actorName) {
     endTurn = true;
   }
 
-  // Unlimited guesses: do not decrement guessesRemaining or auto-end on count.
+  const currentGuesses = Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : 0;
+  const nextGuesses = Math.max(0, currentGuesses - 1);
+  if (game.currentClue) {
+    game.guessesRemaining = nextGuesses;
+    if (!winner && !endTurn && card.type === team && nextGuesses <= 0) {
+      endTurn = true;
+    }
+    if (winner || endTurn) game.guessesRemaining = 0;
+  }
 
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(logEntry);
@@ -826,8 +834,7 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
   const actingTeam = team === 'blue' ? 'blue' : 'red';
   const teamName = actingTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
   game.currentClue = { word: clueWord, number: clueNumber };
-  // Unlimited guesses: legacy field kept as null for older UI/AI helpers.
-  game.guessesRemaining = null;
+  game.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
   game.currentPhase = 'operatives';
   game.timerEnd = buildPhaseTimerEndValue(game, 'operatives');
   game.log = Array.isArray(game.log) ? [...game.log] : [];
@@ -1071,7 +1078,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
   const firstActor = pickLocalPracticeRotatingAI(game, team, 'op', aiOps) || aiOps[0];
   const firstActorName = `AI ${String(firstActor?.name || 'Player')}`.trim();
 
-  if (!game.currentClue) {
+  if (!game.currentClue || !Number.isFinite(+game.guessesRemaining) || +game.guessesRemaining <= 0) {
     mutateLocalPracticeGame(gameId, (draft) => {
       if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
       applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
@@ -6567,8 +6574,7 @@ function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
     currentClue: { word: pending.word, number: pending.number },
     pendingClue: firebase.firestore.FieldValue.delete(),
     liveClueDraft: firebase.firestore.FieldValue.delete(),
-    // Unlimited guesses: remove the old guess-counter field.
-    guessesRemaining: firebase.firestore.FieldValue.delete(),
+    guessesRemaining: (pending.number === 0 ? 0 : (pending.number + 1)),
     currentPhase: 'operatives',
     timerEnd: buildPhaseTimerEndValue(game, 'operatives'),
     log: firebase.firestore.FieldValue.arrayUnion(...logLines),
@@ -6584,8 +6590,7 @@ function applyAcceptedClueLocalState(draft, pending, opts = {}) {
   draft.currentClue = { word: pending.word, number: pending.number };
   draft.pendingClue = null;
   draft.liveClueDraft = null;
-  // Unlimited guesses: legacy field kept as null for older UI/AI helpers.
-  draft.guessesRemaining = null;
+  draft.guessesRemaining = (pending.number === 0 ? 0 : (pending.number + 1));
   draft.currentPhase = 'operatives';
   draft.timerEnd = buildPhaseTimerEndValue(draft, 'operatives');
   draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
@@ -7179,8 +7184,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const waitingForEl = document.getElementById('waiting-for');
   const clueWordEl = document.getElementById('clue-word');
   const clueNumberEl = document.getElementById('clue-number');
+  const guessesLeftEl = document.getElementById('guesses-left');
   const endTurnBtn = document.getElementById('end-turn-btn');
-  if (!clueWordEl || !clueNumberEl || !endTurnBtn) return;
+  if (!clueWordEl || !clueNumberEl || !guessesLeftEl || !endTurnBtn) return;
 
   syncClueSubmitButtonAppearance();
 
@@ -7232,7 +7238,13 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
   clueWordEl.textContent = clueWord;
   clueNumberEl.textContent = clueNumber;
-  // Unlimited guesses: no "X left" display in the clue pill.
+  // Show guesses remaining inline in the pill during operative phase
+  const gr = Number(currentGame?.guessesRemaining);
+  if (currentGame?.currentPhase === 'operatives' && currentGame?.currentClue && Number.isFinite(gr) && gr > 0) {
+    guessesLeftEl.textContent = `${gr} left`;
+  } else {
+    guessesLeftEl.textContent = '';
+  }
 
   const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
   if (typingLiveEl && currentGame?.currentPhase === 'spymaster' && opposingSpymaster && liveDraft && !pendingBlocking) {
@@ -7337,6 +7349,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const showReviewModal = !spectator
       && (pending.state === 'awaiting' || pending.state === 'reviewing');
     if (showReviewModal && reviewModalEl) {
+      // While the council popup is up, keep the clue pill centered in the action bar.
+      if (actionBarEl) actionBarEl.classList.add('row-clue-endturn');
+
       const maskedWord = isSpymaster ? pending.word : '*****';
       const reviewTitle = `${maskedWord} ${pending.number}`;
       if (reviewModalTitleEl) {
@@ -8091,7 +8106,15 @@ async function handleCardClick(cardIndex) {
         endTurn = true;
       }
 
-      // Unlimited guesses: do not decrement guessesRemaining or auto-end on count.
+      const guessesNow = Number.isFinite(+liveGame.guessesRemaining) ? +liveGame.guessesRemaining : 0;
+      const guessesNext = Math.max(0, guessesNow - 1);
+      if (liveGame.currentClue) {
+        updates.guessesRemaining = guessesNext;
+        if (!winner && !endTurn && cardLive.type === teamLive && guessesNext <= 0) {
+          endTurn = true;
+        }
+        if (winner || endTurn) updates.guessesRemaining = 0;
+      }
 
       const guessResult = {
         word: cardLive.word,
@@ -8118,7 +8141,7 @@ async function handleCardClick(cardIndex) {
         updates.currentClue = null;
         updates.pendingClue = firebase.firestore.FieldValue.delete();
         updates.liveClueDraft = firebase.firestore.FieldValue.delete();
-        updates.guessesRemaining = firebase.firestore.FieldValue.delete();
+        updates.guessesRemaining = 0;
         updates.timerEnd = buildPhaseTimerEndValue(liveGame, 'spymaster');
       }
       updates.log = firebase.firestore.FieldValue.arrayUnion(...logEntries);
@@ -8217,7 +8240,7 @@ async function handleEndTurn() {
       currentClue: null,
       pendingClue: firebase.firestore.FieldValue.delete(),
       liveClueDraft: firebase.firestore.FieldValue.delete(),
-      guessesRemaining: firebase.firestore.FieldValue.delete(),
+      guessesRemaining: 0,
       timerEnd: buildPhaseTimerEndValue(currentGame, 'spymaster'),
       log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
