@@ -25734,3 +25734,43 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     bottom: 4px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Mobile: ensure the clue WORD is always visible.
+   
+   During the operatives phase we add `.row-clue-endturn`, which previously
+   forced `flex-wrap: nowrap` and caused the clue pill to shrink so much that
+   only the number remained visible on small screens.
+*/
+@media (max-width: 768px) {
+  /* Let the action bar wrap so the clue pill can take a full row. */
+  .game-center-area .game-action-bar,
+  .game-action-bar.row-clue-endturn {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* Always give the clue pill the room it needs. */
+  .game-center-area .game-action-bar > #current-clue,
+  .game-action-bar.row-clue-endturn .clue-display-expanded {
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-width: 0;
+    order: 1;
+  }
+
+  /* Keep other controls on a second row (or wrap as needed). */
+  .game-center-area .game-action-bar > #operative-actions {
+    order: 2;
+  }
+
+  .game-center-area .game-action-bar > #mobile-game-actions {
+    order: 3;
+    margin-left: 0;
+  }
+
+  /* Reserve a bit less space on tiny screens so the word doesn't vanish. */
+  .clue-word-expanded {
+    width: calc(100% - 72px);
+  }
+}
