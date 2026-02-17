@@ -6480,7 +6480,10 @@ line-height: 1.25;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
+  flex: 0 1 auto;
+  width: min(100%, 420px);
+  max-width: 420px;
+  margin: 0 auto;
 }
 
 .clue-input-compact {
@@ -11218,8 +11221,11 @@ body.tournament.has-team-color .input:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 1;
-  max-width: 500px;
+  /* Don't let the clue input stretch across the whole action bar */
+  flex: 0 1 auto;
+  width: min(100%, 420px);
+  max-width: 420px;
+  margin: 0 auto;
 }
 
 .clue-input-expanded {
@@ -11731,6 +11737,9 @@ body.tournament.has-team-color .input:focus {
   .clue-form-expanded {
     flex-wrap: wrap;
     justify-content: center;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
   }
 
   .clue-form-expanded .btn {
@@ -15886,7 +15895,8 @@ body.cozy-mode .clue-form-expanded {
   background: #ffffff;
   border-radius: 28px;
   padding: 5px 5px 5px 20px;
-  max-width: 460px;
+  width: min(100%, 420px);
+  max-width: 420px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   gap: 6px;
 }
@@ -17085,7 +17095,8 @@ body.og-mode .clue-form-expanded {
   background: #ffffff;
   border-radius: 28px;
   padding: 5px 5px 5px 20px;
-  max-width: 460px;
+  width: min(100%, 420px);
+  max-width: 420px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   gap: 6px;
 }
@@ -23748,7 +23759,7 @@ body.stacking-turn-active .game-center-area .game-action-bar {
 
 .clue-stack-input-slot .clue-form-expanded {
   width: 100%;
-  max-width: clamp(320px, 42vw, 460px);
+  max-width: clamp(320px, 48vw, 420px);
   margin: 0 auto;
 }
 
@@ -24101,6 +24112,10 @@ body.light-mode .clue-stack-chip {
   position: relative;
   min-height: 132px;
   overflow: visible;
+  /* Tunable positions so the judges can slide farther left/right responsively */
+  --judge-left-center: 50%;
+  --judge-left-legal: 18%;
+  --judge-left-illegal: 82%;
 }
 
 .judge-lane {
@@ -24141,10 +24156,12 @@ body.light-mode .clue-stack-chip {
               border-color 0.4s ease,
               box-shadow 0.4s ease;
   position: absolute;
-  left: 50%;
+  left: var(--judge-left-center);
   top: calc(var(--judge-row, 0) * 42px);
   transform: translateX(-50%);
   z-index: 2;
+  max-width: min(320px, calc(50% - 14px));
+  min-width: 0;
 }
 
 .judge-avatar-icon {
@@ -24166,6 +24183,9 @@ body.light-mode .clue-stack-chip {
   letter-spacing: 0.3px;
   color: var(--text);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 96px;
 }
 
 .judge-avatar-label {
@@ -24178,14 +24198,14 @@ body.light-mode .clue-stack-chip {
 
 /* Center state — waiting to vote */
 .judge-avatar.judge-center {
-  left: 50%;
+  left: var(--judge-left-center);
   transform: translateX(-50%);
   animation: judgeOrbPulse 1.2s ease-in-out infinite;
   animation-delay: calc(var(--judge-row, 0) * 0.2s);
 }
 
 .judge-avatar.judge-legal {
-  left: 25%;
+  left: var(--judge-left-legal);
   transform: translateX(-50%);
   background: rgba(57, 211, 83, 0.15);
   border-color: #39d353;
@@ -24202,11 +24222,43 @@ body.light-mode .clue-stack-chip {
 }
 
 .judge-avatar.judge-illegal {
-  left: 75%;
+  left: var(--judge-left-illegal);
   transform: translateX(-50%);
   background: rgba(248, 81, 73, 0.15);
   border-color: #f85149;
   box-shadow: 0 0 12px rgba(248, 81, 73, 0.3);
+}
+
+@media (min-width: 821px) {
+  .judge-stage {
+    --judge-left-legal: 14%;
+    --judge-left-illegal: 86%;
+  }
+}
+
+@media (max-width: 520px) {
+  .judge-courtroom {
+    padding: 12px 8px;
+  }
+  .judge-top {
+    gap: 8px;
+  }
+  .judge-stage {
+    min-height: 124px;
+    --judge-left-legal: 20%;
+    --judge-left-illegal: 80%;
+  }
+  .judge-avatar {
+    padding: 6px 10px;
+    gap: 6px;
+    max-width: min(280px, calc(50% - 12px));
+  }
+  .judge-avatar-name {
+    max-width: 84px;
+  }
+  .judge-avatar-label {
+    min-width: 42px;
+  }
 }
 
 .judge-avatar.judge-illegal .judge-avatar-icon {
@@ -24853,6 +24905,13 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
     max-width: 100%;
   }
 
+  /* Keep the clue input from becoming comically wide on tablets/landscape */
+  .clue-form-expanded {
+    width: min(100%, 420px);
+    max-width: 420px;
+    margin: 0 auto;
+  }
+
   .game-header-expanded {
     padding: clamp(6px, 2vw, 10px) clamp(8px, 2.6vw, 14px);
   }
@@ -24963,7 +25022,7 @@ body.light-mode.stacking-turn-active .game-action-bar .clue-stack-panel {
 body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   flex: 1 1 auto;
   width: 100%;
-  max-width: 100%;
+  max-width: min(100%, 420px);
 }
 
 /* During operative phase, make clue display + end turn sit as one integrated row */
@@ -24984,12 +25043,14 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 /* ─── Desktop clue width cap ─── */
 @media (min-width: 821px) {
   .clue-form-expanded {
-    max-width: 340px;
+    width: min(100%, 420px);
+    max-width: 420px;
   }
   /* In stacking mode on desktop, keep the clue input compact instead of full-width */
   body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded,
   body.stacking-turn-active .game-action-bar .clue-form-expanded {
-    max-width: clamp(320px, 42vw, 460px);
+    width: min(100%, 420px);
+    max-width: 420px;
   }
   .clue-display-expanded {
     min-width: clamp(180px, 26vw, 320px);
