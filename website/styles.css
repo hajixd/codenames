@@ -21253,6 +21253,9 @@ body.cozy-mode .gamelog-avatar-name {
 
 body.og-mode .gamelog-clue-pill,
 body.cozy-mode .gamelog-clue-pill {
+  /* Keep clue pill a consistent, readable width (don't size to content). */
+  flex: 0 1 auto;
+  width: min(260px, 100%);
   min-height: 48px;
   border-radius: 14px;
   padding: 9px 40px 9px 10px;
@@ -21383,6 +21386,8 @@ body.light-mode .gamelog-empty {
 
   body.og-mode .gamelog-clue-pill,
   body.cozy-mode .gamelog-clue-pill {
+    /* Slightly narrower on phones so it stays tidy next to avatars. */
+    width: min(220px, 100%);
     min-height: 44px;
     padding: 8px 34px 8px 8px;
     border-radius: 12px;
