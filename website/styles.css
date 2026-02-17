@@ -4104,7 +4104,8 @@ body.light-mode .chat-meta{ color: var(--text); }
   position: relative;
   width: min(560px, calc(100vw - 24px));
   margin: 0;
-  margin-top: -5vh;
+  /* Keep dialogs truly centered in both axes. */
+  margin-top: 0;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -4132,7 +4133,7 @@ body.light-mode .chat-meta{ color: var(--text); }
 #quick-settings-modal .modal-card{
   background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
   margin: 0;
-  margin-top: -5vh;
+  margin-top: 0;
   width: min(460px, calc(100vw - 24px));
   max-height: calc(100vh - 140px);
 
@@ -4226,7 +4227,7 @@ body.light-mode .chat-meta{ color: var(--text); }
   .modal-card{
     width: min(560px, calc(100vw - 16px));
     margin: 0;
-    margin-top: -5vh;
+    margin-top: 0;
     max-height: calc(100vh - 24px);
   }
 }
@@ -4381,7 +4382,7 @@ body.light-mode .chat-meta{ color: var(--text); }
 
 @media (max-width: 520px){
   .modal{ padding: 10px; }
-  .modal-card{ margin: 0; margin-top: -5vh; max-height: calc(100vh - 86px); }
+  .modal-card{ margin: 0; margin-top: 0; max-height: calc(100vh - 86px); }
 }
 
 @media (min-width: 901px){
@@ -25116,35 +25117,6 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 .clue-review-accept-btn:hover {
   filter: brightness(1.06);
   transform: scale(1.02);
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Center operative clue pill + End Turn
-
-   The expanded action bar spans the full center column. When the
-   side panels are wide, this can visually pull the clue pill left
-   of the board center and push End Turn to the far edge. Keep the
-   operative row as a centered cluster so both elements stay aligned
-   under the board.
-   ───────────────────────────────────────────────────────────── */
-
-.game-action-bar.row-clue-endturn {
-  display: flex !important;
-  flex-wrap: wrap;
-  justify-content: center !important;
-  align-items: center;
-}
-
-.game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 0 1 auto !important;
-  width: auto !important;
-  min-width: clamp(180px, 26vw, 320px);
-  max-width: min(72vw, 520px) !important;
-}
-
-.game-action-bar.row-clue-endturn .operative-actions-expanded {
-  flex: 0 0 auto !important;
-  margin-left: 0 !important;
 }
 
 .clue-review-challenge-btn {
