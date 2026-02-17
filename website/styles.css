@@ -24440,11 +24440,9 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   position: static;
   transform: none;
   min-width: 0;
-  max-width: calc(100% - 110px);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: left;
+  flex-shrink: 0;
 }
 
 .clue-number-expanded {
@@ -24657,7 +24655,6 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   }
 
   .clue-word-expanded {
-    max-width: calc(100% - 108px);
     letter-spacing: 0.5px;
   }
 
@@ -24694,7 +24691,6 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   }
 
   .clue-word-expanded {
-    max-width: calc(100% - 96px);
     font-size: clamp(16px, 5vw, 19px);
   }
 
@@ -24739,9 +24735,6 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
     min-height: 34px;
   }
 
-  .clue-word-expanded {
-    max-width: calc(100% - 88px);
-  }
 }
 
 /* Singleplayer step-3 now uses a full settings modal (parity with Multiplayer). */
