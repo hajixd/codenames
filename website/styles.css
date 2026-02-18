@@ -10058,17 +10058,30 @@ body.tournament.has-team-color .input:focus {
 
   /*
     Mobile: keep the current clue/action controls reachable.
-    On small screens the top UI can grow (chat/log/roster), and without a
-    sticky action bar the clue pill can end up off-screen.
+    On small screens the top UI can grow (chat/log/roster), and the
+    action bar can end up off-screen.  Use fixed positioning so the
+    clue pill is always visible at the bottom of the viewport.
   */
   .game-center-area .game-action-bar{
-    position: sticky;
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-    z-index: 30;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    border-radius: 14px 14px 0 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    max-height: 50dvh;
+    overflow-y: auto;
+  }
+  /* Override fit-content width from .row-clue-endturn when fixed */
+  .game-action-bar.row-clue-endturn{
+    width: auto;
+    border-radius: 14px 14px 0 0;
   }
   .game-center-area .game-board-wrapper{
     align-items: flex-start;
     justify-content: flex-start;
+    padding-bottom: 60px;
   }
 }
 
@@ -23481,6 +23494,35 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   }
 }
 
+/* On phones, override OG/cozy position:relative with fixed so the clue is always visible */
+@media (max-width: 768px) {
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    border-radius: 14px 14px 0 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    max-height: 50dvh;
+    overflow-y: auto;
+    margin-top: 0;
+    /* Override transparent background for fixed positioning */
+    background: var(--surface, #1a1c24);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-bottom: none;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn {
+    width: auto;
+    border-radius: 14px 14px 0 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
+    padding-bottom: 60px;
+  }
+}
+
 /* Desktop OG/Cozy roster blocks: clickable for join/switch/spectate popup. */
 @media (min-width: 1025px) {
   body:is(.og-mode, .cozy-mode) .online-roster-block.roster-expand-trigger {
@@ -23874,6 +23916,32 @@ body.light-mode .clue-stack-chip {
     font-size: 10px;
     padding: 3px 7px;
   }
+}
+
+/* ─── Stacking panel: read-only mode (operatives phase) ─── */
+.clue-stack-panel.stacking-readonly {
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+}
+
+.clue-stack-panel.stacking-readonly .clue-stack-panel-header .clue-stack-clear-btn {
+  display: none;
+}
+
+.clue-stack-panel.stacking-readonly .clue-stack-chip {
+  opacity: 0.85;
+}
+
+/* When stacking panel is shown during operatives phase, action bar needs room */
+.game-action-bar.row-clue-endturn.has-stacking-panel {
+  width: auto;
+  border-radius: 14px;
+  flex-wrap: wrap;
+}
+
+.game-action-bar.row-clue-endturn.has-stacking-panel .clue-stack-panel {
+  flex: 0 0 100%;
+  width: 100%;
 }
 
 /* Clue bar refresh + review UI */

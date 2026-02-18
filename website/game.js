@@ -5994,8 +5994,13 @@ function renderBoard(isSpymaster) {
   }
   const selectedStackTargets = canStackTargets ? getCurrentClueTargetSelection(currentGame) : [];
   clueTargetSelection = selectedStackTargets;
-  const stackTargetSet = new Set(selectedStackTargets);
-  const stackTargetOrderByIndex = new Map(selectedStackTargets.map((idx, order) => [idx, order + 1]));
+
+  // During operatives phase, show stack order badges from the active clue (spymaster only)
+  const activeClueTargets = (!canStackTargets && isSpymaster && !spectator) ? getActiveClueStackTargets() : null;
+  const readOnlyStackTargets = activeClueTargets ? activeClueTargets.targets : [];
+  const effectiveStackTargets = canStackTargets ? selectedStackTargets : readOnlyStackTargets;
+  const stackTargetSet = new Set(effectiveStackTargets);
+  const stackTargetOrderByIndex = new Map(effectiveStackTargets.map((idx, order) => [idx, order + 1]));
   const currentSelectionContextKey = getPendingSelectionContextKey(currentGame);
   const hasStoredPendingSelection =
     pendingCardSelection !== null &&
@@ -6328,9 +6333,17 @@ function renderClueStackingPanel() {
   document.body.classList.toggle('stacking-turn-active', stackingActive);
   if (!panel || !summaryEl || !chipRow) return;
 
-  if (!stackingActive) {
+  // Read-only mode: show stacking targets during operatives phase
+  const activeClueTargets = getActiveClueStackTargets();
+  const showReadOnly = !stackingActive
+    && activeClueTargets
+    && activeClueTargets.targets.length > 0;
+
+  if (!stackingActive && !showReadOnly) {
     panel.style.display = 'none';
+    panel.classList.remove('stacking-readonly');
     chipRow.innerHTML = '';
+    if (actionBar) actionBar.classList.remove('has-stacking-panel');
     // Move clue form back out of stacking panel to action bar (after the panel)
     if (clueForm && actionBar && clueForm.parentElement === inputSlot) {
       panel.insertAdjacentElement('afterend', clueForm);
@@ -6341,9 +6354,44 @@ function renderClueStackingPanel() {
     return;
   }
 
+  // Read-only mode: show targets from the active clue (operatives phase)
+  if (showReadOnly) {
+    panel.style.display = 'flex';
+    panel.classList.add('stacking-readonly');
+    if (actionBar) actionBar.classList.add('has-stacking-panel');
+    const spectator = isSpectating();
+    const canSeeWords = !spectator && isCurrentUserSpymaster();
+    const targets = activeClueTargets.targets;
+
+    summaryEl.textContent = `${targets.length} target${targets.length === 1 ? '' : 's'}`;
+
+    if (canSeeWords) {
+      // Spymaster sees full target words
+      const words = activeClueTargets.targetWords;
+      chipRow.innerHTML = words.map((word, idx) => (
+        `<span class="clue-stack-chip">${idx + 1}. ${escapeHtml(String(word).toUpperCase())}</span>`
+      )).join('');
+    } else {
+      // Operatives see masked words
+      chipRow.innerHTML = targets.map((_, idx) => (
+        `<span class="clue-stack-chip">${idx + 1}. ???</span>`
+      )).join('');
+    }
+    // Hide the clear button and input slot in read-only mode
+    const clearBtn = document.getElementById('clue-stack-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'none';
+    return;
+  }
+
   const selected = getCurrentClueTargetSelection(currentGame);
   clueTargetSelection = selected;
   panel.style.display = 'flex';
+  panel.classList.remove('stacking-readonly');
+  if (actionBar) actionBar.classList.remove('has-stacking-panel');
+
+  // Restore clear button visibility in active mode
+  const clearBtn = document.getElementById('clue-stack-clear-btn');
+  if (clearBtn) clearBtn.style.display = '';
 
   // Move clue form into stacking panel input slot
   if (clueForm && inputSlot && clueForm.parentElement !== inputSlot) {
@@ -6375,6 +6423,28 @@ function renderClueStackingPanel() {
   }
   if (minusBtn) minusBtn.disabled = true;
   if (plusBtn) plusBtn.disabled = true;
+}
+
+/**
+ * Returns the stacking targets for the currently active clue (operatives phase).
+ * Returns null if stacking is off or no targets exist.
+ */
+function getActiveClueStackTargets() {
+  if (!currentGame?.currentClue || !isStackingEnabledForGame(currentGame)) return null;
+  if (currentGame.currentPhase !== 'operatives') return null;
+  const history = Array.isArray(currentGame.clueHistory) ? currentGame.clueHistory : [];
+  if (!history.length) return null;
+  const lastClue = history[history.length - 1];
+  if (!lastClue) return null;
+  // Verify the last history entry matches the active clue
+  if (String(lastClue.word || '').toUpperCase() !== String(currentGame.currentClue.word || '').toUpperCase()) return null;
+  const targets = Array.isArray(lastClue.targets) ? lastClue.targets : [];
+  if (!targets.length) return null;
+  return {
+    targets,
+    targetWords: Array.isArray(lastClue.targetWords) ? lastClue.targetWords : [],
+    team: lastClue.team,
+  };
 }
 
 function normalizePendingClueEntry(raw, game = currentGame) {
@@ -7317,9 +7387,15 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     reviewModalEl.setAttribute('aria-hidden', 'true');
     reviewModalEl.style.display = 'none';
   }
-  if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
+  if (actionBarEl) {
+    actionBarEl.classList.remove('row-clue-endturn');
+    actionBarEl.classList.remove('has-stacking-panel');
+  }
   const clueStackPanel = document.getElementById('clue-stack-panel');
-  if (clueStackPanel) clueStackPanel.style.display = 'none';
+  if (clueStackPanel) {
+    clueStackPanel.style.display = 'none';
+    clueStackPanel.classList.remove('stacking-readonly');
+  }
   renderClueStackingPanel();
 
   const pending = normalizePendingClueEntry(currentGame?.pendingClue, currentGame);
@@ -7567,6 +7643,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   void clearLiveClueDraftOwnership({ silent: true });
   if (currentGame.currentPhase === 'operatives') {
     if (actionBarEl) actionBarEl.classList.add('row-clue-endturn');
+    renderClueStackingPanel();
     return;
   }
 }
