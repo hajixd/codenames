@@ -2516,8 +2516,8 @@ function _pickFakeDraftWords(ai, finalClue, boardWords) {
     .filter(w => w.length >= 3 && w !== finalClue && !boardWords.includes(w));
   // Deduplicate
   const unique = [...new Set(candidates)];
-  // Pick 1-2 random fake drafts
-  const count = Math.min(unique.length, 1 + Math.floor(Math.random() * 2));
+  // Pick 2-4 random fake drafts (or fewer if we don't have enough candidates)
+  const count = Math.min(unique.length, 2 + Math.floor(Math.random() * 3));
   const picked = [];
   const pool = [...unique];
   for (let i = 0; i < count && pool.length > 0; i++) {
@@ -2588,7 +2588,7 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber) {
     // Delete character by character
     for (let i = fake.length - 1; i >= 0; i--) {
       if (i === 0) {
-        await _setAILiveClueDraft(game, team, ai, '...', null);
+        await _setAILiveClueDraft(game, team, ai, '.', null);
       } else {
         await _setAILiveClueDraft(game, team, ai, fake.slice(0, i), null);
       }

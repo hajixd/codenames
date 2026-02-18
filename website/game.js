@@ -7321,34 +7321,53 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const myActiveSpymaster = !!(!spectator && isMyTurn && isSpymaster);
   const opposingSpymaster = !!(!spectator && isSpymaster && myTeamColor && myTeamColor !== activeTeam);
 
+  const maskLiveClueText = (raw, placeholder = '…') => {
+    const s = String(raw ?? '');
+    if (!s) return placeholder;
+    return '*'.repeat(s.length);
+  };
+
+  const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
+  const hasLiveTyping = !!(
+    liveDraft &&
+    currentGame?.currentPhase === 'spymaster' &&
+    !pendingBlocking &&
+    !currentGame?.currentClue &&
+    !pending
+  );
+
+  // Opposing spymaster can see exactly what's being typed. Everyone else sees a live mask.
+  const canSeeLiveDraftText = !!(!spectator && isSpymaster && myTeamColor && myTeamColor !== activeTeam);
+
   let clueWord = '—';
   let clueNumber = '—';
+
   if (currentGame?.currentClue) {
     clueWord = String(currentGame.currentClue.word || '—');
     clueNumber = String(currentGame.currentClue.number ?? '—');
   } else if (pending) {
-    clueWord = String(pending.word || '—');
-    clueNumber = String(pending.number ?? '—');
+    const pendingWord = String(pending.word || '').trim();
+    const pendingNum = String(pending.number ?? '').trim();
+    clueWord = isSpymaster ? (pendingWord || '—') : maskLiveClueText(pendingWord, '*****');
+    clueNumber = isSpymaster ? (pendingNum || '—') : maskLiveClueText(pendingNum, '—');
+  } else if (hasLiveTyping) {
+    const draftWord = String(liveDraft.word || '').trim().toUpperCase();
+    const draftNum = String(liveDraft.number ?? '').trim();
+    clueWord = canSeeLiveDraftText ? (draftWord || '…') : maskLiveClueText(draftWord, '…');
+    clueNumber = canSeeLiveDraftText ? (draftNum || '…') : maskLiveClueText(draftNum, '…');
   }
+
   clueWordEl.textContent = clueWord;
   clueNumberEl.textContent = clueNumber;
+
   // Unlimited guesses: remove/hide guesses remaining text.
   if (guessesLeftEl) {
     guessesLeftEl.textContent = '';
     guessesLeftEl.style.display = 'none';
   }
 
-  const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
-  if (typingLiveEl && currentGame?.currentPhase === 'spymaster' && opposingSpymaster && liveDraft && !pendingBlocking) {
-    const teamName = liveDraft.team === 'red' ? (currentGame.redTeamName || 'Red Team') : (currentGame.blueTeamName || 'Blue Team');
-    const draftWord = liveDraft.word || '...';
-    const draftNumber = liveDraft.number === '' ? '…' : liveDraft.number;
-    typingLiveEl.innerHTML = `
-      <span class="clue-typing-dot" aria-hidden="true"></span>
-      <span class="clue-typing-text">${escapeHtml(teamName)} spymaster typing: ${escapeHtml(draftWord)} ${escapeHtml(draftNumber)}</span>
-    `;
-    typingLiveEl.style.display = 'flex';
-  }
+  // Live typing is shown ONLY in the clue pill (no separate banner).
+  currentClueEl.classList.toggle('is-live-typing', hasLiveTyping);
 
   if (reviewPanelEl && pending) {
     reviewPanelEl.style.display = 'flex';
