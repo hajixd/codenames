@@ -5986,7 +5986,7 @@ body.og-mode .og-reveal-icon::before{
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 16px;
-  max-height: 200px;
+  max-height: 230px;
   overflow-y: auto;
 
   /* Single knob: all log sizing scales from this. */
@@ -6008,6 +6008,8 @@ body.og-mode .og-reveal-icon::before{
   gap: 0.45em;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Compact "pill" entries (size scales with font via em units) */
@@ -6563,7 +6565,7 @@ line-height: 1.25;
   right: 20px;
   width: 320px;
   max-width: calc(100vw - 40px);
-  max-height: 300px;
+  max-height: 340px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -13142,7 +13144,7 @@ body.qp-gate-open .app {
   }
 
   .game-log-panel {
-    flex: 0 0 clamp(200px, 30vh, 320px);
+    flex: 0 0 clamp(230px, 33vh, 350px);
     min-height: 0;
   }
 
@@ -15683,7 +15685,7 @@ body.cozy-mode .og-topbar {
 }
 
 .og-gamelog-slidedown.open {
-  max-height: 60vh;
+  max-height: 65vh;
   pointer-events: auto;
 }
 
@@ -15694,7 +15696,7 @@ body.cozy-mode .og-gamelog-slidedown {
 
 .og-gamelog-slidedown-inner {
   margin: 8px 16px;
-  max-height: calc(60vh - 16px);
+  max-height: calc(65vh - 16px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -15744,6 +15746,13 @@ body.cozy-mode .og-gamelog-slidedown {
   overscroll-behavior: contain;
 }
 
+/* Override .og-game-log min-height when inside the slidedown to prevent overflow */
+body.og-mode .og-gamelog-slidedown-inner .og-game-log.gamelog-entries,
+body.cozy-mode .og-gamelog-slidedown-inner .og-game-log.gamelog-entries {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .og-gamelog-backdrop {
   display: none;
   position: absolute;
@@ -15773,7 +15782,7 @@ body.cozy-mode .og-gamelog-slidedown {
   }
 
   .og-gamelog-slidedown.open {
-    max-height: 50vh;
+    max-height: 55vh;
   }
 
   .og-gamelog-slidedown-inner .gamelog-entries {
@@ -21671,7 +21680,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
     right: clamp(10px, 1.1vw, 20px);
     bottom: clamp(10px, 1.1vw, 20px);
     width: clamp(300px, 19vw, 350px);
-    max-height: clamp(170px, 25vh, 250px);
+    max-height: clamp(200px, 28vh, 280px);
     z-index: 220;
     overflow: hidden;
     border-radius: 16px;
@@ -21683,7 +21692,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 
   body.og-mode .og-gamelog-slidedown.open,
   body.cozy-mode .og-gamelog-slidedown.open{
-    max-height: clamp(170px, 25vh, 250px);
+    max-height: clamp(200px, 28vh, 280px);
     opacity: 1;
     transform: none;
   }
@@ -21696,7 +21705,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   body.og-mode .og-gamelog-slidedown-inner,
   body.cozy-mode .og-gamelog-slidedown-inner{
     margin: 0;
-    max-height: clamp(170px, 25vh, 250px);
+    max-height: clamp(200px, 28vh, 280px);
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: linear-gradient(180deg, rgba(56, 59, 65, 0.96) 0%, rgba(36, 39, 44, 0.96) 100%);
@@ -21720,7 +21729,11 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 
   body.og-mode .og-gamelog-slidedown-inner .gamelog-entries,
   body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries{
-    max-height: calc(clamp(170px, 25vh, 250px) - 46px);
+    max-height: calc(clamp(200px, 28vh, 280px) - 46px);
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     padding: 8px 10px 10px;
     gap: 8px;
   }
@@ -23128,46 +23141,46 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 @media (max-width: 1024px), (max-height: 560px) and (hover: none) and (pointer: coarse) {
   .og-gamelog-slidedown.open,
   .og-chat-slidedown.open {
-    max-height: 60vh;
+    max-height: 65vh;
   }
 
   .og-gamelog-slidedown-inner,
   .og-chat-slidedown-inner {
-    max-height: calc(60vh - 16px);
+    max-height: calc(65vh - 16px);
   }
 
   .og-gamelog-slidedown.open .og-gamelog-slidedown-inner,
   .og-chat-slidedown.open .og-chat-slidedown-inner {
-    height: calc(60vh - 16px);
+    height: calc(65vh - 16px);
   }
 
   .og-gamelog-slidedown-inner .gamelog-entries,
   .og-chat-slidedown-body {
-    height: calc(60vh - 50px);
-    max-height: calc(60vh - 50px);
+    height: calc(65vh - 50px);
+    max-height: calc(65vh - 50px);
   }
 }
 
 @media (max-width: 768px), (max-width: 1024px) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
   .og-gamelog-slidedown.open,
   .og-chat-slidedown.open {
-    max-height: 50vh;
+    max-height: 55vh;
   }
 
   .og-gamelog-slidedown-inner,
   .og-chat-slidedown-inner {
-    max-height: calc(50vh - 8px);
+    max-height: calc(55vh - 8px);
   }
 
   .og-gamelog-slidedown.open .og-gamelog-slidedown-inner,
   .og-chat-slidedown.open .og-chat-slidedown-inner {
-    height: calc(50vh - 8px);
+    height: calc(55vh - 8px);
   }
 
   .og-gamelog-slidedown-inner .gamelog-entries,
   .og-chat-slidedown-body {
-    height: calc(50vh - 50px);
-    max-height: calc(50vh - 50px);
+    height: calc(55vh - 50px);
+    max-height: calc(55vh - 50px);
   }
 }
 
@@ -23375,7 +23388,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .game-log-panel,
   .operative-chat-panel {
-    min-height: clamp(160px, 28vh, 240px);
+    min-height: clamp(180px, 30vh, 260px);
   }
 
   .voting-panel {
@@ -23384,11 +23397,23 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .clue-history-content,
   .team-roster-content,
-  .game-log-panel .game-log-entries,
-  .operative-chat-messages,
   .voting-content {
     max-height: none;
     overflow: visible;
+  }
+
+  .game-log-panel .game-log-entries {
+    max-height: clamp(120px, 22vh, 200px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .operative-chat-messages {
+    max-height: clamp(120px, 22vh, 200px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 }
 
