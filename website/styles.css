@@ -19057,16 +19057,18 @@ body.og-mode .og-team-panel.og-team-red {
   }
 }
 
-/* OG structured log: keep the clue *in the same pill* as the avatar, but at normal readable sizes */
-body.og-mode .gamelog-clue-pill.clue-with-avatar {
+/* OG/cozy structured log: keep the clue *in the same pill* as the avatar */
+body.og-mode .gamelog-clue-pill.clue-with-avatar,
+body.cozy-mode .gamelog-clue-pill.clue-with-avatar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   padding: 10px 10px;
 }
 
-body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar {
+body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar,
+body.cozy-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar {
   flex: 0 0 auto;
   width: 36px;
   height: 36px;
@@ -19074,19 +19076,21 @@ body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar {
   border-radius: 50%;
 }
 
-body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-word {
+body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-word,
+body.cozy-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-word {
   flex: 1 1 auto;
   min-width: 0;
   text-align: center;
   padding: 0 4px;
 }
 
-body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
+body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count,
+body.cozy-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
   position: static;
   transform: none;
   right: auto;
   top: auto;
-  margin-left: 2px;
+  margin-left: auto;
 }
 
 

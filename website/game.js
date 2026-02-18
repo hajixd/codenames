@@ -914,6 +914,96 @@ async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNum
   return true;
 }
 
+function _sanitizeOneWordTyping(raw) {
+  const w = String(raw || '').trim().toUpperCase();
+  if (!w) return '';
+  if (w.includes(' ') || w.includes('-')) return '';
+  return w.replace(/[^A-Z0-9]/g, '').slice(0, 40);
+}
+
+function _dedupeTypingCandidates(items, finalWord) {
+  const out = [];
+  const seen = new Set();
+  const list = Array.isArray(items) ? items : [];
+  for (const it of list) {
+    const clue = _sanitizeOneWordTyping(it?.clue ?? it?.word ?? it);
+    if (!clue) continue;
+    if (finalWord && clue === finalWord) continue;
+    const n = Number.isFinite(+it?.number) ? Math.max(0, Math.min(9, parseInt(it.number, 10) || 0)) : null;
+    const key = `${clue}|${n === null ? '' : n}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ clue, number: n });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+async function simulateLocalPracticeAISpymasterTyping(gameId, game, team, ai, finalClue, finalNumber, consideredRaw = []) {
+  const gid = String(gameId || '').trim();
+  if (!gid || !isLocalPracticeGameId(gid)) return;
+  const finalWord = _sanitizeOneWordTyping(finalClue);
+  if (!finalWord) return;
+  const finalNum = Number.isFinite(+finalNumber) ? Math.max(0, Math.min(9, parseInt(finalNumber, 10) || 0)) : 1;
+
+  const typeSpeed = () => 55 + Math.floor(Math.random() * 70);
+  const deleteSpeed = () => 35 + Math.floor(Math.random() * 45);
+  const thinkPause = () => 420 + Math.floor(Math.random() * 820);
+
+  const setDraft = (word, number) => {
+    const w = word ? String(word).toUpperCase().slice(0, 40) : '';
+    const nStr = (number === null || number === undefined) ? '' : String(number);
+    const payload = w ? {
+      team: team === 'blue' ? 'blue' : 'red',
+      word: w,
+      wordLen: w.length,
+      number: nStr,
+      byId: String(ai?.odId || ai?.id || '').trim(),
+      byName: String(ai?.name || 'AI').trim(),
+      updatedAtMs: Date.now(),
+    } : null;
+    mutateLocalPracticeGame(gid, (draft) => {
+      if (!draft) return;
+      // Only animate while it's still this team's spymaster phase.
+      if (draft.winner || draft.currentPhase !== 'spymaster' || String(draft.currentTeam || '') !== String(team || '')) return;
+      draft.liveClueDraft = payload;
+    });
+  };
+
+  const drafts = _dedupeTypingCandidates(consideredRaw, finalWord);
+
+  // Animate considered drafts: type → pause → delete.
+  for (const d of drafts) {
+    const live = getLocalPracticeGame(gid);
+    if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) break;
+
+    const w = _sanitizeOneWordTyping(d.clue);
+    if (!w) continue;
+    for (let i = 1; i <= w.length; i++) {
+      setDraft(w.slice(0, i), null);
+      await localPracticePause(typeSpeed());
+    }
+    if (d.number !== null && d.number !== undefined) setDraft(w, d.number);
+    await localPracticePause(thinkPause());
+
+    for (let i = w.length - 1; i >= 0; i--) {
+      setDraft(i ? w.slice(0, i) : '', null);
+      await localPracticePause(deleteSpeed());
+    }
+    setDraft('', null);
+    await localPracticePause(260 + Math.floor(Math.random() * 420));
+  }
+
+  // Type the final clue.
+  for (let i = 1; i <= finalWord.length; i++) {
+    const showNumber = (i === finalWord.length) ? finalNum : null;
+    setDraft(finalWord.slice(0, i), showNumber);
+    await localPracticePause(typeSpeed());
+  }
+  await localPracticePause(450 + Math.floor(Math.random() * 500));
+  setDraft('', null);
+}
+
 async function runLocalPracticeSpymasterTurn(gameId, game, team) {
   const aiSpies = getLocalPracticeRuntimeAIs(game, team, 'spymaster');
   if (!aiSpies.length) return false;
@@ -930,6 +1020,7 @@ async function runLocalPracticeSpymasterTurn(gameId, game, team) {
     const boardWordSet = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
     const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(game);
     const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
+    await simulateLocalPracticeAISpymasterTyping(gameId, game, team, aiSpies[0], clueWord, clueNumber, []);
     await submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpies[0]);
     return true;
   }
@@ -986,6 +1077,7 @@ async function runLocalPracticeSpymasterTurn(gameId, game, team) {
     const boardWordSet = new Set((game?.cards || []).map(c => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
     const clueWord = sanitizeLocalPracticeClueWord(fallbackPlan?.word, boardWordSet) || pickLocalPracticeClueWord(game);
     const clueNumber = clampLocalPracticeClueNumber(fallbackPlan?.number, 1);
+    await simulateLocalPracticeAISpymasterTyping(gameId, game, team, aiSpies[0], clueWord, clueNumber, []);
     await submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpies[0]);
     return true;
   }
@@ -1022,7 +1114,8 @@ async function runLocalPracticeSpymasterTurn(gameId, game, team) {
       }
     } catch (_) {}
   }
-
+  const considered = Array.from(proposalsByAi.values()).map(p => ({ clue: p?.clue ?? p?.word, number: p?.number }));
+  await simulateLocalPracticeAISpymasterTyping(gameId, finalState, team, executor || aiSpies[0], clueWord, clueNumber, considered);
   await submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, executor || aiSpies[0]);
   return true;
 }
@@ -7808,6 +7901,7 @@ function buildCluesLeftLogHtml() {
       <div class="gamelog-left-item team-${escapeHtml(team)}">
 	        <div class="gamelog-left-head">
 	          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
+	          <span class="gamelog-left-clue-count">${escapeHtml(String(clueNumber))}</span>
 	        </div>
         <div class="gamelog-left-meta">${escapeHtml(progressText)}</div>
         <div class="gamelog-left-word-list">${wordsHtml}</div>
