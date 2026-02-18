@@ -7558,13 +7558,31 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           ? (currentGame.redTeamName || 'RED')
           : (currentGame.blueTeamName || 'BLUE');
         ogText.textContent = winnerName.toUpperCase() + ' TEAM WINS!';
+        ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'spymaster') {
         ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
+        ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'operatives') {
-        // Desktop-only guidance above the board.
-        ogText.textContent = isMobileLayoutLike() ? '' : 'GUESS THE WORDS';
+        // Desktop-only: replace the old instruction with the live turn timer.
+        if (isMobileLayoutLike()) {
+          ogText.textContent = '';
+          ogText.classList.remove('red','blue');
+        } else {
+          const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
+            || document.getElementById('timer-text')?.textContent
+            || '').trim();
+          if (liveTimer) {
+            // Use the helper so the banner stays synced while the timer ticks.
+            updateOgPhaseBannerTimerText(liveTimer, 'operatives');
+          } else {
+            // Fallback while timer is booting.
+            ogText.textContent = '';
+            ogText.classList.remove('red','blue');
+                    }
+        }
       } else if (currentGame.currentPhase === 'waiting') {
         ogText.textContent = '';
+        ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'role-selection') {
         ogText.textContent = 'SELECT YOUR ROLE';
       }
@@ -9958,6 +9976,40 @@ function renderClueHistory() {
 /* =========================
    Timer Display
 ========================= */
+
+// When playing in OG / Cozy mode, the center banner above the board shows a short instruction.
+// For the Operatives phase on desktop, we swap that instruction for the live turn timer.
+function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
+  const ogBanner = document.getElementById('og-phase-banner');
+  const ogText = document.getElementById('og-phase-text');
+  if (!ogBanner || !ogText) return;
+
+  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
+  if (!isOgMode) return;
+  if (!currentGame) return;
+  if (currentGame.winner) return;
+
+  const phase = String(phaseOverride || currentGame.currentPhase || '');
+
+  // Only replace the old "GUESS THE WORDS" instruction (desktop operatives phase).
+  if (phase !== 'operatives') return;
+  if (isMobileLayoutLike()) return;
+
+  const activeTeam = String(currentGame.currentTeam || '');
+  const teamName = activeTeam === 'red'
+    ? (currentGame.redTeamName || 'RED')
+    : activeTeam === 'blue'
+      ? (currentGame.blueTeamName || 'BLUE')
+      : '—';
+
+  const safeTimer = String(timerText || '').trim();
+  if (!safeTimer) return;
+
+  ogText.textContent = safeTimer;
+  ogText.classList.toggle('red', activeTeam === 'red');
+  ogText.classList.toggle('blue', activeTeam === 'blue');
+}
+
 function startGameTimer(endTime, phase) {
   stopGameTimer();
 
@@ -9991,6 +10043,13 @@ function startGameTimer(endTime, phase) {
 
     textEl.textContent = timerText;
     if (ogTimerTextEl) ogTimerTextEl.textContent = timerText;
+
+    // Keep the OG phase banner (top-center) in sync when it's showing a turn timer.
+    try {
+      updateOgPhaseBannerTimerText(timerText, phase);
+    } catch (_) {
+      // no-op
+    }
 
     const percent = Math.max(0, Math.min(100, (remaining / totalDuration) * 100));
     fillEl.style.width = `${percent}%`;
@@ -10044,6 +10103,13 @@ function showStaticGameTimer(phase) {
   if (ogTimerTextEl) ogTimerTextEl.textContent = '∞';
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
+  }
+
+  // Mirror static timer into the OG phase banner when applicable.
+  try {
+    updateOgPhaseBannerTimerText('∞', phase);
+  } catch (_) {
+    // no-op
   }
 }
 

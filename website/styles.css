@@ -15789,6 +15789,14 @@ body.cozy-mode .og-phase-banner {
   letter-spacing: 2px;
 }
 
+.og-phase-text.red {
+  color: var(--game-red);
+}
+
+.og-phase-text.blue {
+  color: var(--game-blue);
+}
+
 /* --- OG Game Board --- */
 body.cozy-mode .game-board {
   gap: 10px;
