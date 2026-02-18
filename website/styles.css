@@ -25713,17 +25713,3 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     bottom: 4px;
   }
 }
-
-
-/* Live clue typing appears only in the clue pill */
-#current-clue.is-live-typing #clue-word::after {
-  content: '▍';
-  display: inline-block;
-  margin-left: 6px;
-  opacity: 0.7;
-  animation: clueCaretBlink 1s steps(1, end) infinite;
-}
-
-@keyframes clueCaretBlink {
-  50% { opacity: 0; }
-}
