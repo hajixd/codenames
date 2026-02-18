@@ -6595,15 +6595,11 @@ line-height: 1.25;
 
 
 .game-log-panel .game-log-entries {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
   padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+}
+
+.game-log-panel .game-log-entries > * + * {
+  margin-top: 3px;
 }
 
 .game-log-panel .log-entry {
@@ -15738,19 +15734,18 @@ body.cozy-mode .og-gamelog-slidedown {
   height: 14px;
 }
 
-.og-gamelog-slidedown-inner .gamelog-entries {
-  flex: 1;
+.og-gamelog-slidedown-inner .gamelog-body {
+  flex: 1 1 0%;
   min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  position: relative;
+  overflow: hidden;
 }
 
 /* Override .og-game-log min-height when inside the slidedown to prevent overflow */
-body.og-mode .og-gamelog-slidedown-inner .og-game-log.gamelog-entries,
-body.cozy-mode .og-gamelog-slidedown-inner .og-game-log.gamelog-entries {
+body.og-mode .og-gamelog-slidedown-inner .gamelog-body,
+body.cozy-mode .og-gamelog-slidedown-inner .gamelog-body {
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .og-gamelog-backdrop {
@@ -15785,7 +15780,7 @@ body.cozy-mode .og-gamelog-slidedown-inner .og-game-log.gamelog-entries {
     max-height: 55vh;
   }
 
-  .og-gamelog-slidedown-inner .gamelog-entries {
+  .og-gamelog-slidedown-inner .gamelog-body {
     min-height: 0;
   }
 }
@@ -18567,15 +18562,11 @@ body.og-mode .gamelog-chevron svg {
 body.og-mode .gamelog-shell .sidebar-panel-header { display: none; }
 
 body.og-mode .gamelog-entries {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
   padding: 8px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+}
+
+body.og-mode .gamelog-entries > * + * {
+  margin-top: 18px;
 }
 
 body.og-mode .gamelog-turn {
@@ -18774,7 +18765,7 @@ body.og-mode .gamelog-system {
 /* Slightly tighter on mobile */
 @media (max-width: 768px) {
   body.og-mode .gamelog-title { font-size: 11px; }
-  body.og-mode .gamelog-entries { padding: 5px 8px 8px; gap: 10px; }
+  body.og-mode .gamelog-entries { padding: 5px 8px 8px; }
   body.og-mode .gamelog-clue-word { font-size: 14px; }
   body.og-mode .gamelog-word-pill { font-size: 9px; padding: 6px 8px; }
   body.og-mode .gamelog-avatar { width: 40px; height: 40px; font-size: 15px; }
@@ -19271,8 +19262,8 @@ body.cozy-mode .gamelog-clue-pill.clue-with-avatar .gamelog-clue-count {
 
 /* ==================== OG DESKTOP GAME LOG SIZING ==================== */
 @media (min-width: 769px) {
-  body.og-mode .gamelog-entries {
-    gap: 10px;
+  body.og-mode .gamelog-entries > * + * {
+    margin-top: 10px;
   }
 
   body.og-mode .gamelog-turn {
@@ -21161,6 +21152,7 @@ body:not(.light-mode):not(.cozy-mode):not(.og-mode) .clue-announcement-backdrop 
 }
 
 .gamelog-header {
+  flex: 0 0 auto;
   padding: 10px 14px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(2px);
@@ -21194,14 +21186,34 @@ body.light-mode .gamelog-title {
   height: 14px;
 }
 
-.gamelog-entries {
-  flex: 1;
+/* New wrapper: stable flex child that holds both tab content areas */
+.gamelog-body {
+  flex: 1 1 0%;
   min-height: 0;
   position: relative;
-  z-index: 1;
+  overflow: hidden;
+}
+
+/* Each tab content area fills the wrapper via absolute positioning.
+   This avoids flex recalculation when switching tabs. */
+.gamelog-entries {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 10px 12px 12px;
-  gap: 8px;
+  contain: layout style;
+}
+
+/* Spacing between entries (replaces flex gap) */
+.gamelog-entries > * + * {
+  margin-top: 8px;
 }
 
 .gamelog-entries::-webkit-scrollbar {
@@ -21265,7 +21277,11 @@ body.light-mode .gamelog-entries .log-entry {
 body.og-mode .gamelog-entries,
 body.cozy-mode .gamelog-entries {
   padding: 10px 12px 14px;
-  gap: 11px;
+}
+
+body.og-mode .gamelog-entries > * + *,
+body.cozy-mode .gamelog-entries > * + * {
+  margin-top: 11px;
 }
 
 body.og-mode .gamelog-turn,
@@ -21429,7 +21445,10 @@ body.light-mode .gamelog-empty {
 
   .gamelog-entries {
     padding: 8px 9px 10px;
-    gap: 7px;
+  }
+
+  .gamelog-entries > * + * {
+    margin-top: 7px;
   }
 
   .gamelog-entries .log-entry,
@@ -21442,7 +21461,11 @@ body.light-mode .gamelog-empty {
   body.og-mode .gamelog-entries,
   body.cozy-mode .gamelog-entries {
     padding: 8px 9px 11px;
-    gap: 9px;
+  }
+
+  body.og-mode .gamelog-entries > * + *,
+  body.cozy-mode .gamelog-entries > * + * {
+    margin-top: 9px;
   }
 
   body.og-mode .gamelog-clue-pill,
@@ -21727,15 +21750,20 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
     letter-spacing: 1.25px;
   }
 
-  body.og-mode .og-gamelog-slidedown-inner .gamelog-entries,
-  body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries{
+  body.og-mode .og-gamelog-slidedown-inner .gamelog-body,
+  body.cozy-mode .og-gamelog-slidedown-inner .gamelog-body{
     max-height: calc(clamp(200px, 28vh, 280px) - 46px);
     min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+  }
+
+  body.og-mode .og-gamelog-slidedown-inner .gamelog-entries,
+  body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries{
     padding: 8px 10px 10px;
-    gap: 8px;
+  }
+
+  body.og-mode .og-gamelog-slidedown-inner .gamelog-entries > * + *,
+  body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries > * + *{
+    margin-top: 8px;
   }
 }
 
@@ -22177,7 +22205,7 @@ body.cozy-mode #og-mobile-chat-host .operative-chat-form {
     height: calc(50vh - 8px);
   }
 
-  .og-gamelog-slidedown-inner .gamelog-entries {
+  .og-gamelog-slidedown-inner .gamelog-body {
     max-height: calc(50vh - 50px);
   }
 
@@ -23154,7 +23182,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     height: calc(65vh - 16px);
   }
 
-  .og-gamelog-slidedown-inner .gamelog-entries,
+  .og-gamelog-slidedown-inner .gamelog-body,
   .og-chat-slidedown-body {
     height: calc(65vh - 50px);
     max-height: calc(65vh - 50px);
@@ -23177,7 +23205,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     height: calc(55vh - 8px);
   }
 
-  .og-gamelog-slidedown-inner .gamelog-entries,
+  .og-gamelog-slidedown-inner .gamelog-body,
   .og-chat-slidedown-body {
     height: calc(55vh - 50px);
     max-height: calc(55vh - 50px);
@@ -23402,11 +23430,8 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     overflow: visible;
   }
 
-  .game-log-panel .game-log-entries {
+  .game-log-panel .gamelog-body {
     max-height: clamp(120px, 22vh, 200px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
   }
 
   .operative-chat-messages {
@@ -24558,6 +24583,14 @@ body.after-clue-given .game-sidebar-right {
 
 body:is(.og-mode, .cozy-mode) .gamelog-entries {
   padding-bottom: 26px;
+}
+
+/* Ensure gamelog-body fills remaining space for sidebar panel at larger widths */
+.game-log-panel .gamelog-body {
+  flex: 1 1 0%;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 /* Final polish pass: space-aware layout for stacking/review/log UI */
