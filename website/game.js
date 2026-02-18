@@ -5280,12 +5280,18 @@ function deriveCardsLeftFromBoard(game, team) {
 
 function getCardsLeft(game, team) {
   if (team !== 'red' && team !== 'blue') return 0;
+
+  // Prefer deriving from actual board state (always accurate).
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  if (cards.length) {
+    const derived = deriveCardsLeftFromBoard(game, team);
+    if (Number.isFinite(derived) && derived >= 0) return derived;
+  }
+
+  // Fallback to stored counter when board data isn't available.
   const key = team === 'red' ? 'redCardsLeft' : 'blueCardsLeft';
   const raw = Number(game?.[key]);
   if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
-
-  const derived = deriveCardsLeftFromBoard(game, team);
-  if (Number.isFinite(derived) && derived >= 0) return derived;
 
   return team === 'red' ? FIRST_TEAM_CARDS : SECOND_TEAM_CARDS;
 }
@@ -7821,14 +7827,16 @@ function renderGameLog() {
   if (slidedownCluesLeftEl) slidedownCluesLeftEl.innerHTML = cluesLeftHtml;
   applyGameLogTabState();
 
-  // Auto-scroll to bottom (popover container + sidebar scroller)
-  const popover = document.getElementById('game-log');
-  const activeTab = normalizeGameLogTab(gameLogActiveTab);
-  if (popover && activeTab === 'history') popover.scrollTop = popover.scrollHeight;
-  if (sidebarHistoryEl && activeTab === 'history') sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
-  if (slidedownHistoryEl && activeTab === 'history') slidedownHistoryEl.scrollTop = slidedownHistoryEl.scrollHeight;
-  if (sidebarCluesLeftEl && activeTab === 'clues-left') sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
-  if (slidedownCluesLeftEl && activeTab === 'clues-left') slidedownCluesLeftEl.scrollTop = slidedownCluesLeftEl.scrollHeight;
+  // Auto-scroll to bottom after DOM reflow
+  requestAnimationFrame(() => {
+    const popover = document.getElementById('game-log');
+    const activeTab = normalizeGameLogTab(gameLogActiveTab);
+    if (popover && activeTab === 'history') popover.scrollTop = popover.scrollHeight;
+    if (sidebarHistoryEl && activeTab === 'history') sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
+    if (slidedownHistoryEl && activeTab === 'history') slidedownHistoryEl.scrollTop = slidedownHistoryEl.scrollHeight;
+    if (sidebarCluesLeftEl && activeTab === 'clues-left') sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
+    if (slidedownCluesLeftEl && activeTab === 'clues-left') slidedownCluesLeftEl.scrollTop = slidedownCluesLeftEl.scrollHeight;
+  });
 }
 
 function getClueTargetIndicesFromEntry(clue, game = currentGame) {
