@@ -11,7 +11,8 @@
 const AI_CONFIG = {
   baseURL: 'https://api.tokenfactory.nebius.com/v1',
   apiKey: 'v1.CmQKHHN0YXRpY2tleS1lMDBlZnRkMTBoNnFxczQ1M2MSIXNlcnZpY2VhY2NvdW50LWUwMHhyM3gzZnhmamVzMXp2MzIMCJjkxcwGEKuvtJgDOgwImOfdlwcQwMrDjwFAAloDZTAw.AAAAAAAAAAHP2HFXdHB0QxWCfJOjr8yKyjq3zD_mW-ukhcrKV6F-T0FtxBXhXOhDiBzBW_hKBEou9V_nEy3BeevzBfX1PT0J',
-  model: 'meta-llama/Llama-3.3-70B-Instruct',
+  model: 'meta-llama/Llama-3.3-70B-Instruct',            // instruct brain — chat, personality, reactions
+  reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
   maxAIsPerTeam: 4,
 };
 
@@ -270,6 +271,49 @@ async function aiChatCompletion(messages, options = {}) {
   return data.choices?.[0]?.message?.content || '';
 }
 window.aiChatCompletion = aiChatCompletion;
+
+// ─── Reasoning model completion (strategic "deep thinking" brain) ────────────
+async function aiReasoningCompletion(messages, options = {}) {
+  const body = {
+    model: AI_CONFIG.reasoningModel,
+    messages,
+    max_tokens: options.max_tokens ?? 512,
+  };
+  if (options.response_format) {
+    body.response_format = options.response_format;
+  }
+  // Reasoning models do not support temperature — omit it.
+
+  const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${AI_CONFIG.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`AI Reasoning API ${resp.status}: ${text}`);
+  }
+
+  const data = await resp.json();
+  const msg = data.choices?.[0]?.message || {};
+  return {
+    content: msg.content || '',
+    reasoning: msg.reasoning_content || '',
+  };
+}
+window.aiReasoningCompletion = aiReasoningCompletion;
+
+function appendReasoningToMind(ai, reasoning) {
+  if (!reasoning) return;
+  const snippet = reasoning.length > 300
+    ? reasoning.slice(0, 300) + '...'
+    : reasoning;
+  appendMind(ai, `[deep thinking] ${snippet}`);
+}
 
 function hasBlockingPendingClueReview(game) {
   const pending = game?.pendingClue;
@@ -1814,10 +1858,11 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `RECENT MIND:\n${mindContext}`
   ].filter(Boolean).join('\n');
 
-  const raw = await aiChatCompletion(
+  const { content: raw, reasoning } = await aiReasoningCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    { max_tokens: 360, response_format: { type: 'json_object' } }
   );
+  appendReasoningToMind(ai, reasoning);
 
   let parsed = null;
   try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
@@ -2119,10 +2164,11 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `RECENT MIND:\n${mindContext}`,
     ].join('\n');
 
-    const raw = await aiChatCompletion(
+    const { content: raw, reasoning } = await aiReasoningCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+      { max_tokens: 360, response_format: { type: 'json_object' } }
     );
+    appendReasoningToMind(ai, reasoning);
 
     let parsed = null;
     try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
@@ -2394,10 +2440,11 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
     `RECENT MIND:\n${mindContext}`,
   ].filter(Boolean).join('\n');
 
-  const raw = await aiChatCompletion(
+  const { content: raw, reasoning } = await aiReasoningCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+    { max_tokens: 360, response_format: { type: 'json_object' } }
   );
+  appendReasoningToMind(ai, reasoning);
 
   let parsed = null;
   try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
@@ -2802,10 +2849,11 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
       `RECENT MIND:\n${mindContext}`,
     ].join('\n');
 
-    const raw = await aiChatCompletion(
+    const { content: raw, reasoning } = await aiReasoningCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+      { max_tokens: 360, response_format: { type: 'json_object' } }
     );
+    appendReasoningToMind(ai, reasoning);
 
     let parsed = null;
     try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
@@ -3054,14 +3102,11 @@ ${mindContext}`;
     let considered = [];
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const raw = await aiChatCompletion(
+      const { content: raw, reasoning } = await aiReasoningCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        {
-          temperature: core.temperature,
-          max_tokens: 420,
-          response_format: { type: 'json_object' },
-        }
+        { max_tokens: 420, response_format: { type: 'json_object' } }
       );
+      appendReasoningToMind(ai, reasoning);
 
       let parsed = null;
       try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
@@ -3229,10 +3274,11 @@ async function aiGuessCard(ai, game) {
 
     let parsed = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const raw = await aiChatCompletion(
+      const { content: raw, reasoning } = await aiReasoningCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { temperature: core.temperature, max_tokens: 360, response_format: { type: 'json_object' } }
+        { max_tokens: 360, response_format: { type: 'json_object' } }
       );
+      appendReasoningToMind(ai, reasoning);
       try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
       if (!parsed) continue;
 

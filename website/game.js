@@ -686,8 +686,9 @@ async function generateLocalPracticeAICluePlan(game, team, aiSpy = null) {
   const fallbackWord = pickLocalPracticeClueWord(game);
   if (!ownWords.length) return { word: fallbackWord, number: fallbackNumber };
 
+  const reasonFn = window.aiReasoningCompletion;
   const chatFn = window.aiChatCompletion;
-  if (typeof chatFn !== 'function') return { word: fallbackWord, number: fallbackNumber };
+  if (typeof reasonFn !== 'function' && typeof chatFn !== 'function') return { word: fallbackWord, number: fallbackNumber };
 
   const teamLabel = team === 'red' ? 'RED' : 'BLUE';
   const systemPrompt = [
@@ -711,19 +712,31 @@ async function generateLocalPracticeAICluePlan(game, team, aiSpy = null) {
   ].join('\n');
 
   try {
-    const raw = await chatFn(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      {
-        temperature: Number.isFinite(+aiSpy?.aiTemperature)
-          ? +aiSpy.aiTemperature
-          : (Number.isFinite(+aiSpy?.temperature) ? +aiSpy.temperature : 0.72),
-        max_tokens: 220,
-        response_format: { type: 'json_object' },
-      }
-    );
+    let raw;
+    if (typeof reasonFn === 'function') {
+      const result = await reasonFn(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { max_tokens: 220, response_format: { type: 'json_object' } }
+      );
+      raw = result.content;
+    } else {
+      raw = await chatFn(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        {
+          temperature: Number.isFinite(+aiSpy?.aiTemperature)
+            ? +aiSpy.aiTemperature
+            : (Number.isFinite(+aiSpy?.temperature) ? +aiSpy.temperature : 0.72),
+          max_tokens: 220,
+          response_format: { type: 'json_object' },
+        }
+      );
+    }
 
     const parsed = safeJsonParse(raw);
     const clueWord = sanitizeLocalPracticeClueWord(parsed?.clue, boardWordSet);
