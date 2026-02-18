@@ -7983,25 +7983,13 @@ function buildCluesLeftLogHtml() {
     // This matches the user's mental model: "3 words left" rather than a bare "3".
     const countBadgeText = progressText || String(clueNumber);
 
-    // Render the word chips.
-    // - Spymasters: show the actual remaining words.
-    // - Operatives: show the exact same chip layout, but with "HIDDEN" placeholders.
-    const hiddenCount = (() => {
-      if (Number.isInteger(remainingCount) && remainingCount > 0) return remainingCount;
-      if (Number.isInteger(total) && total > 0) return total;
-      if (Number.isInteger(clueNumber) && clueNumber > 0) return clueNumber;
-      return 1;
-    })();
-
     const wordsHtml = canSeeWords
       ? (remainingWords.length
-          ? remainingWords
-              .map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`)
-              .join('')
+          ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
           : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>')
-      : Array.from({ length: hiddenCount })
-          .map(() => '<span class="gamelog-left-word-chip">hidden</span>')
-          .join('');
+      : (remainingWords.length
+          ? remainingWords.map(() => '<span class="gamelog-left-word-chip">HIDDEN</span>').join('')
+          : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>');
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">
