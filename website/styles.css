@@ -6594,7 +6594,9 @@ line-height: 1.25;
 
 .game-log-panel .game-log-entries {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   contain: content;
   padding: 8px;
@@ -15729,8 +15731,10 @@ body.cozy-mode .og-gamelog-slidedown {
 
 .og-gamelog-slidedown-inner .gamelog-entries {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  max-height: calc(60vh - 60px);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .og-gamelog-backdrop {
@@ -15766,7 +15770,7 @@ body.cozy-mode .og-gamelog-slidedown {
   }
 
   .og-gamelog-slidedown-inner .gamelog-entries {
-    max-height: calc(50vh - 50px);
+    min-height: 0;
   }
 }
 
@@ -18548,7 +18552,10 @@ body.og-mode .gamelog-shell .sidebar-panel-header { display: none; }
 
 body.og-mode .gamelog-entries {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 8px 14px 14px;
   display: flex;
   flex-direction: column;

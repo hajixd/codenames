@@ -7966,7 +7966,12 @@ function buildOgStructuredLog() {
     const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
     const clueWord = String(clue.word || '').trim() || 'CLUE';
     const clueNumberRaw = parseInt(clue.number, 10);
-    const clueNumber = Number.isFinite(clueNumberRaw) && clueNumberRaw >= 0 ? clueNumberRaw : '?';
+    const clueNumberOriginal = Number.isFinite(clueNumberRaw) && clueNumberRaw >= 0 ? clueNumberRaw : 0;
+
+    // Compute remaining: subtract correct guesses from the original clue number.
+    const correctGuesses = (Array.isArray(clue.results) ? clue.results : [])
+      .filter(r => r && String(r.result).toLowerCase() === 'correct').length;
+    const clueNumber = clueNumberOriginal === 0 ? '?' : Math.max(0, clueNumberOriginal - correctGuesses);
 
     // In OG/Codenames-Online style, show the hint in the *same badge* as the avatar (like the spymaster card).
     // This makes the clue more visible and uses space more efficiently.
