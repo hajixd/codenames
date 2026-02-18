@@ -10073,9 +10073,10 @@ body.tournament.has-team-color .input:focus {
     max-height: 50dvh;
     overflow-y: auto;
   }
-  /* Override fit-content width from .row-clue-endturn when fixed */
+  /* Override max-width from .row-clue-endturn when fixed to bottom */
   .game-action-bar.row-clue-endturn{
     width: auto;
+    max-width: none;
     border-radius: 14px 14px 0 0;
   }
   .game-center-area .game-board-wrapper{
@@ -11205,7 +11206,14 @@ body.tournament.has-team-color .input:focus {
 .clue-display-expanded {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--surface-raised, var(--surface));
+  border: 1.5px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  width: auto;
+  max-width: 100%;
 }
 
 .clue-label {
@@ -11217,12 +11225,16 @@ body.tournament.has-team-color .input:focus {
   font-size: 20px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .clue-number-expanded {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: var(--accent);
   color: #fff;
   border-radius: 50%;
@@ -11231,11 +11243,12 @@ body.tournament.has-team-color .input:focus {
   justify-content: center;
   font-weight: 700;
   font-size: 16px;
+  flex-shrink: 0;
 }
 
 @media (min-width: 1024px) {
   .clue-display-expanded {
-    width: min(100%, 460px);
+    max-width: min(100%, 480px);
   }
 }
 
@@ -11243,9 +11256,10 @@ body.tournament.has-team-color .input:focus {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-dim);
-  opacity: 0.7;
-  margin-left: 4px;
+  opacity: 0.8;
+  margin-left: 2px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .clue-form-expanded {
@@ -25602,11 +25616,20 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 /* During operative phase, make clue display + end turn sit as one integrated row */
 .game-action-bar.row-clue-endturn {
   border-radius: 999px;
-  padding: 5px 6px 5px 6px;
-  gap: 6px;
-  width: fit-content;
+  padding: 6px 8px;
+  gap: 12px;
+  max-width: fit-content;
+  width: auto;
   margin-inline: auto;
   justify-content: center;
+}
+
+/* Remove inner pill styling when nested inside the row pill */
+.game-action-bar.row-clue-endturn .clue-display-expanded {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 4px 8px;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
@@ -25621,11 +25644,10 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   }
 
   .game-action-bar.row-clue-endturn .clue-display-expanded {
-    flex: 0 1 auto;
-    /* Keep pill width consistent even when the row is centered */
-    width: min(92vw, 480px);
-    max-width: min(92vw, 480px);
-    min-width: min(92vw, 480px);
+    flex: 0 0 auto;
+    width: auto;
+    max-width: min(90vw, 480px);
+    min-width: 0;
   }
 
   .game-action-bar.row-clue-endturn .operative-actions-expanded {
@@ -25657,14 +25679,10 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     margin-inline: auto;
   }
 
-  /* Desktop: give the clue pill more width and keep it fixed */
+  /* Desktop: give the clue pill a comfortable max width */
   .clue-display-expanded {
-    width: min(92vw, 480px);
-    max-width: min(92vw, 480px);
-    min-width: min(92vw, 480px);
-  }
-  .game-action-bar.row-clue-endturn .clue-display-expanded {
-    max-width: min(92vw, 480px);
+    width: auto;
+    max-width: min(90vw, 480px);
   }
 }
 
@@ -25837,8 +25855,12 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     margin-left: 0;
   }
 
-  /* Reserve a bit less space on tiny screens so the word doesn't vanish. */
+  /* Let the clue word flex to fill available space without overflowing. */
   .clue-word-expanded {
-    width: calc(100% - 72px);
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
