@@ -6595,15 +6595,12 @@ line-height: 1.25;
 .game-log-panel .game-log-entries {
   flex: 1;
   overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-overscroll-behavior: contain;
+  overscroll-behavior: contain;
   contain: content;
-    padding: 8px 8px 260px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 3px;
-
-  scroll-padding-bottom: 220px;
 }
 
 .game-log-panel .log-entry {
@@ -6643,15 +6640,12 @@ overscroll-behavior: contain;
 .game-log-popover .game-log-entries {
   flex: 1;
   overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-overscroll-behavior: contain;
+  overscroll-behavior: contain;
   contain: content;
-    padding: 10px 14px 260px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-
-  scroll-padding-bottom: 220px;
 }
 
 /* Game Menu Popover */
