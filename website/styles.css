@@ -6604,6 +6604,19 @@ line-height: 1.25;
   gap: 3px;
 }
 
+
+/* Desktop Game Log rebuild: keep one stable scroll container and swap pages inside. */
+.game-log-panel .game-log-scroll {
+  /* Override .game-log-entries flex-column behavior to avoid scroll glitches from DOM churn. */
+  display: block;
+  padding: 8px;
+}
+
+.game-log-panel .game-log-scroll .game-log-page {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 .game-log-panel .log-entry {
   /* Make the pill itself scale down with the smaller font. */
   --log-font-size: 11px;

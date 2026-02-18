@@ -2430,13 +2430,25 @@ function applyGameLogTabState() {
   const historyVisible = activeTab === 'history';
   const cluesVisible = activeTab === 'clues-left';
 
+  const desktopScroll = document.getElementById('desktop-gamelog-scroll');
+
+  // Preserve per-tab scroll position on desktop when switching tabs.
+  if (desktopScroll) {
+    const store = desktopScroll._gamelogScrollTops || (desktopScroll._gamelogScrollTops = {});
+    const prevTab = _lastAppliedGameLogTab ? normalizeGameLogTab(_lastAppliedGameLogTab) : activeTab;
+    store[prevTab] = desktopScroll.scrollTop;
+  }
+
   const setDisplay = (el, show) => {
     if (!el) return;
     el.style.display = show ? '' : 'none';
   };
 
-  setDisplay(document.getElementById('game-log-entries-sidebar'), historyVisible);
-  setDisplay(document.getElementById('game-log-clues-left-sidebar'), cluesVisible);
+  // Desktop (sidebar) pages inside a single stable scroll container.
+  setDisplay(document.getElementById('desktop-gamelog-history'), historyVisible);
+  setDisplay(document.getElementById('desktop-gamelog-clues-left'), cluesVisible);
+
+  // Mobile slide-down tabs.
   setDisplay(document.getElementById('og-gamelog-slidedown-entries'), historyVisible);
   setDisplay(document.getElementById('og-gamelog-slidedown-clues-left'), cluesVisible);
 
@@ -2454,7 +2466,19 @@ function applyGameLogTabState() {
       btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
   });
+
+  // Restore scroll for the newly active tab on desktop.
+  if (desktopScroll) {
+    const store = desktopScroll._gamelogScrollTops || {};
+    const desired = Number.isFinite(store[activeTab]) ? store[activeTab] : desktopScroll.scrollHeight;
+    requestAnimationFrame(() => {
+      desktopScroll.scrollTop = desired;
+    });
+  }
+
+  _lastAppliedGameLogTab = activeTab;
 }
+
 
 function setGameLogTab(tab) {
   gameLogActiveTab = normalizeGameLogTab(tab);
@@ -5983,12 +6007,12 @@ if (redAgents) redAgents.innerHTML = renderAgentDots(redCardsLeft);
 
   // Mirror game log into slidedown panel
   const ogSlidedownLog = document.getElementById('og-gamelog-slidedown-entries');
-  const existingLog = document.getElementById('game-log-entries-sidebar');
+  const existingLog = document.getElementById('desktop-gamelog-history');
   if (ogSlidedownLog && existingLog) {
     ogSlidedownLog.innerHTML = existingLog.innerHTML;
   }
   const ogSlidedownLeft = document.getElementById('og-gamelog-slidedown-clues-left');
-  const existingLeft = document.getElementById('game-log-clues-left-sidebar');
+  const existingLeft = document.getElementById('desktop-gamelog-clues-left');
   if (ogSlidedownLeft && existingLeft) {
     ogSlidedownLeft.innerHTML = existingLeft.innerHTML;
   }
@@ -7703,11 +7727,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
 
 function renderGameLog() {
   const popoverHistoryEl = document.getElementById('game-log-entries');
-  const sidebarHistoryEl = document.getElementById('game-log-entries-sidebar');
-  const sidebarCluesLeftEl = document.getElementById('game-log-clues-left-sidebar');
+  const desktopScrollEl = document.getElementById('desktop-gamelog-scroll');
+  const desktopHistoryPage = document.getElementById('desktop-gamelog-history');
+  const desktopCluesLeftPage = document.getElementById('desktop-gamelog-clues-left');
   const slidedownHistoryEl = document.getElementById('og-gamelog-slidedown-entries');
   const slidedownCluesLeftEl = document.getElementById('og-gamelog-slidedown-clues-left');
-  if (!popoverHistoryEl && !sidebarHistoryEl && !sidebarCluesLeftEl && !slidedownHistoryEl && !slidedownCluesLeftEl) return;
+  if (!popoverHistoryEl && !desktopScrollEl && !slidedownHistoryEl && !slidedownCluesLeftEl) return;
   if (!currentGame) return;
 
   // Scrolling UX: only auto-scroll when the user is already at (or near) the bottom.
@@ -7722,12 +7747,11 @@ function renderGameLog() {
   const activeTabBefore = normalizeGameLogTab(gameLogActiveTab);
   const wasNearBottom = {
     popoverHistory: (activeTabBefore === 'history') ? isNearBottom(document.getElementById('game-log')) : false,
-    sidebarHistory: (activeTabBefore === 'history') ? isNearBottom(sidebarHistoryEl) : false,
+    desktopHistory: (activeTabBefore === 'history') ? isNearBottom(desktopScrollEl, 12) : false,
     slidedownHistory: (activeTabBefore === 'history') ? isNearBottom(slidedownHistoryEl) : false,
-    sidebarCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(sidebarCluesLeftEl) : false,
+    desktopCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(desktopScrollEl, 12) : false,
     slidedownCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(slidedownCluesLeftEl) : false,
   };
-
   const rawLog = Array.isArray(currentGame.log)
     ? currentGame.log.map(entry => String(entry ?? '')).filter(Boolean)
     : [];
@@ -7837,11 +7861,11 @@ function renderGameLog() {
     historyHtml = ogHtml || fallbackHtml;
   }
 
-  if (sidebarHistoryEl) sidebarHistoryEl.innerHTML = historyHtml;
+  if (desktopHistoryPage) desktopHistoryPage.innerHTML = historyHtml;
   if (slidedownHistoryEl) slidedownHistoryEl.innerHTML = historyHtml;
 
   const cluesLeftHtml = buildCluesLeftLogHtml();
-  if (sidebarCluesLeftEl) sidebarCluesLeftEl.innerHTML = cluesLeftHtml;
+  if (desktopCluesLeftPage) desktopCluesLeftPage.innerHTML = cluesLeftHtml;
   if (slidedownCluesLeftEl) slidedownCluesLeftEl.innerHTML = cluesLeftHtml;
   applyGameLogTabState();
 
@@ -7863,9 +7887,9 @@ function renderGameLog() {
         popover._gamelogHasScrolledOnce = true;
         popover.scrollTop = popover.scrollHeight;
       }
-      if (sidebarHistoryEl && shouldAutoscroll(sidebarHistoryEl, 'sidebarHistory')) {
-        sidebarHistoryEl._gamelogHasScrolledOnce = true;
-        sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
+      if (desktopScrollEl && shouldAutoscroll(desktopScrollEl, 'desktopHistory')) {
+        desktopScrollEl._gamelogHasScrolledOnce = true;
+        desktopScrollEl.scrollTop = desktopScrollEl.scrollHeight;
       }
       if (slidedownHistoryEl && shouldAutoscroll(slidedownHistoryEl, 'slidedownHistory')) {
         slidedownHistoryEl._gamelogHasScrolledOnce = true;
@@ -7874,9 +7898,9 @@ function renderGameLog() {
     }
 
     if (activeTab === 'clues-left') {
-      if (sidebarCluesLeftEl && shouldAutoscroll(sidebarCluesLeftEl, 'sidebarCluesLeft')) {
-        sidebarCluesLeftEl._gamelogHasScrolledOnce = true;
-        sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
+      if (desktopScrollEl && shouldAutoscroll(desktopScrollEl, 'desktopCluesLeft')) {
+        desktopScrollEl._gamelogHasScrolledOnce = true;
+        desktopScrollEl.scrollTop = desktopScrollEl.scrollHeight;
       }
       if (slidedownCluesLeftEl && shouldAutoscroll(slidedownCluesLeftEl, 'slidedownCluesLeft')) {
         slidedownCluesLeftEl._gamelogHasScrolledOnce = true;
