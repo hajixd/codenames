@@ -11209,6 +11209,12 @@ body.tournament.has-team-color .input:focus {
   font-size: 16px;
 }
 
+@media (min-width: 1024px) {
+  .clue-display-expanded {
+    width: min(100%, 460px);
+  }
+}
+
 .guesses-left-expanded {
   font-size: 11px;
   font-weight: 600;
@@ -21253,6 +21259,9 @@ body.cozy-mode .gamelog-avatar-name {
 
 body.og-mode .gamelog-clue-pill,
 body.cozy-mode .gamelog-clue-pill {
+  /* Keep clue pill a consistent, readable width (don't size to content). */
+  flex: 0 1 auto;
+  width: min(260px, 100%);
   min-height: 48px;
   border-radius: 14px;
   padding: 9px 40px 9px 10px;
@@ -21383,6 +21392,8 @@ body.light-mode .gamelog-empty {
 
   body.og-mode .gamelog-clue-pill,
   body.cozy-mode .gamelog-clue-pill {
+    /* Slightly narrower on phones so it stays tidy next to avatars. */
+    width: min(220px, 100%);
     min-height: 44px;
     padding: 8px 34px 8px 8px;
     border-radius: 12px;
@@ -23877,30 +23888,52 @@ body.light-mode .clue-stack-chip {
 }
 
 .clue-display-expanded {
+  /* Fixed-size pill that stays centered and doesn't shrink to content */
   position: relative;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  min-width: clamp(180px, 26vw, 320px);
+  width: min(100%, 380px);
   min-height: 34px;
-  padding: 4px 16px;
+  padding: 6px 52px 6px 18px; /* extra right padding for the number */
   border-radius: 999px;
-  gap: 10px;
 }
 
 .clue-word-expanded {
   font-size: clamp(18px, 2.15vw, 24px);
   font-weight: 900;
   letter-spacing: 0.7px;
+  /* Keep the clue word perfectly centered in the pill */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: calc(100% - 96px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .clue-number-expanded {
   width: 28px;
   height: 28px;
   font-size: 14px;
+  /* Pin the number to the right side of the pill */
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .guesses-left-expanded {
-  margin-left: 8px;
-  white-space: nowrap;
+  display: none !important;
+}
+
+@media (min-width: 1024px) {
+  .clue-display-expanded {
+    width: 460px;
+  }
 }
 
 .clue-typing-live {
@@ -24363,9 +24396,8 @@ body.light-mode .council-status-badge {
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: min(78%, 520px);
+  /* Keep clue pill a consistent size even when end-turn is visible */
+  flex: 0 0 auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
@@ -24379,9 +24411,9 @@ body.light-mode .council-status-badge {
 
 @media (max-width: 768px) {
   .clue-display-expanded {
-    min-width: min(100%, 320px);
+    width: min(100%, 320px);
     min-height: 30px;
-    padding: 3px 12px;
+    padding: 3px 44px 3px 12px;
   }
 
   .clue-word-expanded {
@@ -24462,40 +24494,50 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 
 .clue-display-expanded {
   min-height: clamp(34px, 3.4vw, 40px);
-  padding: 4px clamp(12px, 1.8vw, 18px);
+  /* Extra right padding reserves space for the clue number on the right */
+  padding: 4px 52px 4px 18px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.11),
     0 8px 20px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+
+  /* Keep the clue pill a consistent width (don't shrink to content). */
+  width: min(100%, 380px);
+  max-width: min(100%, 380px);
+  justify-content: center;
 }
 
 .clue-word-expanded {
-  /* Inline word (left of number) so the clue is always visible */
-  position: static;
-  transform: none;
-  min-width: 0;
+  /* Keep the clue word perfectly centered in the pill */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: calc(100% - 96px);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
-  flex-shrink: 0;
 }
 
 .clue-number-expanded {
-  flex: 0 0 auto;
-  margin-left: 10px;
+  /* Pin the number to the right side of the pill */
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Wider fixed clue pill on desktop */
+@media (min-width: 821px) {
+  .clue-display-expanded {
+    width: min(100%, 460px);
+    max-width: min(100%, 460px);
+  }
 }
 
 .guesses-left-expanded {
-  position: static;
-  transform: none;
-  margin-left: 8px;
-  max-width: 48%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.guesses-left-expanded:empty {
-  display: none;
+  display: none !important;
 }
 
 .game-action-bar.row-clue-endturn {
@@ -24507,8 +24549,7 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
 }
 
 .game-action-bar.row-clue-endturn .clue-display-expanded {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .game-action-bar.row-clue-endturn .operative-actions-expanded {
@@ -24953,6 +24994,8 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   padding: 4px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
 }
 
 .council-judges-row {
@@ -25008,11 +25051,72 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   font-weight: 800;
   letter-spacing: 1px;
   text-transform: uppercase;
-  min-height: 18px;
+  min-height: 22px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   transition: color 0.5s ease;
+}
+
+.council-vote-letter {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+.council-vote-word {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  line-height: 1;
+  opacity: 0.95;
+}
+
+/* Final council result stamp */
+.council-verdict-stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-10deg) scale(0.92);
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-weight: 950;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  text-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.25);
+}
+
+.council-verdict-stamp.accepted {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.45);
+  background: rgba(248, 81, 73, 0.10);
+}
+
+.council-verdict-stamp.denied {
+  color: #39d353;
+  border-color: rgba(57, 211, 83, 0.45);
+  background: rgba(57, 211, 83, 0.10);
+}
+
+.council-tribunal.verdict-show .council-verdict-stamp {
+  animation: councilVerdictStampIn 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes councilVerdictStampIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(-14deg) scale(0.72); filter: blur(2px); }
+  55% { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(1.04); filter: blur(0px); }
+  100% { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(0.98); }
 }
 
 /* Pending dots animation */
@@ -25429,7 +25533,10 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
   .game-action-bar.row-clue-endturn .clue-display-expanded {
     flex: 0 1 auto;
-    width: auto;
+    /* Keep pill width consistent even when the row is centered */
+    width: min(92vw, 480px);
+    max-width: min(92vw, 480px);
+    min-width: min(92vw, 480px);
   }
 
   .game-action-bar.row-clue-endturn .operative-actions-expanded {
@@ -25461,12 +25568,14 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     margin-inline: auto;
   }
 
+  /* Desktop: give the clue pill more width and keep it fixed */
   .clue-display-expanded {
-    min-width: clamp(180px, 26vw, 320px);
-    max-width: 360px;
+    width: min(92vw, 480px);
+    max-width: min(92vw, 480px);
+    min-width: min(92vw, 480px);
   }
   .game-action-bar.row-clue-endturn .clue-display-expanded {
-    max-width: 360px;
+    max-width: min(92vw, 480px);
   }
 }
 

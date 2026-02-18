@@ -6814,29 +6814,122 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
   }
 }
 
+
+
+function buildCouncilTribunalHtml(liveState, scope) {
+  const voteHtml = (verdict) => {
+    const v = verdict === 'illegal' ? 'illegal' : 'legal';
+    const letter = v === 'illegal' ? 'A' : 'D';
+    const word = v === 'illegal' ? 'AGREE' : 'DISAGREE';
+    return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
+  };
+
+  const judgeNames = ['Aria', 'Kai', 'Nova'];
+  const safeScope = scope ? String(scope) : 'panel';
+  const j0cls = liveState?.judges?.[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+  const j1cls = liveState?.judges?.[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+  const j2cls = liveState?.judges?.[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+  const j0label = liveState?.judges?.[0] ? voteHtml(liveState.judges[0].verdict) : '';
+  const j1label = liveState?.judges?.[1] ? voteHtml(liveState.judges[1].verdict) : '';
+  const j2label = liveState?.judges?.[2] ? voteHtml(liveState.judges[2].verdict) : '';
+
+  const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
+  const verdictShowCls = liveState?.finalVerdict ? 'verdict-show' : '';
+  const stampText = liveState?.finalVerdict
+    ? (liveState.finalVerdict === 'illegal' ? 'CHALLENGE ACCEPTED' : 'CHALLENGE OVERRULED')
+    : '';
+  const stampCls = liveState?.finalVerdict
+    ? (liveState.finalVerdict === 'illegal' ? 'accepted' : 'denied')
+    : '';
+
+  const pendingDots = '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>';
+
+  return `
+    <div class="council-tribunal ${flashCls} ${verdictShowCls}" id="judge-courtroom-${safeScope}">
+      ${stampText ? `<div class="council-verdict-stamp ${stampCls}" id="council-verdict-stamp-${safeScope}">${stampText}</div>` : ''}
+      <div class="council-judges-row" aria-label="AI legality council">
+        <div class="council-judge-card ${j0cls}" id="judge-avatar-${safeScope}-0" style="--judge-idx:0">
+          <div class="council-judge-avatar">
+            <span class="council-judge-initial">${judgeNames[0][0]}</span>
+          </div>
+          <div class="council-judge-name">${judgeNames[0]}</div>
+          <div class="council-judge-verdict">${j0label || pendingDots}</div>
+        </div>
+        <div class="council-judge-card ${j1cls}" id="judge-avatar-${safeScope}-1" style="--judge-idx:1">
+          <div class="council-judge-avatar">
+            <span class="council-judge-initial">${judgeNames[1][0]}</span>
+          </div>
+          <div class="council-judge-name">${judgeNames[1]}</div>
+          <div class="council-judge-verdict">${j1label || pendingDots}</div>
+        </div>
+        <div class="council-judge-card ${j2cls}" id="judge-avatar-${safeScope}-2" style="--judge-idx:2">
+          <div class="council-judge-avatar">
+            <span class="council-judge-initial">${judgeNames[2][0]}</span>
+          </div>
+          <div class="council-judge-name">${judgeNames[2]}</div>
+          <div class="council-judge-verdict">${j2label || pendingDots}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
 function _updateJudgeCourtUI(pid) {
   const state = _liveJudgeVerdicts[pid];
   if (!state) return;
-  for (let i = 0; i < 3; i++) {
-    const el = document.getElementById(`judge-avatar-${i}`);
-    if (!el) continue;
-    const j = state.judges[i];
-    if (j) {
-      el.classList.remove('judge-center');
-      el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
-      const labelEl = el.querySelector('.council-judge-verdict');
-      if (labelEl) labelEl.textContent = j.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
+
+  const renderVoteHtml = (verdict) => {
+    // A = Agree with the challenge (clue is ILLEGAL)
+    // D = Disagree with the challenge (clue is LEGAL)
+    const letter = verdict === 'illegal' ? 'A' : 'D';
+    const word = verdict === 'illegal' ? 'AGREE' : 'DISAGREE';
+    return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
+  };
+
+  const verdictLabel = (finalVerdict) => (finalVerdict === 'illegal' ? 'CHALLENGE ACCEPTED' : 'CHALLENGE OVERRULED');
+
+  const ensureVerdictStamp = (containerEl, finalVerdict, scope) => {
+    if (!containerEl) return;
+    containerEl.classList.add('verdict-show');
+    const stampId = scope ? `council-verdict-stamp-${scope}` : 'council-verdict-stamp';
+    let stamp = containerEl.querySelector(`#${stampId}`);
+    if (!stamp) {
+      stamp = document.createElement('div');
+      stamp.id = stampId;
+      stamp.className = 'council-verdict-stamp';
+      containerEl.appendChild(stamp);
+    }
+    const accepted = finalVerdict === 'illegal';
+    stamp.classList.toggle('accepted', accepted);
+    stamp.classList.toggle('denied', !accepted);
+    stamp.textContent = verdictLabel(finalVerdict);
+  };
+
+  const scopes = ['panel', 'modal', null]; // null supports any legacy ids
+  for (const scope of scopes) {
+    for (let i = 0; i < 3; i++) {
+      const el = scope ? document.getElementById(`judge-avatar-${scope}-${i}`) : document.getElementById(`judge-avatar-${i}`);
+      if (!el) continue;
+      const j = state.judges[i];
+      if (j) {
+        el.classList.remove('judge-center');
+        el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
+        const labelEl = el.querySelector('.council-judge-verdict');
+        if (labelEl) labelEl.innerHTML = renderVoteHtml(j.verdict);
+      }
     }
   }
+
   if (state.finalVerdict) {
     const modalCard = document.getElementById('clue-review-modal-card');
     if (modalCard) {
       modalCard.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
     }
-    // Also flash the inline panel hint area
-    const courtEl = document.getElementById('judge-courtroom');
-    if (courtEl) {
+
+    for (const scope of scopes) {
+      const courtEl = scope ? document.getElementById(`judge-courtroom-${scope}`) : document.getElementById('judge-courtroom');
+      if (!courtEl) continue;
       courtEl.classList.add(state.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red');
+      ensureVerdictStamp(courtEl, state.finalVerdict, scope || undefined);
     }
   }
 }
@@ -7186,7 +7279,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const clueNumberEl = document.getElementById('clue-number');
   const guessesLeftEl = document.getElementById('guesses-left');
   const endTurnBtn = document.getElementById('end-turn-btn');
-  if (!clueWordEl || !clueNumberEl || !guessesLeftEl || !endTurnBtn) return;
+  // guessesLeftEl is optional (we hide/remove it for unlimited guesses)
+  if (!clueWordEl || !clueNumberEl || !endTurnBtn) return;
 
   syncClueSubmitButtonAppearance();
 
@@ -7238,12 +7332,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
   clueWordEl.textContent = clueWord;
   clueNumberEl.textContent = clueNumber;
-  // Show guesses remaining inline in the pill during operative phase
-  const gr = Number(currentGame?.guessesRemaining);
-  if (currentGame?.currentPhase === 'operatives' && currentGame?.currentClue && Number.isFinite(gr) && gr > 0) {
-    guessesLeftEl.textContent = `${gr} left`;
-  } else {
+  // Unlimited guesses: remove/hide guesses remaining text.
+  if (guessesLeftEl) {
     guessesLeftEl.textContent = '';
+    guessesLeftEl.style.display = 'none';
   }
 
   const liveDraft = normalizeLiveClueDraft(currentGame?.liveClueDraft, currentGame);
@@ -7270,6 +7362,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     let statusText = '';
     let hintText = '';
     let hintHtml = '';
+    let hintHtmlModal = '';
     let metaText = '';
     const canChallenge = canCurrentUserChallengePendingClue(pending, currentGame);
 
@@ -7290,41 +7383,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       statusText = 'Council Reviewing';
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
       const liveState = _liveJudgeVerdicts[pending.id];
-      const j0cls = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-      const j1cls = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-      const j2cls = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-      const judgeNames = ['Aria', 'Kai', 'Nova'];
-      const j0label = liveState?.judges[0] ? (liveState.judges[0].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
-      const j1label = liveState?.judges[1] ? (liveState.judges[1].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
-      const j2label = liveState?.judges[2] ? (liveState.judges[2].verdict === 'legal' ? 'LEGAL' : 'ILLEGAL') : '';
-      const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
-      hintHtml = `
-        <div class="council-tribunal ${flashCls}" id="judge-courtroom">
-          <div class="council-judges-row" aria-label="AI legality council">
-            <div class="council-judge-card ${j0cls}" id="judge-avatar-0" style="--judge-idx:0">
-              <div class="council-judge-avatar">
-                <span class="council-judge-initial">${judgeNames[0][0]}</span>
-              </div>
-              <div class="council-judge-name">${judgeNames[0]}</div>
-              <div class="council-judge-verdict">${j0label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
-            </div>
-            <div class="council-judge-card ${j1cls}" id="judge-avatar-1" style="--judge-idx:1">
-              <div class="council-judge-avatar">
-                <span class="council-judge-initial">${judgeNames[1][0]}</span>
-              </div>
-              <div class="council-judge-name">${judgeNames[1]}</div>
-              <div class="council-judge-verdict">${j1label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
-            </div>
-            <div class="council-judge-card ${j2cls}" id="judge-avatar-2" style="--judge-idx:2">
-              <div class="council-judge-avatar">
-                <span class="council-judge-initial">${judgeNames[2][0]}</span>
-              </div>
-              <div class="council-judge-name">${judgeNames[2]}</div>
-              <div class="council-judge-verdict">${j2label || '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>'}</div>
-            </div>
-          </div>
-        </div>
-      `;
+      hintHtml = buildCouncilTribunalHtml(liveState, 'panel');
+      hintHtmlModal = buildCouncilTribunalHtml(liveState, 'modal');
       reviewPanelEl.classList.add('is-reviewing');
     } else if (pending.state === 'rejected') {
       statusText = 'Rejected';
@@ -7349,6 +7409,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const showReviewModal = !spectator
       && (pending.state === 'awaiting' || pending.state === 'reviewing');
     if (showReviewModal && reviewModalEl) {
+      // While the council popup is up, keep the clue pill centered in the action bar.
+      if (actionBarEl) actionBarEl.classList.add('row-clue-endturn');
+
       const maskedWord = isSpymaster ? pending.word : '*****';
       const reviewTitle = `${maskedWord} ${pending.number}`;
       if (reviewModalTitleEl) {
@@ -7358,7 +7421,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       if (reviewModalStatusEl) reviewModalStatusEl.textContent = statusText;
       if (reviewModalMetaEl) reviewModalMetaEl.textContent = metaText;
       if (reviewModalHintEl) {
-        if (hintHtml) reviewModalHintEl.innerHTML = hintHtml;
+        const modalHtml = hintHtmlModal || hintHtml;
+        if (modalHtml) reviewModalHintEl.innerHTML = modalHtml;
         else reviewModalHintEl.textContent = hintText;
       }
 
@@ -7711,12 +7775,10 @@ function buildCluesLeftLogHtml() {
         .filter(Boolean);
     }
 
-    const statusText = (remainingCount === null)
-      ? `${total} word${total === 1 ? '' : 's'}`
-      : `${remainingCount} left`;
-    const progressText = (remainingCount === null || foundCount === null)
-      ? ''
-      : `${foundCount}/${total} found`;
+	    // Remove "X left" text (unlimited guesses / no guesses-left UI)
+	    const progressText = (remainingCount === null || foundCount === null)
+	      ? ''
+	      : `${foundCount}/${total} found`;
 
     const wordsHtml = canSeeWords
       ? (remainingWords.length
@@ -7726,10 +7788,9 @@ function buildCluesLeftLogHtml() {
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">
-        <div class="gamelog-left-head">
-          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
-          <span class="gamelog-left-clue-count">${escapeHtml(statusText)}</span>
-        </div>
+	        <div class="gamelog-left-head">
+	          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
+	        </div>
         <div class="gamelog-left-meta">${escapeHtml(progressText)}</div>
         <div class="gamelog-left-word-list">${wordsHtml}</div>
       </div>
