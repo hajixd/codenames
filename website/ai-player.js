@@ -2566,108 +2566,48 @@ async function _setAILiveClueDraft(game, team, ai, word, number) {
   } catch (_) {}
 }
 
-function _sanitizeOneWordClue(raw) {
-  const w = String(raw || '').trim().toUpperCase();
-  if (!w) return '';
-  if (w.includes(' ') || w.includes('-')) return '';
-  return w.replace(/[^A-Z0-9]/g, '').slice(0, 40);
-}
-
-function _dedupeConsideredClues(items) {
-  const out = [];
-  const seen = new Set();
-  for (const it of (Array.isArray(items) ? items : [])) {
-    const clue = _sanitizeOneWordClue(it?.clue || it?.word);
-    if (!clue) continue;
-    const n = Number.isFinite(+it?.number) ? Math.max(0, Math.min(9, parseInt(it.number, 10) || 0)) : null;
-    const key = `${clue}|${n === null ? '' : n}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ clue, number: n });
-  }
-  return out;
-}
-
-async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opts = {}) {
+async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber) {
   if (!ai || !game) return;
   const team = String(ai.team || '');
   const boardWords = (game.cards || []).map(c => String(c?.word || '').toUpperCase()).filter(Boolean);
+  const fakes = _pickFakeDraftWords(ai, finalClue, boardWords);
 
-  const finalWord = _sanitizeOneWordClue(finalClue);
-  const finalNum = Number.isFinite(+finalNumber) ? Math.max(0, Math.min(9, parseInt(finalNumber, 10) || 0)) : 1;
-  if (!finalWord) return;
+  const typeSpeed = () => 40 + Math.floor(Math.random() * 45); // 40-85ms per char
+  const deleteSpeed = () => 25 + Math.floor(Math.random() * 20); // 25-45ms per char
+  const thinkPause = () => 800 + Math.floor(Math.random() * 900); // 800-1700ms between drafts
 
-  // If callers provide explicit "considered" clues, use those. Otherwise fall back
-  // to mind-log-derived fake drafts.
-  let considered = _dedupeConsideredClues(opts.considered);
-
-  // Drop anything that's on the board, and cap to keep the animation from dragging.
-  considered = considered.filter(x => x?.clue && !boardWords.includes(x.clue)).slice(0, 4);
-
-  const typeSpeed = () => 55 + Math.floor(Math.random() * 70);   // 55-125ms per char
-  const deleteSpeed = () => 35 + Math.floor(Math.random() * 45); // 35-80ms per char
-  const thinkPause = () => 450 + Math.floor(Math.random() * 900);
-
-  // Ensure the final clue is represented.
-  if (!considered.find(x => x.clue === finalWord && (x.number === null || x.number === finalNum))) {
-    considered.push({ clue: finalWord, number: finalNum });
-  }
-
-  // If we *only* have the final, synthesize some "draft" ideas like before.
-  if (considered.length <= 1) {
-    const fakes = _pickFakeDraftWords(ai, finalWord, boardWords);
-    for (const fake of fakes) {
-      for (let i = 1; i <= fake.length; i++) {
+  // Type each fake draft, pause, then delete it
+  for (const fake of fakes) {
+    // Type character by character
+    for (let i = 1; i <= fake.length; i++) {
+      await _setAILiveClueDraft(game, team, ai, fake.slice(0, i), null);
+      await sleep(typeSpeed());
+    }
+    // Pause as if considering
+    await sleep(thinkPause());
+    // Delete character by character
+    for (let i = fake.length - 1; i >= 0; i--) {
+      if (i === 0) {
+        await _setAILiveClueDraft(game, team, ai, '...', null);
+      } else {
         await _setAILiveClueDraft(game, team, ai, fake.slice(0, i), null);
-        await sleep(typeSpeed());
       }
-      await sleep(thinkPause());
-      for (let i = fake.length - 1; i >= 0; i--) {
-        await _setAILiveClueDraft(game, team, ai, i ? fake.slice(0, i) : null, null);
-        await sleep(deleteSpeed());
-      }
-      await sleep(250 + Math.floor(Math.random() * 350));
+      await sleep(deleteSpeed());
     }
-  } else {
-    // Animate each considered clue: type → brief pause → delete → think.
-    // Reserve the last step for the final clue.
-    const last = considered[considered.length - 1];
-    const drafts = considered.slice(0, -1);
-    for (const d of drafts) {
-      const w = _sanitizeOneWordClue(d.clue);
-      if (!w) continue;
-      for (let i = 1; i <= w.length; i++) {
-        await _setAILiveClueDraft(game, team, ai, w.slice(0, i), null);
-        await sleep(typeSpeed());
-      }
-      // Briefly set the number once the word is "complete".
-      if (d.number !== null && d.number !== undefined) {
-        await _setAILiveClueDraft(game, team, ai, w, d.number);
-      }
-      await sleep(thinkPause());
-
-      // Delete it.
-      for (let i = w.length - 1; i >= 0; i--) {
-        await _setAILiveClueDraft(game, team, ai, i ? w.slice(0, i) : null, null);
-        await sleep(deleteSpeed());
-      }
-      await sleep(300 + Math.floor(Math.random() * 500));
-    }
-
-    // Make sure "last" matches the caller's final.
-    if (last?.clue !== finalWord || (last?.number !== null && last?.number !== finalNum)) {
-      // No-op: we still type the explicit final below.
-    }
+    await sleep(300 + Math.floor(Math.random() * 400));
   }
 
-  // Type the real clue.
-  for (let i = 1; i <= finalWord.length; i++) {
-    const showNumber = (i === finalWord.length) ? finalNum : null;
-    await _setAILiveClueDraft(game, team, ai, finalWord.slice(0, i), showNumber);
+  // Now type the real clue
+  for (let i = 1; i <= finalClue.length; i++) {
+    const showNumber = (i === finalClue.length) ? finalNumber : null;
+    await _setAILiveClueDraft(game, team, ai, finalClue.slice(0, i), showNumber);
     await sleep(typeSpeed());
   }
 
-  await sleep(450 + Math.floor(Math.random() * 450));
+  // Brief pause showing the complete clue
+  await sleep(400 + Math.floor(Math.random() * 300));
+
+  // Clear the draft (submit will follow immediately)
   await _setAILiveClueDraft(game, team, ai, null, null);
 }
 
@@ -2976,11 +2916,7 @@ async function runSpymasterCouncil(game, team) {
     } catch (_) {}
   }
 
-  const considered = _dedupeConsideredClues(
-    proposals.map(p => ({ clue: p?.clue, number: p?.number }))
-  ).slice(0, 4);
-
-  await simulateAISpymasterThinking(executor, fresh, pick.clue, pick.number, { considered });
+  await simulateAISpymasterThinking(executor, fresh, pick.clue, pick.number);
   await submitClueDirect(executor, fresh, pick.clue, pick.number);
 }
 async function aiGiveClue(ai, game) {
@@ -3022,13 +2958,12 @@ async function aiGiveClue(ai, game) {
       ``,
       `MIND RULE: You have a private inner monologue. The only way you think is by writing.`,
       `Return JSON only with this schema:`,
-      `{"mind":"first-person inner monologue", "candidates":[{"clue":"ONEWORD","number":N}], "final":{"clue":"ONEWORD","number":N}}`,
+      `{"mind":"first-person inner monologue", "clue":"ONEWORD", "number":N}`,
       ``,
       `Hard requirements:`,
-      `- EVERY clue (candidates + final) must be ONE word (no spaces, no hyphens).`,
-      `- EVERY clue must NOT be any board word: ${boardWords.join(', ')}`,
-      `- numbers are integers 0-9.`,
-      `- Give 2-4 candidates (including the final if you want), and then pick ONE final.`,
+      `- clue must be ONE word (no spaces, no hyphens).`,
+      `- clue must NOT be any board word: ${boardWords.join(', ')}`,
+      `- number is an integer 0-9.`,
     ].join('\n');
 
     const mindContext = core.mindLog.slice(-10).join('\n');
@@ -3041,7 +2976,6 @@ ${mindContext}`;
     let clueWord = '';
     let clueNumber = 1;
     let mind = '';
-    let considered = [];
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       const raw = await aiChatCompletion(
@@ -3060,21 +2994,10 @@ ${mindContext}`;
       mind = String(parsed.mind || '').trim();
       if (mind) appendMind(ai, mind);
 
-      // Collect considered candidates (for live typing simulation)
-      const rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
-      considered = _dedupeConsideredClues(rawCandidates);
-
-      const finalObj = (parsed.final && typeof parsed.final === 'object') ? parsed.final : null;
-      clueWord = _sanitizeOneWordClue(finalObj?.clue ?? parsed.clue);
-      clueNumber = parseInt(finalObj?.number ?? parsed.number, 10);
+      clueWord = String(parsed.clue || '').trim().toUpperCase();
+      clueNumber = parseInt(parsed.number, 10);
       if (!Number.isFinite(clueNumber)) clueNumber = 1;
       clueNumber = Math.max(0, Math.min(9, clueNumber));
-
-      // If final is missing/invalid but we have candidates, fall back to the first valid candidate.
-      if (!clueWord && considered.length) {
-        clueWord = considered[0].clue;
-        clueNumber = (considered[0].number === null || considered[0].number === undefined) ? 1 : considered[0].number;
-      }
 
       const bad =
         (!clueWord) ? 'empty clue' :
@@ -3091,7 +3014,7 @@ ${mindContext}`;
     if (!clueWord) return;
 
     // Simulate live thinking/typing visible to opposing spymaster
-    await simulateAISpymasterThinking(ai, game, clueWord, clueNumber, { considered });
+    await simulateAISpymasterThinking(ai, game, clueWord, clueNumber);
 
     const seqField = _aiSeqField(team, 'spy');
     let clueAccepted = false;
