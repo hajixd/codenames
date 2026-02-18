@@ -7710,6 +7710,24 @@ function renderGameLog() {
   if (!popoverHistoryEl && !sidebarHistoryEl && !sidebarCluesLeftEl && !slidedownHistoryEl && !slidedownCluesLeftEl) return;
   if (!currentGame) return;
 
+  // Scrolling UX: only auto-scroll when the user is already at (or near) the bottom.
+  // Otherwise, snapshot updates will constantly yank the scroll position back down,
+  // making it impossible to read earlier log lines on desktop.
+  const isNearBottom = (el, thresholdPx = 90) => {
+    if (!el) return false;
+    const t = Number(thresholdPx) || 0;
+    return (el.scrollHeight - el.scrollTop - el.clientHeight) <= t;
+  };
+
+  const activeTabBefore = normalizeGameLogTab(gameLogActiveTab);
+  const wasNearBottom = {
+    popoverHistory: (activeTabBefore === 'history') ? isNearBottom(document.getElementById('game-log')) : false,
+    sidebarHistory: (activeTabBefore === 'history') ? isNearBottom(sidebarHistoryEl) : false,
+    slidedownHistory: (activeTabBefore === 'history') ? isNearBottom(slidedownHistoryEl) : false,
+    sidebarCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(sidebarCluesLeftEl) : false,
+    slidedownCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(slidedownCluesLeftEl) : false,
+  };
+
   const rawLog = Array.isArray(currentGame.log)
     ? currentGame.log.map(entry => String(entry ?? '')).filter(Boolean)
     : [];
@@ -7831,11 +7849,40 @@ function renderGameLog() {
   requestAnimationFrame(() => {
     const popover = document.getElementById('game-log');
     const activeTab = normalizeGameLogTab(gameLogActiveTab);
-    if (popover && activeTab === 'history') popover.scrollTop = popover.scrollHeight;
-    if (sidebarHistoryEl && activeTab === 'history') sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
-    if (slidedownHistoryEl && activeTab === 'history') slidedownHistoryEl.scrollTop = slidedownHistoryEl.scrollHeight;
-    if (sidebarCluesLeftEl && activeTab === 'clues-left') sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
-    if (slidedownCluesLeftEl && activeTab === 'clues-left') slidedownCluesLeftEl.scrollTop = slidedownCluesLeftEl.scrollHeight;
+
+    const shouldAutoscroll = (el, nearBottomFlagKey) => {
+      if (!el) return false;
+      // First render in this session: scroll to bottom once.
+      if (!el._gamelogHasScrolledOnce) return true;
+      return !!wasNearBottom[nearBottomFlagKey];
+    };
+
+    if (activeTab === 'history') {
+      // Popover uses a different scroll container than the sidebar.
+      if (popover && shouldAutoscroll(popover, 'popoverHistory')) {
+        popover._gamelogHasScrolledOnce = true;
+        popover.scrollTop = popover.scrollHeight;
+      }
+      if (sidebarHistoryEl && shouldAutoscroll(sidebarHistoryEl, 'sidebarHistory')) {
+        sidebarHistoryEl._gamelogHasScrolledOnce = true;
+        sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
+      }
+      if (slidedownHistoryEl && shouldAutoscroll(slidedownHistoryEl, 'slidedownHistory')) {
+        slidedownHistoryEl._gamelogHasScrolledOnce = true;
+        slidedownHistoryEl.scrollTop = slidedownHistoryEl.scrollHeight;
+      }
+    }
+
+    if (activeTab === 'clues-left') {
+      if (sidebarCluesLeftEl && shouldAutoscroll(sidebarCluesLeftEl, 'sidebarCluesLeft')) {
+        sidebarCluesLeftEl._gamelogHasScrolledOnce = true;
+        sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
+      }
+      if (slidedownCluesLeftEl && shouldAutoscroll(slidedownCluesLeftEl, 'slidedownCluesLeft')) {
+        slidedownCluesLeftEl._gamelogHasScrolledOnce = true;
+        slidedownCluesLeftEl.scrollTop = slidedownCluesLeftEl.scrollHeight;
+      }
+    }
   });
 }
 
@@ -7976,10 +8023,9 @@ function buildOgStructuredLog() {
     const clueNumberRaw = parseInt(clue.number, 10);
     const clueNumberOriginal = Number.isFinite(clueNumberRaw) && clueNumberRaw >= 0 ? clueNumberRaw : 0;
 
-    // Compute remaining: subtract correct guesses from the original clue number.
-    const correctGuesses = (Array.isArray(clue.results) ? clue.results : [])
-      .filter(r => r && String(r.result).toLowerCase() === 'correct').length;
-    const clueNumber = clueNumberOriginal === 0 ? '?' : Math.max(0, clueNumberOriginal - correctGuesses);
+    // History should reflect what the spymaster *said* (the original clue number).
+    // Any "clues left" / remaining count belongs in the dedicated "Clues Left" tab.
+    const clueNumber = clueNumberOriginal === 0 ? '?' : clueNumberOriginal;
 
     // In OG/Codenames-Online style, show the hint in the *same badge* as the avatar (like the spymaster card).
     // This makes the clue more visible and uses space more efficiently.
