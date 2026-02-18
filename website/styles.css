@@ -13134,15 +13134,15 @@ body.qp-gate-open .app {
   /* Remove the separate Players box on desktop (names live in the top bar) */
   .team-roster-panel { display: none; }
 
-  /* Desktop left column: prioritize a tall Game Log (match Team Chat feel).
-     Keep Clue History accessible but more compact. */
+  /* Desktop left column: keep Game Log compact (similar to Team Chat height)
+     and let Clue History fill the remaining space. */
   .clue-history-panel {
-    flex: 0 0 clamp(170px, 28vh, 260px);
+    flex: 1 1 auto;
     min-height: 0;
   }
 
   .game-log-panel {
-    flex: 1 1 auto;
+    flex: 0 0 clamp(200px, 30vh, 320px);
     min-height: 0;
   }
 
