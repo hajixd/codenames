@@ -940,67 +940,56 @@ function _dedupeTypingCandidates(items, finalWord) {
 }
 
 async function simulateLocalPracticeAISpymasterTyping(gameId, game, team, ai, finalClue, finalNumber, consideredRaw = []) {
+  // For local practice (singleplayer), use the *exact* same live typing
+  // simulation as multiplayer. The multiplayer implementation lives in
+  // ai-player.js as simulateAISpymasterThinking().
   const gid = String(gameId || '').trim();
   if (!gid || !isLocalPracticeGameId(gid)) return;
+
+  const fn = window.simulateAISpymasterThinking;
+  if (typeof fn === 'function') {
+    try {
+      // Pass the considered candidates through so the animation mirrors the
+      // multiplayer flow (type drafts → delete → final).
+      const considered = Array.isArray(consideredRaw)
+        ? consideredRaw.map((c) => ({ clue: c?.clue ?? c?.word ?? c, number: c?.number }))
+        : [];
+      await fn(ai, game || getLocalPracticeGame(gid), finalClue, finalNumber, { considered });
+      return;
+    } catch (_) {
+      // Fall back to a minimal local animation if something goes wrong.
+    }
+  }
+
+  // Fallback: keep a basic animation if simulateAISpymasterThinking isn't available.
   const finalWord = _sanitizeOneWordTyping(finalClue);
   if (!finalWord) return;
   const finalNum = Number.isFinite(+finalNumber) ? Math.max(0, Math.min(9, parseInt(finalNumber, 10) || 0)) : 1;
-
-  const typeSpeed = () => 55 + Math.floor(Math.random() * 70);
-  const deleteSpeed = () => 35 + Math.floor(Math.random() * 45);
-  const thinkPause = () => 420 + Math.floor(Math.random() * 820);
-
+  const typeSpeed = () => 65 + Math.floor(Math.random() * 60);
+  const deleteSpeed = () => 45 + Math.floor(Math.random() * 50);
   const setDraft = (word, number) => {
     const w = word ? String(word).toUpperCase().slice(0, 40) : '';
-    const nStr = (number === null || number === undefined) ? '' : String(number);
     const payload = w ? {
       team: team === 'blue' ? 'blue' : 'red',
       word: w,
       wordLen: w.length,
-      number: nStr,
+      number: (number === null || number === undefined) ? '' : String(number),
       byId: String(ai?.odId || ai?.id || '').trim(),
       byName: String(ai?.name || 'AI').trim(),
       updatedAtMs: Date.now(),
     } : null;
     mutateLocalPracticeGame(gid, (draft) => {
       if (!draft) return;
-      // Only animate while it's still this team's spymaster phase.
       if (draft.winner || draft.currentPhase !== 'spymaster' || String(draft.currentTeam || '') !== String(team || '')) return;
       draft.liveClueDraft = payload;
-    });
+    }, { skipAnimation: true });
+    try { if (typeof renderClueArea === 'function') renderClueArea(); } catch (_) {}
   };
-
-  const drafts = _dedupeTypingCandidates(consideredRaw, finalWord);
-
-  // Animate considered drafts: type → pause → delete.
-  for (const d of drafts) {
-    const live = getLocalPracticeGame(gid);
-    if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) break;
-
-    const w = _sanitizeOneWordTyping(d.clue);
-    if (!w) continue;
-    for (let i = 1; i <= w.length; i++) {
-      setDraft(w.slice(0, i), null);
-      await localPracticePause(typeSpeed());
-    }
-    if (d.number !== null && d.number !== undefined) setDraft(w, d.number);
-    await localPracticePause(thinkPause());
-
-    for (let i = w.length - 1; i >= 0; i--) {
-      setDraft(i ? w.slice(0, i) : '', null);
-      await localPracticePause(deleteSpeed());
-    }
-    setDraft('', null);
-    await localPracticePause(260 + Math.floor(Math.random() * 420));
-  }
-
-  // Type the final clue.
   for (let i = 1; i <= finalWord.length; i++) {
-    const showNumber = (i === finalWord.length) ? finalNum : null;
-    setDraft(finalWord.slice(0, i), showNumber);
+    setDraft(finalWord.slice(0, i), (i === finalWord.length) ? finalNum : null);
     await localPracticePause(typeSpeed());
   }
-  await localPracticePause(450 + Math.floor(Math.random() * 500));
+  await localPracticePause(350);
   setDraft('', null);
 }
 
@@ -7887,10 +7876,15 @@ function buildCluesLeftLogHtml() {
     }
 
 
-	    // Operatives want a simple "N words left" indicator.
-	    const progressText = (remainingCount === null)
-	      ? ''
-	      : `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
+
+    // Operatives want a simple "N words left" indicator.
+    const progressText = (remainingCount === null)
+      ? ''
+      : `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
+
+    // In the Clues Left (Game Log) UI, surface this directly in the count badge.
+    // This matches the user's mental model: "3 words left" rather than a bare "3".
+    const countBadgeText = progressText || String(clueNumber);
 
     const wordsHtml = canSeeWords
       ? (remainingWords.length
@@ -7900,11 +7894,10 @@ function buildCluesLeftLogHtml() {
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">
-	        <div class="gamelog-left-head">
-	          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
-	          <span class="gamelog-left-clue-count">${escapeHtml(String(clueNumber))}</span>
-	        </div>
-        <div class="gamelog-left-meta">${escapeHtml(progressText)}</div>
+        <div class="gamelog-left-head">
+          <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
+          <span class="gamelog-left-clue-count">${escapeHtml(String(countBadgeText))}</span>
+        </div>
         <div class="gamelog-left-word-list">${wordsHtml}</div>
       </div>
     `);

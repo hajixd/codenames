@@ -19067,6 +19067,18 @@ body.cozy-mode .gamelog-clue-pill.clue-with-avatar {
   padding: 10px 10px;
 }
 
+/* Ensure the clue row spans the full log column so the count bubble can sit
+   flush-right (especially noticeable on mobile). */
+.gamelog-clue-row {
+  width: 100%;
+}
+
+/* Make the structured clue pill fill the row across all modes. */
+.gamelog-clue-pill.clue-with-avatar {
+  width: 100%;
+  flex: 1 1 0;
+}
+
 body.og-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar,
 body.cozy-mode .gamelog-clue-pill.clue-with-avatar .gamelog-avatar {
   flex: 0 0 auto;
