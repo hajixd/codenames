@@ -13134,9 +13134,17 @@ body.qp-gate-open .app {
   /* Remove the separate Players box on desktop (names live in the top bar) */
   .team-roster-panel { display: none; }
 
-  /* Desktop left column: Clue History + Game Log */
-  .clue-history-panel { flex: 1.15; min-height: 0; }
-  .game-log-panel { flex: 0.85; min-height: 0; }
+  /* Desktop left column: prioritize a tall Game Log (match Team Chat feel).
+     Keep Clue History accessible but more compact. */
+  .clue-history-panel {
+    flex: 0 0 clamp(170px, 28vh, 260px);
+    min-height: 0;
+  }
+
+  .game-log-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
   /* Game log lives in the sidebar on desktop, so hide the floating popover trigger */
   #game-log-toggle { display: none !important; }
@@ -23302,7 +23310,8 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 /* Desktop OG/Cozy: keep docked Game Log as tall as docked Team Chat. */
 @media (min-width: 1024px) {
   body:is(.og-mode, .cozy-mode) {
-    --og-docked-panel-h: clamp(170px, 25vh, 250px);
+    /* Match the Team Chat slide-down height (60vh) so Game Log doesn't feel cramped. */
+    --og-docked-panel-h: 60vh;
   }
 
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
