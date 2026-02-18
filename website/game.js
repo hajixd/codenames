@@ -7903,6 +7903,18 @@ function buildCluesLeftLogHtml() {
         .map((idx) => String(cards[idx]?.word || '').trim())
         .filter(Boolean);
     }
+    } else {
+      // If the spymaster didn't pick explicit target cards for this clue, fall back
+      // to the clue number minus the number of correct guesses logged under it.
+      const results = Array.isArray(clue.results) ? clue.results : [];
+      const correctCount = results.filter((r) => (
+        r && r.result === 'correct' && String(r.type || '').toLowerCase() === team
+      )).length;
+      const computedRemaining = Math.max(0, clueNumber - correctCount);
+      if (!computedRemaining) continue;
+      remainingCount = computedRemaining;
+      foundCount = Math.max(0, clueNumber - remainingCount);
+    }
 
 
 
