@@ -24511,6 +24511,32 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
   padding: 5px 16px;
 }
 
+/* =====================================
+   After-clue spacing adjustments
+   =====================================
+   Once a clue has been given (operative phase), we lower the clue pill/end-turn
+   row and the side panels slightly so they don't crowd the board.
+*/
+body.after-clue-given .game-center-area .game-action-bar {
+  margin-top: 14px;
+}
+
+body.after-clue-given .game-sidebar-left,
+body.after-clue-given .game-sidebar-right {
+  padding-top: 14px;
+}
+
+/* Let the game log scroll "lower" by giving the scroll container more
+   bottom padding so the last entries aren't pressed against the shell. */
+.game-log-panel .game-log-entries,
+.game-log-popover .game-log-entries {
+  padding-bottom: 26px;
+}
+
+body:is(.og-mode, .cozy-mode) .gamelog-entries {
+  padding-bottom: 26px;
+}
+
 /* Final polish pass: space-aware layout for stacking/review/log UI */
 .game-center-area .game-action-bar {
   gap: clamp(8px, 1.2vw, 14px);

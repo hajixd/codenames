@@ -7433,6 +7433,17 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const isOperativeViewer = !!(!spectator && !isSpymaster);
   const isSpectatorViewer = !!spectator;
 
+  // Layout tweak: after a clue is given (operative guessing phase), we slightly
+  // lower the action bar + side panels to reduce crowding around the board.
+  // CSS rules are keyed off this body class.
+  const afterClueGiven = !!(
+    currentGame
+    && !currentGame.winner
+    && currentGame.currentPhase === 'operatives'
+    && currentGame.currentClue
+  );
+  document.body.classList.toggle('after-clue-given', afterClueGiven);
+
   // While a spymaster is typing, show masked progress to operatives (and spectators),
   // while opposing spymasters can see the exact text in real time.
   if (currentGame?.currentPhase === 'spymaster' && liveDraft && !pendingBlocking) {
