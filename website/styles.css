@@ -21272,6 +21272,14 @@ body.cozy-mode .gamelog-clue-pill {
   border-width: 2px;
 }
 
+/* In history, the clue pill should span the row so the count bubble can sit
+   flush to the right edge of the log column. */
+body.og-mode .gamelog-clue-pill.clue-with-avatar,
+body.cozy-mode .gamelog-clue-pill.clue-with-avatar {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
 body.og-mode .gamelog-clue-word,
 body.cozy-mode .gamelog-clue-word {
   font-size: clamp(13px, 0.92vw, 16px);

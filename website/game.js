@@ -7886,10 +7886,11 @@ function buildCluesLeftLogHtml() {
         .filter(Boolean);
     }
 
-	    // Remove "X left" text (unlimited guesses / no guesses-left UI)
-	    const progressText = (remainingCount === null || foundCount === null)
+
+	    // Operatives want a simple "N words left" indicator.
+	    const progressText = (remainingCount === null)
 	      ? ''
-	      : `${foundCount}/${total} found`;
+	      : `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
 
     const wordsHtml = canSeeWords
       ? (remainingWords.length

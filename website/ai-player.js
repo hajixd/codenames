@@ -2545,6 +2545,16 @@ async function _setAILiveClueDraft(game, team, ai, word, number) {
   const gid = String(game?.id || '').trim();
   if (!gid) return;
 
+  // If this AI is running in the same browser session as the viewer (common in
+  // singleplayer), update the in-memory snapshot immediately so the typing
+  // animation renders without waiting for Firestore round-trips.
+  try {
+    if (typeof currentGame !== 'undefined' && currentGame && String(currentGame?.id || '').trim() === gid) {
+      currentGame.liveClueDraft = payload;
+      if (typeof renderClueArea === 'function') renderClueArea();
+    }
+  } catch (_) {}
+
   // Local practice game
   if (typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
     if (typeof window.mutateLocalPracticeGame === 'function') {
