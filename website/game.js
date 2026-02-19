@@ -6250,14 +6250,15 @@ function fitAllCardWords() {
     const baseLS = parseFloat(cs.letterSpacing) || 0;
 
     let size = baseSize;
-    const minSize = window.innerWidth <= 768 ? 5 : 8;
+    // Allow smaller floor so every word can fit within the card.
+    const minSize = window.innerWidth <= 768 ? 4 : 6;
     let guard = 0;
 
-    // Pre-scale by word length: each character beyond 7 reduces font size by 4%
+    // Pre-scale by word length: each character beyond 7 reduces font size by 5%
     const wordLen = ((textEl.textContent || '').trim()).length;
     const extraChars = Math.max(0, wordLen - 7);
     if (extraChars > 0) {
-      const factor = Math.max(0.55, 1 - extraChars * 0.04);
+      const factor = Math.max(0.45, 1 - extraChars * 0.05);
       size = Math.max(minSize, baseSize * factor);
       textEl.style.fontSize = size + 'px';
     }
@@ -6270,8 +6271,8 @@ function fitAllCardWords() {
     const overflows = () => (textEl.scrollWidth > boxW || textEl.scrollHeight > boxH);
 
     // First pass: reduce font-size until it fits
-    while (guard < 80 && size > minSize && overflows()) {
-      size -= 0.5;
+    while (guard < 120 && size > minSize && overflows()) {
+      size -= 0.25;
       textEl.style.fontSize = size + 'px';
       // Reduce tracking a bit as we shrink (helps long words feel less cramped)
       const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.85);
@@ -10145,13 +10146,19 @@ function startGameTimer(endTime, phase) {
 
   const totalDuration = Math.max(1, gameTimerEnd - Date.now());
 
+  const phaseLabel = phase === 'operatives'
+    ? 'Operative'
+    : (phase === 'spymaster' ? 'Spymaster' : 'Timer');
+
   gameTimerInterval = setInterval(() => {
     const remaining = Math.max(0, gameTimerEnd - Date.now());
     if (isNaN(remaining)) { stopGameTimer(); return; }
-    const seconds = Math.ceil(remaining / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    const timerText = `${minutes}:${secs.toString().padStart(2, '0')}`;
+    // Display mm:ss.t (tenths). Keep the timer stable at boundaries.
+    const totalSeconds = Math.floor(remaining / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    const tenths = Math.floor((remaining % 1000) / 100);
+    const timerText = `${phaseLabel}: ${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
 
     textEl.textContent = timerText;
     if (ogTimerTextEl) ogTimerTextEl.textContent = timerText;
@@ -10171,6 +10178,7 @@ function startGameTimer(endTime, phase) {
     textEl.classList.remove('warning', 'danger');
     ogTimerEl?.classList.remove('warning', 'danger');
 
+    const seconds = Math.ceil(remaining / 1000);
     if (seconds <= 10) {
       fillEl.classList.add('danger');
       textEl.classList.add('danger');
@@ -10202,26 +10210,29 @@ function showStaticGameTimer(phase) {
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
   if (!timerEl || !fillEl || !textEl) return;
 
+  const phaseLabel = phase === 'operatives'
+    ? 'Operative'
+    : (phase === 'spymaster' ? 'Spymaster' : 'Timer');
+
   timerEl.style.display = 'flex';
   fillEl.style.width = '100%';
   fillEl.classList.remove('warning', 'danger');
   textEl.classList.remove('warning', 'danger');
-  textEl.textContent = '∞';
+  const staticText = `${phaseLabel}: ∞`;
+  textEl.textContent = staticText;
+  if (ogTimerTextEl) ogTimerTextEl.textContent = staticText;
+
+  // Keep the OG phase banner (top-center) in sync when it's showing a turn timer.
+  try {
+    updateOgPhaseBannerTimerText(staticText, phase);
+  } catch (_) {}
 
   if (ogTimerEl) {
     ogTimerEl.style.display = 'inline-flex';
     ogTimerEl.classList.remove('warning', 'danger');
   }
-  if (ogTimerTextEl) ogTimerTextEl.textContent = '∞';
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
-  }
-
-  // Mirror static timer into the OG phase banner when applicable.
-  try {
-    updateOgPhaseBannerTimerText('∞', phase);
-  } catch (_) {
-    // no-op
   }
 }
 

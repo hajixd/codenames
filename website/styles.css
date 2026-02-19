@@ -5833,6 +5833,15 @@ body.og-mode .og-reveal-icon::before{
   letter-spacing: 0.4px;
   word-break: break-word;
   line-height: 1.2;
+  /* Keep the label centered and prevent overflow (JS will shrink when needed) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 0 6px;
 }
 
 /* Spymaster View - Color overlay */
@@ -18436,7 +18445,12 @@ textarea{
   line-height: 1.1;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
-  white-space: nowrap;
+  /* Allow wrapping/shrinking so every word fits, and center horizontally */
+  white-space: normal;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
 }
 
