@@ -7430,7 +7430,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     reviewModalEl.style.display = 'none';
   }
   if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
-  if (actionBarEl) actionBarEl.classList.remove('council-modal-open');
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
   renderClueStackingPanel();
@@ -7551,9 +7550,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const showReviewModal = !spectator
       && (pending.state === 'awaiting' || pending.state === 'reviewing');
     if (showReviewModal && reviewModalEl) {
-      // While the council popup is up, do NOT reflow the bottom action bar.
-      // (row-clue-endturn can left-align the clue pill on some breakpoints.)
-      if (actionBarEl) actionBarEl.classList.add('council-modal-open');
+      // While the council popup is up, do NOT alter the action bar layout.
+      // (Applying row-clue-endturn here caused the clue pill to drift left in some layouts.)
 
       const maskedWord = isSpymaster ? pending.word : '*****';
       const reviewTitle = `${maskedWord} ${pending.number}`;
