@@ -6253,6 +6253,15 @@ function fitAllCardWords() {
     const minSize = window.innerWidth <= 768 ? 5 : 8;
     let guard = 0;
 
+    // Pre-scale by word length: each character beyond 7 reduces font size by 4%
+    const wordLen = ((textEl.textContent || '').trim()).length;
+    const extraChars = Math.max(0, wordLen - 7);
+    if (extraChars > 0) {
+      const factor = Math.max(0.55, 1 - extraChars * 0.04);
+      size = Math.max(minSize, baseSize * factor);
+      textEl.style.fontSize = size + 'px';
+    }
+
     // Use the container as the constraint box (this is the visible label strip)
     const boxW = container.clientWidth;
     const boxH = container.clientHeight;
@@ -7590,8 +7599,20 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         ogText.textContent = winnerName.toUpperCase() + ' TEAM WINS!';
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'spymaster') {
-        ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
-        ogText.classList.remove('red','blue');
+        if (isMobileLayoutLike()) {
+          ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
+          ogText.classList.remove('red','blue');
+        } else {
+          const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
+            || document.getElementById('timer-text')?.textContent
+            || '').trim();
+          if (liveTimer && liveTimer !== '∞') {
+            updateOgPhaseBannerTimerText(liveTimer, 'spymaster');
+          } else {
+            ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
+            ogText.classList.remove('red','blue');
+          }
+        }
       } else if (currentGame.currentPhase === 'operatives') {
         // Desktop-only: replace the old instruction with the live turn timer.
         if (isMobileLayoutLike()) {
@@ -10071,8 +10092,8 @@ function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
 
   const phase = String(phaseOverride || currentGame.currentPhase || '');
 
-  // Only replace the old "GUESS THE WORDS" instruction (desktop operatives phase).
-  if (phase !== 'operatives') return;
+  // Only show on desktop spymaster/operatives phases.
+  if (phase !== 'operatives' && phase !== 'spymaster') return;
   if (isMobileLayoutLike()) return;
 
   const activeTeam = String(currentGame.currentTeam || '');
