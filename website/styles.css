@@ -23382,9 +23382,13 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     min-height: clamp(220px, 40vh, 360px);
   }
 
-  .game-log-panel,
   .operative-chat-panel {
     min-height: clamp(160px, 28vh, 240px);
+  }
+
+  .game-log-panel {
+    min-height: clamp(160px, 28vh, 240px);
+    max-height: clamp(260px, 55vh, 500px);
   }
 
   .voting-panel {
@@ -24542,7 +24546,7 @@ body.after-clue-given .game-sidebar-right {
    bottom padding so the last entries aren't pressed against the shell. */
 .game-log-panel .game-log-entries,
 .game-log-popover .game-log-entries {
-  padding-bottom: 10000px;
+  padding-bottom: 24px;
 }
 
 body:is(.og-mode, .cozy-mode) .gamelog-entries {
