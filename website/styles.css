@@ -21664,7 +21664,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
     right: clamp(10px, 1.1vw, 20px);
     bottom: clamp(10px, 1.1vw, 20px);
     width: clamp(300px, 19vw, 350px);
-    max-height: clamp(170px, 25vh, 250px);
+    max-height: clamp(210px, 30vh, 320px);
     z-index: 220;
     overflow: hidden;
     border-radius: 16px;
@@ -21676,7 +21676,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 
   body.og-mode .og-gamelog-slidedown.open,
   body.cozy-mode .og-gamelog-slidedown.open{
-    max-height: clamp(170px, 25vh, 250px);
+    max-height: clamp(210px, 30vh, 320px);
     opacity: 1;
     transform: none;
   }
@@ -21689,7 +21689,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   body.og-mode .og-gamelog-slidedown-inner,
   body.cozy-mode .og-gamelog-slidedown-inner{
     margin: 0;
-    max-height: clamp(170px, 25vh, 250px);
+    max-height: clamp(210px, 30vh, 320px);
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: linear-gradient(180deg, rgba(56, 59, 65, 0.96) 0%, rgba(36, 39, 44, 0.96) 100%);
@@ -21713,7 +21713,7 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
 
   body.og-mode .og-gamelog-slidedown-inner .gamelog-entries,
   body.cozy-mode .og-gamelog-slidedown-inner .gamelog-entries{
-    max-height: calc(clamp(170px, 25vh, 250px) - 46px);
+    max-height: calc(clamp(210px, 30vh, 320px) - 46px);
     padding: 8px 10px 10px;
     gap: 8px;
   }
