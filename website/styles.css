@@ -16939,7 +16939,8 @@ body.og-mode .game-card{
   /* Keep the word strip inside the inner plate, but very close to its edge */
   /* Make the bottom word strip slightly narrower so it never kisses/overruns
      the inner plate edge on any DPI/zoom combination. */
-  --labelInsetX: 18px;     /* left/right inset for the word strip */
+  /* Slightly wider centered word strip (still safely inside the inner plate) */
+  --labelInsetX: 14px;     /* left/right inset for the word strip */
   --labelInsetY: 12px;     /* bottom inset for the word strip */
   /* Slightly taller word strip so the divider sits a bit higher */
   --labelHeight: 38%;      /* height of the bottom word strip */
@@ -16995,8 +16996,9 @@ body.og-mode .game-card::before{
 body.og-mode .game-card::after{
   content:"";
   position:absolute;
-  left: 6px;
-  right: 6px;
+  /* Leave a small gap at each end (line shouldn't span the full inner plate) */
+  left: 16px;
+  right: 16px;
   /* Divider line sits exactly at the top edge of the bottom word strip */
   bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
   height: 2px;
