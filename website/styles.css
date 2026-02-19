@@ -13135,7 +13135,7 @@ body.qp-gate-open .app {
   .team-roster-panel { display: none; }
 
   /* Desktop left column: Clue History + Game Log */
-  .clue-history-panel { flex: 0 0 185px; min-height: 0; max-height: 240px; }
+  .clue-history-panel { flex: 0 0 150px; min-height: 0; max-height: 280px; }
   .game-log-panel { flex: 1; min-height: 0; }
 
   /* Game log lives in the sidebar on desktop, so hide the floating popover trigger */
@@ -23382,13 +23382,9 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     min-height: clamp(220px, 40vh, 360px);
   }
 
+  .game-log-panel,
   .operative-chat-panel {
     min-height: clamp(160px, 28vh, 240px);
-  }
-
-  .game-log-panel {
-    min-height: clamp(160px, 28vh, 240px);
-    max-height: clamp(260px, 55vh, 500px);
   }
 
   .voting-panel {
@@ -23397,15 +23393,11 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   .clue-history-content,
   .team-roster-content,
+  .game-log-panel .game-log-entries,
   .operative-chat-messages,
   .voting-content {
     max-height: none;
     overflow: visible;
-  }
-
-  .game-log-panel .game-log-entries {
-    max-height: none;
-    overflow-y: auto;
   }
 }
 
@@ -24546,7 +24538,7 @@ body.after-clue-given .game-sidebar-right {
    bottom padding so the last entries aren't pressed against the shell. */
 .game-log-panel .game-log-entries,
 .game-log-popover .game-log-entries {
-  padding-bottom: 24px;
+  padding-bottom: 10000px;
 }
 
 body:is(.og-mode, .cozy-mode) .gamelog-entries {
