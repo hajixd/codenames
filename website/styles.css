@@ -24538,7 +24538,7 @@ body.after-clue-given .game-sidebar-right {
    bottom padding so the last entries aren't pressed against the shell. */
 .game-log-panel .game-log-entries,
 .game-log-popover .game-log-entries {
-  padding-bottom: 56px;
+  padding-bottom: 1px;
 }
 
 body:is(.og-mode, .cozy-mode) .gamelog-entries {
