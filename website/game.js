@@ -10095,7 +10095,17 @@ function startGameTimer(endTime, phase) {
 
   if (!endTime) return;
 
-  gameTimerEnd = endTime instanceof Date ? endTime : endTime.toDate?.() || new Date(endTime);
+  if (endTime instanceof Date) {
+    gameTimerEnd = endTime;
+  } else if (typeof endTime?.toDate === 'function') {
+    gameTimerEnd = endTime.toDate();
+  } else if (typeof endTime?.seconds === 'number') {
+    // Plain {seconds, nanoseconds} object (e.g. Firestore Timestamp after JSON cloning)
+    gameTimerEnd = new Date(endTime.seconds * 1000 + Math.round((endTime.nanoseconds || 0) / 1e6));
+  } else {
+    gameTimerEnd = new Date(endTime);
+  }
+  if (!gameTimerEnd || isNaN(gameTimerEnd.getTime())) return;
 
   const timerEl = document.getElementById('game-timer');
   const fillEl = document.getElementById('timer-fill');
@@ -10116,6 +10126,7 @@ function startGameTimer(endTime, phase) {
 
   gameTimerInterval = setInterval(() => {
     const remaining = Math.max(0, gameTimerEnd - Date.now());
+    if (isNaN(remaining)) { stopGameTimer(); return; }
     const seconds = Math.ceil(remaining / 1000);
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
