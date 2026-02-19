@@ -7599,10 +7599,12 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           ? (currentGame.redTeamName || 'RED')
           : (currentGame.blueTeamName || 'BLUE');
         ogText.textContent = winnerName.toUpperCase() + ' TEAM WINS!';
+        ogText.classList.remove('is-timer');
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'spymaster') {
         if (isMobileLayoutLike()) {
           ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
+          ogText.classList.remove('is-timer');
           ogText.classList.remove('red','blue');
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
@@ -7612,6 +7614,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
             updateOgPhaseBannerTimerText(liveTimer, 'spymaster');
           } else {
             ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
+            ogText.classList.remove('is-timer');
             ogText.classList.remove('red','blue');
           }
         }
@@ -7619,6 +7622,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         // Desktop-only: replace the old instruction with the live turn timer.
         if (isMobileLayoutLike()) {
           ogText.textContent = '';
+          ogText.classList.remove('is-timer');
           ogText.classList.remove('red','blue');
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
@@ -7630,14 +7634,17 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           } else {
             // Fallback while timer is booting.
             ogText.textContent = '';
+            ogText.classList.remove('is-timer');
             ogText.classList.remove('red','blue');
                     }
         }
       } else if (currentGame.currentPhase === 'waiting') {
         ogText.textContent = '';
+        ogText.classList.remove('is-timer');
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'role-selection') {
         ogText.textContent = 'SELECT YOUR ROLE';
+        ogText.classList.remove('is-timer');
       }
     }
   }
@@ -10137,6 +10144,7 @@ function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
   if (!safeTimer) return;
 
   ogText.textContent = safeTimer;
+  ogText.classList.add('is-timer');
   ogText.classList.toggle('red', activeTeam === 'red');
   ogText.classList.toggle('blue', activeTeam === 'blue');
 }

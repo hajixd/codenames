@@ -16911,6 +16911,12 @@ body.og-mode .og-phase-banner {
   text-shadow: 0 4px 18px rgba(0,0,0,0.55);
 }
 
+/* When the OG banner is used to show the live turn timer, keep it more compact. */
+.og-phase-text.is-timer {
+  font-size: 22px;
+  letter-spacing: 1.6px;
+}
+
 /* --- OG Game Board --- */
 body.og-mode .game-board {
   gap: 10px;
@@ -17027,6 +17033,9 @@ body.og-mode .game-card .card-word{
 
   /* Nudge text a bit lower in the strip */
   padding: 8px 12px 2px;
+  /* Prevent padding from expanding the strip beyond its left/right insets
+     (fixes subtle overflow on the right edge on some DPIs). */
+  box-sizing: border-box;
   /* Rectangular with very slight rounding like CNO */
   border-radius: 2px;
 
