@@ -5986,7 +5986,7 @@ body.og-mode .og-reveal-icon::before{
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 16px;
-  max-height: 200px;
+  max-height: 260px;
   overflow-y: auto;
 
   /* Single knob: all log sizing scales from this. */
@@ -13135,7 +13135,7 @@ body.qp-gate-open .app {
   .team-roster-panel { display: none; }
 
   /* Desktop left column: Clue History + Game Log */
-  .clue-history-panel { flex: 0 0 150px; min-height: 0; max-height: 280px; }
+  .clue-history-panel { flex: 0 0 150px; min-height: 0; max-height: 200px; }
   .game-log-panel { flex: 1; min-height: 0; }
 
   /* Game log lives in the sidebar on desktop, so hide the floating popover trigger */
