@@ -25791,3 +25791,11 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     bottom: 4px;
   }
 }
+
+/* Slightly smaller timer label when it includes role prefix (e.g., Operative/Spymaster) */
+.timer-text.role-timer {
+  font-size: 0.9em;
+}
+.og-topbar-timer-text.role-timer {
+  font-size: 0.9em;
+}

@@ -10112,33 +10112,28 @@ function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
   ogText.classList.toggle('blue', activeTeam === 'blue');
 }
 
-function startGameTimer(endTime, phase) {
-  stopGameTimer();
-
-  if (!endTime) return;
-
-  if (endTime instanceof Date) {
-    gameTimerEnd = endTime;
-  } else if (typeof endTime?.toDate === 'function') {
-    gameTimerEnd = endTime.toDate();
-  } else if (typeof endTime?.seconds === 'number') {
-    // Plain {seconds, nanoseconds} object (e.g. Firestore Timestamp after JSON cloning)
-    gameTimerEnd = new Date(endTime.seconds * 1000 + Math.round((endTime.nanoseconds || 0) / 1e6));
-  } else {
-    gameTimerEnd = new Date(endTime);
+function getPhaseRoleLabel(phase) {
+  try {
+    const ph = String(phase || '');
+    if (ph !== 'operatives' && ph !== 'spymaster') return 'Timer';
+    const team = String(currentGame?.currentTeam || '');
+    const players = (team === 'red')
+      ? (currentGame?.redPlayers || [])
+      : (team === 'blue')
+        ? (currentGame?.bluePlayers || [])
+        : [];
+    const isSpy = (p) => isSpymasterPlayerForTeam(p, team, currentGame);
+    const count = players.filter(p => ph === 'spymaster' ? isSpy(p) : !isSpy(p)).length;
+    if (ph === 'spymaster') return count > 1 ? 'Spymasters' : 'Spymaster';
+    return count > 1 ? 'Operatives' : 'Operative';
+  } catch (_) {
+    return String(phase || '') === 'spymaster' ? 'Spymaster' : (String(phase || '') === 'operatives' ? 'Operative' : 'Timer');
   }
-  if (!gameTimerEnd || isNaN(gameTimerEnd.getTime())) return;
+}
 
-  const timerEl = document.getElementById('game-timer');
-  const fillEl = document.getElementById('timer-fill');
-  const textEl = document.getElementById('timer-text');
-  const ogTimerEl = document.getElementById('og-topbar-timer');
-  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
-  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
 
-  if (!timerEl || !fillEl || !textEl) return;
-
-  timerEl.style.display = 'flex';
+  textEl.classList.add('role-timer');
+  if (ogTimerTextEl) ogTimerTextEl.classList.add('role-timer');
   if (ogTimerEl) ogTimerEl.style.display = 'inline-flex';
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
@@ -10146,9 +10141,7 @@ function startGameTimer(endTime, phase) {
 
   const totalDuration = Math.max(1, gameTimerEnd - Date.now());
 
-  const phaseLabel = phase === 'operatives'
-    ? 'Operative'
-    : (phase === 'spymaster' ? 'Spymaster' : 'Timer');
+  const phaseLabel = getPhaseRoleLabel(phase);
 
   gameTimerInterval = setInterval(() => {
     const remaining = Math.max(0, gameTimerEnd - Date.now());
@@ -10195,26 +10188,9 @@ function startGameTimer(endTime, phase) {
   }, 100);
 }
 
-function showStaticGameTimer(phase) {
-  if (gameTimerInterval) {
-    clearInterval(gameTimerInterval);
-    gameTimerInterval = null;
-  }
-  gameTimerEnd = null;
 
-  const timerEl = document.getElementById('game-timer');
-  const fillEl = document.getElementById('timer-fill');
-  const textEl = document.getElementById('timer-text');
-  const ogTimerEl = document.getElementById('og-topbar-timer');
-  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
-  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
-  if (!timerEl || !fillEl || !textEl) return;
-
-  const phaseLabel = phase === 'operatives'
-    ? 'Operative'
-    : (phase === 'spymaster' ? 'Spymaster' : 'Timer');
-
-  timerEl.style.display = 'flex';
+  textEl.classList.add('role-timer');
+  if (ogTimerTextEl) ogTimerTextEl.classList.add('role-timer');
   fillEl.style.width = '100%';
   fillEl.classList.remove('warning', 'danger');
   textEl.classList.remove('warning', 'danger');
@@ -10237,14 +10213,13 @@ function showStaticGameTimer(phase) {
 }
 
 function stopGameTimer() {
-  if (gameTimerInterval) {
-    clearInterval(gameTimerInterval);
-    gameTimerInterval = null;
-  }
-  gameTimerEnd = null;
 
   const timerEl = document.getElementById('game-timer');
+  const textEl = document.getElementById('timer-text');
+  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerEl = document.getElementById('og-topbar-timer');
+  if (textEl) textEl.classList.remove('role-timer');
+  if (ogTimerTextEl) ogTimerTextEl.classList.remove('role-timer');
   if (timerEl) timerEl.style.display = 'none';
   if (ogTimerEl) {
     ogTimerEl.style.display = 'none';
