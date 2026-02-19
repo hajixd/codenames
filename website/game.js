@@ -10013,8 +10013,6 @@ function renderClueHistory() {
 
   const history = currentGame.clueHistory || [];
   const myTeam = getMyTeamColor();
-  const isSpy = isCurrentUserSpymaster();
-
   // Only show clues from the player's own team
   const teamHistory = myTeam ? history.filter(clue => clue.team === myTeam) : history;
 
@@ -10024,10 +10022,8 @@ function renderClueHistory() {
   }
 
   container.innerHTML = teamHistory.map(clue => {
-    // Only spymasters see the specific words that were guessed
     let resultsHtml = '';
-    if (isSpy) {
-      resultsHtml = (clue.results || []).map((r, idx) => {
+    resultsHtml = (clue.results || []).map((r, idx) => {
         const res = (r.result || (r.correct ? 'correct' : (r.wrong ? 'wrong' : 'neutral')));
         let className = 'neutral';
         if (res === 'correct') className = 'correct';
@@ -10037,7 +10033,6 @@ function renderClueHistory() {
         const label = `${idx + 1}. ${word}`;
         return `<span class="guess-chip ${className}">${escapeHtml(label)}</span>`;
       }).join('');
-    }
 
     return `
       <div class="clue-history-item ${clue.team}">
