@@ -12206,7 +12206,6 @@ function initPracticePage() {
     settingsModal.setAttribute('aria-hidden', 'false');
     // Status hint removed (requested to keep settings panel clean)
     if (settingsStatusEl) settingsStatusEl.textContent = '';
-    try { settingsVibeEl?.focus?.(); } catch (_) {}
   };
 
   const closeSettingsModal = () => {
@@ -12319,7 +12318,6 @@ function openPracticeModal() {
     const toggle = document.getElementById('practice-stacking-toggle');
     if (toggle) toggle.checked = enabled;
   } catch (_) {}
-  try { document.getElementById('practice-vibe')?.focus?.(); } catch (_) {}
 }
 
 function closePracticeModal() {

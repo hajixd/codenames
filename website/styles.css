@@ -15588,7 +15588,7 @@ body.cozy-mode .og-topbar {
 }
 
 .og-topbar-timer-phase {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.75px;
   text-transform: uppercase;
@@ -15596,7 +15596,7 @@ body.cozy-mode .og-topbar {
 }
 
 .og-topbar-timer-text {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.25px;
   font-variant-numeric: tabular-nums;
@@ -15623,7 +15623,7 @@ body.cozy-mode .og-topbar {
   }
 
   .og-topbar-timer-text {
-    font-size: 13px;
+    font-size: 11px;
   }
 }
 
@@ -17040,6 +17040,9 @@ body.og-mode .game-card .card-word{
 
   text-shadow: 0 1px 0 rgba(0,0,0,0.18);
   overflow: hidden;
+
+  /* Prevent the word strip's shadow from bleeding past the rounded card shell */
+  clip-path: inset(0 round 2px);
 }
 
 
