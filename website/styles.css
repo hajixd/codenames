@@ -13135,7 +13135,7 @@ body.qp-gate-open .app {
   .team-roster-panel { display: none; }
 
   /* Desktop left column: Clue History + Game Log */
-  .clue-history-panel { flex: 0 0 220px; min-height: 0; max-height: 280px; }
+  .clue-history-panel { flex: 0 0 185px; min-height: 0; max-height: 240px; }
   .game-log-panel { flex: 1; min-height: 0; }
 
   /* Game log lives in the sidebar on desktop, so hide the floating popover trigger */
