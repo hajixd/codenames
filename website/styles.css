@@ -17011,8 +17011,13 @@ body.og-mode .game-card .card-word{
   z-index: 4;
 
   /* Bottom word strip (inset from the inner plate, like Codenames Online) */
-  left: var(--labelInsetX);
-  right: var(--labelInsetX);
+  /* Center the strip horizontally and control its width via the inset var.
+     This avoids sub-pixel rounding causing the strip to look shifted or
+     bleed past one side on certain DPIs/zooms. */
+  left: 50%;
+  right: auto;
+  width: calc(100% - (2 * var(--labelInsetX)));
+  transform: translateX(-50%);
   bottom: var(--labelInsetY);
   height: var(--labelHeight);
 
