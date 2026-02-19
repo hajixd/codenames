@@ -23303,7 +23303,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 /* Desktop OG/Cozy: keep docked Game Log as tall as docked Team Chat. */
 @media (min-width: 1024px) {
   body:is(.og-mode, .cozy-mode) {
-    --og-docked-panel-h: clamp(170px, 25vh, 250px);
+    --og-docked-panel-h: clamp(210px, 30vh, 320px);
   }
 
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
