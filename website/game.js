@@ -7701,187 +7701,166 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
 }
 
+// ─── Game Log helpers ──────────────────────────────────────────────────────
+
+// Returns 'red', 'blue', or null based on log entry content.
+function _logTeam(entry, redName, blueName) {
+  if (!entry) return null;
+  if (redName && entry.includes(`(${redName})`)) return 'red';
+  if (blueName && entry.includes(`(${blueName})`)) return 'blue';
+  if (redName && entry.startsWith(redName)) return 'red';
+  if (blueName && entry.startsWith(blueName)) return 'blue';
+  if (/red team/i.test(entry)) return 'red';
+  if (/blue team/i.test(entry)) return 'blue';
+  return null;
+}
+
+// Returns the event type of a log entry.
+function _logType(entry) {
+  if (!entry) return 'neutral';
+  if (/Spymaster:\s*/i.test(entry)) return 'clue';
+  if (/ASSASSIN/i.test(entry)) return 'assassin';
+  if (/\bCorrect!\b/i.test(entry)) return 'correct';
+  if (/\bWrong!\b/i.test(entry)) return 'wrong';
+  if (/\bNeutral\b/i.test(entry)) return 'neutral';
+  if (/wins!/i.test(entry) || /Game ended/i.test(entry) || /ended the game/i.test(entry) || /Game over/i.test(entry)) return 'end';
+  if (/Game started/i.test(entry) || /Starting game/i.test(entry)) return 'start';
+  return 'neutral';
+}
+
+// Converts a raw log string to HTML: quoted words get .log-quote, keywords get .log-token spans.
+function _logRenderText(raw, redName, blueName) {
+  const str = String(raw || '');
+  const parts = str.split(/"([^"]+)"/g); // even = plain text, odd = inside quotes
+
+  const wrapOutside = (segment) => {
+    const R = '__LOG_R__';
+    const B = '__LOG_B__';
+    let s = String(segment || '');
+
+    // Replace team names with placeholders before HTML-escaping to prevent double-escaping.
+    if (redName) s = s.split(redName).join(R);
+    if (blueName) s = s.split(blueName).join(B);
+    s = s.replace(/\bRed team\b/gi, R);
+    s = s.replace(/\bBlue team\b/gi, B);
+
+    s = escapeHtml(s);
+
+    // Restore team spans.
+    if (redName) s = s.split(R).join(`<span class="log-team red">${escapeHtml(redName)}</span>`);
+    if (blueName) s = s.split(B).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
+
+    // Role keywords.
+    s = s.replace(/\bSpymaster\b/g, '<span class="log-token role">Spymaster</span>');
+    s = s.replace(/\bOperatives?\b/g, (m) => `<span class="log-token role">${m}</span>`);
+
+    // Action keywords.
+    s = s.replace(/\bguessed\b/gi, (m) => `<span class="log-token action">${m}</span>`);
+    s = s.replace(/\bended their turn\b/gi, (m) => `<span class="log-token action">${m}</span>`);
+
+    // System events.
+    s = s.replace(/\bupdated rules\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+    s = s.replace(/\bGame started!\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+    s = s.replace(/\bStarting game\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+    s = s.replace(/\bGame ended\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+    s = s.replace(/\bGame over\b/gi, (m) => `<span class="log-token system">${m}</span>`);
+    s = s.replace(/\bwins!\b/g, '<span class="log-token system">wins!</span>');
+
+    // Result keywords.
+    s = s.replace(/\bCorrect!\b/g, '<span class="log-token result-correct">Correct!</span>');
+    s = s.replace(/\bWrong!\b/g, '<span class="log-token result-wrong">Wrong!</span>');
+    s = s.replace(/\bNeutral\b/g, '<span class="log-token result-neutral">Neutral</span>');
+    s = s.replace(/\bASSASSIN\b/g, '<span class="log-token result-assassin">ASSASSIN</span>');
+
+    return s;
+  };
+
+  return parts.map((p, i) =>
+    i % 2 === 1 ? `<span class="log-quote">${escapeHtml(p)}</span>` : wrapOutside(p)
+  ).join('');
+}
+
+// Returns true when a scrollable element's viewport is at or near its bottom.
+function _logIsNearBottom(el, threshold = 90) {
+  if (!el) return false;
+  return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
+}
+
+// Scrolls el to the bottom. Always scrolls on first call; after that only when wasNearBottom is true.
+function _logScrollToBottom(el, wasNearBottom) {
+  if (!el) return;
+  if (!el._logScrolled || wasNearBottom) {
+    el._logScrolled = true;
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+// ─── renderGameLog ─────────────────────────────────────────────────────────
+
 function renderGameLog() {
-  const popoverHistoryEl = document.getElementById('game-log-entries');
-  const sidebarHistoryEl = document.getElementById('game-log-entries-sidebar');
-  const sidebarCluesLeftEl = document.getElementById('game-log-clues-left-sidebar');
-  const slidedownHistoryEl = document.getElementById('og-gamelog-slidedown-entries');
-  const slidedownCluesLeftEl = document.getElementById('og-gamelog-slidedown-clues-left');
-  if (!popoverHistoryEl && !sidebarHistoryEl && !sidebarCluesLeftEl && !slidedownHistoryEl && !slidedownCluesLeftEl) return;
   if (!currentGame) return;
 
-  // Scrolling UX: only auto-scroll when the user is already at (or near) the bottom.
-  // Otherwise, snapshot updates will constantly yank the scroll position back down,
-  // making it impossible to read earlier log lines on desktop.
-  const isNearBottom = (el, thresholdPx = 90) => {
-    if (!el) return false;
-    const t = Number(thresholdPx) || 0;
-    return (el.scrollHeight - el.scrollTop - el.clientHeight) <= t;
+  // The four real scroll containers (the popover is not present in this build).
+  const sidebarHistory    = document.getElementById('game-log-entries-sidebar');
+  const sidebarCluesLeft  = document.getElementById('game-log-clues-left-sidebar');
+  const slidedownHistory  = document.getElementById('og-gamelog-slidedown-entries');
+  const slidedownCluesLeft = document.getElementById('og-gamelog-slidedown-clues-left');
+
+  if (!sidebarHistory && !sidebarCluesLeft && !slidedownHistory && !slidedownCluesLeft) return;
+
+  // Snapshot scroll state before modifying the DOM.
+  // Only the container that belongs to the currently-visible tab can be near the bottom.
+  const activeTab = normalizeGameLogTab(gameLogActiveTab);
+  const nearBottom = {
+    sidebarHistory:    activeTab === 'history'    && _logIsNearBottom(sidebarHistory),
+    slidedownHistory:  activeTab === 'history'    && _logIsNearBottom(slidedownHistory),
+    sidebarCluesLeft:  activeTab === 'clues-left' && _logIsNearBottom(sidebarCluesLeft),
+    slidedownCluesLeft: activeTab === 'clues-left' && _logIsNearBottom(slidedownCluesLeft),
   };
 
-  const activeTabBefore = normalizeGameLogTab(gameLogActiveTab);
-  const wasNearBottom = {
-    popoverHistory: (activeTabBefore === 'history') ? isNearBottom(document.getElementById('game-log')) : false,
-    sidebarHistory: (activeTabBefore === 'history') ? isNearBottom(sidebarHistoryEl) : false,
-    slidedownHistory: (activeTabBefore === 'history') ? isNearBottom(slidedownHistoryEl) : false,
-    sidebarCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(sidebarCluesLeftEl) : false,
-    slidedownCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(slidedownCluesLeftEl) : false,
-  };
-
-  const rawLog = Array.isArray(currentGame.log)
-    ? currentGame.log.map(entry => String(entry ?? '')).filter(Boolean)
-    : [];
-
-  const redName = String(currentGame.redTeamName || 'Red').trim();
+  // Build history HTML from the flat log array.
+  const redName  = String(currentGame.redTeamName  || 'Red').trim();
   const blueName = String(currentGame.blueTeamName || 'Blue').trim();
 
-  const detectTeam = (entry) => {
-    if (!entry) return null;
+  const rawLog = (Array.isArray(currentGame.log) ? currentGame.log : [])
+    .map(e => String(e ?? '')).filter(Boolean);
 
-    // Common patterns:
-    // - "Alice (TeamName) guessed ..."
-    // - "TeamName Spymaster: ..."
-    // - "TeamName ended their turn."
-    if (redName && entry.includes(`(${redName})`)) return 'red';
-    if (blueName && entry.includes(`(${blueName})`)) return 'blue';
-
-    if (redName && entry.startsWith(redName)) return 'red';
-    if (blueName && entry.startsWith(blueName)) return 'blue';
-
-    if (/Red team/i.test(entry)) return 'red';
-    if (/Blue team/i.test(entry)) return 'blue';
-
-    return null;
-  };
-
-  const detectType = (entry) => {
-    if (!entry) return 'neutral';
-    const s = String(entry);
-
-    if (/Spymaster:\s*/i.test(s)) return 'clue';
-    if (/ASSASSIN/i.test(s)) return 'assassin';
-    if (/\bCorrect!\b/i.test(s)) return 'correct';
-    if (/\bWrong!\b/i.test(s)) return 'wrong';
-    if (/\bNeutral\b/i.test(s)) return 'neutral';
-    if (/wins!/i.test(s) || /Game ended/i.test(s) || /ended the game/i.test(s) || /Game over/i.test(s)) return 'end';
-    if (/Game started/i.test(s) || /Starting game/i.test(s)) return 'start';
-
-    return 'neutral';
-  };
-  const renderWithQuotes = (raw) => {
-    const str = String(raw || '');
-    const parts = str.split(/"([^"]+)"/g); // even = normal, odd = inside quotes
-
-    const wrapOutside = (segment) => {
-      let rawSeg = String(segment || '');
-
-      // Team name placeholders (avoid double-escaping / partial matches)
-      const RED = '__LOG_RED_TEAM__';
-      const BLUE = '__LOG_BLUE_TEAM__';
-      if (redName) rawSeg = rawSeg.split(redName).join(RED);
-      if (blueName) rawSeg = rawSeg.split(blueName).join(BLUE);
-
-      // Common phrases
-      rawSeg = rawSeg.replace(/\bRed team\b/gi, RED);
-      rawSeg = rawSeg.replace(/\bBlue team\b/gi, BLUE);
-
-      // Escape after placeholders
-      let s = escapeHtml(rawSeg);
-
-      // Re-insert team spans
-      if (redName) s = s.split(RED).join(`<span class="log-team red">${escapeHtml(redName)}</span>`);
-      if (blueName) s = s.split(BLUE).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
-
-      // Color only certain keywords (keep the rest readable)
-      s = s.replace(/\bSpymaster\b/g, '<span class="log-token role">Spymaster</span>');
-      s = s.replace(/\bOperatives?\b/g, (m) => `<span class="log-token role">${m}</span>`);
-
-      s = s.replace(/\bguessed\b/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/\bended their turn\b/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/\bupdated rules\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame started!\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bStarting game\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame ended\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame over\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-
-      s = s.replace(/\bCorrect!\b/g, '<span class="log-token result-correct">Correct!</span>');
-      s = s.replace(/\bWrong!\b/g, '<span class="log-token result-wrong">Wrong!</span>');
-      s = s.replace(/\bNeutral\b/g, '<span class="log-token result-neutral">Neutral</span>');
-      s = s.replace(/\bASSASSIN\b/g, '<span class="log-token result-assassin">ASSASSIN</span>');
-      s = s.replace(/\bwins!\b/g, '<span class="log-token system">wins!</span>');
-
-      return s;
-    };
-
-    return parts.map((p, i) => {
-      if (i % 2 === 1) return `<span class="log-quote">${escapeHtml(p)}</span>`;
-      return wrapOutside(p);
-    }).join('');
-  };
-
-  const html = rawLog.map(entry => {
-    const team = detectTeam(entry);
-    const type = detectType(entry);
-    const cls = ['log-entry', `type-${type}`];
+  const entryHtml = rawLog.map(entry => {
+    const team = _logTeam(entry, redName, blueName);
+    const type = _logType(entry);
+    const cls  = ['log-entry', `type-${type}`];
     if (team) cls.push(`team-${team}`);
-    return `<div class="${cls.join(' ')}">${renderWithQuotes(entry)}</div>`;
+    return `<div class="${cls.join(' ')}">${_logRenderText(entry, redName, blueName)}</div>`;
   }).join('');
-  const fallbackHtml = html || '<div class="gamelog-empty">No events yet. Clues and guesses will appear here.</div>';
 
-  if (popoverHistoryEl) popoverHistoryEl.innerHTML = fallbackHtml;
+  const historyHtml = entryHtml || '<div class="gamelog-empty">No events yet. Clues and guesses will appear here.</div>';
 
-  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
-  let historyHtml = fallbackHtml;
-  if (isOgMode && currentGame.clueHistory && currentGame.clueHistory.length > 0) {
-    const ogHtml = buildOgStructuredLog();
-    historyHtml = ogHtml || fallbackHtml;
-  }
+  // OG/Cozy mode uses a richer structured view when clueHistory is available.
+  const isOgMode = document.body.classList.contains('og-mode') || document.body.classList.contains('cozy-mode');
+  const ogHtml   = isOgMode && currentGame.clueHistory?.length ? buildOgStructuredLog() : null;
+  const richHistoryHtml = ogHtml || historyHtml;
 
-  if (sidebarHistoryEl) sidebarHistoryEl.innerHTML = historyHtml;
-  if (slidedownHistoryEl) slidedownHistoryEl.innerHTML = historyHtml;
+  // Write to DOM.
+  if (sidebarHistory)    sidebarHistory.innerHTML    = richHistoryHtml;
+  if (slidedownHistory)  slidedownHistory.innerHTML  = richHistoryHtml;
 
   const cluesLeftHtml = buildCluesLeftLogHtml();
-  if (sidebarCluesLeftEl) sidebarCluesLeftEl.innerHTML = cluesLeftHtml;
-  if (slidedownCluesLeftEl) slidedownCluesLeftEl.innerHTML = cluesLeftHtml;
+  if (sidebarCluesLeft)   sidebarCluesLeft.innerHTML   = cluesLeftHtml;
+  if (slidedownCluesLeft) slidedownCluesLeft.innerHTML = cluesLeftHtml;
+
+  // Sync tab button states and show/hide the correct pane.
   applyGameLogTabState();
 
-  // Auto-scroll to bottom after DOM reflow
+  // Restore scroll positions after the browser has performed layout.
   requestAnimationFrame(() => {
-    const popover = document.getElementById('game-log');
-    const activeTab = normalizeGameLogTab(gameLogActiveTab);
-
-    const shouldAutoscroll = (el, nearBottomFlagKey) => {
-      if (!el) return false;
-      // First render in this session: scroll to bottom once.
-      if (!el._gamelogHasScrolledOnce) return true;
-      return !!wasNearBottom[nearBottomFlagKey];
-    };
-
-    if (activeTab === 'history') {
-      // Popover uses a different scroll container than the sidebar.
-      if (popover && shouldAutoscroll(popover, 'popoverHistory')) {
-        popover._gamelogHasScrolledOnce = true;
-        popover.scrollTop = popover.scrollHeight;
-      }
-      if (sidebarHistoryEl && shouldAutoscroll(sidebarHistoryEl, 'sidebarHistory')) {
-        sidebarHistoryEl._gamelogHasScrolledOnce = true;
-        sidebarHistoryEl.scrollTop = sidebarHistoryEl.scrollHeight;
-      }
-      if (slidedownHistoryEl && shouldAutoscroll(slidedownHistoryEl, 'slidedownHistory')) {
-        slidedownHistoryEl._gamelogHasScrolledOnce = true;
-        slidedownHistoryEl.scrollTop = slidedownHistoryEl.scrollHeight;
-      }
+    const tab = normalizeGameLogTab(gameLogActiveTab);
+    if (tab === 'history') {
+      _logScrollToBottom(sidebarHistory,   nearBottom.sidebarHistory);
+      _logScrollToBottom(slidedownHistory, nearBottom.slidedownHistory);
     }
-
-    if (activeTab === 'clues-left') {
-      if (sidebarCluesLeftEl && shouldAutoscroll(sidebarCluesLeftEl, 'sidebarCluesLeft')) {
-        sidebarCluesLeftEl._gamelogHasScrolledOnce = true;
-        sidebarCluesLeftEl.scrollTop = sidebarCluesLeftEl.scrollHeight;
-      }
-      if (slidedownCluesLeftEl && shouldAutoscroll(slidedownCluesLeftEl, 'slidedownCluesLeft')) {
-        slidedownCluesLeftEl._gamelogHasScrolledOnce = true;
-        slidedownCluesLeftEl.scrollTop = slidedownCluesLeftEl.scrollHeight;
-      }
+    if (tab === 'clues-left') {
+      _logScrollToBottom(sidebarCluesLeft,   nearBottom.sidebarCluesLeft);
+      _logScrollToBottom(slidedownCluesLeft, nearBottom.slidedownCluesLeft);
     }
   });
 }
@@ -7899,139 +7878,97 @@ function getClueTargetIndicesFromEntry(clue, game = currentGame) {
 
 function buildCluesLeftLogHtml() {
   const history = Array.isArray(currentGame?.clueHistory) ? currentGame.clueHistory : [];
-  const cards = Array.isArray(currentGame?.cards) ? currentGame.cards : [];
+  const cards   = Array.isArray(currentGame?.cards)       ? currentGame.cards       : [];
+
   if (!history.length || !cards.length) {
     return '<div class="gamelog-empty">No stacked clues yet. Turn on Stacking in Settings and pick target cards when giving clues.</div>';
   }
 
-  // Spymasters can see the specific target words. Operatives should still see
-  // the clue and how many words are associated with it.
-  const spectator = isSpectating();
-  const canSeeWords = !spectator;
+  const myTeam = getMyTeamColor();
 
-  // Only show clues from the current user's team (spectators see all).
-  const myTeamColor = getMyTeamColor();
-
-  // Build a fast word -> index map (cards are unique words).
-  const wordIndex = new Map();
-  for (let i = 0; i < cards.length; i += 1) {
-    const w = String(cards[i]?.word || '').trim().toUpperCase();
-    if (w) wordIndex.set(w, i);
-  }
+  // Fast word-to-index lookup.
+  const wordIndex = new Map(
+    cards.map((card, i) => [String(card?.word || '').trim().toUpperCase(), i])
+  );
 
   const rows = [];
-  for (let i = history.length - 1; i >= 0; i -= 1) {
+
+  // Newest clue first.
+  for (let i = history.length - 1; i >= 0; i--) {
     const clue = history[i];
     if (!clue || typeof clue !== 'object') continue;
+
     const team = String(clue.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
 
-    // Filter: only show clues from your own team (spectators see all).
-    if (myTeamColor && team !== myTeamColor) continue;
+    // Players only see their own team; spectators (myTeam === null) see all.
+    if (myTeam && team !== myTeam) continue;
 
-    const clueWord = String(clue.word || '').trim() || 'CLUE';
-    const targetIndices = getClueTargetIndicesFromEntry(clue, currentGame);
-    const targetWords = Array.isArray(clue.targetWords)
-      ? clue.targetWords.map((w) => String(w || '').trim()).filter(Boolean)
-      : [];
+    const clueWord   = String(clue.word || '').trim() || 'CLUE';
+    const clueNumber = Math.max(0, Math.min(9, parseInt(clue.number, 10) || 0));
 
-    // Total targets: prefer indices, then explicit words, then the clue number.
-    const clueNumberRaw = parseInt(clue.number, 10);
-    const clueNumber = Number.isFinite(clueNumberRaw) ? Math.max(0, Math.min(9, clueNumberRaw)) : 0;
-    let total = targetIndices.length || targetWords.length || clueNumber;
-    if (!total) continue;
-
-    // If we have indices, we can compute remaining precisely. If we only have
-    // words, map them back to indices so we can still compute remaining.
-    let computedIndices = targetIndices;
-    if (!computedIndices.length && targetWords.length) {
-      const mapped = [];
-      targetWords.forEach((w) => {
-        const idx = wordIndex.get(String(w).trim().toUpperCase());
-        if (Number.isInteger(idx)) mapped.push(idx);
-      });
-      computedIndices = Array.from(new Set(mapped));
-      if (computedIndices.length) total = computedIndices.length;
+    // Resolve target card indices — prefer direct targets, fall back to word lookup.
+    let indices = getClueTargetIndicesFromEntry(clue, currentGame);
+    if (!indices.length) {
+      const fromWords = (Array.isArray(clue.targetWords) ? clue.targetWords : [])
+        .map(w => wordIndex.get(String(w || '').trim().toUpperCase()))
+        .filter(idx => Number.isInteger(idx));
+      indices = [...new Set(fromWords)];
     }
 
-    let remainingCount = null;
-    let foundCount = null;
-    let remainingWords = [];
-    if (computedIndices.length) {
-      const remainingIndices = computedIndices.filter((idx) => {
-        const card = cards[idx];
-        return !!card && !card.revealed;
-      });
+    if (!indices.length && !clueNumber) continue;
 
-      // If everything is found, hide it from "Clues Left".
-      if (!remainingIndices.length) continue;
+    // Find unrevealed targets.
+    const remaining = indices.filter(idx => cards[idx] && !cards[idx].revealed);
+    if (indices.length && !remaining.length) continue; // all revealed — skip
 
-      remainingCount = remainingIndices.length;
-      foundCount = Math.max(0, total - remainingCount);
-      remainingWords = remainingIndices
-        .map((idx) => String(cards[idx]?.word || '').trim())
-        .filter(Boolean);
-    }
+    const remainingWords = remaining
+      .map(idx => String(cards[idx]?.word || '').trim())
+      .filter(Boolean);
 
+    const countLabel = remaining.length
+      ? `${remaining.length} word${remaining.length === 1 ? '' : 's'} left`
+      : String(clueNumber);
 
-
-    // Operatives want a simple "N words left" indicator.
-    const progressText = (remainingCount === null)
-      ? ''
-      : `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
-
-    // In the Clues Left (Game Log) UI, surface this directly in the count badge.
-    // This matches the user's mental model: "3 words left" rather than a bare "3".
-    const countBadgeText = progressText || String(clueNumber);
-
-    const wordsHtml = canSeeWords
-      ? (remainingWords.length
-          ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
-          : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>')
-      : (remainingWords.length
-          ? remainingWords.map(() => '<span class="gamelog-left-word-chip">HIDDEN</span>').join('')
-          : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>');
+    const chipsHtml = remainingWords.length
+      ? remainingWords.map(w => `<span class="gamelog-left-word-chip">${escapeHtml(w.toUpperCase())}</span>`).join('')
+      : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>';
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">
         <div class="gamelog-left-head">
           <span class="gamelog-left-clue-word">${escapeHtml(clueWord)}</span>
-          <span class="gamelog-left-clue-count">${escapeHtml(String(countBadgeText))}</span>
+          <span class="gamelog-left-clue-count">${escapeHtml(countLabel)}</span>
         </div>
-        <div class="gamelog-left-word-list">${wordsHtml}</div>
+        <div class="gamelog-left-word-list">${chipsHtml}</div>
       </div>
     `);
   }
 
-  if (!rows.length) {
-    return '<div class="gamelog-empty">No remaining stacked clues right now.</div>';
-  }
-  return rows.join('');
+  return rows.length
+    ? rows.join('')
+    : '<div class="gamelog-empty">No remaining stacked clues right now.</div>';
 }
 
 function buildOgStructuredLog() {
-  if (!Array.isArray(currentGame?.clueHistory) || currentGame.clueHistory.length === 0) return '';
-  const history = currentGame.clueHistory;
+  const history = Array.isArray(currentGame?.clueHistory) ? currentGame.clueHistory : [];
+  if (!history.length) return '';
 
   return history.map(clue => {
     if (!clue || typeof clue !== 'object') return '';
 
     const teamRaw = String(clue.team || 'red').toLowerCase();
-    const team = (teamRaw === 'blue' || teamRaw === 'red') ? teamRaw : 'red';
-    const teamRoster = getTeamPlayers(team, currentGame);
-    const spymasterRaw = getTeamSpymasterName(team, currentGame) || 'Spymaster';
-    const spymaster = displayNameFromRoster(spymasterRaw, teamRoster) || 'Spymaster';
-    const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
-    const clueWord = String(clue.word || '').trim() || 'CLUE';
-    const clueNumberRaw = parseInt(clue.number, 10);
-    const clueNumberOriginal = Number.isFinite(clueNumberRaw) && clueNumberRaw >= 0 ? clueNumberRaw : 0;
+    const team    = teamRaw === 'blue' ? 'blue' : 'red';
 
-    // History should reflect what the spymaster *said* (the original clue number).
-    // Any "clues left" / remaining count belongs in the dedicated "Clues Left" tab.
-    const clueNumber = clueNumberOriginal === 0 ? '?' : clueNumberOriginal;
+    const roster      = getTeamPlayers(team, currentGame);
+    const spymaster   = displayNameFromRoster(getTeamSpymasterName(team, currentGame) || 'Spymaster', roster) || 'Spymaster';
+    const initial     = spymaster.trim().slice(0, 1).toUpperCase();
+    const clueWord    = String(clue.word || '').trim() || 'CLUE';
+    const clueNumRaw  = parseInt(clue.number, 10);
+    // Show what the spymaster said; "Clues Left" tab handles remaining counts.
+    const clueNumber  = (Number.isFinite(clueNumRaw) && clueNumRaw > 0) ? clueNumRaw : '?';
 
-    // In OG/Codenames-Online style, show the hint in the *same badge* as the avatar (like the spymaster card).
-    // This makes the clue more visible and uses space more efficiently.
-    const clueRow = `<div class="gamelog-clue-row">
+    const clueRow = `
+      <div class="gamelog-clue-row">
         <div class="gamelog-clue-pill clue-with-avatar team-${escapeHtml(team)}">
           <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
             <div class="gamelog-avatar">${escapeHtml(initial)}</div>
@@ -8044,23 +7981,23 @@ function buildOgStructuredLog() {
 
     const guesses = Array.isArray(clue.results) ? clue.results : [];
     const guessesHtml = guesses.map(r => {
-      const name = String(r?.by || 'Someone').trim() || 'Someone';
-      const gi = name.trim().slice(0, 1).toUpperCase();
-      const typeRaw = String(r?.type || 'neutral').toLowerCase();
-      const cardType = (typeRaw === 'red' || typeRaw === 'blue' || typeRaw === 'neutral' || typeRaw === 'assassin')
-        ? typeRaw
-        : 'neutral';
-      const guessedWord = String(r?.word || '').trim() || 'Unknown';
-      return `<div class="gamelog-guess-item">
+      const name     = String(r?.by || 'Someone').trim() || 'Someone';
+      const gi       = name.trim().slice(0, 1).toUpperCase();
+      const typeRaw  = String(r?.type || 'neutral').toLowerCase();
+      const cardType = ['red', 'blue', 'neutral', 'assassin'].includes(typeRaw) ? typeRaw : 'neutral';
+      const word     = String(r?.word || '').trim() || 'Unknown';
+      return `
+        <div class="gamelog-guess-item">
           <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
             <div class="gamelog-avatar">${escapeHtml(gi)}</div>
             <div class="gamelog-avatar-name">${escapeHtml(name)}</div>
           </div>
-          <div class="gamelog-word-pill type-${escapeHtml(cardType)}">${escapeHtml(guessedWord)}</div>
+          <div class="gamelog-word-pill type-${escapeHtml(cardType)}">${escapeHtml(word)}</div>
         </div>`;
     }).join('');
 
-    return `<div class="gamelog-turn">
+    return `
+      <div class="gamelog-turn">
         ${clueRow}
         ${guessesHtml ? `<div class="gamelog-guesses">${guessesHtml}</div>` : ''}
       </div>`;
