@@ -12204,7 +12204,8 @@ function initPracticePage() {
     void settingsModal.offsetWidth;
     settingsModal.classList.add('modal-open');
     settingsModal.setAttribute('aria-hidden', 'false');
-    if (settingsStatusEl) settingsStatusEl.textContent = 'Applies to the next Singleplayer game.';
+    // Status hint removed (requested to keep settings panel clean)
+    if (settingsStatusEl) settingsStatusEl.textContent = '';
     try { settingsVibeEl?.focus?.(); } catch (_) {}
   };
 

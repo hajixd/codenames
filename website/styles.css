@@ -5833,15 +5833,13 @@ body.og-mode .og-reveal-icon::before{
   letter-spacing: 0.4px;
   word-break: break-word;
   line-height: 1.2;
-  /* Keep the label centered and prevent overflow (JS will shrink when needed) */
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-  box-sizing: border-box;
-  padding: 0 6px;
+}
+
+.game-card .card-word .word-text{
+  display: inline-block;
+  max-width: 100%;
+  text-align: center;
 }
 
 /* Spymaster View - Color overlay */
@@ -10481,7 +10479,7 @@ body.tournament.has-team-color .input:focus {
 }
 
 .topbar-timer .timer-text {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -18445,12 +18443,7 @@ textarea{
   line-height: 1.1;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
-  /* Allow wrapping/shrinking so every word fits, and center horizontally */
-  white-space: normal;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  white-space: nowrap;
   overflow: hidden;
 }
 

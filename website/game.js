@@ -6250,15 +6250,16 @@ function fitAllCardWords() {
     const baseLS = parseFloat(cs.letterSpacing) || 0;
 
     let size = baseSize;
-    // Allow smaller floor so every word can fit within the card.
+    // Allow slightly smaller text for extreme-length words so we never clip.
+    // This only kicks in when a word would overflow.
     const minSize = window.innerWidth <= 768 ? 4 : 6;
     let guard = 0;
 
-    // Pre-scale by word length: each character beyond 7 reduces font size by 5%
+    // Pre-scale by word length: each character beyond 7 reduces font size by 4%
     const wordLen = ((textEl.textContent || '').trim()).length;
     const extraChars = Math.max(0, wordLen - 7);
     if (extraChars > 0) {
-      const factor = Math.max(0.45, 1 - extraChars * 0.05);
+      const factor = Math.max(0.55, 1 - extraChars * 0.04);
       size = Math.max(minSize, baseSize * factor);
       textEl.style.fontSize = size + 'px';
     }
@@ -6271,8 +6272,8 @@ function fitAllCardWords() {
     const overflows = () => (textEl.scrollWidth > boxW || textEl.scrollHeight > boxH);
 
     // First pass: reduce font-size until it fits
-    while (guard < 120 && size > minSize && overflows()) {
-      size -= 0.25;
+    while (guard < 80 && size > minSize && overflows()) {
+      size -= 0.5;
       textEl.style.fontSize = size + 'px';
       // Reduce tracking a bit as we shrink (helps long words feel less cramped)
       const scaledLS = Math.max(0, baseLS * (size / baseSize) * 0.85);
@@ -6285,8 +6286,8 @@ function fitAllCardWords() {
     if (overflows()) {
       const sw = textEl.scrollWidth || 1;
       const sh = textEl.scrollHeight || 1;
-      const minRatioX = window.innerWidth <= 768 ? 0.58 : 0.72;
-      const minRatioY = window.innerWidth <= 768 ? 0.72 : 0.82;
+      const minRatioX = window.innerWidth <= 768 ? 0.54 : 0.68;
+      const minRatioY = window.innerWidth <= 768 ? 0.70 : 0.80;
       const ratioX = Math.max(minRatioX, Math.min(1, (boxW - 1) / sw));
       const ratioY = Math.max(minRatioY, Math.min(1, (boxH - 1) / sh));
       textEl.style.transformOrigin = 'center';
@@ -10079,6 +10080,34 @@ function renderClueHistory() {
    Timer Display
 ========================= */
 
+function getPhaseRoleKey(phase) {
+  return phase === 'spymaster' ? 'spymaster' : 'operative';
+}
+
+function getRoleLabelForPhase(phase) {
+  const base = phase === 'spymaster' ? 'Spymaster' : 'Operative';
+  try {
+    if (!currentGame) return base;
+    const team = String(currentGame.currentTeam || '');
+    const roster = team === 'blue' ? (currentGame.bluePlayers || []) : (currentGame.redPlayers || []);
+    const roleKey = getPhaseRoleKey(phase);
+    const count = roster.filter(p => String(p?.role || 'operative') === roleKey).length;
+    return count === 1 ? base : `${base}s`;
+  } catch (_) {
+    return base;
+  }
+}
+
+function formatPhaseTimerText(remainingMs, phase) {
+  const safeRemaining = Math.max(0, Number(remainingMs) || 0);
+  const totalSeconds = safeRemaining / 1000;
+  const minutes = Math.floor(totalSeconds / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  const tenths = Math.floor((safeRemaining % 1000) / 100);
+  const time = `${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
+  return `${getRoleLabelForPhase(phase)}: ${time}`;
+}
+
 // When playing in OG / Cozy mode, the center banner above the board shows a short instruction.
 // For the Operatives phase on desktop, we swap that instruction for the live turn timer.
 function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
@@ -10146,20 +10175,12 @@ function startGameTimer(endTime, phase) {
 
   const totalDuration = Math.max(1, gameTimerEnd - Date.now());
 
-  const phaseLabel = phase === 'operatives'
-    ? 'Operative'
-    : (phase === 'spymaster' ? 'Spymaster' : 'Timer');
-
   gameTimerInterval = setInterval(() => {
     const remaining = Math.max(0, gameTimerEnd - Date.now());
     if (isNaN(remaining)) { stopGameTimer(); return; }
-    // Display mm:ss.t (tenths). Keep the timer stable at boundaries.
-    const totalSeconds = Math.floor(remaining / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    const tenths = Math.floor((remaining % 1000) / 100);
-    const timerText = `${phaseLabel}: ${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
+    const seconds = Math.ceil(remaining / 1000);
 
+    const timerText = formatPhaseTimerText(remaining, phase);
     textEl.textContent = timerText;
     if (ogTimerTextEl) ogTimerTextEl.textContent = timerText;
 
@@ -10178,7 +10199,6 @@ function startGameTimer(endTime, phase) {
     textEl.classList.remove('warning', 'danger');
     ogTimerEl?.classList.remove('warning', 'danger');
 
-    const seconds = Math.ceil(remaining / 1000);
     if (seconds <= 10) {
       fillEl.classList.add('danger');
       textEl.classList.add('danger');
@@ -10210,29 +10230,26 @@ function showStaticGameTimer(phase) {
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
   if (!timerEl || !fillEl || !textEl) return;
 
-  const phaseLabel = phase === 'operatives'
-    ? 'Operative'
-    : (phase === 'spymaster' ? 'Spymaster' : 'Timer');
-
   timerEl.style.display = 'flex';
   fillEl.style.width = '100%';
   fillEl.classList.remove('warning', 'danger');
   textEl.classList.remove('warning', 'danger');
-  const staticText = `${phaseLabel}: ∞`;
-  textEl.textContent = staticText;
-  if (ogTimerTextEl) ogTimerTextEl.textContent = staticText;
-
-  // Keep the OG phase banner (top-center) in sync when it's showing a turn timer.
-  try {
-    updateOgPhaseBannerTimerText(staticText, phase);
-  } catch (_) {}
+  textEl.textContent = `${getRoleLabelForPhase(phase)}: ∞`;
 
   if (ogTimerEl) {
     ogTimerEl.style.display = 'inline-flex';
     ogTimerEl.classList.remove('warning', 'danger');
   }
+  if (ogTimerTextEl) ogTimerTextEl.textContent = `${getRoleLabelForPhase(phase)}: ∞`;
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
+  }
+
+  // Mirror static timer into the OG phase banner when applicable.
+  try {
+    updateOgPhaseBannerTimerText('∞', phase);
+  } catch (_) {
+    // no-op
   }
 }
 
