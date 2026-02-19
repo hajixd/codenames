@@ -10112,28 +10112,33 @@ function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
   ogText.classList.toggle('blue', activeTeam === 'blue');
 }
 
-function getPhaseRoleLabel(phase) {
-  try {
-    const ph = String(phase || '');
-    if (ph !== 'operatives' && ph !== 'spymaster') return 'Timer';
-    const team = String(currentGame?.currentTeam || '');
-    const players = (team === 'red')
-      ? (currentGame?.redPlayers || [])
-      : (team === 'blue')
-        ? (currentGame?.bluePlayers || [])
-        : [];
-    const isSpy = (p) => isSpymasterPlayerForTeam(p, team, currentGame);
-    const count = players.filter(p => ph === 'spymaster' ? isSpy(p) : !isSpy(p)).length;
-    if (ph === 'spymaster') return count > 1 ? 'Spymasters' : 'Spymaster';
-    return count > 1 ? 'Operatives' : 'Operative';
-  } catch (_) {
-    return String(phase || '') === 'spymaster' ? 'Spymaster' : (String(phase || '') === 'operatives' ? 'Operative' : 'Timer');
+function startGameTimer(endTime, phase) {
+  stopGameTimer();
+
+  if (!endTime) return;
+
+  if (endTime instanceof Date) {
+    gameTimerEnd = endTime;
+  } else if (typeof endTime?.toDate === 'function') {
+    gameTimerEnd = endTime.toDate();
+  } else if (typeof endTime?.seconds === 'number') {
+    // Plain {seconds, nanoseconds} object (e.g. Firestore Timestamp after JSON cloning)
+    gameTimerEnd = new Date(endTime.seconds * 1000 + Math.round((endTime.nanoseconds || 0) / 1e6));
+  } else {
+    gameTimerEnd = new Date(endTime);
   }
-}
+  if (!gameTimerEnd || isNaN(gameTimerEnd.getTime())) return;
 
+  const timerEl = document.getElementById('game-timer');
+  const fillEl = document.getElementById('timer-fill');
+  const textEl = document.getElementById('timer-text');
+  const ogTimerEl = document.getElementById('og-topbar-timer');
+  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
+  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
 
-  textEl.classList.add('role-timer');
-  if (ogTimerTextEl) ogTimerTextEl.classList.add('role-timer');
+  if (!timerEl || !fillEl || !textEl) return;
+
+  timerEl.style.display = 'flex';
   if (ogTimerEl) ogTimerEl.style.display = 'inline-flex';
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
@@ -10141,7 +10146,23 @@ function getPhaseRoleLabel(phase) {
 
   const totalDuration = Math.max(1, gameTimerEnd - Date.now());
 
-  const phaseLabel = getPhaseRoleLabel(phase);
+  const activeTeam = String(currentGame?.currentTeam || '');
+  const roster = activeTeam === 'red'
+    ? (currentGame?.redPlayers || [])
+    : activeTeam === 'blue'
+      ? (currentGame?.bluePlayers || [])
+      : [];
+
+  const roleKey = phase === 'spymaster' ? 'spymaster' : (phase === 'operatives' ? 'operative' : '');
+  const roleCount = roleKey
+    ? roster.filter(p => String(p?.role || '').toLowerCase() === roleKey).length
+    : 1;
+
+  const phaseLabel = phase === 'operatives'
+    ? (roleCount > 1 ? 'Operatives' : 'Operative')
+    : (phase === 'spymaster'
+      ? (roleCount > 1 ? 'Spymasters' : 'Spymaster')
+      : 'Timer');
 
   gameTimerInterval = setInterval(() => {
     const remaining = Math.max(0, gameTimerEnd - Date.now());
@@ -10151,10 +10172,12 @@ function getPhaseRoleLabel(phase) {
     const minutes = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     const tenths = Math.floor((remaining % 1000) / 100);
-    const timerText = `${phaseLabel}: ${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
+    const timeText = `${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
+    const timerText = `${phaseLabel}: ${timeText}`;
 
-    textEl.textContent = timerText;
-    if (ogTimerTextEl) ogTimerTextEl.textContent = timerText;
+    // Render label slightly smaller than the time value.
+    textEl.innerHTML = `<span class="timer-label">${phaseLabel}:</span> <span class="timer-value">${timeText}</span>`;
+    if (ogTimerTextEl) ogTimerTextEl.innerHTML = `<span class="timer-label">${phaseLabel}:</span> <span class="timer-value">${timeText}</span>`;
 
     // Keep the OG phase banner (top-center) in sync when it's showing a turn timer.
     try {
@@ -10188,15 +10211,47 @@ function getPhaseRoleLabel(phase) {
   }, 100);
 }
 
+function showStaticGameTimer(phase) {
+  if (gameTimerInterval) {
+    clearInterval(gameTimerInterval);
+    gameTimerInterval = null;
+  }
+  gameTimerEnd = null;
 
-  textEl.classList.add('role-timer');
-  if (ogTimerTextEl) ogTimerTextEl.classList.add('role-timer');
+  const timerEl = document.getElementById('game-timer');
+  const fillEl = document.getElementById('timer-fill');
+  const textEl = document.getElementById('timer-text');
+  const ogTimerEl = document.getElementById('og-topbar-timer');
+  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
+  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
+  if (!timerEl || !fillEl || !textEl) return;
+
+  const activeTeam = String(currentGame?.currentTeam || '');
+  const roster = activeTeam === 'red'
+    ? (currentGame?.redPlayers || [])
+    : activeTeam === 'blue'
+      ? (currentGame?.bluePlayers || [])
+      : [];
+
+  const roleKey = phase === 'spymaster' ? 'spymaster' : (phase === 'operatives' ? 'operative' : '');
+  const roleCount = roleKey
+    ? roster.filter(p => String(p?.role || '').toLowerCase() === roleKey).length
+    : 1;
+
+  const phaseLabel = phase === 'operatives'
+    ? (roleCount > 1 ? 'Operatives' : 'Operative')
+    : (phase === 'spymaster'
+      ? (roleCount > 1 ? 'Spymasters' : 'Spymaster')
+      : 'Timer');
+
+  timerEl.style.display = 'flex';
   fillEl.style.width = '100%';
   fillEl.classList.remove('warning', 'danger');
   textEl.classList.remove('warning', 'danger');
-  const staticText = `${phaseLabel}: ∞`;
-  textEl.textContent = staticText;
-  if (ogTimerTextEl) ogTimerTextEl.textContent = staticText;
+  const staticValue = '∞';
+  const staticText = `${phaseLabel}: ${staticValue}`;
+  textEl.innerHTML = `<span class="timer-label">${phaseLabel}:</span> <span class="timer-value">${staticValue}</span>`;
+  if (ogTimerTextEl) ogTimerTextEl.innerHTML = `<span class="timer-label">${phaseLabel}:</span> <span class="timer-value">${staticValue}</span>`;
 
   // Keep the OG phase banner (top-center) in sync when it's showing a turn timer.
   try {
@@ -10213,13 +10268,14 @@ function getPhaseRoleLabel(phase) {
 }
 
 function stopGameTimer() {
+  if (gameTimerInterval) {
+    clearInterval(gameTimerInterval);
+    gameTimerInterval = null;
+  }
+  gameTimerEnd = null;
 
   const timerEl = document.getElementById('game-timer');
-  const textEl = document.getElementById('timer-text');
-  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerEl = document.getElementById('og-topbar-timer');
-  if (textEl) textEl.classList.remove('role-timer');
-  if (ogTimerTextEl) ogTimerTextEl.classList.remove('role-timer');
   if (timerEl) timerEl.style.display = 'none';
   if (ogTimerEl) {
     ogTimerEl.style.display = 'none';
