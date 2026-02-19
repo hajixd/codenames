@@ -10650,28 +10650,6 @@ body.tournament.has-team-color .input:focus {
   font-variant-numeric: tabular-nums;
 }
 
-/* Timer label/value split (label slightly smaller) */
-.timer-text .timer-label {
-  font-size: 0.78em;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-
-.timer-text .timer-value {
-  font-size: 1em;
-  font-weight: 800;
-}
-
-.og-topbar-timer-text .timer-label {
-  font-size: 0.75em;
-  font-weight: 800;
-}
-
-.og-topbar-timer-text .timer-value {
-  font-size: 1em;
-  font-weight: 900;
-}
-
 .timer-text.warning { color: var(--gold); }
 .timer-text.danger { color: var(--red); }
 
