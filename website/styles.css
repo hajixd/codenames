@@ -18528,6 +18528,7 @@ body.og-mode .gamelog-chevron svg {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .gamelog-chevron {
@@ -23558,6 +23559,7 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   z-index: 3;
   pointer-events: auto;
   touch-action: manipulation;
+  flex-shrink: 0;
 }
 
 .gamelog-tab-btn {
