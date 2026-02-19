@@ -24647,6 +24647,15 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
   justify-content: center !important;
 }
 
+/* Extra hardening: if the operative actions are hidden/collapsed while the
+   council modal is open, space-between can cause the clue pill to hug the
+   left edge. Auto side-margins keep it centered regardless of sibling layout. */
+.game-action-bar.council-modal-open .clue-display-expanded,
+.game-action-bar.council-modal-open .clue-display-compact {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 .game-action-bar.row-clue-endturn .clue-display-expanded {
   flex: 0 0 auto;
 }
