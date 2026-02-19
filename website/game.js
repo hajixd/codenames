@@ -7907,7 +7907,7 @@ function buildCluesLeftLogHtml() {
   // Spymasters can see the specific target words. Operatives should still see
   // the clue and how many words are associated with it.
   const spectator = isSpectating();
-  const canSeeWords = !spectator && isCurrentUserSpymaster();
+  const canSeeWords = !spectator;
 
   // Only show clues from the current user's team (spectators see all).
   const myTeamColor = getMyTeamColor();
