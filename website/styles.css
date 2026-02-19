@@ -24640,6 +24640,13 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
   gap: clamp(8px, 1.3vw, 14px);
 }
 
+/* Council review popup: keep the bottom clue pill from shifting left/right.
+   We intentionally avoid row-clue-endturn during council so the action bar
+   remains visually stable across breakpoints. */
+.game-action-bar.council-modal-open {
+  justify-content: center !important;
+}
+
 .game-action-bar.row-clue-endturn .clue-display-expanded {
   flex: 0 0 auto;
 }
