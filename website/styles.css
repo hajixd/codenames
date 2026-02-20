@@ -23254,6 +23254,12 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     margin-inline: 14px;
   }
 
+  /* OG/Cozy desktop: visually align Team Chat width with the roster boxes
+     (which sit inside .og-team-panel padding). */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-right > .operative-chat-panel {
+    margin-inline: 14px;
+  }
+
   /* Keep OG/Cozy team stacks in normal flow (no transform clipping). */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .og-team-panel {
     margin-bottom: 0;
@@ -23322,16 +23328,17 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     margin-top: 0;
   }
 
-  /* Keep only the OG/Cozy box role headers in sync with desktop proportional scaling. */
+  /* Ensure everything scales at the same rate: the game container already uses zoom/scale.
+     Avoid applying an additional scale multiplier to specific text elements. */
   @supports (zoom: 1) {
     body:is(.og-mode, .cozy-mode) .panel-game.game-active .online-roster-title {
-      font-size: clamp(18px, calc(30px * var(--desktop-game-scale, 1)), 34px);
-      letter-spacing: calc(1.6px * var(--desktop-game-scale, 1));
+      font-size: 30px;
+      letter-spacing: 1.6px;
     }
 
     body.og-mode .panel-game.game-active .og-mobile-box-header {
-      font-size: clamp(8px, calc(10px * var(--desktop-game-scale, 1)), 12px);
-      letter-spacing: calc(1px * var(--desktop-game-scale, 1));
+      font-size: 10px;
+      letter-spacing: 1px;
     }
   }
 }
