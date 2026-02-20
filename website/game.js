@@ -139,7 +139,8 @@ function forceCardDomRevealedState(cardEl, idx) {
       if (inner._revealFlipAnim && typeof inner._revealFlipAnim.cancel === 'function') {
         inner._revealFlipAnim.cancel();
       }
-      inner.style.transform = '';
+      inner.style.animation = 'none';
+      inner.style.transform = 'rotateY(180deg)';
     }
   } catch (_) {}
   try { cardEl.removeAttribute('data-confirm-back-label'); } catch (_) {}
