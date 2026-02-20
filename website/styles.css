@@ -23242,6 +23242,8 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   }
 
   .panel-game.game-active .game-sidebar {
+    /* Match the proportional UI scaling used for the board so chat/log shrink too. */
+    zoom: var(--desktop-game-scale);
     padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 14vh), 56px);
   }
 
@@ -24475,6 +24477,22 @@ body.light-mode .council-status-badge {
   white-space: nowrap;
 }
 
+/* Council popup: keep the bottom clue pill pinned to the true horizontal center.
+   (The modal can otherwise trigger a flex reflow that nudges the pill left.) */
+body.council-modal-open .game-center-area .game-action-bar {
+  justify-content: center !important;
+}
+
+body.council-modal-open .game-center-area .game-action-bar .clue-display-expanded {
+  flex: 0 0 auto;
+}
+
+body.council-modal-open .game-center-area .game-action-bar .operative-actions-expanded,
+body.council-modal-open .game-center-area .game-action-bar .mobile-game-actions,
+body.council-modal-open .game-center-area .game-action-bar .waiting-expanded {
+  display: none !important;
+}
+
 @media (max-width: 768px) {
   .clue-display-expanded {
     width: min(100%, 320px);
@@ -25453,6 +25471,11 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
     min-height: calc(100dvh - 60px);
     overflow: visible;
     margin-top: clamp(0px, calc((1 - var(--mobile-game-scale, 1)) * 16vh), 52px);
+  }
+
+  /* Match the proportional UI scaling used for the board so chat/log shrink too. */
+  .panel-game.game-active .game-sidebar {
+    zoom: var(--mobile-game-scale);
   }
 
   @supports not (zoom: 1) {

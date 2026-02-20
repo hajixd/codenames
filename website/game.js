@@ -7429,6 +7429,8 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     reviewModalEl.setAttribute('aria-hidden', 'true');
     reviewModalEl.style.display = 'none';
   }
+  // Ensure any council-modal layout overrides are cleared when the popup is not visible.
+  document.body.classList.remove('council-modal-open');
   if (actionBarEl) actionBarEl.classList.remove('row-clue-endturn');
   const clueStackPanel = document.getElementById('clue-stack-panel');
   if (clueStackPanel) clueStackPanel.style.display = 'none';
@@ -7550,6 +7552,9 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const showReviewModal = !spectator
       && (pending.state === 'awaiting' || pending.state === 'reviewing');
     if (showReviewModal && reviewModalEl) {
+      // Lock the bottom clue pill to the true center while the council popup is open.
+      // (Some layouts can shift the pill left when the action bar reflows.)
+      document.body.classList.add('council-modal-open');
       // While the council popup is up, do NOT alter the action bar layout.
       // (Applying row-clue-endturn here caused the clue pill to drift left in some layouts.)
 
