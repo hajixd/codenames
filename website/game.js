@@ -6245,7 +6245,10 @@ function renderBoard(isSpymaster) {
   const turnTeam = (currentGame?.currentTeam === 'red' || currentGame?.currentTeam === 'blue')
     ? currentGame.currentTeam
     : null;
-  const canViewTurnConsidering = !!turnTeam && (spectator || (myTeamColor && myTeamColor === turnTeam));
+  // In local singleplayer practice there may be no "my team" concept for the human,
+  // but we still want the UI to show the team's "considering" chips (AI initials).
+  // So practice games always allow viewing the current team's considering marks.
+  const canViewTurnConsidering = !!turnTeam && (spectator || isCurrentLocalPracticeGame() || (myTeamColor && myTeamColor === turnTeam));
   const teamConsidering = canViewTurnConsidering
     ? (turnTeam === 'red' ? (currentGame?.redConsidering || {}) : (currentGame?.blueConsidering || {}))
     : {};
