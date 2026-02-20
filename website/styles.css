@@ -21103,14 +21103,6 @@ body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm
   transform: none !important;
 }
 
-/* Keep revealed cards visually flipped in non-OG/non-cozy modes. */
-body:not(.og-mode):not(.cozy-mode) .game-card.revealed .card-back {
-  display: flex !important;
-}
-body:not(.og-mode):not(.cozy-mode) .game-card.revealed .card-inner {
-  transform: rotateY(180deg) !important;
-}
-
 /* Non-OG/non-cozy confirmed guess animation (force flip every time). */
 body:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed) {
   z-index: 96;

@@ -85,102 +85,75 @@ function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
 
 function clearConfirmAnimationClasses(cardEl) {
   if (!cardEl) return;
-  const idx = Number(cardEl?.dataset?.index);
-  if (Number.isInteger(idx) && idx >= 0 && !!currentGame?.cards?.[idx]?.revealed) {
-    forceCardDomRevealedState(cardEl, idx);
-    return;
-  }
   cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
+
+  // If a replay animation temporarily stripped the revealed classes, restore them
+  // when cleanup runs so the card cannot remain visually face-down.
+  const replayWasRevealed = cardEl.dataset && cardEl.dataset.confirmReplayWasRevealed === '1';
+  if (replayWasRevealed) {
+    const finalType = normalizeConfirmBackType(cardEl.dataset.confirmReplayFinalType || '');
+    cardEl.classList.add('revealed', `card-${finalType}`);
+  }
 }
 
 function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
   if (!cardEl) return;
   const replay = !!opts.replay;
   const type = normalizeConfirmBackType(confirmBackType);
+
+  // Cancel any pending cleanup from a prior replay on this same node.
+  try {
+    const prevTimer = Number(cardEl.dataset.confirmReplayRestoreTimer || 0);
+    if (prevTimer) clearTimeout(prevTimer);
+  } catch (_) {}
+  try { delete cardEl.dataset.confirmReplayRestoreTimer; } catch (_) {}
+
   if (replay) {
     // For snapshot replays, briefly restore the unrevealed presentation first.
+    // Remember the final state so cleanup can restore it without another rerender.
+    cardEl.dataset.confirmReplayWasRevealed = '1';
+    cardEl.dataset.confirmReplayFinalType = type;
     cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
+  } else {
+    try { delete cardEl.dataset.confirmReplayWasRevealed; } catch (_) {}
+    try { delete cardEl.dataset.confirmReplayFinalType; } catch (_) {}
   }
   // Ensure the flip animation reliably restarts every time:
   // 1) clear classes
   // 2) add base state immediately
-  // 3) add the animating class on the next frame (forces a fresh animation)
+  // 3) add the animating class after stable layout frames
   clearConfirmAnimationClasses(cardEl);
   cardEl.classList.add('confirming-guess', `confirm-back-${type}`);
   cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
   // Force layout so browsers don't coalesce class changes.
   // eslint-disable-next-line no-unused-expressions
   void cardEl.offsetWidth;
+  try { void cardEl.querySelector('.card-inner')?.offsetWidth; } catch (_) {}
   requestAnimationFrame(() => {
     if (!cardEl.isConnected) return;
-    cardEl.classList.add('confirm-animate');
-    pulseCardAnimationOverlay();
+    // eslint-disable-next-line no-unused-expressions
+    void cardEl.offsetWidth;
+    requestAnimationFrame(() => {
+      if (!cardEl.isConnected) return;
+      cardEl.classList.add('confirm-animate');
+      pulseCardAnimationOverlay();
+      if (replay) {
+        const restore = () => {
+          if (!cardEl.isConnected) return;
+          const finalType = normalizeConfirmBackType(cardEl.dataset.confirmReplayFinalType || type);
+          cardEl.classList.add('revealed', `card-${finalType}`);
+          clearConfirmAnimationClasses(cardEl);
+          try { delete cardEl.dataset.confirmReplayWasRevealed; } catch (_) {}
+          try { delete cardEl.dataset.confirmReplayFinalType; } catch (_) {}
+          try { delete cardEl.dataset.confirmReplayRestoreTimer; } catch (_) {}
+        };
+        const tid = window.setTimeout(restore, CARD_CONFIRM_ANIM_MS + 80);
+        try { cardEl.dataset.confirmReplayRestoreTimer = String(tid); } catch (_) {}
+      }
+    });
   });
-}
-
-
-
-function forceCardDomRevealedState(cardEl, idx) {
-  if (!cardEl) return;
-  const i = Number(idx);
-  const live = Number.isInteger(i) && i >= 0 ? currentGame?.cards?.[i] : null;
-  if (!live || !live.revealed) return;
-  const t = normalizeConfirmBackType(String(live.type || '').toLowerCase());
-  cardEl.classList.add('revealed');
-  cardEl.classList.remove('spymaster-view', 'disabled', 'pending-select', 'confirming-guess', 'confirm-animate', 'confirm-hold');
-  cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((x) => `confirm-back-${x}`));
-  cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((x) => `card-${x}`));
-  cardEl.classList.add(`card-${t}`);
-  try {
-    const inner = cardEl.querySelector('.card-inner');
-    if (inner) {
-      if (inner._revealFlipAnim && typeof inner._revealFlipAnim.cancel === 'function') {
-        inner._revealFlipAnim.cancel();
-      }
-      inner.style.animation = 'none';
-      inner.style.transform = 'rotateY(180deg)';
-    }
-  } catch (_) {}
-  try { cardEl.removeAttribute('data-confirm-back-label'); } catch (_) {}
-}
-
-function replayRevealFlipOnRevealedCard(cardEl) {
-  if (!cardEl || !cardEl.isConnected) return false;
-  const inner = cardEl.querySelector('.card-inner');
-  if (!inner) return false;
-  try {
-    if (inner._revealFlipAnim && typeof inner._revealFlipAnim.cancel === 'function') {
-      inner._revealFlipAnim.cancel();
-    }
-  } catch (_) {}
-  try {
-    const anim = inner.animate(
-      [
-        { transform: 'rotateY(0deg)' },
-        { transform: 'rotateY(180deg)' }
-      ],
-      {
-        duration: CARD_CONFIRM_ANIM_MS,
-        easing: 'cubic-bezier(.22,.9,.24,1)',
-        fill: 'both'
-      }
-    );
-    inner._revealFlipAnim = anim;
-    anim.onfinish = () => {
-      try { if (inner._revealFlipAnim === anim) inner._revealFlipAnim = null; } catch (_) {}
-      try { inner.style.transform = ''; } catch (_) {}
-    };
-    anim.oncancel = () => {
-      try { if (inner._revealFlipAnim === anim) inner._revealFlipAnim = null; } catch (_) {}
-      try { inner.style.transform = ''; } catch (_) {}
-    };
-    pulseCardAnimationOverlay();
-    return true;
-  } catch (_) {
-    return false;
-  }
 }
 
 function flushDeferredSnapshotRender() {
@@ -289,13 +262,7 @@ function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
     const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
     const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
     const replay = cardEl.classList.contains('revealed');
-    if (replay) {
-      // Avoid re-flipping already-revealed DOM nodes: this can fight with CSS
-      // state and cause visible "unflip" glitches / heavy repaint churn.
-      // The reliable reveal animation path is the local pre-commit confirm flip.
-      return;
-    }
-    applyConfirmAnimationClasses(cardEl, confirmBackType, { replay: false });
+    applyConfirmAnimationClasses(cardEl, confirmBackType, { replay });
     animatedAny = true;
   });
   return animatedAny;
@@ -6309,8 +6276,8 @@ function renderBoard(isSpymaster) {
   // The key failure mode was: presence / "considering" updates (or other UI refresh)
   // re-render the board between the click and the next animation frame, replacing the
   // card DOM before the confirm flip class gets applied.
-  const hasConfirmFlipRunning = !!boardEl.querySelector('.game-card.confirming-guess, .game-card.confirm-animate');
-  const hasConfirmHoldActive = !!boardEl.querySelector('.game-card.confirm-hold');
+  const hasConfirmFlipRunning = !!document.querySelector('.game-card.confirming-guess, .game-card.confirm-animate');
+  const hasConfirmHoldActive = !!document.querySelector('.game-card.confirm-hold');
   if (hasConfirmFlipRunning) {
     // Keep the existing DOM stable so the flip animation can start and complete.
     return;
@@ -6391,7 +6358,7 @@ function renderBoard(isSpymaster) {
     if (card.revealed) {
       classes.push('revealed');
       classes.push(`card-${card.type}`);
-      if (revealedPeekCardIndex === i) classes.push('revealed-peek');
+      if (isOgMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
       classes.push(`card-${card.type}`);
@@ -6470,18 +6437,7 @@ function renderBoard(isSpymaster) {
   }).join('');
   _lastBoardDomKey = boardDomKey;
 
-  // Safety: keep already-revealed cards visually revealed even if a prior
-  // confirm animation/hold touched their classes.
-  try {
-    boardEl.querySelectorAll('.game-card[data-index]').forEach((el) => {
-      const idx = Number(el.dataset.index);
-      if (Number.isInteger(idx) && idx >= 0 && !!currentGame?.cards?.[idx]?.revealed) {
-        forceCardDomRevealedState(el, idx);
-      }
-    });
-  } catch (_) {}
-
-  // Re-fit card words after board/reveal or viewport changes (rAF-debounced).
+  // Always re-fit card words after any board re-render.
   // The board can re-render for reasons that don't change our fit keys
   // (chat updates, timers, minor UI state). In those cases the DOM is
   // replaced and the fitted inline font sizing can be lost, letting long
@@ -9393,12 +9349,6 @@ function setupBoardCardInteractions() {
       const ownerCard = checkmark.closest('.game-card');
       const idx = Number(checkmark.getAttribute('data-card-index') || ownerCard?.dataset?.index);
       if (!Number.isInteger(idx) || idx < 0) return;
-      // If the card is already revealed, treat taps anywhere on it (including the
-      // checkmark area) as a peek toggle instead of trying to reconfirm.
-      if (ownerCard && (ownerCard.classList.contains('revealed') || !!currentGame?.cards?.[idx]?.revealed)) {
-        handleRevealedCardPeek(idx);
-        return;
-      }
       // Pointer-based devices often dispatch pointerup + click for the same tap.
       // Let pointerup win and ignore the duplicate click.
       const now = Date.now();
@@ -9435,7 +9385,7 @@ function setupBoardCardInteractions() {
     const idx = Number(cardEl.dataset.index);
     if (!Number.isInteger(idx) || idx < 0) return;
 
-    if (cardEl.classList.contains('revealed') || !!currentGame?.cards?.[idx]?.revealed) {
+    if (cardEl.classList.contains('revealed')) {
       const now = Date.now();
       if (
         source === 'click' &&
@@ -11683,12 +11633,15 @@ async function handleCardConfirm(evt, cardIndex) {
     setPendingCardSelection(idx);
   }
 
-  const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
+  // NOTE: clearPendingCardSelection() can trigger a board re-render, which replaces
+  // the clicked card DOM node. If we query before clearing selection, the confirm
+  // flip may get applied to a detached node and silently never start.
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   // Drop pending-selection outline immediately when confirm starts.
   clearPendingCardSelection();
+  const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
   if (runPhysicalConfirmAnim) {
     // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
     _localConfirmAnimUntil = Date.now() + CARD_CONFIRM_ANIM_MS;
@@ -11717,7 +11670,7 @@ async function handleCardConfirm(evt, cardIndex) {
       const maxHoldMs = 5000;
       const releaseHoldWhenReady = () => {
         if (!cardEl.isConnected) return;
-        if (cardEl.classList.contains('revealed') || !!currentGame?.cards?.[idx]?.revealed) {
+        if (cardEl.classList.contains('revealed')) {
           clearConfirmAnimationClasses(cardEl);
           return;
         }
@@ -11730,7 +11683,7 @@ async function handleCardConfirm(evt, cardIndex) {
         // one-frame front-face flash before the snapshot render swaps DOM.
         const liveIsRevealed = !!currentGame?.cards?.[idx]?.revealed;
         if (liveIsRevealed) {
-          forceCardDomRevealedState(cardEl, idx);
+          window.setTimeout(releaseHoldWhenReady, 40);
           return;
         }
         window.setTimeout(releaseHoldWhenReady, 120);
