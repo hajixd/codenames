@@ -6295,7 +6295,9 @@ function renderBoard(isSpymaster) {
         isMine: true
       });
     }
-    const visibleConsidering = consideringVisible.slice(0, 4);
+    // Show ALL considering chips (no hard cap). This is the single source of truth
+    // for "someone is considering this card".
+    const visibleConsidering = consideringVisible;
     const consideringHtml = visibleConsidering.length
       ? `
           <div class="card-considering-row" aria-hidden="true">
@@ -6304,9 +6306,6 @@ function renderBoard(isSpymaster) {
               const title = escapeHtml(entry.name || 'Teammate');
               return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}" title="${title}">${initials}</span>`;
             }).join('')}
-            ${consideringVisible.length > visibleConsidering.length
-              ? `<span class="card-considering-chip more">+${consideringVisible.length - visibleConsidering.length}</span>`
-              : ''}
           </div>
         `
       : '';
@@ -6335,6 +6334,13 @@ function renderBoard(isSpymaster) {
       </div>
     `;
   }).join('');
+
+  // Always re-fit card words after any board re-render.
+  // The board can re-render for reasons that don't change our fit keys
+  // (chat updates, timers, minor UI state). In those cases the DOM is
+  // replaced and the fitted inline font sizing can be lost, letting long
+  // words overflow. This call is rAF-debounced.
+  scheduleFitCardWords();
 
   // Fit words only when board/reveal state or viewport changed.
   const shouldRefitWords =
@@ -9666,6 +9672,47 @@ window.__setLocalPracticeTeamMarker = function({ gameId, teamColor, ownerId, car
   } catch (_) {}
 };
 
+// Allow AIs to set "currently considering" chips in local practice games.
+// This mirrors the multiplayer Firestore considering buckets so the UI can
+// show AI initials on multiple candidate cards.
+window.__setLocalPracticeConsidering = function({ gameId, teamColor, ownerId, initials, name, cardKeys }) {
+  try {
+    const gid = String(gameId || '').trim();
+    if (!gid || !isLocalPracticeGameId(gid)) return;
+    const team = String(teamColor || '').toLowerCase();
+    if (team !== 'red' && team !== 'blue') return;
+    const owner = String(ownerId || '').trim();
+    if (!owner) return;
+
+    const field = (team === 'red') ? 'redConsidering' : 'blueConsidering';
+    // No limit on how many cards an AI can consider.
+    const keys = Array.isArray(cardKeys) ? cardKeys.map(k => String(k)).filter(Boolean) : [];
+    const init = String(initials || '').trim().slice(0, 3).toUpperCase() || '?';
+    const nm = String(name || '').trim();
+
+    mutateLocalPracticeGame(gid, (draft) => {
+      const considering = { ...(draft?.[field] || {}) };
+      // Clear existing considering marks for this owner.
+      for (const k of Object.keys(considering)) {
+        const bucket = normalizeTeamConsideringBucket(considering[k]);
+        delete bucket[owner];
+        if (Object.keys(bucket).length) considering[k] = bucket;
+        else delete considering[k];
+      }
+      // Apply new set.
+      for (const k of keys) {
+        const idx = Number(k);
+        if (!Number.isFinite(idx) || idx < 0) continue;
+        const bucket = normalizeTeamConsideringBucket(considering[String(idx)]);
+        bucket[owner] = { initials: init, name: nm, ts: Date.now() };
+        considering[String(idx)] = bucket;
+      }
+      draft[field] = considering;
+      draft.updatedAtMs = Date.now();
+    });
+  } catch (_) {}
+};
+
 function tagCard(cardIndex, tag) {
   const idx = Number(cardIndex);
 
@@ -9780,7 +9827,8 @@ function renderCardTags() {
     const row = document.createElement('div');
     row.className = 'card-tag-row';
 
-    const visible = marks.slice(0, 4);
+    // Show all visible tags (no cap).
+    const visible = marks;
     for (const mark of visible) {
       const el = buildCardTagElement(mark.tag, {
         isAI: mark.isAI,
@@ -9788,13 +9836,6 @@ function renderCardTags() {
         isMine: mark.isMine
       });
       if (el) row.appendChild(el);
-    }
-
-    if (marks.length > visible.length) {
-      const extra = document.createElement('div');
-      extra.className = 'card-tag card-tag-more';
-      extra.textContent = `+${marks.length - visible.length}`;
-      row.appendChild(extra);
     }
 
     card.appendChild(row);

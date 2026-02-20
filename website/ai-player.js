@@ -1590,6 +1590,20 @@ function extractTeamMarkersForVision(game, team) {
     const cards = Array.isArray(game?.cards) ? game.cards : [];
     const markers = (game && typeof game[field] === 'object' && game[field]) ? game[field] : {};
 
+    // Build a lightweight owner->display lookup so the AI can see who marked what.
+    const ownerNameById = {};
+    try {
+      const allPlayers = []
+        .concat(Array.isArray(game?.redPlayers) ? game.redPlayers : [])
+        .concat(Array.isArray(game?.bluePlayers) ? game.bluePlayers : []);
+      for (const p of allPlayers) {
+        const uid = String(p?.odId || p?.userId || '').trim();
+        const nm = String(p?.name || '').trim();
+        if (!uid || !nm) continue;
+        ownerNameById[`u:${uid}`] = nm;
+      }
+    } catch (_) {}
+
     const out = [];
     for (const [idxKey, raw] of Object.entries(markers)) {
       const idx = Number(idxKey);
@@ -1605,8 +1619,10 @@ function extractTeamMarkersForVision(game, team) {
         const tRaw = String(tag || '').toLowerCase().trim();
         if (!ownerId || !['yes', 'maybe', 'no'].includes(tRaw)) continue;
         counts[tRaw] += 1;
+        const displayName = ownerNameById[ownerId] || (ownerId.startsWith('ai:') || ownerId.startsWith('ai_') ? String(ownerId).replace(/^ai[:_]/, 'AI ') : ownerId);
         byOwner.push({
           owner: ownerId,
+          name: displayName,
           tag: tRaw,
           isAI: ownerId.startsWith('ai:') || ownerId.startsWith('ai_')
         });
@@ -1628,7 +1644,8 @@ function extractTeamMarkersForVision(game, team) {
       if (b.counts.yes !== a.counts.yes) return b.counts.yes - a.counts.yes;
       return a.index - b.index;
     });
-    return out.slice(0, 12);
+    // No cap: AIs can see all markers on all unrevealed cards.
+    return out;
   } catch (_) {
     return [];
   }
@@ -2311,17 +2328,39 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
     const owner = _markerOwnerId(ai.id);
     const desiredIdx = _pickAIConsideringIndex(decisionLike);
     const desiredMarkers = new Map();
+    // No hard cap on how many cards an AI can mark/consider.
     for (const m of (Array.isArray(decisionLike?.marks) ? decisionLike.marks : [])) {
       const idx = Number(m?.index);
       const tag = String(m?.tag || '').toLowerCase().trim();
       if (!Number.isFinite(idx) || idx < 0) continue;
       if (!['yes', 'maybe', 'no'].includes(tag)) continue;
       desiredMarkers.set(String(idx), tag);
-      if (desiredMarkers.size >= 3) break;
     }
     if (!desiredMarkers.size && Number.isFinite(desiredIdx) && desiredIdx >= 0) {
       desiredMarkers.set(String(desiredIdx), 'yes');
     }
+
+    // If the model didn't provide multiple marks, opportunistically add a couple
+    // based on the current team marker consensus so AIs visibly "use" markers.
+    try {
+      if (desiredMarkers.size < 2 && decisionLike?.action !== 'end_turn') {
+        const rows = extractTeamMarkersForVision(await getGameSnapshot(String(gameId)), String(team || '')).filter(r => !r.revealed);
+        rows
+          .sort((a, b) => {
+            const ax = (a?.counts?.yes || 0) * 3 + (a?.counts?.maybe || 0) - (a?.counts?.no || 0) * 2;
+            const bx = (b?.counts?.yes || 0) * 3 + (b?.counts?.maybe || 0) - (b?.counts?.no || 0) * 2;
+            return bx - ax;
+          })
+          .slice(0, 6)
+          .forEach(r => {
+            // No cap.
+            const idxKey = String(Number(r.index));
+            if (!idxKey || desiredMarkers.has(idxKey)) return;
+            if ((r?.counts?.no || 0) >= 2 && (r?.counts?.yes || 0) === 0) desiredMarkers.set(idxKey, 'no');
+            else if ((r?.counts?.yes || 0) >= 1) desiredMarkers.set(idxKey, 'maybe');
+          });
+      }
+    } catch (_) {}
     const rawAiName = String(ai?.name || '').trim() || 'AI';
     const name = /^ai\s+/i.test(rawAiName) ? rawAiName : `AI ${rawAiName}`;
     const initials = _nameInitials(rawAiName);
@@ -2330,7 +2369,17 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
     try {
       const gid = String(gameId);
       if (typeof window.__setLocalPracticeTeamMarker === 'function' && typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
-        // Clear old marks for this AI is handled implicitly by overwriting per-card buckets.
+        // Clear old marks for this AI (practice is local, so we do it explicitly).
+        for (let i = 0; i < 25; i++) {
+          window.__setLocalPracticeTeamMarker({
+            gameId: gid,
+            teamColor: String(team || '').toLowerCase(),
+            ownerId: owner,
+            cardIndex: i,
+            tag: 'clear',
+          });
+        }
+
         for (const [idxKey, tagVal] of desiredMarkers.entries()) {
           window.__setLocalPracticeTeamMarker({
             gameId: gid,
@@ -2340,6 +2389,21 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
             tag: String(tagVal || '').toLowerCase(),
           });
         }
+
+        // Also mirror "considering" chips locally so humans see AI initials on multiple cards.
+        try {
+          const keys = Array.from(desiredMarkers.keys());
+          if (typeof window.__setLocalPracticeConsidering === 'function') {
+            window.__setLocalPracticeConsidering({
+              gameId: gid,
+              teamColor: String(team || '').toLowerCase(),
+              ownerId: owner,
+              initials,
+              name,
+              cardKeys: keys
+            });
+          }
+        } catch (_) {}
         return;
       }
     } catch (_) {}
@@ -2379,15 +2443,19 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
         else delete considering[key];
       }
 
-      if (Number.isFinite(desiredIdx) && desiredIdx >= 0) {
-        const idx = Number(desiredIdx);
+      // Multi-consider support: show initials on every currently considered card.
+      // We use the AI's current marker set as the source of truth (yes/maybe/no).
+      const considerKeys = Array.from(desiredMarkers.keys());
+      const fallback = (Number.isFinite(desiredIdx) && desiredIdx >= 0) ? [String(Number(desiredIdx))] : [];
+      const keysToSet = considerKeys.length ? considerKeys : fallback;
+      for (const k of keysToSet) {
+        const idx = Number(k);
+        if (!Number.isFinite(idx) || idx < 0) continue;
         const card = cards[idx];
-        if (card && !card.revealed) {
-          const key = String(idx);
-          const bucket = _normalizeConsideringBucket(considering[key]);
-          bucket[owner] = { initials, name, ts: Date.now() };
-          considering[key] = bucket;
-        }
+        if (!card || card.revealed) continue;
+        const bucket = _normalizeConsideringBucket(considering[String(idx)]);
+        bucket[owner] = { initials, name, ts: Date.now() };
+        considering[String(idx)] = bucket;
       }
 
       tx.update(ref, {
@@ -2787,7 +2855,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const team = ai.team;
   const vision = buildAIVision(game, ai);
   const persona = core.personality;
-  const requireMarks = !!opts.requireMarks;
+  const requireMarks = (opts.requireMarks === undefined) ? true : !!opts.requireMarks;
 
 
   if (!vision.clue || !vision.clue.word) return null;
@@ -3261,7 +3329,7 @@ async function runOperativeCouncil(game, team) {
     aiThinkingState[ai.id] = true;
     try {
       const prop = await aiOperativePropose(ai, working, {
-        requireMarks: ops.length >= 2,
+        requireMarks: true,
         councilSize: ops.length,
         chatDocs: chatBefore.docs
       });
@@ -4699,15 +4767,55 @@ async function generateAIReaction(ai, revealedCard, clue) {
 // the actual message is persisted. This simulates the same live-typing
 // experience that spymasters see for clue drafts.
 
-function _getAIChatTypingSpeed() {
-  // Faster typing so chat feels snappy.
-  const base = 5 + Math.random() * 10; // 5-15ms per char
-  return base;
+function _getAIChatTypingProfile(aiLike) {
+  // A rough "human" typing profile with jitter, bursts, and occasional mistakes.
+  // More confident / higher tempo characters revise less and type a bit faster.
+  const p = (aiLike && aiLike.__typingProfile) ? aiLike.__typingProfile : null;
+  if (p) return p;
+
+  let tempo = 60;
+  let confidence = 60;
+  try {
+    const core = aiLike ? ensureAICore(aiLike) : null;
+    const stats = core?.personality?.stats || core?.personality?.stats || {};
+    tempo = Number(stats.tempo ?? stats.speed ?? 60);
+    confidence = Number(stats.confidence ?? 60);
+  } catch (_) {}
+  const t = Number.isFinite(tempo) ? Math.max(1, Math.min(100, tempo)) : 60;
+  const c = Number.isFinite(confidence) ? Math.max(1, Math.min(100, confidence)) : 60;
+
+  const base = 12 - (t / 12); // ~4–12ms base
+  const jitter = 10 + Math.random() * 22;
+  const burstChance = 0.18 + Math.random() * 0.12;
+  const pauseChance = 0.10 + Math.random() * 0.12;
+  const typoChance = Math.max(0.02, 0.10 - (c / 900));
+  const revisionChance = Math.max(0.05, 0.22 - (c / 400));
+
+  const out = {
+    baseMs: Math.max(3.5, base),
+    jitterMs: jitter,
+    burstChance,
+    pauseChance,
+    typoChance,
+    revisionChance,
+  };
+  if (aiLike) aiLike.__typingProfile = out;
+  return out;
 }
 
-async function _simulateAITyping(aiName, teamColor, text) {
+function _randChar() {
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  return letters[Math.floor(Math.random() * letters.length)];
+}
+
+async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
   const container = document.getElementById('operative-chat-messages');
   if (!container || !text) return;
+
+  const aiName = (typeof aiLikeOrName === 'string') ? aiLikeOrName : (`AI ${String(aiLikeOrName?.name || 'AI')}`);
+  const profile = _getAIChatTypingProfile(typeof aiLikeOrName === 'string' ? null : aiLikeOrName);
+  const allowTypos = opts.allowTypos !== false;
+  const allowRevisions = opts.allowRevisions !== false;
 
   // Create a typing indicator element
   const typingEl = document.createElement('div');
@@ -4729,31 +4837,79 @@ async function _simulateAITyping(aiName, teamColor, text) {
   const textEl = typingEl.querySelector('.ai-typing-text');
   const dotsEl = typingEl.querySelector('.chat-typing-indicator');
 
-  // Very short typing indicator so it doesn't feel laggy
-  await new Promise(r => setTimeout(r, 35 + Math.random() * 70));
+  // Short typing indicator so it doesn't feel laggy
+  await new Promise(r => setTimeout(r, 30 + Math.random() * 80));
 
-  // Start revealing characters
+  // Start revealing characters (with jitter, bursts, pauses, and small corrections)
   if (dotsEl) dotsEl.style.display = 'none';
   let revealed = '';
-  for (let i = 0; i < text.length; i++) {
-    revealed += text[i];
-    if (textEl) textEl.textContent = revealed;
 
-    // Keep scroll pinned to bottom during typing
+  const sleepMs = (ms) => new Promise(r => setTimeout(r, ms));
+  const setText = () => {
+    if (textEl) textEl.textContent = revealed;
     const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
     if (nearBottom) container.scrollTop = container.scrollHeight;
+  };
 
-    // Variable delay per character
-    let delay = _getAIChatTypingSpeed();
-    // Tiny pause after punctuation
-    if ('.!?,;:'.includes(text[i])) delay += 10 + Math.random() * 28;
-    // Speed up for spaces
-    if (text[i] === ' ') delay *= 0.5;
-    await new Promise(r => setTimeout(r, delay));
+  // Optional quick "draft then rethink" micro-revision at the start.
+  // This makes confident AIs commit faster, uncertain AIs hesitate.
+  try {
+    if (allowRevisions && text.length >= 18 && Math.random() < profile.revisionChance) {
+      const cut = Math.max(8, Math.min(22, Math.floor(text.length * (0.25 + Math.random() * 0.15))));
+      for (let i = 0; i < cut; i++) {
+        revealed += text[i];
+        setText();
+        await sleepMs(Math.max(3, profile.baseMs + Math.random() * profile.jitterMs));
+      }
+      // "Am I sure?" pause
+      await sleepMs(140 + Math.random() * 260);
+      // Delete some and continue
+      const del = Math.max(3, Math.min(14, Math.floor(cut * (0.35 + Math.random() * 0.35))));
+      for (let i = 0; i < del; i++) {
+        revealed = revealed.slice(0, -1);
+        setText();
+        await sleepMs(18 + Math.random() * 35);
+      }
+    }
+  } catch (_) {}
+
+  for (let i = revealed.length; i < text.length; i++) {
+    const ch = text[i];
+
+    // Occasional typo + correction on letters
+    if (allowTypos && /[a-zA-Z]/.test(ch) && Math.random() < profile.typoChance) {
+      revealed += _randChar();
+      setText();
+      await sleepMs(30 + Math.random() * 70);
+      // backspace
+      revealed = revealed.slice(0, -1);
+      setText();
+      await sleepMs(25 + Math.random() * 60);
+    }
+
+    revealed += ch;
+    setText();
+
+    // Burst typing sometimes (very short delays for a few chars)
+    const inBurst = Math.random() < profile.burstChance;
+    let delay = profile.baseMs + Math.random() * profile.jitterMs;
+    if (inBurst) delay *= 0.45;
+
+    // Pauses (thinking) sometimes
+    if (allowRevisions && Math.random() < profile.pauseChance && i > 6) {
+      delay += 90 + Math.random() * 220;
+    }
+
+    // Punctuation pause
+    if ('.!?,;:'.includes(ch)) delay += 55 + Math.random() * 160;
+    // Space speed-up
+    if (ch === ' ') delay *= 0.55;
+
+    await sleepMs(Math.max(2.5, delay));
   }
 
   // Minimal pause after finishing typing
-  await new Promise(r => setTimeout(r, 20 + Math.random() * 50));
+  await new Promise(r => setTimeout(r, 25 + Math.random() * 70));
 
   // Remove the typing element — the Firestore snapshot will render the real message
   try { typingEl.remove(); } catch (_) {}
@@ -4778,6 +4934,17 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
     const vision = buildAIVision(game, ai);
     const human = makeChatMoreHuman(ai, game, text, vision, { bypassSimilarity: force });
     text = (human || '').trim();
+
+    // Guardrail: don't mention already-revealed words.
+    // If the model still references a revealed card, drop the message instead of confusing players.
+    try {
+      const cards = Array.isArray(vision?.cards) ? vision.cards : [];
+      const revealed = new Set(cards.filter(c => c && c.revealed).map(c => String(c.word || '').toUpperCase()));
+      const unrevealed = new Set(cards.filter(c => c && !c.revealed).map(c => String(c.word || '').toUpperCase()));
+      const tokens = String(text || '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+      const hit = tokens.find(w => revealed.has(w) && !unrevealed.has(w));
+      if (hit && !force) return;
+    } catch (_) {}
   } catch (_) {}
   if (!text && force) text = originalText.slice(0, 180);
   if (!text) return;
@@ -4808,7 +4975,10 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
 
   // Simulate typing animation before sending the actual message
   try {
-    await _simulateAITyping(`AI ${ai.name}`, teamColor, text);
+    await _simulateAITyping(ai, teamColor, text, {
+      allowTypos: true,
+      allowRevisions: true,
+    });
   } catch (_) {}
 
   try {
