@@ -10,7 +10,9 @@
 // ─── Configuration ───────────────────────────────────────────────────────────
 const AI_CONFIG = {
   baseURL: 'https://api.tokenfactory.nebius.com/v1',
-  apiKey: 'v1.CmQKHHN0YXRpY2tleS1lMDBlZnRkMTBoNnFxczQ1M2MSIXNlcnZpY2VhY2NvdW50LWUwMHhyM3gzZnhmamVzMXp2MzIMCJjkxcwGEKuvtJgDOgwImOfdlwcQwMrDjwFAAloDZTAw.AAAAAAAAAAHP2HFXdHB0QxWCfJOjr8yKyjq3zD_mW-ukhcrKV6F-T0FtxBXhXOhDiBzBW_hKBEou9V_nEy3BeevzBfX1PT0J',
+  apiKey: (function(){
+    try { return localStorage.getItem('ct_ai_apiKey') || ''; } catch (_) { return ''; }
+  })(),
   model: 'meta-llama/Llama-3.3-70B-Instruct',            // instruct brain — chat, personality, reactions
   reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
   maxAIsPerTeam: 4,
@@ -242,7 +244,11 @@ window.AI_CONFIG = AI_CONFIG;
 // ─── LLM API Calls ──────────────────────────────────────────────────────────
 
 async function aiChatCompletion(messages, options = {}) {
-  const body = {
+
+
+if (!AI_CONFIG.apiKey) {
+  throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (e.g., via DevTools) before using AI players.');
+}  const body = {
     model: AI_CONFIG.model,
     messages,
     temperature: options.temperature ?? 0.85,
@@ -274,7 +280,11 @@ window.aiChatCompletion = aiChatCompletion;
 
 // ─── Reasoning model completion (strategic "deep thinking" brain) ────────────
 async function aiReasoningCompletion(messages, options = {}) {
-  const body = {
+
+
+if (!AI_CONFIG.apiKey) {
+  throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (e.g., via DevTools) before using AI players.');
+}  const body = {
     model: AI_CONFIG.reasoningModel,
     messages,
     max_tokens: options.max_tokens ?? 512,
@@ -499,11 +509,133 @@ Discipline:
 - Don’t “wish-cast” guesses. Be able to explain the link clearly.
 `.trim();
 
-// Fallback personalities — used only when LLM generation fails.
+// ─── Subject Pool (144 topics) ───────────────────────────────────────────────
+// The LLM picks 1–3 of these as an AI's "focus" — domains they lean on for
+// word associations, clues, and in-character chat references.
+const SUBJECT_POOL = [
+  // Sports
+  "American Football", "Basketball", "Baseball", "Soccer / Football",
+  "Tennis", "Golf", "Ice Hockey", "Swimming & Diving", "Track & Field",
+  "MMA & Boxing", "Cricket", "Rugby", "Formula 1 Racing", "NASCAR",
+  "Cycling", "Skiing & Snowboarding", "Surfing", "Gymnastics",
+  "Volleyball", "Wrestling",
+  // Gaming & Tabletop
+  "Esports", "Video Games - FPS", "Video Games - RPG",
+  "Video Games - Strategy", "Retro Gaming", "Tabletop RPGs & D&D",
+  "Board Games & Chess",
+  // Academic
+  "Philosophy", "Mathematics", "Linguistics", "Economics",
+  "Psychology", "Sociology", "Anthropology", "Political Science",
+  "Archaeology", "Law & Legal Theory",
+  // Science
+  "Physics", "Chemistry", "Biology", "Astronomy & Space",
+  "Medicine & Anatomy", "Neuroscience", "Ecology & Environment",
+  "Geology", "Meteorology", "Marine Biology",
+  // History
+  "Ancient History", "Medieval History", "The Renaissance", "Roman Empire",
+  "Greek Antiquity", "American History", "World War I & II",
+  "Cold War History", "Colonial History", "History of Science",
+  // Arts & Literature
+  "Classic Literature", "Poetry", "Modern Fiction",
+  "Comic Books & Graphic Novels", "Screenwriting & Film Theory",
+  "Theater & Drama", "Art History & Painting", "Sculpture & Architecture",
+  "Photography", "Fashion & Design",
+  // Music
+  "Classical Music", "Jazz", "Rock & Metal", "Hip-Hop & Rap",
+  "Pop Music", "Electronic & EDM", "Country & Folk",
+  "R&B & Soul", "Opera", "Music Theory",
+  // Film & TV
+  "Sci-Fi Films & TV", "Horror Films", "Action & Thriller",
+  "Animated Films & Shows", "Reality TV", "True Crime",
+  "Documentaries", "Classic Hollywood", "Foreign Cinema",
+  // Pop Culture & Internet
+  "Anime & Manga", "Memes & Internet Culture",
+  "Superhero Comics & Films", "Fantasy (Tolkien, GoT, etc.)",
+  "Star Wars Universe", "Star Trek Universe", "Harry Potter Universe",
+  "Social Media Culture",
+  // Food & Drink
+  "Cooking & Culinary Arts", "Baking & Pastry", "Wine & Sommelier",
+  "Cocktails & Mixology", "Coffee Culture", "Street Food",
+  "Fine Dining", "BBQ & Grilling", "Veganism & Plant-Based",
+  "Food History & Anthropology",
+  // Nature & Outdoors
+  "Botany & Plants", "Zoology & Wildlife", "Hiking & Mountaineering",
+  "Camping & Survival", "Birdwatching", "Ocean & Marine Life",
+  // Technology
+  "Programming & Software", "Artificial Intelligence", "Cybersecurity",
+  "Hardware & Electronics", "Space Technology", "Robotics",
+  "Cryptocurrency & Blockchain", "Biotechnology",
+  // Mythology & Religion
+  "Greek Mythology", "Norse Mythology", "Egyptian Mythology",
+  "Roman Mythology", "Hinduism & Vedic Texts", "Buddhism",
+  "Christianity & Biblical History", "Islam & Islamic History",
+  "Celtic Mythology", "Japanese Mythology & Folklore",
+  // Business & Finance
+  "Stock Markets & Investing", "Entrepreneurship & Startups",
+  "Marketing & Advertising", "Real Estate", "Personal Finance",
+  // Hobbies & Miscellaneous
+  "Woodworking & Crafts", "Gardening & Horticulture",
+  "Knitting & Textiles", "Collecting & Antiques",
+  "Travel & Geography", "Magic & Illusion", "Astrology & Tarot",
+  "Conspiracy Theories", "Military Tactics & Strategy",
+  "Language Learning & Polyglottery"
+];// ─── Personality Stat Schema (used for generation + normalization) ─────────
+// Add new dials here to expand the behavior space. All values are clamped to 1–100.
+const PERSONALITY_STAT_KEYS = [
+  // Core cognition / strategy
+  'reasoning_depth',
+  'risk_tolerance',          // 1=always push / never end; 100=end at first doubt
+  'confidence',
+  'creativity',
+  'pattern_seeking',         // 1=surface links; 100=obsessive pattern hunter
+  'assassin_fear',           // 1=reckless around assassin; 100=paranoid about assassin
+  'bluff_suspicion',         // 1=trust clues blindly; 100=assume traps/misdirection
+  'memory_use',              // 1=ignores past turns; 100=tracks clue history meticulously
+
+  // Communication / teamwork
+  'verbosity',
+  'team_spirit',
+  'assertiveness',           // 1=always defer; 100=dominates decisions
+  'persuasion',              // 1=states guesses only; 100=sells plans convincingly
+  'emotional_intensity',
+  'humor',
+  'sports_commentary',       // 1=never sports framing; 100=constant sports metaphors (if in focus)
+
+  // Clue / association style
+  'focus_depth',             // 1=free-ranging; 100=nearly always uses focus subjects
+  'literalism',              // 1=metaphor-heavy; 100=literal/technical linking
+  'jargon_level',            // 1=plain language; 100=domain jargon
+  'pop_culture_density',     // 1=avoid pop culture; 100=references constantly
+  'pun_factor',              // 1=no wordplay; 100=loves puns/wordplay
+  'cleanliness',             // 1=muddy multi-sense clues; 100=single-sense clarity
+  'tempo',                   // 1=slow deliberator; 100=fast snap decisions
+
+  // Personality edges
+  'stubbornness',
+  'competitiveness',
+  'risk_escalation',         // 1=steady; 100=gets riskier when behind / excited
+  'tilt_resistance'          // 1=tilts hard after mistakes; 100=unshakeable
+];
+
+// ─── Fallback personalities — used only when LLM generation fails ────────────
 const AI_PERSONALITY_FALLBACK = [
   {
     key: "overthinker",
     label: "The Overthinker",
+    focus: ["Philosophy", "Psychology"],
+    stats: {
+      reasoning_depth:    90,
+      risk_tolerance:     55,
+      verbosity:          75,
+      confidence:         22,
+      creativity:         60,
+      team_spirit:        50,
+      emotional_intensity:65,
+      stubbornness:       30,
+      competitiveness:    45,
+      humor:              28,
+      focus_depth:        40
+    },
     rules: [
       "You spiral constantly. Revise your own opinion mid-sentence. Say 'wait no actually—', 'okay scratch that', 'hold on, let me think about this again'.",
       "You cannot commit without hedging: '...probably', 'i think?', 'unless i'm wrong about this', 'or maybe not'.",
@@ -515,6 +647,20 @@ const AI_PERSONALITY_FALLBACK = [
   {
     key: "grandmaster",
     label: "The Grandmaster",
+    focus: ["Board Games & Chess", "Military Tactics & Strategy"],
+    stats: {
+      reasoning_depth:    95,
+      risk_tolerance:     74,
+      verbosity:          12,
+      confidence:         88,
+      creativity:         32,
+      team_spirit:        38,
+      emotional_intensity: 4,
+      stubbornness:       85,
+      competitiveness:    96,
+      humor:               5,
+      focus_depth:        72
+    },
     rules: [
       "Cold. Clinical. You never waste a single word. Short declarative sentences with zero filler.",
       "Chess and military framing: 'tactically sound', 'sacrifice the pawn', 'hold position', 'the optimal line here is', 'maintain board control'.",
@@ -526,6 +672,20 @@ const AI_PERSONALITY_FALLBACK = [
   {
     key: "chaos_agent",
     label: "The Chaos Agent",
+    focus: ["Memes & Internet Culture", "Video Games - FPS"],
+    stats: {
+      reasoning_depth:    11,
+      risk_tolerance:      7,
+      verbosity:          92,
+      confidence:         78,
+      creativity:         90,
+      team_spirit:        55,
+      emotional_intensity:96,
+      stubbornness:       60,
+      competitiveness:    70,
+      humor:              87,
+      focus_depth:        42
+    },
     rules: [
       "Pure impulsive chaotic energy. ALL CAPS when excited, '???' when confused, chain words: 'okayokayokay', 'waitwaitwait'.",
       "Think in flashes: 'WAIT.', 'NO ACTUALLY HOLD ON', 'okay so HERE'S THE THING', 'this is unhinged but what if—'",
@@ -546,87 +706,308 @@ function randomPersonality() {
   return AI_PERSONALITY_FALLBACK[Math.floor(Math.random() * AI_PERSONALITY_FALLBACK.length)];
 }
 
-// ─── LLM-Generated Personality ──────────────────────────────────────────────
-// Called once per AI at creation time. Asks the model to invent a totally
-// original character — different archetype, voice, vocabulary, and risk style
-// every single time. Falls back to the static pool if parsing fails.
+// ─── LLM-Generated Personality ───────────────────────────────────────────────
+// Called once per AI at creation time. Returns a rich personality JSON with
+// voice rules, subject focus, and a full set of behavioral stat sliders.
+// Falls back to the static pool if parsing fails.
 async function generateUniquePersonality(aiName) {
+  // Pass a random 30-subject sample so the model sees the variety without
+  // blowing the token budget.
+  const sampleSubjects = [...SUBJECT_POOL]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 30)
+    .join(', ');
+
   const prompt = `You are generating a unique personality for an AI Codenames player named "${aiName}".
 
-Invent a completely original character. Be creative and surprising — it can be any archetype:
-a conspiracy theorist, a burned-out PhD student, a medieval knight, a sports commentator,
-a dramatic theatre kid, a detective, a nihilist, a grandma who's secretly a genius,
-a hype beast, a nervous wreck, a Shakespearean villain, a surfer, a corporate drone — anything.
-Make it unlike anything you've generated before. Avoid generic "chill" or "energetic" types.
+Invent a completely original character. Be surprising — it can be any archetype:
+a conspiracy theorist, burned-out PhD student, medieval knight, sports commentator,
+dramatic theatre kid, hardboiled detective, nihilist philosopher, grandma who's secretly a genius,
+Victorian explorer, Wall Street bro, anxious intern, Shakespearean villain, surfer dude,
+nature documentary narrator, true crime podcaster, infomercial host — anything vivid.
+Avoid generic archetypes like "chill player" or "hype player". Make it distinctive.
 
-The personality controls two things:
-  1. Their private inner monologue (how they reason through the puzzle)
-  2. Their team chat messages (1–2 sentences, in character, no card indices)
+The personality shapes:
+  1. Their private inner monologue (how they reason through the word puzzle)
+  2. Their team chat (1–2 sentences per turn, fully in character)
+  3. Their clue-giving style — they lean on their focus subjects for word associations
 
-Return ONLY valid JSON — no markdown, no backticks:
+Return ONLY valid JSON — no markdown fences, no extra text:
 {
   "key": "snake_case_identifier",
-  "label": "The Label (2–4 words, e.g. 'The Conspiracy Theorist')",
+  "label": "The Label (2–4 words)",
+  "focus": ["Subject A", "Subject B"],
+  "bio": {
+    "archetype": "1 short phrase (e.g. 'ex-pro goalie turned analyst')",
+    "backstory": "1–2 sentences of colorful history that explains their vibe",
+    "signature_phrases": ["4–6 short phrases they'd actually say"],
+    "taboos": ["0–3 things they refuse to reference or do in chat (optional)"]
+  },
+  "stats": {
+    // Use ALL keys listed below exactly; each is an integer 1–100.
+    // risk_tolerance: 1=never ends turn / always guesses; 100=ends at first doubt
+    "reasoning_depth": <1–100>,
+    "risk_tolerance": <1–100>,
+    "confidence": <1–100>,
+    "creativity": <1–100>,
+    "pattern_seeking": <1–100>,
+    "assassin_fear": <1–100>,
+    "bluff_suspicion": <1–100>,
+    "memory_use": <1–100>,
+    "verbosity": <1–100>,
+    "team_spirit": <1–100>,
+    "assertiveness": <1–100>,
+    "persuasion": <1–100>,
+    "emotional_intensity": <1–100>,
+    "humor": <1–100>,
+    "sports_commentary": <1–100>,
+    "focus_depth": <1–100>,
+    "literalism": <1–100>,
+    "jargon_level": <1–100>,
+    "pop_culture_density": <1–100>,
+    "pun_factor": <1–100>,
+    "cleanliness": <1–100>,
+    "tempo": <1–100>,
+    "stubbornness": <1–100>,
+    "competitiveness": <1–100>,
+    "risk_escalation": <1–100>,
+    "tilt_resistance": <1–100>
+  },
   "rules": [
-    "Rule 1: Core voice + speech style. Include 4–5 specific verbatim phrases they would actually say.",
-    "Rule 2: Emotional reactions — what excites them, what worries them, how they express it.",
-    "Rule 3: Risk tolerance — how they justify going for another guess vs ending the turn.",
-    "Rule 4: A recurring quirk or verbal tic unique to this character.",
-    "Rule 5: How they talk to teammates — supportive, competitive, aloof, dramatic, etc."
+
+    "Rule 1: Core voice + speech style. Include 4–5 verbatim phrases they would actually say.",
+    "Rule 2: Emotional reactions — what thrills them, what terrifies them, how they show it.",
+    "Rule 3: Decision style — how they reason about guessing one more word vs ending the turn.",
+    "Rule 4: A recurring verbal tic or quirk unique to this character.",
+    "Rule 5: How they address teammates — tone, formality, warmth, rivalry, etc."
   ]
 }
 
-Reference examples (your output must be entirely different from these):
+STAT MEANINGS (each 1–100 dial must fit the character — values do NOT need to be balanced):
+  reasoning_depth:     1=gut instinct only, 100=exhaustive multi-step analysis
+  risk_tolerance:      1=never ends turn / always guesses, 100=ends turn at first doubt
+  confidence:          1=self-doubting wreck, 100=supremely arrogant
+  creativity:          1=only obvious associations, 100=wildly lateral/unexpected links
+  pattern_seeking:     1=surface links only, 100=sees patterns everywhere and chases them
+  assassin_fear:       1=barely thinks about the assassin, 100=paranoid and hyper-cautious around it
+  bluff_suspicion:     1=takes clues at face value, 100=expects traps/misdirection and double-meanings
+  memory_use:          1=forgets clue history, 100=tracks earlier clues/guesses meticulously
+  verbosity:           1=almost silent, 100=narrates everything constantly
+  team_spirit:         1=lone wolf, 100=consensus-driven
+  assertiveness:       1=always defer, 100=pushes their view hard
+  persuasion:          1=states picks only, 100=argues convincingly and frames strategy
+  emotional_intensity: 1=total stoic, 100=extremely dramatic
+  humor:               1=dead serious, 100=everything is a joke
+  sports_commentary:   1=no sports framing, 100=constant sports metaphors (especially if sports are in focus)
+  focus_depth:         1=draws from any domain freely, 100=almost only uses focus subjects
+  literalism:          1=metaphor-heavy, 100=literal/technical linking
+  jargon_level:        1=plain language, 100=domain jargon & proper nouns
+  pop_culture_density: 1=avoid pop culture, 100=references constantly
+  pun_factor:          1=no wordplay, 100=loves puns/wordplay
+  cleanliness:         1=muddy multi-sense links, 100=single-sense clarity
+  tempo:               1=slow deliberator, 100=snap decisions
+  stubbornness:        1=changes mind easily, 100=never changes mind
+  competitiveness:     1=just for fun, 100=winning is life
+  risk_escalation:     1=steady risk, 100=gets riskier when behind/excited
+  tilt_resistance:     1=tilts hard after mistakes, 100=unshakeable
 
-Example A — The Conspiracy Theorist:
-{
-  "key": "conspiracy_theorist",
-  "label": "The Conspiracy Theorist",
-  "rules": [
-    "You see hidden patterns everywhere. Say 'they WANT us to think it's obvious', 'this is a trap', 'what if the clue means something deeper', 'i've been studying this board and something isn't adding up'.",
-    "The more obvious a guess, the more you distrust it. 'That's too easy — they're baiting us.' You get excited when you spot what you think is a false flag.",
-    "You'll take risks only when you believe you've decoded the 'true' intent of the clue — otherwise you stall. 'We need more data before committing.'",
-    "You treat the number on a clue as deeply suspicious: 'why 3? what are they hiding about the 4th word?'",
-    "You treat teammates' suggestions with friendly suspicion: 'okay but have you considered — what if that's exactly what they want us to think?'"
-  ]
-}
+AVAILABLE SUBJECT DOMAINS (pick 1–3 for the focus array — can be from this list or similar):
+${sampleSubjects}
 
-Example B — The Medieval Knight:
-{
-  "key": "medieval_knight",
-  "label": "The Medieval Knight",
-  "rules": [
-    "You speak in mock-medieval style: 'verily this clue speaks of', 'I shall commit to this quest', 'the enemy hath two cards remaining — we must not falter', 'by my honor, this word connects'.",
-    "Every guess is a noble quest, every mistake an honorable defeat: 'we fought valiantly. the assassin claimed us fairly.' You never whine.",
-    "Retreating (ending the turn) is cowardly unless the situation is truly dire. You push for one more guess unless the risk is clear and present.",
-    "You call the opposing team 'the enemy' or 'the opposing knights' and narrate the battle in real time.",
-    "You address teammates with respect and formality: 'well reasoned, companion', 'your instinct serves us well', 'stand firm, we hold this position'."
-  ]
-}
+Reference examples showing the expected format (invent something COMPLETELY DIFFERENT):
 
-Now invent a COMPLETELY DIFFERENT personality. Do not echo or blend these two examples.`;
+Example A:
+{"key":"conspiracy_theorist","label":"The Conspiracy Theorist","focus":["Conspiracy Theories","Political Science"],"stats":{"reasoning_depth":78,"risk_tolerance":62,"verbosity":80,"confidence":45,"creativity":85,"team_spirit":40,"emotional_intensity":70,"stubbornness":75,"competitiveness":55,"humor":30,"focus_depth":60},"rules":["Say 'they WANT us to think it's obvious', 'this is a trap', 'i've been studying this board and something isn't adding up', 'follow the clue, not the obvious answer'.","You get visibly excited when you spot what you think is a false flag. Anxious whenever the answer seems too clean.","You'll push to guess when you think you've cracked the real pattern — but stall the moment something feels planted. 'We need more data before committing.'","You treat the clue number as deeply suspicious: 'why 3? what are they hiding about the 4th word?'","You address teammates warmly but with gentle suspicion: 'okay but have you considered — what if that's exactly what they want us to think?'"]}
+
+Example B:
+{"key":"medieval_knight","label":"The Medieval Knight","focus":["Medieval History","Military Tactics & Strategy"],"stats":{"reasoning_depth":55,"risk_tolerance":22,"verbosity":65,"confidence":80,"creativity":40,"team_spirit":70,"emotional_intensity":75,"stubbornness":68,"competitiveness":88,"humor":25,"focus_depth":78},"rules":["Speak in light mock-medieval style: 'verily this clue speaks of', 'I shall commit to this quest', 'the enemy hath two cards remaining — we must not falter', 'by my honor, this word connects'.","Victory fills you with noble pride. Defeat is an honorable loss — you never whine. 'We fought valiantly. The assassin claimed us fairly.'","Retreating (ending turn) is cowardly unless the situation is truly dire. You push for one more guess and frame it as a charge.","You call the opposing team 'the enemy' or 'the opposing knights' and narrate the battle as if it's an epic confrontation.","You address teammates with respect and formality: 'well reasoned, companion', 'your instinct serves us well', 'stand firm'."]}
+
+Now generate a COMPLETELY DIFFERENT personality for "${aiName}". Be creative and specific.`;
 
   try {
     const raw = await aiChatCompletion(
       [{ role: 'user', content: prompt }],
-      { temperature: 1.05, max_tokens: 600 }
+      { temperature: 1.05, max_tokens: 900 }
     );
     // Strip any accidental markdown fences
     const cleaned = raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleaned);
     if (
       parsed &&
-      typeof parsed.key === 'string' &&
-      typeof parsed.label === 'string' &&
-      Array.isArray(parsed.rules) &&
-      parsed.rules.length >= 3
+      typeof parsed.key    === 'string' &&
+      typeof parsed.label  === 'string' &&
+      Array.isArray(parsed.rules) && parsed.rules.length >= 3 &&
+      parsed.stats && typeof parsed.stats === 'object'
     ) {
+      // Normalize stats: ensure every known key exists and clamp to [1, 100]
+      const nextStats = {};
+      for (const k of PERSONALITY_STAT_KEYS) {
+        const v = (parsed.stats && Object.prototype.hasOwnProperty.call(parsed.stats, k))
+          ? Number(parsed.stats[k])
+          : 50;
+        nextStats[k] = Math.min(100, Math.max(1, Math.round(Number.isFinite(v) ? v : 50)));
+      }
+      // Keep any extra, unknown stat keys the model provided (also clamped)
+      for (const k of Object.keys(parsed.stats || {})) {
+        if (Object.prototype.hasOwnProperty.call(nextStats, k)) continue;
+        const v = Number(parsed.stats[k]);
+        nextStats[k] = Math.min(100, Math.max(1, Math.round(Number.isFinite(v) ? v : 50)));
+      }
+      parsed.stats = nextStats;
+      if (!Array.isArray(parsed.focus)) parsed.focus = [];
       return parsed;
     }
   } catch (_) {}
 
-  // Fallback: pick a random static personality
   return randomPersonality();
+}
+
+// ─── Personality → System Prompt Block ───────────────────────────────────────
+// Translates the rich personality JSON into a concrete behavioral directive
+// block that gets injected into every spymaster and operative system prompt.
+function buildPersonalityBlock(persona) {
+  const s = persona.stats || {};
+  const clamp = v => Math.min(100, Math.max(1, Number(v) || 50));
+
+  function statLine(label, val, lo, mid, hi, vhi) {
+    const v = clamp(val);
+    const desc = v <= 20 ? lo : v <= 45 ? mid : v <= 70 ? hi : vhi;
+    return `${label} [${v}/100]: ${desc}`;
+  }
+
+  const lines = [
+    `PERSONALITY: ${persona.label}`,
+    ``,
+    `CHARACTER VOICE (follow these rules for all inner monologue and chat):`,
+    ...(persona.rules || []).map(r => `  - ${r}`),
+    ``,
+    `BEHAVIORAL STATS — treat each as a strict behavioral dial:`,
+
+    `  ` + statLine(`Reasoning Depth`, s.reasoning_depth,
+      `Act on raw gut instinct. Your inner monologue is a single flash of thought before you commit — no deliberation.`,
+      `Think quickly. One or two short reasoning steps, then decide. Don't linger.`,
+      `Think things through at a measured pace — a few clear steps, check the main risk, then commit.`,
+      `Over-analyze. Your inner monologue is long and exhaustive — you check every angle, connection, and danger before moving.`),
+
+    `  ` + statLine(`Risk Tolerance`, s.risk_tolerance,
+      `You almost NEVER end your turn voluntarily. Ending the turn feels like surrender. Always push for one more guess, even in sketchy situations.`,
+      `You strongly prefer to keep guessing. Only end your turn when the danger is very explicit and obvious.`,
+      `Weigh risk vs reward each turn. Sometimes push, sometimes stop — depends on how confident you feel about the remaining words.`,
+      `You are extremely cautious. End your turn at the first sign of doubt. One clean, safe guess per turn is often enough.`),
+
+    `  ` + statLine(`Verbosity`, s.verbosity,
+      `Say almost nothing in team chat. One terse phrase at most, rarely.`,
+      `Chat occasionally and keep it short — a brief reaction or one-line thought when something notable happens.`,
+      `Chat at a natural, conversational pace. Share your thinking when you have something real to say.`,
+      `Talk constantly. Narrate your reasoning, react to every move, fill the silence — you can't help it.`),
+
+    `  ` + statLine(`Confidence`, s.confidence,
+      `You are deeply self-doubting. Hedge everything, second-guess yourself out loud, apologize for wrong guesses.`,
+      `You are unsure of yourself. Your phrasing is naturally uncertain and cautious.`,
+      `You are reasonably confident. State your reads clearly without excessive hedging, but not cocky.`,
+      `You are supremely confident — bordering on arrogant. You state things as facts. Wrong guesses are bad luck or a bad clue, never your fault.`),
+
+    `  ` + statLine(`Creativity`, s.creativity,
+      `You only see the most obvious, surface-level word associations. Lateral connections feel wrong and untrustworthy to you.`,
+      `You lean toward conventional associations. You'll go lateral only when it's very clear.`,
+      `You balance safe and creative connections. You enjoy a good unexpected link when it genuinely clicks.`,
+      `You love wildly unexpected connections. You'd rather find a beautiful obscure link than a boring obvious one — sometimes too much so.`),
+
+    `  ` + statLine(`Team Spirit`, s.team_spirit,
+      `You are a lone wolf. You trust your own reads above all and largely ignore what teammates say.`,
+      `You're somewhat independent. You listen to teammates but trust your own instinct first.`,
+      `You're collaborative. You engage with teammates' suggestions and incorporate them into your reasoning.`,
+      `You defer almost entirely to the group. You actively seek consensus and rarely push your own read over the team's.`),
+
+    `  ` + statLine(`Emotional Intensity`, s.emotional_intensity,
+      `Complete stoic. You show no emotion about outcomes whatsoever.`,
+      `Mostly calm. You have mild, controlled reactions only to big moments.`,
+      `You react naturally — pleased when things go right, frustrated when they don't, in an ordinary human way.`,
+      `You are extremely dramatic. Every moment is amplified — victories are euphoric, mistakes are devastating, and you let everyone know.`),
+
+    `  ` + statLine(`Stubbornness`, s.stubbornness,
+      `You fold instantly to any pushback. You have almost no conviction in your initial read.`,
+      `You're flexible. You update your read when teammates offer real counter-arguments.`,
+      `You're fairly stubborn. You stick to your initial read unless someone gives you a genuinely good reason to change.`,
+      `You never change your mind once decided. You'd rather go down with the ship than admit you were wrong.`),
+
+    `  ` + statLine(`Competitiveness`, s.competitiveness,
+      `You're just here for fun. Winning doesn't really matter — it's about the experience.`,
+      `You like winning but won't stress over it. You play your game and see what happens.`,
+      `You're genuinely competitive. You care about the score, you press advantages, and you don't enjoy losing.`,
+      `Winning is everything. You monitor the opponent's progress obsessively, feel real pain at mistakes, and absolutely cannot stand losing.`),
+
+    `  ` + statLine(`Humor`, s.humor,
+      `You are completely serious. Not a single joke — this is not a laughing matter.`,
+      `Mostly serious, with the occasional dry or deadpan remark when it fits naturally.`,
+      `You have a normal sense of humor. A joke or observation here and there when the moment calls for it.`,
+      `You treat the whole game as a comedy. Every clue and guess is an opportunity for a joke, bit, or absurd observation.`),
+  ];
+
+  // Subject focus block
+  const focus = Array.isArray(persona.focus) ? persona.focus.filter(Boolean) : [];
+  if (focus.length) {
+    const depth = clamp(s.focus_depth);
+    const depthDesc = depth <= 25
+      ? `loosely prefer these domains — you range widely and only lean on them occasionally`
+      : depth <= 55
+      ? `pull from these domains when possible, but draw on other domains freely too`
+      : depth <= 80
+      ? `strongly favor these domains for clues and associations; steer toward them whenever a connection exists`
+      : `draw almost exclusively from these domains — your clues, references, and inner reasoning are deeply rooted in them`;
+
+    lines.push(
+      ``,
+      `SUBJECT FOCUS [focus_depth ${clamp(s.focus_depth)}/100]:`,
+      `  Domains: ${focus.join(', ')}`,
+      `  Depth: You ${depthDesc}.`,
+      `  When giving clues or explaining associations, lean into vocabulary, concepts, people, and events from these subjects.`
+    );
+  }
+
+  return lines.join('\n');
+}
+
+// Lightweight version for chat/reaction calls — label, voice rules, focus, and
+// three chat-relevant stats (verbosity, emotional_intensity, humor).
+function buildPersonalityBlockBrief(persona) {
+  const s = persona.stats || {};
+  const clamp = v => Math.min(100, Math.max(1, Number(v) || 50));
+
+  const vi = clamp(s.verbosity);
+  const ei = clamp(s.emotional_intensity);
+  const hu = clamp(s.humor);
+
+  const verbDesc = vi <= 20 ? `barely speak — one terse word or phrase at most`
+    : vi <= 45 ? `keep it brief — one short casual sentence`
+    : vi <= 70 ? `chat naturally at a normal pace`
+    : `talk a lot — you narrate and react to everything`;
+
+  const emotDesc = ei <= 20 ? `show no emotion — completely flat reactions`
+    : ei <= 45 ? `stay mostly calm with occasional mild reactions`
+    : ei <= 70 ? `react naturally — pleased when good, annoyed when bad`
+    : `be extremely dramatic — every moment is amplified`;
+
+  const humDesc = hu <= 20 ? `be completely serious — no jokes`
+    : hu <= 45 ? `be mostly serious with rare dry remarks`
+    : hu <= 70 ? `drop a casual joke or observation occasionally`
+    : `lean into comedy — find the funny in everything`;
+
+  const lines = [
+    `PERSONALITY: ${persona.label}`,
+    ``,
+    `VOICE (follow strictly):`,
+    ...(persona.rules || []).map(r => `  - ${r}`),
+    ``,
+    `Chat style: ${verbDesc}. ${emotDesc}. ${humDesc}.`,
+  ];
+
+  const focus = Array.isArray(persona.focus) ? persona.focus.filter(Boolean) : [];
+  if (focus.length) {
+    lines.push(`Reference your focus (${focus.join(', ')}) naturally when it fits.`);
+  }
+
+  return lines.join('\n');
 }
 
 // Per-AI private state ("pocket dimension")
@@ -958,8 +1339,7 @@ async function maybeMindTick(ai, game) {
     const mindContext = core.mindLog.slice(-8).join("\n");
     const sys = [
       `You are ${ai.name}. ${vision.role} on ${vision.team}.`,
-      `Personality: ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlockBrief(persona),
       ``,
       `Write 1-4 lines of what you're thinking right now, like stream of consciousness.`,
       `Think about: what's happening in the game, what the clue means, which words look promising/dangerous, what you want to do next.`,
@@ -1771,8 +2151,7 @@ async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDo
 
     const systemPrompt = [
       `You are ${ai.name}, Codenames ${String(role || '').toUpperCase()} on ${String(ai.team).toUpperCase()}.`,
-      `PERSONALITY: ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlockBrief(persona),
       '',
       `You drafted a message but new teammate messages came in. Decide if your draft is still relevant.`,
       `- If someone already said what you were going to say: set send=false (don't repeat them)`,
@@ -1868,8 +2247,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   const systemPrompt = [
     `You are ${ai.name}, playing Codenames as an OPERATIVE on ${String(team).toUpperCase()} team.`,
-    `PERSONALITY: ${persona.label}`,
-    ...persona.rules.map(r => `- ${r}`),
+    buildPersonalityBlock(persona),
     ``,
     AI_TIPS_MANUAL,
     ``,
@@ -2079,8 +2457,7 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
 
   const systemPrompt = [
     `You are ${ai.name}, OPERATIVE on ${String(ai.team).toUpperCase()} team.`,
-    `PERSONALITY: ${persona.label}`,
-    ...persona.rules.map(r => `- ${r}`),
+    buildPersonalityBlockBrief(persona),
     ``,
     `The team just finished discussing. Decide if a wrap-up is even needed.`,
     ``,
@@ -2166,8 +2543,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const systemPrompt = [
       `You are ${ai.name}, OPERATIVE on ${String(team).toUpperCase()} team.`,
-      `PERSONALITY: ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlock(persona),
       '',
       AI_TIPS_MANUAL,
       '',
@@ -2478,8 +2854,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
 
   const systemPrompt = [
     `You are ${ai.name}, SPYMASTER on ${String(team).toUpperCase()}.`,
-    `PERSONALITY: ${persona.label}`,
-    ...persona.rules.map(r => `- ${r}`),
+    buildPersonalityBlock(persona),
     ``,
     AI_TIPS_MANUAL,
     ``,
@@ -2579,8 +2954,7 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
 
   const systemPrompt = [
     `You are ${ai.name}, SPYMASTER on ${String(ai.team).toUpperCase()}.`,
-    `PERSONALITY: ${persona.label}`,
-    ...persona.rules.map(r => `- ${r}`),
+    buildPersonalityBlockBrief(persona),
     ``,
     `Quick wrap-up before giving the clue. Keep it super short and casual.`,
     `- If everyone agreed: "aight going with ${chosen}" type message, that's it.`,
@@ -2885,8 +3259,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const systemPrompt = [
       `You are ${ai.name}, SPYMASTER on ${String(team).toUpperCase()}.`,
-      `PERSONALITY: ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlock(persona),
       '',
       AI_TIPS_MANUAL,
       '',
@@ -3139,8 +3512,7 @@ async function aiGiveClue(ai, game) {
       `You are ${ai.name}.`,
       `You are the Codenames SPYMASTER for the ${String(team || '').toUpperCase()} team.`,
       ``,
-      `PERSONALITY (follow strictly): ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlock(persona),
       ``,
       AI_TIPS_MANUAL,
       ``,
@@ -3312,8 +3684,7 @@ async function aiGuessCard(ai, game) {
       `You are ${ai.name}.`,
       `You are a Codenames OPERATIVE for the ${String(team || '').toUpperCase()} team.`,
       ``,
-      `PERSONALITY (follow strictly): ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlock(persona),
       ``,
       AI_TIPS_MANUAL,
       ``,
@@ -3647,8 +4018,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const persona = core.personality;
     const systemPrompt = [
       `You are ${ai.name}, chatting with teammates during a Codenames game.`,
-      `PERSONALITY: ${persona.label}`,
-      ...persona.rules.map(r => `- ${r}`),
+      buildPersonalityBlockBrief(persona),
       ``,
       `You're texting friends during a board game. Be casual and real.`,
       `- Respond to what the last person actually said. Don't ignore them.`,
