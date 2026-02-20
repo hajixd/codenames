@@ -7825,121 +7825,21 @@ function renderGameLog() {
     slidedownCluesLeft: (activeTabBefore === 'clues-left') ? isNearBottom(slidedownCluesLeftEl) : false,
   };
 
-  const rawLog = Array.isArray(currentGame.log)
-    ? currentGame.log.map(entry => String(entry ?? '')).filter(Boolean)
-    : [];
-
-  const redName = String(currentGame.redTeamName || 'Red').trim();
-  const blueName = String(currentGame.blueTeamName || 'Blue').trim();
-
-  const detectTeam = (entry) => {
-    if (!entry) return null;
-
-    // Common patterns:
-    // - "Alice (TeamName) guessed ..."
-    // - "TeamName Spymaster: ..."
-    // - "TeamName ended their turn."
-    if (redName && entry.includes(`(${redName})`)) return 'red';
-    if (blueName && entry.includes(`(${blueName})`)) return 'blue';
-
-    if (redName && entry.startsWith(redName)) return 'red';
-    if (blueName && entry.startsWith(blueName)) return 'blue';
-
-    if (/Red team/i.test(entry)) return 'red';
-    if (/Blue team/i.test(entry)) return 'blue';
-
-    return null;
+  const setHtmlIfChanged = (el, html) => {
+    if (!el) return;
+    if (el.innerHTML === html) return;
+    el.innerHTML = html;
   };
 
-  const detectType = (entry) => {
-    if (!entry) return 'neutral';
-    const s = String(entry);
-
-    if (/Spymaster:\s*/i.test(s)) return 'clue';
-    if (/ASSASSIN/i.test(s)) return 'assassin';
-    if (/\bCorrect!\b/i.test(s)) return 'correct';
-    if (/\bWrong!\b/i.test(s)) return 'wrong';
-    if (/\bNeutral\b/i.test(s)) return 'neutral';
-    if (/wins!/i.test(s) || /Game ended/i.test(s) || /ended the game/i.test(s) || /Game over/i.test(s)) return 'end';
-    if (/Game started/i.test(s) || /Starting game/i.test(s)) return 'start';
-
-    return 'neutral';
-  };
-  const renderWithQuotes = (raw) => {
-    const str = String(raw || '');
-    const parts = str.split(/"([^"]+)"/g); // even = normal, odd = inside quotes
-
-    const wrapOutside = (segment) => {
-      let rawSeg = String(segment || '');
-
-      // Team name placeholders (avoid double-escaping / partial matches)
-      const RED = '__LOG_RED_TEAM__';
-      const BLUE = '__LOG_BLUE_TEAM__';
-      if (redName) rawSeg = rawSeg.split(redName).join(RED);
-      if (blueName) rawSeg = rawSeg.split(blueName).join(BLUE);
-
-      // Common phrases
-      rawSeg = rawSeg.replace(/\bRed team\b/gi, RED);
-      rawSeg = rawSeg.replace(/\bBlue team\b/gi, BLUE);
-
-      // Escape after placeholders
-      let s = escapeHtml(rawSeg);
-
-      // Re-insert team spans
-      if (redName) s = s.split(RED).join(`<span class="log-team red">${escapeHtml(redName)}</span>`);
-      if (blueName) s = s.split(BLUE).join(`<span class="log-team blue">${escapeHtml(blueName)}</span>`);
-
-      // Color only certain keywords (keep the rest readable)
-      s = s.replace(/\bSpymaster\b/g, '<span class="log-token role">Spymaster</span>');
-      s = s.replace(/\bOperatives?\b/g, (m) => `<span class="log-token role">${m}</span>`);
-
-      s = s.replace(/\bguessed\b/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/\bended their turn\b/gi, (m) => `<span class="log-token action">${m}</span>`);
-      s = s.replace(/\bupdated rules\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame started!\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bStarting game\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame ended\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-      s = s.replace(/\bGame over\b/gi, (m) => `<span class="log-token system">${m}</span>`);
-
-      s = s.replace(/\bCorrect!\b/g, '<span class="log-token result-correct">Correct!</span>');
-      s = s.replace(/\bWrong!\b/g, '<span class="log-token result-wrong">Wrong!</span>');
-      s = s.replace(/\bNeutral\b/g, '<span class="log-token result-neutral">Neutral</span>');
-      s = s.replace(/\bASSASSIN\b/g, '<span class="log-token result-assassin">ASSASSIN</span>');
-      s = s.replace(/\bwins!\b/g, '<span class="log-token system">wins!</span>');
-
-      return s;
-    };
-
-    return parts.map((p, i) => {
-      if (i % 2 === 1) return `<span class="log-quote">${escapeHtml(p)}</span>`;
-      return wrapOutside(p);
-    }).join('');
-  };
-
-  const html = rawLog.map(entry => {
-    const team = detectTeam(entry);
-    const type = detectType(entry);
-    const cls = ['log-entry', `type-${type}`];
-    if (team) cls.push(`team-${team}`);
-    return `<div class="${cls.join(' ')}">${renderWithQuotes(entry)}</div>`;
-  }).join('');
-  const fallbackHtml = html || '<div class="gamelog-empty">No events yet. Clues and guesses will appear here.</div>';
-
-  if (popoverHistoryEl) popoverHistoryEl.innerHTML = fallbackHtml;
-
-  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
-  let historyHtml = fallbackHtml;
-  if (isOgMode && currentGame.clueHistory && currentGame.clueHistory.length > 0) {
-    const ogHtml = buildOgStructuredLog();
-    historyHtml = ogHtml || fallbackHtml;
-  }
-
-  if (sidebarHistoryEl) sidebarHistoryEl.innerHTML = historyHtml;
-  if (slidedownHistoryEl) slidedownHistoryEl.innerHTML = historyHtml;
+  // Keep Game Log "History" focused strictly on clue history entries.
+  const historyHtml = buildOgStructuredLog() || '<div class="gamelog-empty">No clues given yet.</div>';
+  setHtmlIfChanged(popoverHistoryEl, historyHtml);
+  setHtmlIfChanged(sidebarHistoryEl, historyHtml);
+  setHtmlIfChanged(slidedownHistoryEl, historyHtml);
 
   const cluesLeftHtml = buildCluesLeftLogHtml();
-  if (sidebarCluesLeftEl) sidebarCluesLeftEl.innerHTML = cluesLeftHtml;
-  if (slidedownCluesLeftEl) slidedownCluesLeftEl.innerHTML = cluesLeftHtml;
+  setHtmlIfChanged(sidebarCluesLeftEl, cluesLeftHtml);
+  setHtmlIfChanged(slidedownCluesLeftEl, cluesLeftHtml);
   applyGameLogTabState();
 
   // Auto-scroll to bottom after DOM reflow
@@ -8001,10 +7901,10 @@ function buildCluesLeftLogHtml() {
     return '<div class="gamelog-empty">No stacked clues yet. Turn on Stacking in Settings and pick target cards when giving clues.</div>';
   }
 
-  // Spymasters can see the specific target words. Operatives should still see
-  // the clue and how many words are associated with it.
+  // Spymasters (and spectators) can see target words.
+  // Operatives get the identical layout but with each target word masked.
   const spectator = isSpectating();
-  const canSeeWords = !spectator;
+  const canSeeWords = spectator || isCurrentUserSpymaster();
 
   // Only show clues from the current user's team (spectators see all).
   const myTeamColor = getMyTeamColor();
@@ -8085,7 +7985,7 @@ function buildCluesLeftLogHtml() {
           ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
           : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>')
       : (remainingWords.length
-          ? remainingWords.map(() => '<span class="gamelog-left-word-chip">HIDDEN</span>').join('')
+          ? remainingWords.map(() => '<span class="gamelog-left-word-chip gamelog-left-word-chip-hidden"><em>hidden</em></span>').join('')
           : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>');
 
     rows.push(`

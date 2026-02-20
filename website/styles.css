@@ -26043,3 +26043,48 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     bottom: 0;
   }
 }
+
+/* Final overrides: clue masking + desktop chat/log parity + scroll stability */
+.gamelog-left-word-chip-hidden {
+  text-transform: none;
+  font-style: italic;
+  letter-spacing: 0.2px;
+  font-weight: 700;
+}
+
+.gamelog-left-word-chip-hidden em {
+  font-style: italic;
+}
+
+@media (min-width: 1025px) {
+  body:is(.og-mode, .cozy-mode) {
+    /* Slightly taller than before on desktop. */
+    --og-desktop-docked-panel-h: clamp(220px, 31vh, 320px);
+  }
+
+  /* Left docked Team Chat: match Game Log height (same on-screen size after zoom). */
+  body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel {
+    height: var(--og-desktop-docked-panel-h);
+    min-height: var(--og-desktop-docked-panel-h);
+    max-height: var(--og-desktop-docked-panel-h);
+  }
+
+  /* Right docked Game Log keeps scale-compensation because it is outside the zoomed container. */
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open {
+    height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
+    min-height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
+    max-height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
+    bottom: 6px;
+  }
+
+  /* Ensure both panels keep internal scrolling even when legacy rules try to disable it. */
+  .game-log-panel .game-log-entries,
+  .operative-chat-messages,
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner .gamelog-entries,
+  body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-messages {
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    min-height: 0;
+  }
+}
