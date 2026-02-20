@@ -5497,7 +5497,11 @@ function updateSettingsInGameActions(isInGame) {
 
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
+  const spNote = document.getElementById('settings-singleplayer-note');
   const isPractice = !!(currentGame && currentGame.type === 'practice');
+
+  // Show a note in singleplayer explaining why the buttons are disabled.
+  if (spNote) spNote.style.display = isPractice ? 'block' : 'none';
 
   // End Game permissions:
   // - Tournament games: only your team's spymaster can end.
@@ -6342,7 +6346,6 @@ function renderBoard(isSpymaster) {
       : '';
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
-        ${consideringHtml}
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
@@ -6355,6 +6358,7 @@ function renderBoard(isSpymaster) {
           ${backFace}
         </div>
         <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
+        ${consideringHtml}
       </div>
     `;
   }).join('');

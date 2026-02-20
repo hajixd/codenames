@@ -149,7 +149,7 @@ body.light-mode {
   display: inline-flex;
   align-items: center;
   pointer-events: none;
-  z-index: 15;
+  z-index: 25;
 }
 
 .game-card .card-considering-chip{
@@ -7801,6 +7801,19 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-row-volume .settings-volume-value {
   min-width: 36px;
+}
+
+/* Singleplayer note shown above the disabled Leave/End buttons */
+.settings-singleplayer-note {
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.4;
 }
 
 /* Settings Account Actions */
