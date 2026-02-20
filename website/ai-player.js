@@ -1173,7 +1173,23 @@ async function maybeAssignNewMatchPersonalities(game) {
   if (__ct_matchAssignInFlightByGame[gameId]) return;
 
   const phase = String(game?.currentPhase || '').toLowerCase();
-  if (!phase || phase === 'waiting') return;
+  // If the match is back in the lobby, clear the nonce so the *next* start
+  // gets a fresh set of AI identities.
+  if (!phase || phase === 'waiting') {
+    const existing = String(game?.aiMatchNonce || '').trim();
+    if (!existing) return;
+    const amController = await maybeHeartbeatAIController(gameId, game);
+    if (!amController) return;
+    __ct_matchAssignInFlightByGame[gameId] = true;
+    try {
+      await db.collection('games').doc(gameId).update({
+        aiMatchNonce: firebase.firestore.FieldValue.delete(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+    finally { __ct_matchAssignInFlightByGame[gameId] = false; }
+    return;
+  }
 
   const nonce = String(game?.aiMatchNonce || '').trim();
   if (nonce) {
@@ -1187,8 +1203,8 @@ async function maybeAssignNewMatchPersonalities(game) {
 
   __ct_matchAssignInFlightByGame[gameId] = true;
   try {
-    // Build new personas outside the transaction (LLM calls are async).
-    const ensureKey = ensureAIKeyPresent();
+    // Match identities should be fast. We avoid LLM calls by default and use
+    // the local personality generator.
     const used = new Set();
     const roster = (aiPlayers || []).filter(a => a && a.isAI);
     if (!roster.length) return;
@@ -1199,10 +1215,7 @@ async function maybeAssignNewMatchPersonalities(game) {
       if (!baseName || baseName.toLowerCase() === 'ai') baseName = pick(AI_NAMES);
 
       let persona = null;
-      if (ensureKey) {
-        try { persona = await generateUniquePersonality(baseName); } catch (_) { persona = null; }
-      }
-      if (!persona) persona = randomPersonality();
+      persona = randomPersonality();
 
       // Name should match the personality.
       const name = generateAINameFromPersona(persona, used);

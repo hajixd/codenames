@@ -2028,34 +2028,99 @@ async function assignPracticeAIIdentities(players, usedNames, vibe) {
   try {
     const list = Array.isArray(players) ? players : [];
     const ct = (typeof window !== 'undefined' && window.ctAI) ? window.ctAI : null;
-    const canLLM = !!(ct && typeof ct.generateUniquePersonality === 'function' && typeof window.aiChatCompletion === 'function');
+
+    // Practice should be instant. We intentionally avoid any LLM calls here.
+    // (Practice is local-only, and waiting on multiple LLM calls makes the UX feel broken.)
+
+    // Lightweight fallback personality + name generator for the moments when
+    // ai-player.js hasn't loaded yet (game.js is loaded earlier).
+    const SUBJECT_POOL_FALLBACK = [
+      'Sports','Basketball','Soccer','Baseball','Hockey','Tennis','Golf','Boxing','MMA',
+      'Cooking','Baking','Barbecue','Coffee','Tea','Wine','Cocktails',
+      'Music','Classical Music','Hip-Hop','Jazz','Rock','Pop','EDM','K-Pop',
+      'Movies','TV','Anime','Comics','Manga','Video Games','Board Games','Chess',
+      'History','Ancient History','World War II','Mythology','Archaeology',
+      'Science','Physics','Biology','Chemistry','Astronomy','Space','Math','Statistics',
+      'Technology','Programming','AI','Cybersecurity','Gadgets','Open Source',
+      'Business','Finance','Investing','Startups','Marketing','Sales',
+      'Law','Politics','Economics','Philosophy','Psychology','Sociology',
+      'Travel','Geography','Cities','Mountains','Oceans','National Parks',
+      'Art','Design','Architecture','Photography','Fashion','Interior Design',
+      'Literature','Poetry','Writing','Languages','Linguistics',
+      'Nature','Animals','Birds','Gardening','Plants','Weather',
+      'Cars','Motorcycles','Aviation','Boats','Trains',
+      'Health','Fitness','Running','Cycling','Yoga','Nutrition',
+      'Education','Teaching','DIY','Woodworking','Crafts'
+    ];
+
+    const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+    const clamp100 = (n) => Math.max(1, Math.min(100, Math.round(Number(n) || 1)));
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    const fastRandomPersonality = () => {
+      // If ai-player.js is loaded, prefer its richer generator.
+      if (ct && typeof ct.randomPersonality === 'function') {
+        try { return ct.randomPersonality(); } catch (_) {}
+      }
+      const focus = [pick(SUBJECT_POOL_FALLBACK)];
+      if (Math.random() < 0.5) focus.push(pick(SUBJECT_POOL_FALLBACK));
+      return {
+        key: `practice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        label: `${focus[0]} Specialist`,
+        focus,
+        stats: {
+          reasoning_depth: clamp100(randInt(15, 95)),
+          // User meaning: 1 = never ends turn / always guesses, 100 = ends at first doubt
+          risk_tolerance: clamp100(randInt(5, 95)),
+          verbosity: clamp100(randInt(20, 85)),
+          confidence: clamp100(randInt(20, 90)),
+        },
+        rules: [
+          'Stay on theme with your focus when chatting or explaining.',
+          'Keep moves fast; avoid long deliberation unless reasoning_depth is high.',
+        ],
+      };
+    };
+
+    const fastNameFromPersona = (persona, used) => {
+      if (ct && typeof ct.generateAINameFromPersona === 'function') {
+        try { return ct.generateAINameFromPersona(persona, used); } catch (_) {}
+      }
+      const focus0 = String((persona && Array.isArray(persona.focus) && persona.focus[0]) ? persona.focus[0] : '').toLowerCase();
+      const buckets = {
+        sports: ['Coach', 'Captain', 'Scout', 'Stats'],
+        science: ['Dr', 'Prof', 'Lab', 'Theory'],
+        history: ['Archivist', 'Chronicler', 'Curator', 'Historian'],
+        tech: ['Dev', 'Kernel', 'Cipher', 'Ops'],
+        art: ['Muse', 'Studio', 'Canvas', 'Sketch'],
+        food: ['Chef', 'SousChef', 'Baker', 'Taster'],
+        travel: ['Nomad', 'Atlas', 'Pilot', 'Guide'],
+      };
+      let prefix = 'Agent';
+      if (focus0.includes('sport') || focus0.includes('basket') || focus0.includes('soccer') || focus0.includes('baseball') || focus0.includes('hockey')) prefix = pick(buckets.sports);
+      else if (focus0.includes('science') || focus0.includes('physics') || focus0.includes('biology') || focus0.includes('chemistry') || focus0.includes('math')) prefix = pick(buckets.science);
+      else if (focus0.includes('history') || focus0.includes('myth') || focus0.includes('archae')) prefix = pick(buckets.history);
+      else if (focus0.includes('tech') || focus0.includes('program') || focus0.includes('ai') || focus0.includes('cyber')) prefix = pick(buckets.tech);
+      else if (focus0.includes('art') || focus0.includes('design') || focus0.includes('photo') || focus0.includes('fashion')) prefix = pick(buckets.art);
+      else if (focus0.includes('cook') || focus0.includes('bake') || focus0.includes('coffee') || focus0.includes('wine')) prefix = pick(buckets.food);
+      else if (focus0.includes('travel') || focus0.includes('geo') || focus0.includes('city') || focus0.includes('mount')) prefix = pick(buckets.travel);
+
+      const last = pick(['Hayes','Reyes','Khan','Ng','Patel','Kim','Silva','Novak','Ito','Morgan','Blair','Sato','Chen','Diaz','Hart','Stone']);
+      let candidate = `${prefix} ${last}`;
+      let guard = 0;
+      while (used.has(candidate) && guard < 25) {
+        candidate = `${prefix} ${last}${randInt(2, 99)}`;
+        guard++;
+      }
+      used.add(candidate);
+      return candidate;
+    };
 
     for (const p of list) {
       if (!p || !p.isAI) continue;
 
-      // Build a base name seed that varies by team/role/vibe so even the first
-      // LLM call is less likely to converge.
-      const seed = `${p.team || 'team'}-${p.role || 'role'}${vibe ? `-${vibe}` : ''}-${Math.random().toString(36).slice(2, 6)}`;
-
-      let persona = null;
-      if (canLLM) {
-        try { persona = await ct.generateUniquePersonality(seed); } catch (_) { persona = null; }
-      }
-      if (!persona && ct && typeof ct.randomPersonality === 'function') {
-        try { persona = ct.randomPersonality(); } catch (_) { persona = null; }
-      }
-      if (!persona || typeof persona !== 'object') persona = { key: 'default', label: 'Default', focus: [], stats: { reasoning_depth: 50, risk_tolerance: 50 }, rules: [] };
-
-      let name = '';
-      if (ct && typeof ct.generateAINameFromPersona === 'function') {
-        try { name = ct.generateAINameFromPersona(persona, usedNames); } catch (_) { name = ''; }
-      }
-      if (!name) {
-        // Fallback uniqueness.
-        const base = `Bot${Math.floor(Math.random() * 999)}`;
-        name = usedNames.has(base) ? `${base}_${Math.floor(Math.random() * 99)}` : base;
-        usedNames.add(name);
-      }
+      const persona = fastRandomPersonality();
+      const name = fastNameFromPersona(persona, usedNames);
 
       let temperature = 0.6 + Math.random() * 0.6;
       if (ct && typeof ct.randomTemperature === 'function') {
