@@ -10020,10 +10020,10 @@ body.tournament.has-team-color .input:focus {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 64px);
-  max-height: calc(100dvh - 64px);
+  height: calc(100dvh - var(--header-h) - var(--tabs-h));
+  max-height: calc(100dvh - var(--header-h) - var(--tabs-h));
   overflow: hidden;
-  padding: 12px 20px;
+  padding: 12px 20px 0;
   gap: 8px;
   background: var(--bg);
   /* Isolate painting to prevent Chrome compositing artifacts from
