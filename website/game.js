@@ -9439,23 +9439,30 @@ async function syncTeamConsidering(cardIndexOrNull) {
       const game = snap.data() || {};
       const considering = { ...(game?.[field] || {}) };
 
-      // Each user can consider at most one card at a time.
-      for (const key of Object.keys(considering)) {
-        const bucket = normalizeTeamConsideringBucket(considering[key]);
-        delete bucket[ownerId];
-        if (Object.keys(bucket).length) considering[key] = bucket;
-        else delete considering[key];
-      }
-
-      if (nextIdx !== null && nextIdx >= 0) {
+      // Multi-consider support:
+      // - Passing null clears ALL of your "considering" marks.
+      // - Passing an index toggles ONLY that card for you (does not clear other cards).
+      if (nextIdx === null) {
+        for (const key of Object.keys(considering)) {
+          const bucket = normalizeTeamConsideringBucket(considering[key]);
+          delete bucket[ownerId];
+          if (Object.keys(bucket).length) considering[key] = bucket;
+          else delete considering[key];
+        }
+      } else if (nextIdx >= 0) {
         const key = String(nextIdx);
         const bucket = normalizeTeamConsideringBucket(considering[key]);
-        bucket[ownerId] = {
-          initials,
-          name: userName || 'Player',
-          ts: Date.now()
-        };
-        considering[key] = bucket;
+        if (bucket[ownerId]) {
+          delete bucket[ownerId];
+        } else {
+          bucket[ownerId] = {
+            initials,
+            name: userName || 'Player',
+            ts: Date.now()
+          };
+        }
+        if (Object.keys(bucket).length) considering[key] = bucket;
+        else delete considering[key];
       }
 
       tx.update(ref, {
@@ -9527,7 +9534,7 @@ function buildCardTagElement(tag, opts = {}) {
 async function syncTeamMarker(cardIndex, tag) {
   try {
     if (!currentGame?.id) return;
-    if (isCurrentLocalPracticeGame()) return;
+    // Local practice games still support team-visible markers (stored locally).
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const idx = Number(cardIndex);
@@ -9537,6 +9544,24 @@ async function syncTeamMarker(cardIndex, tag) {
     const t = String(tag || '').toLowerCase().trim();
     const clear = !t || t === 'clear';
     if (!clear && !['yes', 'maybe', 'no'].includes(t)) return;
+
+    if (isCurrentLocalPracticeGame()) {
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        const markers = { ...(draft?.[field] || {}) };
+        const key = String(idx);
+        const bucket = normalizeTeamMarkerBucket(markers[key]);
+
+        if (clear) delete bucket[ownerId];
+        else bucket[ownerId] = t;
+
+        if (Object.keys(bucket).length) markers[key] = bucket;
+        else delete markers[key];
+
+        draft[field] = markers;
+        draft.updatedAtMs = Date.now();
+      });
+      return;
+    }
 
     const ref = db.collection('games').doc(currentGame.id);
     await db.runTransaction(async (tx) => {
@@ -9566,11 +9591,27 @@ async function syncTeamMarker(cardIndex, tag) {
 async function clearTeamMarkers() {
   try {
     if (!currentGame?.id) return;
-    if (isCurrentLocalPracticeGame()) return;
+    // Local practice games still support team-visible markers (stored locally).
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const ownerId = getCurrentMarkerOwnerId();
     const field = (myTeam === 'red') ? 'redMarkers' : 'blueMarkers';
+
+    if (isCurrentLocalPracticeGame()) {
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        const markers = { ...(draft?.[field] || {}) };
+        for (const key of Object.keys(markers)) {
+          const bucket = normalizeTeamMarkerBucket(markers[key]);
+          delete bucket[ownerId];
+          if (Object.keys(bucket).length) markers[key] = bucket;
+          else delete markers[key];
+        }
+        draft[field] = markers;
+        draft.updatedAtMs = Date.now();
+      });
+      return;
+    }
+
     const ref = db.collection('games').doc(currentGame.id);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -9592,6 +9633,38 @@ async function clearTeamMarkers() {
     });
   } catch (e) {}
 }
+
+// Allow AIs to set practice markers using the same rendering path as multiplayer.
+// Online games should continue to use Firestore markers.
+window.__setLocalPracticeTeamMarker = function({ gameId, teamColor, ownerId, cardIndex, tag }) {
+  try {
+    const gid = String(gameId || '').trim();
+    if (!gid || !isLocalPracticeGameId(gid)) return;
+    const team = String(teamColor || '').toLowerCase();
+    if (team !== 'red' && team !== 'blue') return;
+    const idx = Number(cardIndex);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    const owner = String(ownerId || '').trim();
+    if (!owner) return;
+    const t = String(tag || '').toLowerCase().trim();
+    const clear = !t || t === 'clear';
+    const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
+
+    mutateLocalPracticeGame(gid, (draft) => {
+      const markers = { ...(draft?.[field] || {}) };
+      const key = String(idx);
+      const bucket = normalizeTeamMarkerBucket(markers[key]);
+      if (clear) delete bucket[owner];
+      else if (['yes','maybe','no'].includes(t)) bucket[owner] = t;
+      if (Object.keys(bucket).length) markers[key] = bucket;
+      else delete markers[key];
+      draft[field] = markers;
+      draft.updatedAtMs = Date.now();
+    });
+
+    try { if (typeof renderCardTags === 'function') renderCardTags(); } catch (_) {}
+  } catch (_) {}
+};
 
 function tagCard(cardIndex, tag) {
   const idx = Number(cardIndex);
