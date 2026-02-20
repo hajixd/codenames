@@ -10032,8 +10032,22 @@ function updatePendingCardSelectionUI() {
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // Selection should only show an outline; no motion until confirmation.
+    // Always run a flip animation when a card becomes selected.
+    // Restart reliably by forcing a layout read between toggles.
     if (_pendingSelectAnimIndex === pendingCardSelection) {
+      target.classList.remove('select-animate');
+      // eslint-disable-next-line no-unused-expressions
+      void target.offsetWidth;
+      requestAnimationFrame(() => {
+        if (!target.isConnected) return;
+        target.classList.add('select-animate');
+        // Remove the helper class after the keyframe finishes so the next
+        // selection can replay cleanly.
+        window.setTimeout(() => {
+          if (!target.isConnected) return;
+          target.classList.remove('select-animate');
+        }, 520);
+      });
       _pendingSelectAnimIndex = null;
     }
   }
