@@ -11184,6 +11184,7 @@ body.tournament.has-team-color .input:focus {
   border: 1px solid var(--border);
   border-radius: 10px;
   flex-shrink: 0;
+  margin-top: auto;
 }
 
 .clue-display-expanded {
