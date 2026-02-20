@@ -97,10 +97,21 @@ function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
     // For snapshot replays, briefly restore the unrevealed presentation first.
     cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
   }
+  // Ensure the flip animation reliably restarts every time:
+  // 1) clear classes
+  // 2) add base state immediately
+  // 3) add the animating class on the next frame (forces a fresh animation)
   clearConfirmAnimationClasses(cardEl);
-  cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
+  cardEl.classList.add('confirming-guess', `confirm-back-${type}`);
   cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
-  pulseCardAnimationOverlay();
+  // Force layout so browsers don't coalesce class changes.
+  // eslint-disable-next-line no-unused-expressions
+  void cardEl.offsetWidth;
+  requestAnimationFrame(() => {
+    if (!cardEl.isConnected) return;
+    cardEl.classList.add('confirm-animate');
+    pulseCardAnimationOverlay();
+  });
 }
 
 function flushDeferredSnapshotRender() {
@@ -6337,6 +6348,9 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
+    // Always render a back face so the confirm/reveal flip animation can run
+    // in every visual mode. (Non-OG modes keep the back hidden unless an
+    // animation explicitly flips the card.)
     const backFace = `
           <div class="card-face card-back">
             <span class="card-word"><span class="word-text">${word}</span></span>
@@ -10018,8 +10032,22 @@ function updatePendingCardSelectionUI() {
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // Selection should only show an outline; no motion until confirmation.
+    // Always run a flip animation when a card becomes selected.
+    // Restart reliably by forcing a layout read between toggles.
     if (_pendingSelectAnimIndex === pendingCardSelection) {
+      target.classList.remove('select-animate');
+      // eslint-disable-next-line no-unused-expressions
+      void target.offsetWidth;
+      requestAnimationFrame(() => {
+        if (!target.isConnected) return;
+        target.classList.add('select-animate');
+        // Remove the helper class after the keyframe finishes so the next
+        // selection can replay cleanly.
+        window.setTimeout(() => {
+          if (!target.isConnected) return;
+          target.classList.remove('select-animate');
+        }, 520);
+      });
       _pendingSelectAnimIndex = null;
     }
   }
