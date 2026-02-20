@@ -48,13 +48,3 @@ And also enable:
 - **App Check** (reduces scripted abuse)
 - **Firestore PITR / backups** (true recovery)
 
-
-
-## AI API key
-
-To enable AI features, paste your provider API key into `website/ai-key.local.js`:
-
-- Open `website/ai-key.local.js`
-- Set `window.CT_AI_API_KEY = "...";`
-
-If `window.CT_AI_API_KEY` is empty, the app falls back to `localStorage.getItem('ct_ai_apiKey')`.

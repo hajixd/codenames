@@ -97,21 +97,10 @@ function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
     // For snapshot replays, briefly restore the unrevealed presentation first.
     cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
   }
-  // Ensure the flip animation reliably restarts every time:
-  // 1) clear classes
-  // 2) add base state immediately
-  // 3) add the animating class on the next frame (forces a fresh animation)
   clearConfirmAnimationClasses(cardEl);
-  cardEl.classList.add('confirming-guess', `confirm-back-${type}`);
+  cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
   cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
-  // Force layout so browsers don't coalesce class changes.
-  // eslint-disable-next-line no-unused-expressions
-  void cardEl.offsetWidth;
-  requestAnimationFrame(() => {
-    if (!cardEl.isConnected) return;
-    cardEl.classList.add('confirm-animate');
-    pulseCardAnimationOverlay();
-  });
+  pulseCardAnimationOverlay();
 }
 
 function flushDeferredSnapshotRender() {
@@ -407,7 +396,6 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
   if (!key || !isLocalPracticeGameId(key) || !gameData) return null;
 
   const prevLiveGame = (currentGame?.id === key) ? cloneLocalValue(currentGame) : null;
-  const prevLogLen = Array.isArray(prevLiveGame?.log) ? prevLiveGame.log.length : 0;
   const next = cloneLocalValue(gameData) || {};
   next.id = key;
   next.updatedAtMs = Date.now();
@@ -457,14 +445,6 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
       if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
       else stopPracticeInactivityWatcher();
       try { renderGame(); } catch (_) {}
-
-      // AI emotional reactions based on newly appended log lines.
-      try {
-        const nextLog = Array.isArray(currentGame?.log) ? currentGame.log : [];
-        const newEntries = nextLog.slice(Math.max(0, prevLogLen));
-        maybeQueueAIReactionsFromLogEntries(newEntries, currentGame);
-      } catch (_) {}
-
       if (!opts.skipAnimation && newlyRevealedIndices.length && !replayedPreRenderConfirm) {
         animateNewlyRevealedCards(newlyRevealedIndices);
       }
@@ -2024,9 +2004,6 @@ function _practiceAIPool() {
 }
 
 function _makePracticeAI(team, role, usedNames) {
-  // NOTE: practice AI names will be overwritten with match-unique persona-matched
-  // names after creation (see createPracticeGame). We still give them a temporary
-  // non-empty name for UI safety during early renders.
   const pool = _practiceAIPool().filter(n => !usedNames.has(n));
   const base = pool.length ? pool[Math.floor(Math.random() * pool.length)] : `Bot${Math.floor(Math.random()*999)}`;
   usedNames.add(base);
@@ -2042,118 +2019,6 @@ function _makePracticeAI(team, role, usedNames) {
     aiMode: 'autonomous',
     aiTemperature: 0.6 + Math.random() * 0.6,
   };
-}
-
-async function assignPracticeAIIdentities(players, usedNames, vibe) {
-  try {
-    const list = Array.isArray(players) ? players : [];
-    const ct = (typeof window !== 'undefined' && window.ctAI) ? window.ctAI : null;
-
-    // Practice should be instant. We intentionally avoid any LLM calls here.
-    // (Practice is local-only, and waiting on multiple LLM calls makes the UX feel broken.)
-
-    // Lightweight fallback personality + name generator for the moments when
-    // ai-player.js hasn't loaded yet (game.js is loaded earlier).
-    const SUBJECT_POOL_FALLBACK = [
-      'Sports','Basketball','Soccer','Baseball','Hockey','Tennis','Golf','Boxing','MMA',
-      'Cooking','Baking','Barbecue','Coffee','Tea','Wine','Cocktails',
-      'Music','Classical Music','Hip-Hop','Jazz','Rock','Pop','EDM','K-Pop',
-      'Movies','TV','Anime','Comics','Manga','Video Games','Board Games','Chess',
-      'History','Ancient History','World War II','Mythology','Archaeology',
-      'Science','Physics','Biology','Chemistry','Astronomy','Space','Math','Statistics',
-      'Technology','Programming','AI','Cybersecurity','Gadgets','Open Source',
-      'Business','Finance','Investing','Startups','Marketing','Sales',
-      'Law','Politics','Economics','Philosophy','Psychology','Sociology',
-      'Travel','Geography','Cities','Mountains','Oceans','National Parks',
-      'Art','Design','Architecture','Photography','Fashion','Interior Design',
-      'Literature','Poetry','Writing','Languages','Linguistics',
-      'Nature','Animals','Birds','Gardening','Plants','Weather',
-      'Cars','Motorcycles','Aviation','Boats','Trains',
-      'Health','Fitness','Running','Cycling','Yoga','Nutrition',
-      'Education','Teaching','DIY','Woodworking','Crafts'
-    ];
-
-    const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
-    const clamp100 = (n) => Math.max(1, Math.min(100, Math.round(Number(n) || 1)));
-    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-    const fastRandomPersonality = () => {
-      // If ai-player.js is loaded, prefer its richer generator.
-      if (ct && typeof ct.randomPersonality === 'function') {
-        try { return ct.randomPersonality(); } catch (_) {}
-      }
-      const focus = [pick(SUBJECT_POOL_FALLBACK)];
-      if (Math.random() < 0.5) focus.push(pick(SUBJECT_POOL_FALLBACK));
-      return {
-        key: `practice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        label: `${focus[0]} Specialist`,
-        focus,
-        stats: {
-          reasoning_depth: clamp100(randInt(15, 95)),
-          // User meaning: 1 = never ends turn / always guesses, 100 = ends at first doubt
-          risk_tolerance: clamp100(randInt(5, 95)),
-          verbosity: clamp100(randInt(20, 85)),
-          confidence: clamp100(randInt(20, 90)),
-        },
-        rules: [
-          'Stay on theme with your focus when chatting or explaining.',
-          'Keep moves fast; avoid long deliberation unless reasoning_depth is high.',
-        ],
-      };
-    };
-
-    const fastNameFromPersona = (persona, used) => {
-      if (ct && typeof ct.generateAINameFromPersona === 'function') {
-        try { return ct.generateAINameFromPersona(persona, used); } catch (_) {}
-      }
-      const focus0 = String((persona && Array.isArray(persona.focus) && persona.focus[0]) ? persona.focus[0] : '').toLowerCase();
-      const buckets = {
-        sports: ['Coach', 'Captain', 'Scout', 'Stats'],
-        science: ['Dr', 'Prof', 'Lab', 'Theory'],
-        history: ['Archivist', 'Chronicler', 'Curator', 'Historian'],
-        tech: ['Dev', 'Kernel', 'Cipher', 'Ops'],
-        art: ['Muse', 'Studio', 'Canvas', 'Sketch'],
-        food: ['Chef', 'SousChef', 'Baker', 'Taster'],
-        travel: ['Nomad', 'Atlas', 'Pilot', 'Guide'],
-      };
-      let prefix = 'Agent';
-      if (focus0.includes('sport') || focus0.includes('basket') || focus0.includes('soccer') || focus0.includes('baseball') || focus0.includes('hockey')) prefix = pick(buckets.sports);
-      else if (focus0.includes('science') || focus0.includes('physics') || focus0.includes('biology') || focus0.includes('chemistry') || focus0.includes('math')) prefix = pick(buckets.science);
-      else if (focus0.includes('history') || focus0.includes('myth') || focus0.includes('archae')) prefix = pick(buckets.history);
-      else if (focus0.includes('tech') || focus0.includes('program') || focus0.includes('ai') || focus0.includes('cyber')) prefix = pick(buckets.tech);
-      else if (focus0.includes('art') || focus0.includes('design') || focus0.includes('photo') || focus0.includes('fashion')) prefix = pick(buckets.art);
-      else if (focus0.includes('cook') || focus0.includes('bake') || focus0.includes('coffee') || focus0.includes('wine')) prefix = pick(buckets.food);
-      else if (focus0.includes('travel') || focus0.includes('geo') || focus0.includes('city') || focus0.includes('mount')) prefix = pick(buckets.travel);
-
-      const last = pick(['Hayes','Reyes','Khan','Ng','Patel','Kim','Silva','Novak','Ito','Morgan','Blair','Sato','Chen','Diaz','Hart','Stone']);
-      let candidate = `${prefix} ${last}`;
-      let guard = 0;
-      while (used.has(candidate) && guard < 25) {
-        candidate = `${prefix} ${last}${randInt(2, 99)}`;
-        guard++;
-      }
-      used.add(candidate);
-      return candidate;
-    };
-
-    for (const p of list) {
-      if (!p || !p.isAI) continue;
-
-      const persona = fastRandomPersonality();
-      const name = fastNameFromPersona(persona, usedNames);
-
-      let temperature = 0.6 + Math.random() * 0.6;
-      if (ct && typeof ct.randomTemperature === 'function') {
-        try { temperature = ct.randomTemperature(); } catch (_) {}
-      }
-
-      p.name = name;
-      p.aiPersonality = persona;
-      p.aiTemperature = temperature;
-    }
-  } catch (e) {
-    console.warn('Failed assigning practice AI identities (best-effort):', e);
-  }
 }
 
 /**
@@ -2226,11 +2091,6 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   // Blue team all AI
   bluePlayers.push(_makePracticeAI('blue', 'spymaster', usedNames));
   for (let i = 0; i < needOps; i++) bluePlayers.push(_makePracticeAI('blue', 'operative', usedNames));
-
-  // Give every practice match its own unique AI personalities + persona-matched names.
-  // This happens at creation-time because practice is local-only (no Firestore controller).
-  await assignPracticeAIIdentities(redPlayers, usedNames, vibe);
-  await assignPracticeAIIdentities(bluePlayers, usedNames, vibe);
 
   // Ensure spymaster fields
   const redSpy = redPlayers.find(p => p.role === 'spymaster') || null;
@@ -5212,7 +5072,6 @@ function startGameListener(gameId, options = {}) {
     const prevCards = Array.isArray(currentGame?.cards)
       ? currentGame.cards.map((c) => ({ revealed: !!c?.revealed }))
       : null;
-    const prevLogLen = Array.isArray(currentGame?.log) ? currentGame.log.length : 0;
     if (!snap.exists) {
       clearRevealAnimationSuppressions();
       currentGame = null;
@@ -5288,14 +5147,6 @@ function startGameListener(gameId, options = {}) {
     const replayedPreRenderConfirm = replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, currentGame.cards);
     const finishSnapshotRender = () => {
       renderGame();
-
-      // AI emotional reactions (correct/wrong/neutral/assassin) based on new log entries.
-      try {
-        const nextLog = Array.isArray(currentGame?.log) ? currentGame.log : [];
-        const newEntries = nextLog.slice(Math.max(0, prevLogLen));
-        maybeQueueAIReactionsFromLogEntries(newEntries, currentGame);
-      } catch (_) {}
-
       if (newlyRevealedIndices.length && !replayedPreRenderConfirm) {
         animateNewlyRevealedCards(newlyRevealedIndices);
       }
@@ -5508,11 +5359,7 @@ function updateSettingsInGameActions(isInGame) {
 
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
-  const spNote = document.getElementById('settings-singleplayer-note');
   const isPractice = !!(currentGame && currentGame.type === 'practice');
-
-  // Show a note in singleplayer explaining why the buttons are disabled.
-  if (spNote) spNote.style.display = isPractice ? 'block' : 'none';
 
   // End Game permissions:
   // - Tournament games: only your team's spymaster can end.
@@ -6237,9 +6084,6 @@ function renderBoard(isSpymaster) {
   const spectator = isSpectating();
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuess = isMyTurn && currentGame.currentPhase === 'operatives' && !isSpymaster && !currentGame.winner;
-  // In local practice, allow tapping cards to show "considering" initials even when
-  // the human isn't formally seated / it's not their operative turn.
-  const canSelectForConsidering = canGuess || isCurrentLocalPracticeGame();
   const canStackTargets = isMyTurn
     && currentGame.currentPhase === 'spymaster'
     && isSpymaster
@@ -6262,7 +6106,7 @@ function renderBoard(isSpymaster) {
   const hasPendingSelection = hasStoredPendingSelection && Number.isInteger(pendingIdx) && pendingIdx >= 0 && pendingIdx < currentGame.cards.length;
   const pendingCard = hasPendingSelection ? currentGame.cards[pendingIdx] : null;
   const stalePendingSelection =
-    !canSelectForConsidering ||
+    !canGuess ||
     !hasPendingSelection ||
     !!pendingCard?.revealed ||
     !!(_pendingSelectionContextKey && _pendingSelectionContextKey !== currentSelectionContextKey);
@@ -6281,10 +6125,7 @@ function renderBoard(isSpymaster) {
   const turnTeam = (currentGame?.currentTeam === 'red' || currentGame?.currentTeam === 'blue')
     ? currentGame.currentTeam
     : null;
-  // In local singleplayer practice there may be no "my team" concept for the human,
-  // but we still want the UI to show the team's "considering" chips (AI initials).
-  // So practice games always allow viewing the current team's considering marks.
-  const canViewTurnConsidering = !!turnTeam && (spectator || isCurrentLocalPracticeGame() || (myTeamColor && myTeamColor === turnTeam));
+  const canViewTurnConsidering = !!turnTeam && (spectator || (myTeamColor && myTeamColor === turnTeam));
   const teamConsidering = canViewTurnConsidering
     ? (turnTeam === 'red' ? (currentGame?.redConsidering || {}) : (currentGame?.blueConsidering || {}))
     : {};
@@ -6303,12 +6144,12 @@ function renderBoard(isSpymaster) {
       classes.push(`card-${card.type}`);
       if (canTargetThisCard) classes.push('stacking-selectable');
       else classes.push('disabled');
-    } else if (!canGuess && !isCurrentLocalPracticeGame()) {
+    } else if (!canGuess) {
       classes.push('disabled');
     }
 
     // Pending selection highlight
-    if (canSelectForConsidering && !card.revealed && pendingCardSelection === i) {
+    if (canGuess && !card.revealed && pendingCardSelection === i) {
       classes.push('pending-select');
     }
     if (canTargetThisCard && stackTargetSet.has(i)) {
@@ -6325,7 +6166,7 @@ function renderBoard(isSpymaster) {
       ? getTeamConsideringEntriesForCard(teamConsidering, i, myOwnerId)
       : [];
     let consideringVisible = [...consideringEntries];
-    if (canSelectForConsidering && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
+    if (canGuess && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
       consideringVisible.unshift({
         owner: myOwnerId,
         initials: getPlayerInitials(getUserName()),
@@ -6334,30 +6175,31 @@ function renderBoard(isSpymaster) {
         isMine: true
       });
     }
-    // Show ALL considering chips (no hard cap). This is the single source of truth
-    // for "someone is considering this card".
-    const visibleConsidering = consideringVisible;
+    const visibleConsidering = consideringVisible.slice(0, 4);
     const consideringHtml = visibleConsidering.length
       ? `
           <div class="card-considering-row" aria-hidden="true">
             ${visibleConsidering.map(entry => {
               const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
-              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${initials}</span>`;
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}" title="${title}">${initials}</span>`;
             }).join('')}
+            ${consideringVisible.length > visibleConsidering.length
+              ? `<span class="card-considering-chip more">+${consideringVisible.length - visibleConsidering.length}</span>`
+              : ''}
           </div>
         `
       : '';
-    // Always render a back face so the confirm/reveal flip animation can run
-    // in every visual mode. (Non-OG modes keep the back hidden unless an
-    // animation explicitly flips the card.)
-    const backFace = `
+    const backFace = isOgMode
+      ? `
           <div class="card-face card-back">
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
-        `;
+        `
+      : '';
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
+        ${consideringHtml}
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
@@ -6370,17 +6212,9 @@ function renderBoard(isSpymaster) {
           ${backFace}
         </div>
         <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
-        ${consideringHtml}
       </div>
     `;
   }).join('');
-
-  // Always re-fit card words after any board re-render.
-  // The board can re-render for reasons that don't change our fit keys
-  // (chat updates, timers, minor UI state). In those cases the DOM is
-  // replaced and the fitted inline font sizing can be lost, letting long
-  // words overflow. This call is rAF-debounced.
-  scheduleFitCardWords();
 
   // Fit words only when board/reveal state or viewport changed.
   const shouldRefitWords =
@@ -9307,16 +9141,6 @@ function setupBoardCardInteractions() {
       return;
     }
 
-    // Mine chip tap: toggle just that card's considering mark (don't clear others).
-    const toggleChip = target.closest('[data-toggle-considering]');
-    if (toggleChip && boardEl.contains(toggleChip)) {
-      const chipCardIdx = Number(toggleChip.getAttribute('data-toggle-considering'));
-      if (Number.isInteger(chipCardIdx) && chipCardIdx >= 0) {
-        void syncTeamConsidering(chipCardIdx);
-      }
-      return;
-    }
-
     const cardEl = target.closest('.game-card');
     if (!cardEl || !boardEl.contains(cardEl)) return;
 
@@ -9473,45 +9297,7 @@ function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId 
 async function syncTeamConsidering(cardIndexOrNull) {
   try {
     if (!currentGame?.id) return;
-    // Practice is local-only: persist the same considering buckets on the local game.
-    if (isCurrentLocalPracticeGame()) {
-      const ownerId = getCurrentMarkerOwnerId();
-      const userName = String((typeof getUserName === 'function') ? (getUserName() || '') : '').trim() || 'You';
-      const initials = getPlayerInitials(userName);
-      const hasIndex =
-        cardIndexOrNull !== null &&
-        cardIndexOrNull !== undefined &&
-        String(cardIndexOrNull).trim() !== '' &&
-        Number.isInteger(Number(cardIndexOrNull));
-      const nextIdx = hasIndex ? Number(cardIndexOrNull) : null;
-      const team = String(getMyTeamColor?.() || currentGame?.currentTeam || 'red').toLowerCase() === 'blue' ? 'blue' : 'red';
-      const field = (team === 'blue') ? 'blueConsidering' : 'redConsidering';
-
-      mutateLocalPracticeGame(currentGame.id, (draft) => {
-        const considering = { ...(draft?.[field] || {}) };
-
-        if (nextIdx === null) {
-          for (const key of Object.keys(considering)) {
-            const bucket = normalizeTeamConsideringBucket(considering[key]);
-            delete bucket[ownerId];
-            if (Object.keys(bucket).length) considering[key] = bucket;
-            else delete considering[key];
-          }
-        } else if (nextIdx >= 0) {
-          const key = String(nextIdx);
-          const bucket = normalizeTeamConsideringBucket(considering[key]);
-          if (bucket[ownerId]) delete bucket[ownerId];
-          else bucket[ownerId] = { initials, name: userName, ts: Date.now() };
-          if (Object.keys(bucket).length) considering[key] = bucket;
-          else delete considering[key];
-        }
-
-        draft[field] = considering;
-        draft.updatedAtMs = Date.now();
-      });
-      return;
-    }
-
+    if (isCurrentLocalPracticeGame()) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const ownerId = getCurrentMarkerOwnerId();
@@ -9533,30 +9319,23 @@ async function syncTeamConsidering(cardIndexOrNull) {
       const game = snap.data() || {};
       const considering = { ...(game?.[field] || {}) };
 
-      // Multi-consider support:
-      // - Passing null clears ALL of your "considering" marks.
-      // - Passing an index toggles ONLY that card for you (does not clear other cards).
-      if (nextIdx === null) {
-        for (const key of Object.keys(considering)) {
-          const bucket = normalizeTeamConsideringBucket(considering[key]);
-          delete bucket[ownerId];
-          if (Object.keys(bucket).length) considering[key] = bucket;
-          else delete considering[key];
-        }
-      } else if (nextIdx >= 0) {
-        const key = String(nextIdx);
+      // Each user can consider at most one card at a time.
+      for (const key of Object.keys(considering)) {
         const bucket = normalizeTeamConsideringBucket(considering[key]);
-        if (bucket[ownerId]) {
-          delete bucket[ownerId];
-        } else {
-          bucket[ownerId] = {
-            initials,
-            name: userName || 'Player',
-            ts: Date.now()
-          };
-        }
+        delete bucket[ownerId];
         if (Object.keys(bucket).length) considering[key] = bucket;
         else delete considering[key];
+      }
+
+      if (nextIdx !== null && nextIdx >= 0) {
+        const key = String(nextIdx);
+        const bucket = normalizeTeamConsideringBucket(considering[key]);
+        bucket[ownerId] = {
+          initials,
+          name: userName || 'Player',
+          ts: Date.now()
+        };
+        considering[key] = bucket;
       }
 
       tx.update(ref, {
@@ -9628,7 +9407,7 @@ function buildCardTagElement(tag, opts = {}) {
 async function syncTeamMarker(cardIndex, tag) {
   try {
     if (!currentGame?.id) return;
-    // Local practice games still support team-visible markers (stored locally).
+    if (isCurrentLocalPracticeGame()) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const idx = Number(cardIndex);
@@ -9638,24 +9417,6 @@ async function syncTeamMarker(cardIndex, tag) {
     const t = String(tag || '').toLowerCase().trim();
     const clear = !t || t === 'clear';
     if (!clear && !['yes', 'maybe', 'no'].includes(t)) return;
-
-    if (isCurrentLocalPracticeGame()) {
-      mutateLocalPracticeGame(currentGame.id, (draft) => {
-        const markers = { ...(draft?.[field] || {}) };
-        const key = String(idx);
-        const bucket = normalizeTeamMarkerBucket(markers[key]);
-
-        if (clear) delete bucket[ownerId];
-        else bucket[ownerId] = t;
-
-        if (Object.keys(bucket).length) markers[key] = bucket;
-        else delete markers[key];
-
-        draft[field] = markers;
-        draft.updatedAtMs = Date.now();
-      });
-      return;
-    }
 
     const ref = db.collection('games').doc(currentGame.id);
     await db.runTransaction(async (tx) => {
@@ -9685,27 +9446,11 @@ async function syncTeamMarker(cardIndex, tag) {
 async function clearTeamMarkers() {
   try {
     if (!currentGame?.id) return;
-    // Local practice games still support team-visible markers (stored locally).
+    if (isCurrentLocalPracticeGame()) return;
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const ownerId = getCurrentMarkerOwnerId();
     const field = (myTeam === 'red') ? 'redMarkers' : 'blueMarkers';
-
-    if (isCurrentLocalPracticeGame()) {
-      mutateLocalPracticeGame(currentGame.id, (draft) => {
-        const markers = { ...(draft?.[field] || {}) };
-        for (const key of Object.keys(markers)) {
-          const bucket = normalizeTeamMarkerBucket(markers[key]);
-          delete bucket[ownerId];
-          if (Object.keys(bucket).length) markers[key] = bucket;
-          else delete markers[key];
-        }
-        draft[field] = markers;
-        draft.updatedAtMs = Date.now();
-      });
-      return;
-    }
-
     const ref = db.collection('games').doc(currentGame.id);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -9727,79 +9472,6 @@ async function clearTeamMarkers() {
     });
   } catch (e) {}
 }
-
-// Allow AIs to set practice markers using the same rendering path as multiplayer.
-// Online games should continue to use Firestore markers.
-window.__setLocalPracticeTeamMarker = function({ gameId, teamColor, ownerId, cardIndex, tag }) {
-  try {
-    const gid = String(gameId || '').trim();
-    if (!gid || !isLocalPracticeGameId(gid)) return;
-    const team = String(teamColor || '').toLowerCase();
-    if (team !== 'red' && team !== 'blue') return;
-    const idx = Number(cardIndex);
-    if (!Number.isFinite(idx) || idx < 0) return;
-    const owner = String(ownerId || '').trim();
-    if (!owner) return;
-    const t = String(tag || '').toLowerCase().trim();
-    const clear = !t || t === 'clear';
-    const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
-
-    mutateLocalPracticeGame(gid, (draft) => {
-      const markers = { ...(draft?.[field] || {}) };
-      const key = String(idx);
-      const bucket = normalizeTeamMarkerBucket(markers[key]);
-      if (clear) delete bucket[owner];
-      else if (['yes','maybe','no'].includes(t)) bucket[owner] = t;
-      if (Object.keys(bucket).length) markers[key] = bucket;
-      else delete markers[key];
-      draft[field] = markers;
-      draft.updatedAtMs = Date.now();
-    });
-
-    try { if (typeof renderCardTags === 'function') renderCardTags(); } catch (_) {}
-  } catch (_) {}
-};
-
-// Allow AIs to set "currently considering" chips in local practice games.
-// This mirrors the multiplayer Firestore considering buckets so the UI can
-// show AI initials on multiple candidate cards.
-window.__setLocalPracticeConsidering = function({ gameId, teamColor, ownerId, initials, name, cardKeys }) {
-  try {
-    const gid = String(gameId || '').trim();
-    if (!gid || !isLocalPracticeGameId(gid)) return;
-    const team = String(teamColor || '').toLowerCase();
-    if (team !== 'red' && team !== 'blue') return;
-    const owner = String(ownerId || '').trim();
-    if (!owner) return;
-
-    const field = (team === 'red') ? 'redConsidering' : 'blueConsidering';
-    // No limit on how many cards an AI can consider.
-    const keys = Array.isArray(cardKeys) ? cardKeys.map(k => String(k)).filter(Boolean) : [];
-    const init = String(initials || '').trim().slice(0, 3).toUpperCase() || '?';
-    const nm = String(name || '').trim();
-
-    mutateLocalPracticeGame(gid, (draft) => {
-      const considering = { ...(draft?.[field] || {}) };
-      // Clear existing considering marks for this owner.
-      for (const k of Object.keys(considering)) {
-        const bucket = normalizeTeamConsideringBucket(considering[k]);
-        delete bucket[owner];
-        if (Object.keys(bucket).length) considering[k] = bucket;
-        else delete considering[k];
-      }
-      // Apply new set.
-      for (const k of keys) {
-        const idx = Number(k);
-        if (!Number.isFinite(idx) || idx < 0) continue;
-        const bucket = normalizeTeamConsideringBucket(considering[String(idx)]);
-        bucket[owner] = { initials: init, name: nm, ts: Date.now() };
-        considering[String(idx)] = bucket;
-      }
-      draft[field] = considering;
-      draft.updatedAtMs = Date.now();
-    });
-  } catch (_) {}
-};
 
 function tagCard(cardIndex, tag) {
   const idx = Number(cardIndex);
@@ -9915,8 +9587,7 @@ function renderCardTags() {
     const row = document.createElement('div');
     row.className = 'card-tag-row';
 
-    // Show all visible tags (no cap).
-    const visible = marks;
+    const visible = marks.slice(0, 4);
     for (const mark of visible) {
       const el = buildCardTagElement(mark.tag, {
         isAI: mark.isAI,
@@ -9924,6 +9595,13 @@ function renderCardTags() {
         isMine: mark.isMine
       });
       if (el) row.appendChild(el);
+    }
+
+    if (marks.length > visible.length) {
+      const extra = document.createElement('div');
+      extra.className = 'card-tag card-tag-more';
+      extra.textContent = `+${marks.length - visible.length}`;
+      row.appendChild(extra);
     }
 
     card.appendChild(row);
@@ -10032,22 +9710,8 @@ function updatePendingCardSelectionUI() {
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // Always run a flip animation when a card becomes selected.
-    // Restart reliably by forcing a layout read between toggles.
+    // Selection should only show an outline; no motion until confirmation.
     if (_pendingSelectAnimIndex === pendingCardSelection) {
-      target.classList.remove('select-animate');
-      // eslint-disable-next-line no-unused-expressions
-      void target.offsetWidth;
-      requestAnimationFrame(() => {
-        if (!target.isConnected) return;
-        target.classList.add('select-animate');
-        // Remove the helper class after the keyframe finishes so the next
-        // selection can replay cleanly.
-        window.setTimeout(() => {
-          if (!target.isConnected) return;
-          target.classList.remove('select-animate');
-        }, 520);
-      });
       _pendingSelectAnimIndex = null;
     }
   }
@@ -10361,92 +10025,6 @@ async function handleOperativeChatSubmit(e) {
   }
 }
 
-// Lightweight AI chat helper used for reactions.
-async function postOperativeChatMessage(teamColor, senderId, senderName, text) {
-  const team = String(teamColor || '').toLowerCase() === 'blue' ? 'blue' : 'red';
-  const msgText = String(text || '').trim();
-  if (!msgText || !currentGame?.id) return;
-  const name = String(senderName || '').trim() || 'AI';
-  const sid = String(senderId || '').trim() || `ai:${name}`;
-
-  if (isCurrentLocalPracticeGame()) {
-    const nowMs = Date.now();
-    const chatField = team === 'blue' ? 'blueChat' : 'redChat';
-    mutateLocalPracticeGame(currentGame.id, (draft) => {
-      const list = Array.isArray(draft?.[chatField]) ? [...draft[chatField]] : [];
-      list.push({
-        id: `ai_chat_${nowMs}_${Math.random().toString(36).slice(2, 7)}`,
-        senderId: sid,
-        senderName: name,
-        text: msgText,
-        createdAtMs: nowMs,
-      });
-      draft[chatField] = (list.length > LOCAL_PRACTICE_CHAT_LIMIT) ? list.slice(-LOCAL_PRACTICE_CHAT_LIMIT) : list;
-      draft.updatedAtMs = nowMs;
-      draft.lastMoveAtMs = nowMs;
-    });
-    return;
-  }
-
-  try {
-    await db.collection('games').doc(currentGame.id)
-      .collection(`${team}Chat`)
-      .add({
-        senderId: sid,
-        senderName: name,
-        text: msgText,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-  } catch (_) {}
-}
-
-let _lastAIReactionKey = '';
-function maybeQueueAIReactionsFromLogEntries(newEntries, game) {
-  const entries = Array.isArray(newEntries) ? newEntries.map(e => String(e || '')).filter(Boolean) : [];
-  if (!entries.length) return;
-
-  const gameId = String(game?.id || '').trim();
-  const baseIdx = Math.max(0, (Array.isArray(game?.log) ? game.log.length : 0) - entries.length);
-  const key = `${gameId}:${baseIdx}:${entries.join('|')}`;
-  if (key === _lastAIReactionKey) return;
-  _lastAIReactionKey = key;
-
-  const aiList = Array.isArray(window.aiPlayers) ? window.aiPlayers.filter(a => a?.isAI) : [];
-  if (!aiList.length) return;
-
-  const classify = (s) => {
-    const t = String(s || '');
-    if (/ASSASSIN/i.test(t)) return 'assassin';
-    if (/\bCorrect!\b/i.test(t)) return 'correct';
-    if (/\bWrong!\b/i.test(t)) return 'wrong';
-    if (/\bNeutral\b/i.test(t)) return 'neutral';
-    return null;
-  };
-
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  const reactions = {
-    correct: ["nice.", "yesss.", "good one.", "keep going.", "that's it."],
-    wrong: ["ahh no.", "dang.", "wait what?", "ugh.", "that's rough."],
-    neutral: ["meh.", "neutral.", "ok fine.", "not it.", "welp."],
-    assassin: ["NOOO.", "oh my god.", "that's game…", "pain.", "welp we're cooked."],
-  };
-
-  // Post 1–2 quick reactions per entry from AIs on the involved team (if detectable).
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i];
-    const kind = classify(entry);
-    if (!kind) continue;
-    const team = /\bBlue\b/i.test(entry) ? 'blue' : (/\bRed\b/i.test(entry) ? 'red' : null);
-
-    const pool = team ? aiList.filter(a => a.team === team) : aiList;
-    const sample = pool.slice(0, 1).concat(pool.length > 1 ? [pool[Math.floor(Math.random() * pool.length)]] : []);
-    for (const ai of sample) {
-      const msg = pick(reactions[kind] || reactions.neutral);
-      void postOperativeChatMessage(ai.team || team || 'red', `ai:${ai.id || ai.name}`, ai.name, msg);
-    }
-  }
-}
-
 function updateChatPrivacyBadge() {
   const badge = document.getElementById('chat-privacy-badge');
   if (!badge) return;
@@ -10682,7 +10260,7 @@ function showStaticGameTimer(phase) {
 
   // Mirror static timer into the OG phase banner when applicable.
   try {
-    updateOgPhaseBannerTimerText(`${getRoleLabelForPhase(phase)}: ∞`, phase);
+    updateOgPhaseBannerTimerText('∞', phase);
   } catch (_) {
     // no-op
   }
@@ -11430,14 +11008,14 @@ function showClueAnimation(word, number, teamColor) {
   const isLight = body.classList.contains('light-mode');
   const isCozy = body.classList.contains('cozy-mode');
   const isOg = body.classList.contains('og-mode');
-  // For the clue reveal, we treat "og-mode" the same as dark mode.
-  const isDark = !isLight && !isCozy;
+  // Dark mode is the default (no explicit class).
+  const isDark = !isLight && !isCozy && !isOg;
 
   const isRed = teamColor === 'red';
   const teamClass = isRed ? 'team-red' : 'team-blue';
 
   const overlay = document.createElement('div');
-  overlay.className = `clue-announcement-overlay ${teamClass} ${isLight ? 'clue-variant-light' : isCozy ? 'clue-variant-cozy' : 'clue-variant-dark'}`;
+  overlay.className = `clue-announcement-overlay ${teamClass} ${isLight ? 'clue-variant-light' : isCozy ? 'clue-variant-cozy' : isOg ? 'clue-variant-og' : 'clue-variant-dark'}`;
 
   const safeWord = escapeHtml(String(word));
   const safeNum = escapeHtml(String(number != null ? number : '0'));
@@ -11487,17 +11065,17 @@ function showClueAnimation(word, number, teamColor) {
       </div>
     `;
   } else {
-    // og-mode uses the dark reveal (requested: keep the dramatic black card).
+    // OG mode: neon scanline + glitch word + rotating emblem (no box / no blur).
     overlay.innerHTML = `
-      <div class="clue-announcement-backdrop"></div>
-      <div class="clue-announcement-card ${teamClass}">
-        <div class="clue-announcement-glow ${teamClass}"></div>
-        <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
-        <div class="clue-announcement-word">${safeWord}</div>
-        <div class="clue-announcement-divider ${teamClass}"></div>
-        <div class="clue-announcement-number-row">
-          <span class="clue-announcement-for">for</span>
-          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
+      <div class="clue-announcement-backdrop clue-og-backdrop"></div>
+      <div class="clue-og-container ${teamClass}">
+        <div class="clue-og-scan" aria-hidden="true"></div>
+        <div class="clue-og-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
+        <div class="clue-og-word" data-text="${safeWord}">${safeWord}</div>
+        <div class="clue-og-meta">
+          <span class="clue-og-for">FOR</span>
+          <span class="clue-og-emblem" aria-hidden="true"></span>
+          <span class="clue-og-num">${safeNum}</span>
         </div>
       </div>
     `;
@@ -11515,7 +11093,7 @@ function showClueAnimation(word, number, teamColor) {
   let autoDismissMs = 5500; // dark mode default
   if (isLight) autoDismissMs = 3800;
   else if (isCozy) autoDismissMs = 4800;
-  else if (isOg) autoDismissMs = 5500;
+  else if (isOg) autoDismissMs = 4400;
 
   setTimeout(() => {
     if (overlay.parentNode) {
@@ -11554,19 +11132,14 @@ function handleCardSelect(cardIndex) {
     return;
   }
 
-  // In local singleplayer practice, tapping a card should still toggle your
-  // "considering" initials, even if you aren't explicitly seated.
-  if (isCurrentLocalPracticeGame()) {
-    if (pendingCardSelection === idx) clearPendingCardSelection();
-    else setPendingCardSelection(idx);
-    return;
-  }
-
   if (!canCurrentUserGuess()) return;
 
   // Toggle selection
-  if (pendingCardSelection === idx) clearPendingCardSelection();
-  else setPendingCardSelection(idx);
+  if (pendingCardSelection === idx) {
+    clearPendingCardSelection();
+  } else {
+    setPendingCardSelection(idx);
+  }
 }
 
 async function handleCardConfirm(evt, cardIndex) {
@@ -11590,7 +11163,7 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
+  const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   // Drop pending-selection outline immediately when confirm starts.
