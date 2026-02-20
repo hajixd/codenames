@@ -396,6 +396,7 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
   if (!key || !isLocalPracticeGameId(key) || !gameData) return null;
 
   const prevLiveGame = (currentGame?.id === key) ? cloneLocalValue(currentGame) : null;
+  const prevLogLen = Array.isArray(prevLiveGame?.log) ? prevLiveGame.log.length : 0;
   const next = cloneLocalValue(gameData) || {};
   next.id = key;
   next.updatedAtMs = Date.now();
@@ -445,6 +446,14 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
       if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
       else stopPracticeInactivityWatcher();
       try { renderGame(); } catch (_) {}
+
+      // AI emotional reactions based on newly appended log lines.
+      try {
+        const nextLog = Array.isArray(currentGame?.log) ? currentGame.log : [];
+        const newEntries = nextLog.slice(Math.max(0, prevLogLen));
+        maybeQueueAIReactionsFromLogEntries(newEntries, currentGame);
+      } catch (_) {}
+
       if (!opts.skipAnimation && newlyRevealedIndices.length && !replayedPreRenderConfirm) {
         animateNewlyRevealedCards(newlyRevealedIndices);
       }
@@ -5192,6 +5201,7 @@ function startGameListener(gameId, options = {}) {
     const prevCards = Array.isArray(currentGame?.cards)
       ? currentGame.cards.map((c) => ({ revealed: !!c?.revealed }))
       : null;
+    const prevLogLen = Array.isArray(currentGame?.log) ? currentGame.log.length : 0;
     if (!snap.exists) {
       clearRevealAnimationSuppressions();
       currentGame = null;
@@ -5267,6 +5277,14 @@ function startGameListener(gameId, options = {}) {
     const replayedPreRenderConfirm = replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, currentGame.cards);
     const finishSnapshotRender = () => {
       renderGame();
+
+      // AI emotional reactions (correct/wrong/neutral/assassin) based on new log entries.
+      try {
+        const nextLog = Array.isArray(currentGame?.log) ? currentGame.log : [];
+        const newEntries = nextLog.slice(Math.max(0, prevLogLen));
+        maybeQueueAIReactionsFromLogEntries(newEntries, currentGame);
+      } catch (_) {}
+
       if (newlyRevealedIndices.length && !replayedPreRenderConfirm) {
         animateNewlyRevealedCards(newlyRevealedIndices);
       }
@@ -6204,6 +6222,9 @@ function renderBoard(isSpymaster) {
   const spectator = isSpectating();
   const isMyTurn = !spectator && myTeamColor && (currentGame.currentTeam === myTeamColor);
   const canGuess = isMyTurn && currentGame.currentPhase === 'operatives' && !isSpymaster && !currentGame.winner;
+  // In local practice, allow tapping cards to show "considering" initials even when
+  // the human isn't formally seated / it's not their operative turn.
+  const canSelectForConsidering = canGuess || isCurrentLocalPracticeGame();
   const canStackTargets = isMyTurn
     && currentGame.currentPhase === 'spymaster'
     && isSpymaster
@@ -6226,7 +6247,7 @@ function renderBoard(isSpymaster) {
   const hasPendingSelection = hasStoredPendingSelection && Number.isInteger(pendingIdx) && pendingIdx >= 0 && pendingIdx < currentGame.cards.length;
   const pendingCard = hasPendingSelection ? currentGame.cards[pendingIdx] : null;
   const stalePendingSelection =
-    !canGuess ||
+    !canSelectForConsidering ||
     !hasPendingSelection ||
     !!pendingCard?.revealed ||
     !!(_pendingSelectionContextKey && _pendingSelectionContextKey !== currentSelectionContextKey);
@@ -6267,12 +6288,12 @@ function renderBoard(isSpymaster) {
       classes.push(`card-${card.type}`);
       if (canTargetThisCard) classes.push('stacking-selectable');
       else classes.push('disabled');
-    } else if (!canGuess) {
+    } else if (!canGuess && !isCurrentLocalPracticeGame()) {
       classes.push('disabled');
     }
 
     // Pending selection highlight
-    if (canGuess && !card.revealed && pendingCardSelection === i) {
+    if (canSelectForConsidering && !card.revealed && pendingCardSelection === i) {
       classes.push('pending-select');
     }
     if (canTargetThisCard && stackTargetSet.has(i)) {
@@ -6289,7 +6310,7 @@ function renderBoard(isSpymaster) {
       ? getTeamConsideringEntriesForCard(teamConsidering, i, myOwnerId)
       : [];
     let consideringVisible = [...consideringEntries];
-    if (canGuess && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
+    if (canSelectForConsidering && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
       consideringVisible.unshift({
         owner: myOwnerId,
         initials: getPlayerInitials(getUserName()),
@@ -9426,7 +9447,45 @@ function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId 
 async function syncTeamConsidering(cardIndexOrNull) {
   try {
     if (!currentGame?.id) return;
-    if (isCurrentLocalPracticeGame()) return;
+    // Practice is local-only: persist the same considering buckets on the local game.
+    if (isCurrentLocalPracticeGame()) {
+      const ownerId = getCurrentMarkerOwnerId();
+      const userName = String((typeof getUserName === 'function') ? (getUserName() || '') : '').trim() || 'You';
+      const initials = getPlayerInitials(userName);
+      const hasIndex =
+        cardIndexOrNull !== null &&
+        cardIndexOrNull !== undefined &&
+        String(cardIndexOrNull).trim() !== '' &&
+        Number.isInteger(Number(cardIndexOrNull));
+      const nextIdx = hasIndex ? Number(cardIndexOrNull) : null;
+      const team = String(getMyTeamColor?.() || currentGame?.currentTeam || 'red').toLowerCase() === 'blue' ? 'blue' : 'red';
+      const field = (team === 'blue') ? 'blueConsidering' : 'redConsidering';
+
+      mutateLocalPracticeGame(currentGame.id, (draft) => {
+        const considering = { ...(draft?.[field] || {}) };
+
+        if (nextIdx === null) {
+          for (const key of Object.keys(considering)) {
+            const bucket = normalizeTeamConsideringBucket(considering[key]);
+            delete bucket[ownerId];
+            if (Object.keys(bucket).length) considering[key] = bucket;
+            else delete considering[key];
+          }
+        } else if (nextIdx >= 0) {
+          const key = String(nextIdx);
+          const bucket = normalizeTeamConsideringBucket(considering[key]);
+          if (bucket[ownerId]) delete bucket[ownerId];
+          else bucket[ownerId] = { initials, name: userName, ts: Date.now() };
+          if (Object.keys(bucket).length) considering[key] = bucket;
+          else delete considering[key];
+        }
+
+        draft[field] = considering;
+        draft.updatedAtMs = Date.now();
+      });
+      return;
+    }
+
     const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
     if (myTeam !== 'red' && myTeam !== 'blue') return;
     const ownerId = getCurrentMarkerOwnerId();
@@ -10259,6 +10318,92 @@ async function handleOperativeChatSubmit(e) {
   } catch (err) {
     console.error('Send chat error:', err);
     input.value = text; // Restore on error
+  }
+}
+
+// Lightweight AI chat helper used for reactions.
+async function postOperativeChatMessage(teamColor, senderId, senderName, text) {
+  const team = String(teamColor || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+  const msgText = String(text || '').trim();
+  if (!msgText || !currentGame?.id) return;
+  const name = String(senderName || '').trim() || 'AI';
+  const sid = String(senderId || '').trim() || `ai:${name}`;
+
+  if (isCurrentLocalPracticeGame()) {
+    const nowMs = Date.now();
+    const chatField = team === 'blue' ? 'blueChat' : 'redChat';
+    mutateLocalPracticeGame(currentGame.id, (draft) => {
+      const list = Array.isArray(draft?.[chatField]) ? [...draft[chatField]] : [];
+      list.push({
+        id: `ai_chat_${nowMs}_${Math.random().toString(36).slice(2, 7)}`,
+        senderId: sid,
+        senderName: name,
+        text: msgText,
+        createdAtMs: nowMs,
+      });
+      draft[chatField] = (list.length > LOCAL_PRACTICE_CHAT_LIMIT) ? list.slice(-LOCAL_PRACTICE_CHAT_LIMIT) : list;
+      draft.updatedAtMs = nowMs;
+      draft.lastMoveAtMs = nowMs;
+    });
+    return;
+  }
+
+  try {
+    await db.collection('games').doc(currentGame.id)
+      .collection(`${team}Chat`)
+      .add({
+        senderId: sid,
+        senderName: name,
+        text: msgText,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+  } catch (_) {}
+}
+
+let _lastAIReactionKey = '';
+function maybeQueueAIReactionsFromLogEntries(newEntries, game) {
+  const entries = Array.isArray(newEntries) ? newEntries.map(e => String(e || '')).filter(Boolean) : [];
+  if (!entries.length) return;
+
+  const gameId = String(game?.id || '').trim();
+  const baseIdx = Math.max(0, (Array.isArray(game?.log) ? game.log.length : 0) - entries.length);
+  const key = `${gameId}:${baseIdx}:${entries.join('|')}`;
+  if (key === _lastAIReactionKey) return;
+  _lastAIReactionKey = key;
+
+  const aiList = Array.isArray(window.aiPlayers) ? window.aiPlayers.filter(a => a?.isAI) : [];
+  if (!aiList.length) return;
+
+  const classify = (s) => {
+    const t = String(s || '');
+    if (/ASSASSIN/i.test(t)) return 'assassin';
+    if (/\bCorrect!\b/i.test(t)) return 'correct';
+    if (/\bWrong!\b/i.test(t)) return 'wrong';
+    if (/\bNeutral\b/i.test(t)) return 'neutral';
+    return null;
+  };
+
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const reactions = {
+    correct: ["nice.", "yesss.", "good one.", "keep going.", "that's it."],
+    wrong: ["ahh no.", "dang.", "wait what?", "ugh.", "that's rough."],
+    neutral: ["meh.", "neutral.", "ok fine.", "not it.", "welp."],
+    assassin: ["NOOO.", "oh my god.", "that's game…", "pain.", "welp we're cooked."],
+  };
+
+  // Post 1–2 quick reactions per entry from AIs on the involved team (if detectable).
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const kind = classify(entry);
+    if (!kind) continue;
+    const team = /\bBlue\b/i.test(entry) ? 'blue' : (/\bRed\b/i.test(entry) ? 'red' : null);
+
+    const pool = team ? aiList.filter(a => a.team === team) : aiList;
+    const sample = pool.slice(0, 1).concat(pool.length > 1 ? [pool[Math.floor(Math.random() * pool.length)]] : []);
+    for (const ai of sample) {
+      const msg = pick(reactions[kind] || reactions.neutral);
+      void postOperativeChatMessage(ai.team || team || 'red', `ai:${ai.id || ai.name}`, ai.name, msg);
+    }
   }
 }
 
@@ -11245,14 +11390,14 @@ function showClueAnimation(word, number, teamColor) {
   const isLight = body.classList.contains('light-mode');
   const isCozy = body.classList.contains('cozy-mode');
   const isOg = body.classList.contains('og-mode');
-  // Dark mode is the default (no explicit class).
-  const isDark = !isLight && !isCozy && !isOg;
+  // For the clue reveal, we treat "og-mode" the same as dark mode.
+  const isDark = !isLight && !isCozy;
 
   const isRed = teamColor === 'red';
   const teamClass = isRed ? 'team-red' : 'team-blue';
 
   const overlay = document.createElement('div');
-  overlay.className = `clue-announcement-overlay ${teamClass} ${isLight ? 'clue-variant-light' : isCozy ? 'clue-variant-cozy' : isOg ? 'clue-variant-og' : 'clue-variant-dark'}`;
+  overlay.className = `clue-announcement-overlay ${teamClass} ${isLight ? 'clue-variant-light' : isCozy ? 'clue-variant-cozy' : 'clue-variant-dark'}`;
 
   const safeWord = escapeHtml(String(word));
   const safeNum = escapeHtml(String(number != null ? number : '0'));
@@ -11302,17 +11447,17 @@ function showClueAnimation(word, number, teamColor) {
       </div>
     `;
   } else {
-    // OG mode: neon scanline + glitch word + rotating emblem (no box / no blur).
+    // og-mode uses the dark reveal (requested: keep the dramatic black card).
     overlay.innerHTML = `
-      <div class="clue-announcement-backdrop clue-og-backdrop"></div>
-      <div class="clue-og-container ${teamClass}">
-        <div class="clue-og-scan" aria-hidden="true"></div>
-        <div class="clue-og-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
-        <div class="clue-og-word" data-text="${safeWord}">${safeWord}</div>
-        <div class="clue-og-meta">
-          <span class="clue-og-for">FOR</span>
-          <span class="clue-og-emblem" aria-hidden="true"></span>
-          <span class="clue-og-num">${safeNum}</span>
+      <div class="clue-announcement-backdrop"></div>
+      <div class="clue-announcement-card ${teamClass}">
+        <div class="clue-announcement-glow ${teamClass}"></div>
+        <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+        <div class="clue-announcement-word">${safeWord}</div>
+        <div class="clue-announcement-divider ${teamClass}"></div>
+        <div class="clue-announcement-number-row">
+          <span class="clue-announcement-for">for</span>
+          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
         </div>
       </div>
     `;
@@ -11330,7 +11475,7 @@ function showClueAnimation(word, number, teamColor) {
   let autoDismissMs = 5500; // dark mode default
   if (isLight) autoDismissMs = 3800;
   else if (isCozy) autoDismissMs = 4800;
-  else if (isOg) autoDismissMs = 4400;
+  else if (isOg) autoDismissMs = 5500;
 
   setTimeout(() => {
     if (overlay.parentNode) {
@@ -11369,14 +11514,19 @@ function handleCardSelect(cardIndex) {
     return;
   }
 
+  // In local singleplayer practice, tapping a card should still toggle your
+  // "considering" initials, even if you aren't explicitly seated.
+  if (isCurrentLocalPracticeGame()) {
+    if (pendingCardSelection === idx) clearPendingCardSelection();
+    else setPendingCardSelection(idx);
+    return;
+  }
+
   if (!canCurrentUserGuess()) return;
 
   // Toggle selection
-  if (pendingCardSelection === idx) {
-    clearPendingCardSelection();
-  } else {
-    setPendingCardSelection(idx);
-  }
+  if (pendingCardSelection === idx) clearPendingCardSelection();
+  else setPendingCardSelection(idx);
 }
 
 async function handleCardConfirm(evt, cardIndex) {
