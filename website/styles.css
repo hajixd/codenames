@@ -149,7 +149,7 @@ body.light-mode {
   display: inline-flex;
   align-items: center;
   pointer-events: none;
-  z-index: 25;
+  z-index: 15;
 }
 
 .game-card .card-considering-chip{
@@ -178,11 +178,6 @@ body.light-mode {
   background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.32), rgba(255,255,255,0.06) 44%, rgba(0,0,0,0.14) 85%), linear-gradient(180deg, rgba(66, 145, 220, 0.96), rgba(32, 91, 162, 0.96));
   border-color: rgba(164, 212, 255, 0.88);
   color: #ffffff;
-  pointer-events: auto;
-  cursor: pointer;
-}
-.game-card .card-considering-chip.mine:hover{
-  filter: brightness(1.18);
 }
 
 .game-card .card-considering-chip.more{
@@ -7806,19 +7801,6 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-row-volume .settings-volume-value {
   min-width: 36px;
-}
-
-/* Singleplayer note shown above the disabled Leave/End buttons */
-.settings-singleplayer-note {
-  margin: 0 0 10px;
-  padding: 7px 10px;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-dim);
-  text-align: center;
-  line-height: 1.4;
 }
 
 /* Settings Account Actions */

@@ -5497,11 +5497,7 @@ function updateSettingsInGameActions(isInGame) {
 
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
-  const spNote = document.getElementById('settings-singleplayer-note');
   const isPractice = !!(currentGame && currentGame.type === 'practice');
-
-  // Show a note in singleplayer explaining why the buttons are disabled.
-  if (spNote) spNote.style.display = isPractice ? 'block' : 'none';
 
   // End Game permissions:
   // - Tournament games: only your team's spymaster can end.
@@ -6332,7 +6328,7 @@ function renderBoard(isSpymaster) {
             ${visibleConsidering.map(entry => {
               const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
-              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${initials}</span>`;
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}" title="${title}">${initials}</span>`;
             }).join('')}
           </div>
         `
@@ -6346,6 +6342,7 @@ function renderBoard(isSpymaster) {
       : '';
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
+        ${consideringHtml}
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
@@ -6358,7 +6355,6 @@ function renderBoard(isSpymaster) {
           ${backFace}
         </div>
         <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
-        ${consideringHtml}
       </div>
     `;
   }).join('');
@@ -9292,16 +9288,6 @@ function setupBoardCardInteractions() {
       setupBoardCardInteractions._lastIdx = idx;
       setupBoardCardInteractions._lastAt = now;
       void handleCardConfirm(evt, idx);
-      return;
-    }
-
-    // Mine chip tap: toggle just that card's considering mark (don't clear others).
-    const toggleChip = target.closest('[data-toggle-considering]');
-    if (toggleChip && boardEl.contains(toggleChip)) {
-      const chipCardIdx = Number(toggleChip.getAttribute('data-toggle-considering'));
-      if (Number.isInteger(chipCardIdx) && chipCardIdx >= 0) {
-        void syncTeamConsidering(chipCardIdx);
-      }
       return;
     }
 
