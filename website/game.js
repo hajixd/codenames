@@ -155,6 +155,94 @@ function animateNewlyRevealedCards(cardIndices = [], cards = currentGame?.cards)
   });
 }
 
+function draftToMs(value) {
+  try {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+  } catch (_) {}
+  return 0;
+}
+
+function normalizeLiveClueDraftSignature(draft) {
+  if (!draft || typeof draft !== 'object') return '';
+  const word = String(draft.word || '').trim().toUpperCase();
+  const number = String(draft.number ?? '').trim();
+  const team = String(draft.team || '').trim().toLowerCase();
+  const byId = String(draft.byId || '').trim();
+  const byName = String(draft.byName || '').trim();
+  return `${team}|${word}|${number}|${byId}|${byName}`;
+}
+
+function buildLiveDraftFastPathSignature(game) {
+  if (!game || typeof game !== 'object') return '';
+  const cardsSig = (Array.isArray(game.cards) ? game.cards : [])
+    .map((c) => `${String(c?.word || '')}:${String(c?.type || '')}:${c?.revealed ? 1 : 0}`)
+    .join('|');
+  const teamPlayersSig = (players = []) => players.map((p) => {
+    const id = String(p?.odId || p?.userId || p?.id || '').trim();
+    const name = String(p?.name || '').trim();
+    const role = String(p?.role || 'operative').trim();
+    const ready = p?.ready ? '1' : '0';
+    const ai = p?.isAI ? '1' : '0';
+    return `${id}:${name}:${role}:${ready}:${ai}`;
+  }).join(',');
+  const clueHistorySig = (Array.isArray(game.clueHistory) ? game.clueHistory : [])
+    .map((c) => {
+      const results = Array.isArray(c?.results) ? c.results : [];
+      const last = results.length ? results[results.length - 1] : null;
+      const lastSig = last
+        ? `${String(last.word || '').trim().toUpperCase()}:${String(last.result || '').trim().toLowerCase()}`
+        : '';
+      return `${String(c?.team || '')}:${String(c?.word || '').trim().toUpperCase()}:${String(c?.number ?? '')}:${results.length}:${lastSig}`;
+    })
+    .join(';');
+  const pending = game.pendingClue && typeof game.pendingClue === 'object' ? game.pendingClue : null;
+  const pendingSig = pending
+    ? `${String(pending.team || '')}:${String(pending.word || '').trim().toUpperCase()}:${String(pending.number ?? '')}:${String(pending.state || '')}`
+    : '';
+  const currentClue = game.currentClue && typeof game.currentClue === 'object' ? game.currentClue : null;
+  const currentClueSig = currentClue
+    ? `${String(currentClue.word || '').trim().toUpperCase()}:${String(currentClue.number ?? '')}`
+    : '';
+  const redChatLen = Array.isArray(game.redChat) ? game.redChat.length : 0;
+  const blueChatLen = Array.isArray(game.blueChat) ? game.blueChat.length : 0;
+  const logLen = Array.isArray(game.log) ? game.log.length : 0;
+  return [
+    String(game.id || ''),
+    String(game.type || ''),
+    String(game.currentPhase || ''),
+    String(game.currentTeam || ''),
+    String(game.winner || ''),
+    currentClueSig,
+    pendingSig,
+    String(Number.isFinite(+game.guessesRemaining) ? +game.guessesRemaining : ''),
+    String(Number.isFinite(+game.redCardsLeft) ? +game.redCardsLeft : ''),
+    String(Number.isFinite(+game.blueCardsLeft) ? +game.blueCardsLeft : ''),
+    String(game.redSpymaster || ''),
+    String(game.blueSpymaster || ''),
+    String(draftToMs(game.timerEnd)),
+    cardsSig,
+    teamPlayersSig(Array.isArray(game.redPlayers) ? game.redPlayers : []),
+    teamPlayersSig(Array.isArray(game.bluePlayers) ? game.bluePlayers : []),
+    clueHistorySig,
+    String(logLen),
+    String(redChatLen),
+    String(blueChatLen),
+    JSON.stringify(game.redConsidering || {}),
+    JSON.stringify(game.blueConsidering || {}),
+  ].join('||');
+}
+
+function isLiveClueDraftOnlyUpdate(prevGame, nextGame) {
+  if (!prevGame || !nextGame) return false;
+  const prevDraftSig = normalizeLiveClueDraftSignature(prevGame.liveClueDraft);
+  const nextDraftSig = normalizeLiveClueDraftSignature(nextGame.liveClueDraft);
+  if (prevDraftSig === nextDraftSig) return false;
+  return buildLiveDraftFastPathSignature(prevGame) === buildLiveDraftFastPathSignature(nextGame);
+}
+
 // Best-effort local resume: remember the last active game so a page refresh can jump straight back in.
 // NOTE: This is purely device-local (localStorage) and does not write anything to Firestore.
 window.restoreLastGameFromStorage = function restoreLastGameFromStorage() {
@@ -2644,7 +2732,7 @@ function setupOgGamelogSlidedown() {
     chatSlidedown.classList.add('open');
     chatToggleBtn?.classList.add('og-gamelog-active');
     markOgChatSeen();
-    try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
+    try { dockChatIntoOgPanels(isOnlineStyleActive()); } catch (_) {}
     // Scroll chat to bottom when opening
     requestAnimationFrame(() => {
       const chatContainer = document.getElementById('operative-chat-messages');
@@ -2656,7 +2744,7 @@ function setupOgGamelogSlidedown() {
     chatSlidedown.classList.remove('open');
     chatToggleBtn?.classList.remove('og-gamelog-active');
     updateOgChatUnreadBadge();
-    try { dockChatIntoOgPanels(document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode')); } catch (_) {}
+    try { dockChatIntoOgPanels(isOnlineStyleActive()); } catch (_) {}
   }
   const isOpen = () => slidedown.classList.contains('open');
   const isChatOpen = () => !!chatSlidedown?.classList.contains('open');
@@ -5062,6 +5150,7 @@ async function rejoinCurrentGame() {
 function startGameListener(gameId, options = {}) {
   if (gameUnsub) gameUnsub();
   _lastSentClueDraftSig = '';
+  _lastBoardRenderSignature = '';
   const localPractice = isLocalPracticeGameId(gameId);
   currentListenerEphemeral = !!(options.ephemeral || localPractice);
   let isFirstSnapshot = true;
@@ -5124,6 +5213,7 @@ function startGameListener(gameId, options = {}) {
   }
 
   gameUnsub = db.collection('games').doc(gameId).onSnapshot((snap) => {
+    const prevGame = currentGame ? { ...currentGame } : null;
     const prevCards = Array.isArray(currentGame?.cards)
       ? currentGame.cards.map((c) => ({ revealed: !!c?.revealed }))
       : null;
@@ -5186,6 +5276,24 @@ function startGameListener(gameId, options = {}) {
     // If a game ever reaches 0 players, end it.
     if (currentGame?.type === 'quick') {
       checkAndEndEmptyQuickPlayGame(currentGame);
+    }
+
+    if (!isFirstSnapshot && isLiveClueDraftOnlyUpdate(prevGame, currentGame)) {
+      try {
+        const myTeamColor = getMyTeamColor();
+        const spectator = isSpectating();
+        const isSpymaster = !spectator && isCurrentUserSpymaster();
+        renderClueArea(isSpymaster, myTeamColor, spectator);
+      } catch (_) {
+        try { renderGame(); } catch (_) {}
+      }
+
+      if (document.body.classList.contains('quickplay')) {
+        _signalQuickPlayReady();
+      }
+      _prevClue = currentGame.currentClue?.word || null;
+      isFirstSnapshot = false;
+      return;
     }
 
     // Detect new clue for animation
@@ -5298,6 +5406,7 @@ function stopGameListener() {
    Game Rendering
 ========================= */
 function showGameLobby() {
+  _lastBoardRenderSignature = '';
   updateSettingsInGameActions(false);
   // Go back to mode selection
   showModeSelect();
@@ -5346,7 +5455,7 @@ function isOnlineStyleActive() {
 }
 
 function isOgLikeStyleActive() {
-  return document.body.classList.contains('og-mode') || document.body.classList.contains('cozy-mode');
+  return isOnlineStyleActive();
 }
 
 function isMobileLayoutLike() {
@@ -5954,7 +6063,7 @@ function bindOgMobileBoxExpanders() {
 }
 
 function renderOgPanels() {
-  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
+  const isOgMode = isOnlineStyleActive();
   const ogPanelBlue = document.getElementById('og-panel-blue');
   const ogPanelRed = document.getElementById('og-panel-red');
   const ogMobilePanels = document.getElementById('og-mobile-panels');
@@ -6115,6 +6224,8 @@ function dockChatIntoOgPanels(isOgMode) {
   }
 }
 
+let _lastBoardRenderSignature = '';
+
 function renderBoard(isSpymaster) {
   const boardEl = document.getElementById('game-board');
   if (!boardEl || !currentGame?.cards) return;
@@ -6185,6 +6296,24 @@ function renderBoard(isSpymaster) {
     ? (turnTeam === 'red' ? (currentGame?.redConsidering || {}) : (currentGame?.blueConsidering || {}))
     : {};
   const myOwnerId = getCurrentMarkerOwnerId();
+  const boardRenderSignature = [
+    `spy:${isSpymaster ? 1 : 0}`,
+    `spec:${spectator ? 1 : 0}`,
+    `team:${String(myTeamColor || '')}`,
+    `phase:${String(currentGame.currentPhase || '')}`,
+    `turn:${String(currentGame.currentTeam || '')}`,
+    `winner:${String(currentGame.winner || '')}`,
+    `guess:${canGuess ? 1 : 0}`,
+    `consider:${canSelectForConsidering ? 1 : 0}`,
+    `stack:${selectedStackTargets.join(',')}`,
+    `pending:${pendingCardSelection ?? ''}`,
+    `peek:${revealedPeekCardIndex ?? ''}`,
+    `ctx:${String(currentSelectionContextKey || '')}`,
+    `cards:${currentGame.cards.map((c) => `${String(c?.word || '')}:${String(c?.type || '')}:${c?.revealed ? 1 : 0}`).join('|')}`,
+    `considering:${canViewTurnConsidering ? JSON.stringify(teamConsidering || {}) : ''}`,
+  ].join('||');
+  if (_lastBoardRenderSignature === boardRenderSignature) return;
+  _lastBoardRenderSignature = boardRenderSignature;
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
@@ -6271,22 +6400,10 @@ function renderBoard(isSpymaster) {
     `;
   }).join('');
 
-  // Always re-fit card words after any board re-render.
-  // The board can re-render for reasons that don't change our fit keys
-  // (chat updates, timers, minor UI state). In those cases the DOM is
-  // replaced and the fitted inline font sizing can be lost, letting long
-  // words overflow. This call is rAF-debounced.
+  // Re-fit after each actual board DOM rebuild.
+  _lastWordFitBoardKey = boardWordFitKey;
+  _lastWordFitViewportKey = boardWordFitViewportKey;
   scheduleFitCardWords();
-
-  // Fit words only when board/reveal state or viewport changed.
-  const shouldRefitWords =
-    boardWordFitKey !== _lastWordFitBoardKey ||
-    boardWordFitViewportKey !== _lastWordFitViewportKey;
-  if (shouldRefitWords) {
-    _lastWordFitBoardKey = boardWordFitKey;
-    _lastWordFitViewportKey = boardWordFitViewportKey;
-    scheduleFitCardWords();
-  }
 
   // Tags removed – no longer rendering card tags
 }
@@ -7658,7 +7775,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const ogBanner = document.getElementById('og-phase-banner');
   const ogText = document.getElementById('og-phase-text');
   if (ogBanner && ogText) {
-    const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
+    const isOgMode = isOnlineStyleActive();
     ogBanner.style.display = isOgMode ? 'block' : 'none';
     if (isOgMode) {
       if (currentGame.winner) {
@@ -7894,6 +8011,24 @@ function getClueTargetIndicesFromEntry(clue, game = currentGame) {
   return normalizeClueTargetSelection(parsed, game, team, { allowRevealed: true });
 }
 
+function normalizeClueGuessResult(raw) {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v === 'correct' || v === 'wrong' || v === 'neutral' || v === 'assassin') return v;
+  return '';
+}
+
+function getCorrectGuessWordsForClue(clue) {
+  const results = Array.isArray(clue?.results) ? clue.results : [];
+  const out = new Set();
+  for (const row of results) {
+    const result = normalizeClueGuessResult(row?.result || (row?.correct ? 'correct' : (row?.wrong ? 'wrong' : '')));
+    if (result !== 'correct') continue;
+    const word = String(row?.word || '').trim().toUpperCase();
+    if (word) out.add(word);
+  }
+  return out;
+}
+
 function buildCluesLeftLogHtml() {
   const history = Array.isArray(currentGame?.clueHistory) ? currentGame.clueHistory : [];
   const cards = Array.isArray(currentGame?.cards) ? currentGame.cards : [];
@@ -7936,6 +8071,8 @@ function buildCluesLeftLogHtml() {
     const clueNumber = Number.isFinite(clueNumberRaw) ? Math.max(0, Math.min(9, clueNumberRaw)) : 0;
     const total = targetIndices.length || targetWords.length || clueNumber;
     if (!total) continue;
+    const correctGuessWords = getCorrectGuessWordsForClue(clue);
+    const correctGuessCount = correctGuessWords.size;
 
     const targetRecords = [];
 
@@ -7946,9 +8083,10 @@ function buildCluesLeftLogHtml() {
         const card = cards[idx];
         const word = String(card?.word || '').trim();
         if (!word) return;
+        const key = word.toUpperCase();
         targetRecords.push({
           word,
-          found: !!card?.revealed
+          found: !!card?.revealed || correctGuessWords.has(key)
         });
       });
     }
@@ -7966,7 +8104,7 @@ function buildCluesLeftLogHtml() {
         const card = Number.isInteger(idx) ? cards[idx] : null;
         targetRecords.push({
           word: String(card?.word || cleaned).trim(),
-          found: !!card?.revealed
+          found: !!card?.revealed || correctGuessWords.has(key)
         });
       });
     }
@@ -7974,7 +8112,7 @@ function buildCluesLeftLogHtml() {
     // Last fallback: we only know the count, so render anonymous hidden slots.
     if (!targetRecords.length) {
       for (let j = 0; j < total; j += 1) {
-        targetRecords.push({ word: '', found: false });
+        targetRecords.push({ word: '', found: j < correctGuessCount });
       }
     }
 
@@ -10335,7 +10473,7 @@ function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
   const ogText = document.getElementById('og-phase-text');
   if (!ogBanner || !ogText) return;
 
-  const isOgMode = document.body.classList.contains('cozy-mode') || document.body.classList.contains('og-mode');
+  const isOgMode = isOnlineStyleActive();
   if (!isOgMode) return;
   if (!currentGame) return;
   if (currentGame.winner) return;
@@ -11212,82 +11350,27 @@ function showClueAnimation(word, number, teamColor) {
   const existing = document.querySelector('.clue-announcement-overlay');
   if (existing) existing.remove();
 
-  const body = document.body;
-  const isLight = body.classList.contains('light-mode');
-  const isCozy = body.classList.contains('cozy-mode');
-  const isOg = body.classList.contains('og-mode');
-  // For the clue reveal, we treat "og-mode" the same as dark mode.
-  const isDark = !isLight && !isCozy;
-
   const isRed = teamColor === 'red';
   const teamClass = isRed ? 'team-red' : 'team-blue';
 
   const overlay = document.createElement('div');
-  overlay.className = `clue-announcement-overlay ${teamClass} ${isLight ? 'clue-variant-light' : isCozy ? 'clue-variant-cozy' : 'clue-variant-dark'}`;
+  overlay.className = `clue-announcement-overlay ${teamClass} clue-variant-dark`;
 
   const safeWord = escapeHtml(String(word));
   const safeNum = escapeHtml(String(number != null ? number : '0'));
-
-  if (isDark) {
-    // Dark mode keeps the dramatic black card + blurred backdrop.
-    overlay.innerHTML = `
-      <div class="clue-announcement-backdrop"></div>
-      <div class="clue-announcement-card ${teamClass}">
-        <div class="clue-announcement-glow ${teamClass}"></div>
-        <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
-        <div class="clue-announcement-word">${safeWord}</div>
-        <div class="clue-announcement-divider ${teamClass}"></div>
-        <div class="clue-announcement-number-row">
-          <span class="clue-announcement-for">for</span>
-          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
-        </div>
+  overlay.innerHTML = `
+    <div class="clue-announcement-backdrop"></div>
+    <div class="clue-announcement-card ${teamClass}">
+      <div class="clue-announcement-glow ${teamClass}"></div>
+      <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+      <div class="clue-announcement-word">${safeWord}</div>
+      <div class="clue-announcement-divider ${teamClass}"></div>
+      <div class="clue-announcement-number-row">
+        <span class="clue-announcement-for">for</span>
+        <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
       </div>
-    `;
-  } else if (isLight) {
-    // Light mode: clean typography + drawn underline + badge (no box / no blur).
-    overlay.innerHTML = `
-      <div class="clue-light-container ${teamClass}">
-        <div class="clue-light-label">${isRed ? 'RED' : 'BLUE'} SPYMASTER</div>
-        <div class="clue-light-word">${safeWord}</div>
-        <div class="clue-light-row">
-          <span class="clue-light-for">for</span>
-          <span class="clue-light-num">${safeNum}</span>
-        </div>
-        <div class="clue-light-underline ${teamClass}"></div>
-      </div>
-    `;
-  } else if (isCozy) {
-    // Cozy mode: hand-drawn scribble ring + warm bounce (no box / no blur).
-    overlay.innerHTML = `
-      <div class="clue-cozy-container ${teamClass}">
-        <svg class="clue-cozy-scribble" viewBox="0 0 220 220" aria-hidden="true">
-          <path class="clue-cozy-path" d="M110,14 C58,14 18,54 18,106 C18,166 58,206 114,206 C170,206 205,168 204,110 C203,52 164,14 110,14 Z" />
-          <path class="clue-cozy-path2" d="M110,24 C62,24 28,60 28,106 C28,158 62,196 114,196 C162,196 194,162 194,112 C194,62 158,24 110,24 Z" />
-        </svg>
-        <div class="clue-cozy-label">${isRed ? 'Red' : 'Blue'} spymaster</div>
-        <div class="clue-cozy-word">${safeWord}</div>
-        <div class="clue-cozy-pill">
-          <span class="clue-cozy-for">for</span>
-          <span class="clue-cozy-num">${safeNum}</span>
-        </div>
-      </div>
-    `;
-  } else {
-    // og-mode uses the dark reveal (requested: keep the dramatic black card).
-    overlay.innerHTML = `
-      <div class="clue-announcement-backdrop"></div>
-      <div class="clue-announcement-card ${teamClass}">
-        <div class="clue-announcement-glow ${teamClass}"></div>
-        <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
-        <div class="clue-announcement-word">${safeWord}</div>
-        <div class="clue-announcement-divider ${teamClass}"></div>
-        <div class="clue-announcement-number-row">
-          <span class="clue-announcement-for">for</span>
-          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
-        </div>
-      </div>
-    `;
-  }
+    </div>
+  `;
 
   document.body.appendChild(overlay);
 
@@ -11297,11 +11380,8 @@ function showClueAnimation(word, number, teamColor) {
     setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 650);
   });
 
-  // Auto-dismiss duration matches the style-specific animation length.
-  let autoDismissMs = 5500; // dark mode default
-  if (isLight) autoDismissMs = 3800;
-  else if (isCozy) autoDismissMs = 4800;
-  else if (isOg) autoDismissMs = 5500;
+  // Online mode uses the OG reveal timing.
+  const autoDismissMs = 5500;
 
   setTimeout(() => {
     if (overlay.parentNode) {

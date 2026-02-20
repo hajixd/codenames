@@ -3680,7 +3680,87 @@ function _pickFakeDraftWords(ai, finalClue, boardWords) {
   return picked;
 }
 
-async function _setAILiveClueDraft(game, team, ai, word, number) {
+const _aiLiveDraftLastSentAtByGame = new Map();
+const _aiLiveDraftLastSigByGame = new Map();
+
+function _getAISpyDraftTypingProfile(ai) {
+  let tempo = 58;
+  let confidence = 55;
+  let depth = 62;
+  try {
+    const core = ensureAICore(ai);
+    const stats = core?.personality?.stats || {};
+    tempo = Number(stats.tempo ?? stats.speed ?? tempo);
+    confidence = Number(stats.confidence ?? confidence);
+    depth = Number(stats.reasoning_depth ?? depth);
+  } catch (_) {}
+
+  const t = _clamp(Number.isFinite(tempo) ? tempo : 58, 1, 100);
+  const c = _clamp(Number.isFinite(confidence) ? confidence : 55, 1, 100);
+  const d = _clamp(Number.isFinite(depth) ? depth : 62, 1, 100);
+
+  const typeMinMs = Math.round(_clamp(92 - (t * 0.6), 26, 105));
+  const typeMaxMs = Math.round(_clamp(typeMinMs + 34 + ((100 - t) * 0.58), 58, 185));
+  const deleteMinMs = Math.round(_clamp(typeMinMs * 0.55, 16, 84));
+  const deleteMaxMs = Math.round(_clamp(typeMaxMs * 0.66, 40, 138));
+  const typoChance = _clamp(0.045 + ((100 - c) / 780), 0.02, 0.20);
+  const hesitationChance = _clamp(0.10 + (d / 620), 0.12, 0.32);
+  const burstChance = _clamp(0.16 + (t / 700), 0.12, 0.35);
+  const minSendGapMs = Math.round(_clamp(70 + ((100 - t) * 0.85), 55, 180));
+
+  return {
+    typeMinMs,
+    typeMaxMs,
+    deleteMinMs,
+    deleteMaxMs,
+    typoChance,
+    hesitationChance,
+    burstChance,
+    minSendGapMs,
+    thinkMinMs: Math.round(380 + (d * 4.2)),
+    thinkMaxMs: Math.round(940 + (d * 7.8) + ((100 - c) * 3.2)),
+    sureMinMs: Math.round(320 + ((100 - c) * 4.8)),
+    sureMaxMs: Math.round(920 + (d * 3.1) + ((100 - c) * 5.4)),
+    rethinkMinMs: Math.round(460 + ((100 - c) * 3.6)),
+    rethinkMaxMs: Math.round(1320 + (d * 4.2) + ((100 - c) * 6.8)),
+  };
+}
+
+function _randMs(minMs, maxMs) {
+  const lo = Math.max(0, Number(minMs) || 0);
+  const hi = Math.max(lo, Number(maxMs) || lo);
+  return Math.round(lo + Math.random() * (hi - lo));
+}
+
+function _randUpperAlpha() {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  return letters[Math.floor(Math.random() * letters.length)];
+}
+
+function _normalizeLiveDraftSig(payload) {
+  if (!payload || typeof payload !== 'object') return '__clear__';
+  return [
+    String(payload.team || '').toLowerCase(),
+    String(payload.word || '').toUpperCase(),
+    String(payload.number || ''),
+    String(payload.byId || ''),
+    String(payload.byName || ''),
+  ].join('|');
+}
+
+function _renderLiveDraftOnly() {
+  try {
+    if (typeof renderClueArea !== 'function') return;
+    const spectator = (typeof isSpectating === 'function') ? !!isSpectating() : false;
+    const myTeamColor = (typeof getMyTeamColor === 'function') ? getMyTeamColor() : null;
+    const isSpy = (!spectator && typeof isCurrentUserSpymaster === 'function')
+      ? !!isCurrentUserSpymaster()
+      : false;
+    renderClueArea(isSpy, myTeamColor, spectator);
+  } catch (_) {}
+}
+
+async function _setAILiveClueDraft(game, team, ai, word, number, opts = {}) {
   const payload = word ? {
     team,
     word: String(word).toUpperCase().slice(0, 40),
@@ -3692,6 +3772,12 @@ async function _setAILiveClueDraft(game, team, ai, word, number) {
 
   const gid = String(game?.id || '').trim();
   if (!gid) return;
+  const force = !!opts.force;
+  const minGapMs = Number.isFinite(+opts.minGapMs) ? Math.max(0, +opts.minGapMs) : 110;
+  const nextSig = _normalizeLiveDraftSig(payload);
+  const prevSig = _aiLiveDraftLastSigByGame.get(gid) || '';
+  const lastSentAt = Number(_aiLiveDraftLastSentAtByGame.get(gid) || 0);
+  const now = Date.now();
 
   // If this AI is running in the same browser session as the viewer (common in
   // singleplayer), update the in-memory snapshot immediately so the typing
@@ -3699,17 +3785,25 @@ async function _setAILiveClueDraft(game, team, ai, word, number) {
   try {
     if (typeof currentGame !== 'undefined' && currentGame && String(currentGame?.id || '').trim() === gid) {
       currentGame.liveClueDraft = payload;
-      if (typeof renderClueArea === 'function') renderClueArea();
+      _renderLiveDraftOnly();
     }
   } catch (_) {}
+
+  if (!force) {
+    if (prevSig && prevSig === nextSig) return;
+    if (payload && (now - lastSentAt) < minGapMs) return;
+  }
 
   // Local practice game
   if (typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
     if (typeof window.mutateLocalPracticeGame === 'function') {
       window.mutateLocalPracticeGame(gid, (draft) => {
         draft.liveClueDraft = payload;
-      });
+      }, { skipRender: true });
+      _renderLiveDraftOnly();
     }
+    _aiLiveDraftLastSentAtByGame.set(gid, Date.now());
+    _aiLiveDraftLastSigByGame.set(gid, nextSig);
     return;
   }
 
@@ -3721,6 +3815,8 @@ async function _setAILiveClueDraft(game, team, ai, word, number) {
     } else {
       await ref.update({ liveClueDraft: firebase.firestore.FieldValue.delete() });
     }
+    _aiLiveDraftLastSentAtByGame.set(gid, Date.now());
+    _aiLiveDraftLastSigByGame.set(gid, nextSig);
   } catch (_) {}
 }
 
@@ -3755,87 +3851,130 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
   const finalNum = Number.isFinite(+finalNumber) ? Math.max(0, Math.min(9, parseInt(finalNumber, 10) || 0)) : 1;
   if (!finalWord) return;
 
-  // If callers provide explicit "considered" clues, use those. Otherwise fall back
-  // to mind-log-derived fake drafts.
+  const profile = _getAISpyDraftTypingProfile(ai);
+
+  // If callers provide explicit "considered" clues, use those.
   let considered = _dedupeConsideredClues(opts.considered);
-
-  // Drop anything that's on the board, and cap to keep the animation from dragging.
-  considered = considered.filter(x => x?.clue && !boardWords.includes(x.clue)).slice(0, 4);
-
-  const typeSpeed = () => 55 + Math.floor(Math.random() * 70);   // 55-125ms per char
-  const deleteSpeed = () => 35 + Math.floor(Math.random() * 45); // 35-80ms per char
-  const thinkPause = () => 450 + Math.floor(Math.random() * 900);
+  considered = considered.filter(x => x?.clue && !boardWords.includes(x.clue)).slice(0, 5);
 
   // Ensure the final clue is represented.
   if (!considered.find(x => x.clue === finalWord && (x.number === null || x.number === finalNum))) {
     considered.push({ clue: finalWord, number: finalNum });
   }
 
-  // If we *only* have the final, synthesize some "draft" ideas like before.
-  if (considered.length <= 1) {
-    const fakes = _pickFakeDraftWords(ai, finalWord, boardWords);
-    for (const fake of fakes) {
-      for (let i = 1; i <= fake.length; i++) {
-        await _setAILiveClueDraft(game, team, ai, fake.slice(0, i), null);
-        await sleep(typeSpeed());
-      }
-      await sleep(thinkPause());
-      for (let i = fake.length - 1; i >= 0; i--) {
-        await _setAILiveClueDraft(game, team, ai, i ? fake.slice(0, i) : null, null);
-        await sleep(deleteSpeed());
-      }
-      await sleep(250 + Math.floor(Math.random() * 350));
-    }
-  } else {
-    // Animate each considered clue: type → brief pause → delete → think.
-    // Reserve the last step for the final clue.
-    const last = considered[considered.length - 1];
-    const drafts = considered.slice(0, -1);
-    for (const d of drafts) {
-      const w = _sanitizeOneWordClue(d.clue);
-      if (!w) continue;
-      for (let i = 1; i <= w.length; i++) {
-        await _setAILiveClueDraft(game, team, ai, w.slice(0, i), null);
-        await sleep(typeSpeed());
-      }
-      // Briefly set the number once the word is "complete".
-      if (d.number !== null && d.number !== undefined) {
-        await _setAILiveClueDraft(game, team, ai, w, d.number);
-      }
-      await sleep(thinkPause());
+  const nonFinal = considered
+    .filter((x) => x?.clue && x.clue !== finalWord)
+    .slice(0, 3)
+    .map((x) => ({ clue: _sanitizeOneWordClue(x.clue), number: x.number }));
 
-      // Delete it.
-      for (let i = w.length - 1; i >= 0; i--) {
-        await _setAILiveClueDraft(game, team, ai, i ? w.slice(0, i) : null, null);
-        await sleep(deleteSpeed());
-      }
-      await sleep(300 + Math.floor(Math.random() * 500));
-    }
-
-    // Make sure "last" matches the caller's final.
-    if (last?.clue !== finalWord || (last?.number !== null && last?.number !== finalNum)) {
-      // No-op: we still type the explicit final below.
-    }
+  // If we only got one final candidate, seed one false start so the AI can
+  // "type, doubt, delete, rethink" before committing.
+  if (!nonFinal.length) {
+    const fallbackDrafts = _pickFakeDraftWords(ai, finalWord, boardWords)
+      .map((w) => _sanitizeOneWordClue(w))
+      .filter((w) => w && w !== finalWord && !boardWords.includes(w))
+      .slice(0, 2);
+    for (const w of fallbackDrafts) nonFinal.push({ clue: w, number: null });
   }
 
-  // Type the real clue.
-  for (let i = 1; i <= finalWord.length; i++) {
-    const showNumber = (i === finalWord.length) ? finalNum : null;
-    await _setAILiveClueDraft(game, team, ai, finalWord.slice(0, i), showNumber);
-    await sleep(typeSpeed());
-  }
+  const attempts = [
+    ...nonFinal.slice(0, 3).map((x) => ({ clue: x.clue, number: x.number, isFinal: false })),
+    { clue: finalWord, number: finalNum, isFinal: true },
+  ];
 
-  await sleep(450 + Math.floor(Math.random() * 450));
-  await _setAILiveClueDraft(game, team, ai, null, null);
+  const typeDraftWord = async (candidateWord, candidateNum) => {
+    const clue = _sanitizeOneWordClue(candidateWord);
+    if (!clue) return;
+
+    let draft = '';
+    const maxTypos = (clue.length >= 5 && Math.random() < 0.75)
+      ? (Math.random() < 0.3 ? 2 : 1)
+      : (Math.random() < 0.2 ? 1 : 0);
+    let typoCount = 0;
+
+    for (let i = 0; i < clue.length; i += 1) {
+      const ch = clue[i];
+
+      const canTypo = typoCount < maxTypos && i > 0 && i < (clue.length - 1);
+      if (canTypo && Math.random() < profile.typoChance) {
+        draft += _randUpperAlpha();
+        await _setAILiveClueDraft(game, team, ai, draft, null, { minGapMs: profile.minSendGapMs });
+        await sleep(_randMs(profile.typeMinMs * 0.6, profile.typeMaxMs * 0.95));
+
+        draft = draft.slice(0, -1);
+        await _setAILiveClueDraft(game, team, ai, draft || null, null, { minGapMs: profile.minSendGapMs });
+        await sleep(_randMs(profile.deleteMinMs, profile.deleteMaxMs));
+        typoCount += 1;
+      }
+
+      draft += ch;
+      const isLast = i === clue.length - 1;
+      const showNumber = isLast ? candidateNum : null;
+      await _setAILiveClueDraft(game, team, ai, draft, showNumber, {
+        force: isLast,
+        minGapMs: profile.minSendGapMs,
+      });
+
+      let delay = _randMs(profile.typeMinMs, profile.typeMaxMs);
+      if (Math.random() < profile.burstChance) delay = Math.max(14, Math.round(delay * 0.58));
+      if (Math.random() < profile.hesitationChance && i >= 1) {
+        delay += _randMs(90, 340);
+      }
+      await sleep(delay);
+    }
+  };
+
+  const deleteDraftWord = async (candidateWord) => {
+    const clue = _sanitizeOneWordClue(candidateWord);
+    if (!clue) return;
+    for (let i = clue.length - 1; i >= 0; i -= 1) {
+      const next = i > 0 ? clue.slice(0, i) : null;
+      await _setAILiveClueDraft(game, team, ai, next, null, {
+        force: i <= 1,
+        minGapMs: profile.minSendGapMs,
+      });
+      let delay = _randMs(profile.deleteMinMs, profile.deleteMaxMs);
+      if (Math.random() < 0.25) delay += _randMs(60, 180);
+      await sleep(Math.max(14, delay));
+    }
+  };
+
+  await _setAILiveClueDraft(game, team, ai, null, null, { force: true, minGapMs: profile.minSendGapMs });
+
+  for (let i = 0; i < attempts.length; i += 1) {
+    const attempt = attempts[i];
+    const candidateWord = _sanitizeOneWordClue(attempt?.clue);
+    if (!candidateWord) continue;
+    const candidateNumber = attempt.isFinal
+      ? finalNum
+      : (Number.isFinite(+attempt?.number) ? Math.max(0, Math.min(9, parseInt(attempt.number, 10) || 0)) : null);
+
+    await sleep(i === 0
+      ? _randMs(profile.thinkMinMs, profile.thinkMaxMs)
+      : _randMs(profile.rethinkMinMs, profile.rethinkMaxMs));
+
+    await typeDraftWord(candidateWord, candidateNumber);
+
+    // "Are you sure?" pause before submit/delete.
+    await sleep(_randMs(profile.sureMinMs, profile.sureMaxMs));
+
+    if (attempt.isFinal) {
+      await sleep(_randMs(180, 520));
+      return; // Keep the final draft visible; submit happens immediately after.
+    }
+
+    await deleteDraftWord(candidateWord);
+    await sleep(_randMs(120, 360));
+  }
 }
 
 async function submitClueDirect(ai, game, clueWord, clueNumber) {
-  if (!ai || !game || game.winner) return;
-  if (String(ai?.mode || '') !== 'autonomous') return;
-  if (String(ai?.seatRole || '') !== 'spymaster') return;
-  if (String(game.currentPhase || '') !== 'spymaster') return;
-  if (String(game.currentTeam || '') !== String(ai?.team || '')) return;
-  if (hasBlockingPendingClueReview(game)) return;
+  if (!ai || !game || game.winner) return false;
+  if (String(ai?.mode || '') !== 'autonomous') return false;
+  if (String(ai?.seatRole || '') !== 'spymaster') return false;
+  if (String(game.currentPhase || '') !== 'spymaster') return false;
+  if (String(game.currentTeam || '') !== String(ai?.team || '')) return false;
+  if (hasBlockingPendingClueReview(game)) return false;
   const team = ai.team;
   const ref = db.collection('games').doc(game.id);
   const seqField = _aiSeqField(team, 'spy');
@@ -3888,6 +4027,12 @@ async function submitClueDirect(ai, game, clueWord, clueNumber) {
   }
 
   if (clueAccepted && window.playSound) window.playSound('clueGiven');
+  if (!clueAccepted) {
+    try {
+      await _setAILiveClueDraft(game, team, ai, null, null, { force: true });
+    } catch (_) {}
+  }
+  return clueAccepted;
 }
 
 async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
@@ -4821,15 +4966,16 @@ function _getAIChatTypingProfile(aiLike) {
   const t = Number.isFinite(tempo) ? Math.max(1, Math.min(100, tempo)) : 60;
   const c = Number.isFinite(confidence) ? Math.max(1, Math.min(100, confidence)) : 60;
 
-  const base = 12 - (t / 12); // ~4–12ms base
-  const jitter = 10 + Math.random() * 22;
-  const burstChance = 0.18 + Math.random() * 0.12;
-  const pauseChance = 0.10 + Math.random() * 0.12;
-  const typoChance = Math.max(0.02, 0.10 - (c / 900));
-  const revisionChance = Math.max(0.05, 0.22 - (c / 400));
+  // Human-like chat pace: roughly 35-180ms per character with variance.
+  const base = 150 - (t * 0.98);
+  const jitter = 28 + Math.random() * 95;
+  const burstChance = Math.max(0.08, Math.min(0.30, 0.10 + (t / 520) + (Math.random() * 0.08)));
+  const pauseChance = Math.max(0.10, Math.min(0.34, 0.12 + ((100 - c) / 520) + (Math.random() * 0.08)));
+  const typoChance = Math.max(0.025, Math.min(0.16, 0.038 + ((100 - c) / 920)));
+  const revisionChance = Math.max(0.08, Math.min(0.32, 0.10 + ((100 - c) / 520)));
 
   const out = {
-    baseMs: Math.max(3.5, base),
+    baseMs: Math.max(32, base),
     jitterMs: jitter,
     burstChance,
     pauseChance,
