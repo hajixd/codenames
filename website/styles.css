@@ -23242,9 +23242,16 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   }
 
   .panel-game.game-active .game-sidebar {
-    /* Match the proportional UI scaling used for the board so chat/log shrink too. */
-    zoom: var(--desktop-game-scale);
+    /* Sidebars live inside #game-board-container which is already proportionally scaled.
+       Keep layout spacing adjustments, but do NOT re-scale (would compound scaling). */
     padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 14vh), 56px);
+  }
+
+  /* OG/Cozy desktop: visually align Game Log / Clue History width with the roster boxes
+     (which sit inside .og-team-panel padding). */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left > .clue-history-panel,
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left > #desktop-game-log-panel {
+    margin-inline: 14px;
   }
 
   /* Keep OG/Cozy team stacks in normal flow (no transform clipping). */
@@ -25475,7 +25482,7 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 
   /* Match the proportional UI scaling used for the board so chat/log shrink too. */
   .panel-game.game-active .game-sidebar {
-    zoom: var(--mobile-game-scale);
+    /* Sidebars are inside the scaled game container; avoid double-scaling. */
   }
 
   @supports not (zoom: 1) {
