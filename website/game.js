@@ -46,6 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
+let _lastBoardDomKey = ''; // Track last rendered board state to avoid rerendering during animations
 const CARD_CONFIRM_ANIM_MS = 1100;
 const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
 const _suppressRevealAnimByIndexUntil = new Map();
@@ -4239,6 +4240,8 @@ const renderTeamList = (players) => {
       </div>
     `;
   }).join('');
+
+  _lastBoardDomKey = boardDomKey;
 };
 
 const renderSpecList = (players) => {
@@ -6226,6 +6229,13 @@ function renderBoard(isSpymaster) {
   const isOgMode = isOnlineStyleActive();
   const boardWordFitKey = currentGame.cards.map((c) => `${String(c?.word || '')}:${c?.revealed ? 1 : 0}`).join('|');
   const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
+
+  const boardDomKey = currentGame.cards.map((c) => `${c?.revealed ? 1 : 0}${String(c?.type || '')}`).join('|');
+  const hasConfirmAnimActive = !!document.querySelector('.game-card.confirm-animate, .game-card.confirm-hold');
+  if (hasConfirmAnimActive && boardDomKey === _lastBoardDomKey) {
+    // Avoid replacing the card DOM while the confirm flip is running.
+    return;
+  }
 
   // If the peeked card is no longer revealed (new board / reset), clear stale state.
   if (revealedPeekCardIndex !== null && revealedPeekCardIndex !== undefined) {
@@ -10026,33 +10036,15 @@ function updatePendingCardSelectionUI() {
   const cards = document.querySelectorAll('.game-card');
   cards.forEach((el) => {
     el.classList.remove('pending-select');
-    el.classList.remove('select-animate');
   });
   if (pendingCardSelection === null || pendingCardSelection === undefined) return;
   const target = document.querySelector(`.game-card[data-index="${pendingCardSelection}"]`);
   if (target && !target.classList.contains('revealed')) {
     target.classList.add('pending-select');
-    // Always run a flip animation when a card becomes selected.
-    // Restart reliably by forcing a layout read between toggles.
-    if (_pendingSelectAnimIndex === pendingCardSelection) {
-      target.classList.remove('select-animate');
-      // eslint-disable-next-line no-unused-expressions
-      void target.offsetWidth;
-      requestAnimationFrame(() => {
-        if (!target.isConnected) return;
-        target.classList.add('select-animate');
-        // Remove the helper class after the keyframe finishes so the next
-        // selection can replay cleanly.
-        window.setTimeout(() => {
-          if (!target.isConnected) return;
-          target.classList.remove('select-animate');
-        }, 520);
-      });
-      _pendingSelectAnimIndex = null;
-    }
   }
   updateRevealedCardPeekUI();
 }
+
 
 /* =========================
    Operative Team Chat

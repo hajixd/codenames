@@ -20914,47 +20914,9 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   100% { transform: translateY(0) scale(1); filter: brightness(1); }
 }
 
-/* Card selection flip animation (runs on every select). */
-@keyframes cardSelectFlip3D {
-  0% { transform: rotateY(0deg); }
-  45% { transform: rotateY(180deg); }
-  100% { transform: rotateY(0deg); }
-}
-
-/* Selection state: outline + quick flip for feedback. */
+/* Selection state: keep selected card above neighbors. */
 body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
   z-index: 88;
-}
-
-body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) .card-inner {
-  transform: rotateY(0deg);
-}
-
-body.og-mode .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-inner {
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  transition: none;
-  will-change: transform;
-  animation: cardSelectFlip3D 520ms ease both;
-}
-
-/* Non-OG selection flip: enable a quick flip even though the back face is
-   normally hidden outside confirm animations. */
-body:not(.og-mode):not(.cozy-mode) .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-inner {
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  transition: none;
-  will-change: transform;
-  animation: cardSelectFlip3D 520ms ease both;
-}
-
-body:not(.og-mode):not(.cozy-mode) .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-back,
-body:not(.og-mode):not(.cozy-mode) .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-back .card-word {
-  opacity: 1;
-}
-
-body:not(.og-mode):not(.cozy-mode) .game-card.pending-select:not(.revealed):not(.disabled).select-animate .card-back {
-  display: block !important;
 }
 
 /* OG/Cozy confirmed guess animation:
@@ -21131,13 +21093,13 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).con
   We normally hide the back face in these modes, but we MUST allow it
   during the confirm flip animation (used for every guess).
 */
-body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold):not(.select-animate) .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold) .card-back {
   display: none !important;
 }
 
 /* Prevent incidental 3D transforms in non-OG modes, but allow the explicit
    confirm flip animation to drive transforms when active. */
-body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold):not(.select-animate) .card-inner {
+body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold) .card-inner {
   transform: none !important;
 }
 
