@@ -25903,7 +25903,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 @media (min-width: 1025px) {
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open {
-    width:      calc(var(--col-right, 260px) * var(--desktop-game-scale, 1));
+    width:      calc((var(--col-right, 260px) + 20px) * var(--desktop-game-scale, 1));
     height:     calc(clamp(210px, 30vh, 300px) * var(--desktop-game-scale, 1));
     max-height: calc(clamp(210px, 30vh, 300px) * var(--desktop-game-scale, 1));
   }
