@@ -10,13 +10,44 @@
 // ─── Configuration ───────────────────────────────────────────────────────────
 const AI_CONFIG = {
   baseURL: 'https://api.tokenfactory.nebius.com/v1',
+  // IMPORTANT: Never hardcode API keys in the repo.
+  // Key is stored locally per-browser.
   apiKey: (function(){
-    try { return localStorage.getItem('ct_ai_apiKey') || ''; } catch (_) { return ''; }
+    try {
+      // Prefer the key from ai-key.local.js (window.CT_AI_API_KEY) if provided.
+      const fromFile = (typeof window !== 'undefined' && window.CT_AI_API_KEY) ? String(window.CT_AI_API_KEY).trim() : '';
+      if (fromFile) return fromFile;
+
+      // Fallback: key stored locally per-browser.
+      const k = localStorage.getItem('ct_ai_apiKey') || '';
+      return String(k || '').trim();
+    } catch (_) {
+      return '';
+    }
   })(),
   model: 'meta-llama/Llama-3.3-70B-Instruct',            // instruct brain — chat, personality, reactions
   reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
   maxAIsPerTeam: 4,
 };
+
+// If the key is missing, allow a one-time prompt to set it (dev convenience).
+// This keeps secrets out of source control.
+let __ct_aiKeyPrompted = false;
+function ensureAIKeyPresent() {
+  try {
+    if (AI_CONFIG.apiKey) return true;
+    if (__ct_aiKeyPrompted) return false;
+    __ct_aiKeyPrompted = true;
+    const entered = prompt('AI API key not found. Paste your key to enable AI players (stored locally in this browser):');
+    const cleaned = String(entered || '').trim();
+    if (!cleaned) return false;
+    localStorage.setItem('ct_ai_apiKey', cleaned);
+    AI_CONFIG.apiKey = cleaned;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 // No artificial human-like delays. AIs act as soon as they can.
 
@@ -194,6 +225,11 @@ function syncAIPlayersFromGame(game) {
 
   window.aiPlayers = aiPlayers;
 
+  // New match = new personalities.
+  // Best-effort: one client (the controller) assigns fresh personality+temperature
+  // to every AI the first time the match leaves the lobby.
+  try { maybeAssignNewMatchPersonalities(game); } catch (_) {}
+
   // Ensure each AI has a stable identity + private mind.
   try { for (const a of aiPlayers) ensureAICore(a); } catch (_) {}
 
@@ -245,10 +281,11 @@ window.AI_CONFIG = AI_CONFIG;
 
 async function aiChatCompletion(messages, options = {}) {
 
+  if (!ensureAIKeyPresent()) {
+    throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (or paste when prompted) before using AI players.');
+  }
 
-if (!AI_CONFIG.apiKey) {
-  throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (e.g., via DevTools) before using AI players.');
-}  const body = {
+  const body = {
     model: AI_CONFIG.model,
     messages,
     temperature: options.temperature ?? 0.85,
@@ -281,10 +318,11 @@ window.aiChatCompletion = aiChatCompletion;
 // ─── Reasoning model completion (strategic "deep thinking" brain) ────────────
 async function aiReasoningCompletion(messages, options = {}) {
 
+  if (!ensureAIKeyPresent()) {
+    throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (or paste when prompted) before using AI players.');
+  }
 
-if (!AI_CONFIG.apiKey) {
-  throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (e.g., via DevTools) before using AI players.');
-}  const body = {
+  const body = {
     model: AI_CONFIG.reasoningModel,
     messages,
     max_tokens: options.max_tokens ?? 512,
@@ -706,6 +744,83 @@ function randomPersonality() {
   return AI_PERSONALITY_FALLBACK[Math.floor(Math.random() * AI_PERSONALITY_FALLBACK.length)];
 }
 
+// ─── Name generation (match names to personalities) ─────────────────────────
+function clampInt(v, lo = 1, hi = 100, fallback = 50) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, Math.round(n)));
+}
+
+function pick(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function normalizeFocus(focusArr) {
+  const focus = Array.isArray(focusArr) ? focusArr.filter(Boolean).map(s => String(s)) : [];
+  return focus.map(s => s.toLowerCase());
+}
+
+function generateAINameFromPersona(persona, usedNames = new Set()) {
+  const label = String(persona?.label || '').toLowerCase();
+  const arch = String(persona?.bio?.archetype || '').toLowerCase();
+  const focus = normalizeFocus(persona?.focus);
+  const stats = persona?.stats || {};
+
+  const isSportsy = focus.some(s => s.includes('sport') || s.includes('basketball') || s.includes('soccer') || s.includes('football') || s.includes('baseball') || s.includes('hockey'))
+    || label.includes('coach') || label.includes('commentator') || arch.includes('coach') || arch.includes('analyst');
+  const isAcademic = focus.some(s => s.includes('history') || s.includes('philosophy') || s.includes('psychology') || s.includes('science') || s.includes('math') || s.includes('linguistics'))
+    || arch.includes('prof') || arch.includes('phd') || arch.includes('doctor') || label.includes('prof');
+  const isDetective = focus.some(s => s.includes('true crime') || s.includes('mystery') || s.includes('forensics'))
+    || arch.includes('detective') || label.includes('detective');
+  const isChaotic = clampInt(stats?.emotional_intensity, 1, 100, 50) >= 75 || label.includes('chaos') || arch.includes('gremlin');
+  const isClinical = clampInt(stats?.reasoning_depth, 1, 100, 50) >= 85 && clampInt(stats?.verbosity, 1, 100, 50) <= 25;
+
+  const first = {
+    sports: ['Coach', 'Skipper', 'Stats', 'Ace', 'Captain', 'MVP'],
+    academic: ['Prof', 'Dr', 'Doc', 'Sage', 'Lecturer'],
+    detective: ['Detective', 'Inspector', 'Sleuth'],
+    chaotic: ['Chaos', 'Rage', 'Turbo', 'Zany', 'Spicy'],
+    clinical: ['GM', 'Prime', 'Logic', 'Vector', 'Sigma'],
+    default: ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery', 'Sage', 'Rowan', 'Finley', 'Skyler', 'Blake', 'Drew', 'Reese', 'Kai', 'Nova', 'Max', 'Sam', 'Jamie', 'Robin', 'Frankie', 'Charlie', 'Pat', 'Dana'],
+  };
+
+  const last = {
+    sports: ['Stone', 'Bishop', 'Carter', 'Reyes', 'Hayes', 'Miller', 'Griffin'],
+    academic: ['Hawking', 'Curie', 'Darwin', 'Sagan', 'Noether', 'Turing'],
+    detective: ['Marsh', 'Vale', 'Holloway', 'Blythe', 'Knox'],
+    chaotic: ['Spark', 'Glitch', 'Wobble', 'Boom', 'Vortex'],
+    clinical: ['Zero', 'Prime', 'Ledger', 'Index', 'Kernel'],
+    default: ['Stone', 'Lane', 'Brooks', 'Reed', 'Cole', 'Parker', 'Hayes', 'Rowe'],
+  };
+
+  let bucket = 'default';
+  if (isSportsy) bucket = 'sports';
+  else if (isAcademic) bucket = 'academic';
+  else if (isDetective) bucket = 'detective';
+  else if (isClinical) bucket = 'clinical';
+  else if (isChaotic) bucket = 'chaotic';
+
+  const base = (bucket === 'default')
+    ? pick(first.default)
+    : `${pick(first[bucket])} ${pick(last[bucket])}`;
+
+  // Keep names readable/short in the UI.
+  let name = String(base).replace(/\s+/g, ' ').trim();
+  if (name.length > 16) name = name.slice(0, 16).trim();
+
+  // Ensure uniqueness in a lobby.
+  let i = 2;
+  let candidate = name;
+  while (usedNames.has(candidate.toLowerCase())) {
+    candidate = `${name} ${i}`;
+    if (candidate.length > 18) candidate = `${name.slice(0, 14).trim()} ${i}`;
+    i++;
+    if (i > 9) break;
+  }
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
+}
+
 // ─── LLM-Generated Personality ───────────────────────────────────────────────
 // Called once per AI at creation time. Returns a rich personality JSON with
 // voice rules, subject focus, and a full set of behavioral stat sliders.
@@ -1033,6 +1148,102 @@ function ensureAICore(ai) {
     if (Number.isFinite(+ai.temperature)) aiCore[ai.id].temperature = +ai.temperature;
   }
   return aiCore[ai.id];
+}
+
+// ─── Per-match personality assignment ───────────────────────────────────────
+// Every started game (practice or online) should get fresh AI personalities.
+// We do this once per game doc by writing a nonce and regenerating AI fields.
+let __ct_lastSeenMatchNonceByGame = {}; // gameId -> nonce
+let __ct_matchAssignInFlightByGame = {}; // gameId -> true
+
+async function maybeAssignNewMatchPersonalities(game) {
+  const gameId = getActiveGameIdForAI();
+  if (!gameId) return;
+  if (__ct_matchAssignInFlightByGame[gameId]) return;
+
+  const phase = String(game?.currentPhase || '').toLowerCase();
+  if (!phase || phase === 'waiting') return;
+
+  const nonce = String(game?.aiMatchNonce || '').trim();
+  if (nonce) {
+    if (__ct_lastSeenMatchNonceByGame[gameId] !== nonce) __ct_lastSeenMatchNonceByGame[gameId] = nonce;
+    return;
+  }
+
+  // Only the controller writes to Firestore.
+  const amController = await maybeHeartbeatAIController(gameId, game);
+  if (!amController) return;
+
+  __ct_matchAssignInFlightByGame[gameId] = true;
+  try {
+    // Build new personas outside the transaction (LLM calls are async).
+    const ensureKey = ensureAIKeyPresent();
+    const used = new Set();
+    const roster = (aiPlayers || []).filter(a => a && a.isAI);
+    if (!roster.length) return;
+
+    const assignments = {};
+    for (const ai of roster) {
+      let baseName = String(ai?.name || '').trim();
+      if (!baseName || baseName.toLowerCase() === 'ai') baseName = pick(AI_NAMES);
+
+      let persona = null;
+      if (ensureKey) {
+        try { persona = await generateUniquePersonality(baseName); } catch (_) { persona = null; }
+      }
+      if (!persona) persona = randomPersonality();
+
+      // Name should match the personality.
+      const name = generateAINameFromPersona(persona, used);
+      const temperature = randomTemperature();
+
+      assignments[String(ai.odId)] = { name, persona, temperature };
+    }
+
+    const ref = db.collection('games').doc(gameId);
+    const newNonce = `m_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data() || {};
+      const p = String(g?.currentPhase || '').toLowerCase();
+      if (!p || p === 'waiting') return;
+      if (String(g?.aiMatchNonce || '').trim()) return; // another controller already did it
+
+      const patchTeam = (teamKey) => {
+        const players = Array.isArray(g?.[teamKey]) ? [...g[teamKey]] : [];
+        for (let i = 0; i < players.length; i++) {
+          const pl = players[i];
+          if (!pl || !pl.isAI) continue;
+          const odId = String(pl.odId || '').trim();
+          if (!odId || !assignments[odId]) continue;
+          const a = assignments[odId];
+          players[i] = {
+            ...pl,
+            name: a.name,
+            aiTemperature: a.temperature,
+            aiPersonality: a.persona,
+          };
+        }
+        return players;
+      };
+
+      const redPlayers = patchTeam('redPlayers');
+      const bluePlayers = patchTeam('bluePlayers');
+
+      tx.update(ref, {
+        redPlayers,
+        bluePlayers,
+        aiMatchNonce: newNonce,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (e) {
+    console.warn('Match personality assignment failed (best-effort):', e);
+  } finally {
+    __ct_matchAssignInFlightByGame[gameId] = false;
+  }
 }
 
 function appendMind(ai, text) {
