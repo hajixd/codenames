@@ -25876,9 +25876,20 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     flex-direction: column;
   }
 
-  /* og-chat-section: remove its 200px cap so the host can expand */
+  /* og-chat-section: remove its 200px cap and push to bottom of sidebar */
   body:is(.og-mode, .cozy-mode) #og-chat-section {
     max-height: none;
+    margin-top: auto;
+  }
+
+  /* Stretch the left sidebar to the grid-track height so margin-top:auto works */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left {
+    align-self: stretch;
+  }
+
+  /* Make the team panel fill the full stretched sidebar */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left .og-team-panel {
+    flex: 1;
   }
 
   /* Chat panel: reverse the fixed-position popping from the 1024px block */
@@ -25906,5 +25917,6 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     width:      calc((var(--col-right, 260px) + 20px) * var(--desktop-game-scale, 1));
     height:     calc(clamp(210px, 30vh, 300px) * var(--desktop-game-scale, 1));
     max-height: calc(clamp(210px, 30vh, 300px) * var(--desktop-game-scale, 1));
+    bottom: 0;
   }
 }
