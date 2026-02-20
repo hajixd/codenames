@@ -6231,9 +6231,19 @@ function renderBoard(isSpymaster) {
   const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
 
   const boardDomKey = currentGame.cards.map((c) => `${c?.revealed ? 1 : 0}${String(c?.type || '')}`).join('|');
-  const hasConfirmAnimActive = !!document.querySelector('.game-card.confirm-animate, .game-card.confirm-hold');
-  if (hasConfirmAnimActive && boardDomKey === _lastBoardDomKey) {
-    // Avoid replacing the card DOM while the confirm flip is running.
+  // Hard-block board re-renders while a confirm flip is armed/running.
+  // The key failure mode was: presence / "considering" updates (or other UI refresh)
+  // re-render the board between the click and the next animation frame, replacing the
+  // card DOM before the confirm flip class gets applied.
+  const hasConfirmFlipRunning = !!document.querySelector('.game-card.confirming-guess, .game-card.confirm-animate');
+  const hasConfirmHoldActive = !!document.querySelector('.game-card.confirm-hold');
+  if (hasConfirmFlipRunning) {
+    // Keep the existing DOM stable so the flip animation can start and complete.
+    return;
+  }
+  if (hasConfirmHoldActive && boardDomKey === _lastBoardDomKey) {
+    // While holding on the back face waiting for the reveal snapshot, avoid
+    // no-op rerenders that can cause a one-frame flash.
     return;
   }
 
