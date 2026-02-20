@@ -31,6 +31,17 @@ const AI_CONFIG = {
   // Otherwise keep a Llama Instruct model.
   model: 'meta-llama/Llama-3.3-70B-Instruct',
   reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
+  // Brain-part defaults. Runtime can override these with the best currently
+  // available Nebius models discovered from /v1/models.
+  brainRoleModels: {
+    instruction: 'meta-llama/Llama-3.3-70B-Instruct',
+    reasoning: 'deepseek-ai/DeepSeek-R1-0528',
+    dialogue: 'meta-llama/Llama-3.3-70B-Instruct',
+    reaction: 'meta-llama/Llama-3.1-8B-Instruct',
+    scout: 'meta-llama/Llama-3.1-8B-Instruct',
+    mind: 'meta-llama/Llama-3.3-70B-Instruct',
+  },
+  enableNebiusModelRouting: true,
   maxAIsPerTeam: 4,
 };
 
@@ -69,7 +80,31 @@ let aiChatTimers = {}; // keyed by ai id → timeout for delayed chat
 let aiLastChatSeenMs = {}; // keyed by ai id → last seen team-chat timestamp
 let aiLastChatReplyMs = {}; // keyed by ai id → last time we replied
 let aiLastOffTurnScoutMs = {}; // keyed by ai id → last off-turn analysis timestamp
+let aiGameLoopTickInFlight = false;
+let aiChatScanCursor = 0;
 let aiNextId = 1;
+const aiTeamChatQueryCache = new Map(); // key => { at, docs, text, inFlight }
+const aiGlobalVisionSigByGame = new Map(); // gameId => signature
+
+const AI_BRAIN_ROLES = Object.freeze({
+  instruction: 'instruction',
+  reasoning: 'reasoning',
+  dialogue: 'dialogue',
+  reaction: 'reaction',
+  scout: 'scout',
+  mind: 'mind',
+});
+
+const AI_MODEL_CATALOG_TTL_MS = 10 * 60 * 1000;
+const AI_MODEL_CATALOG_RETRY_MS = 30 * 1000;
+
+const aiNebiusModelsState = {
+  fetchedAt: 0,
+  failedAt: 0,
+  models: [],
+  roleCandidates: {},
+  inFlight: null,
+};
 
 // ─── Emotion helpers (for in-the-moment reactions) ─────────────────────────
 function _clamp(n, lo, hi) { n = Number(n); if (!Number.isFinite(n)) return lo; return Math.max(lo, Math.min(hi, n)); }
@@ -278,6 +313,7 @@ function syncAIPlayersFromGame(game) {
 
   // Ensure each AI has a stable identity + private mind.
   try { for (const a of aiPlayers) ensureAICore(a); } catch (_) {}
+  try { primeNebiusModelCatalog(); } catch (_) {}
 
   // Update vision for every AI whenever the game snapshot changes.
   try { updateAIVisionFromGame(game); } catch (_) {}
@@ -325,14 +361,278 @@ window.AI_CONFIG = AI_CONFIG;
 
 // ─── LLM API Calls ──────────────────────────────────────────────────────────
 
+function _stableHash(input) {
+  const s = String(input || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function _normalizeBrainRole(role, fallback = AI_BRAIN_ROLES.dialogue) {
+  const r = String(role || '').toLowerCase().trim();
+  if (AI_BRAIN_ROLES[r]) return r;
+  return fallback;
+}
+
+function _defaultModelForBrainRole(role) {
+  const r = _normalizeBrainRole(role, AI_BRAIN_ROLES.dialogue);
+  const roleDefaults = (AI_CONFIG && typeof AI_CONFIG.brainRoleModels === 'object') ? AI_CONFIG.brainRoleModels : {};
+  if (roleDefaults && roleDefaults[r]) return String(roleDefaults[r]);
+  if (r === AI_BRAIN_ROLES.reasoning) return String(AI_CONFIG.reasoningModel || AI_CONFIG.model);
+  return String(AI_CONFIG.model);
+}
+
+function _extractModelId(raw) {
+  if (!raw) return '';
+  const id = raw.id || raw.model || raw.name || raw.slug || raw.identifier;
+  return String(id || '').trim();
+}
+
+function _modelMetaText(raw) {
+  if (!raw || typeof raw !== 'object') return '';
+  try {
+    const parts = [];
+    const fields = ['description', 'provider', 'family', 'task', 'type', 'modality', 'capabilities'];
+    for (const f of fields) {
+      if (raw[f]) parts.push(String(raw[f]));
+    }
+    if (Array.isArray(raw.tags)) parts.push(raw.tags.join(' '));
+    if (Array.isArray(raw.modalities)) parts.push(raw.modalities.join(' '));
+    if (Array.isArray(raw.input_modalities)) parts.push(raw.input_modalities.join(' '));
+    if (Array.isArray(raw.output_modalities)) parts.push(raw.output_modalities.join(' '));
+    return parts.join(' ').toLowerCase();
+  } catch (_) {
+    return '';
+  }
+}
+
+function _extractSizeB(lowerModelId) {
+  const m = String(lowerModelId || '').match(/(\d+(?:\.\d+)?)\s*b\b/i);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+function _isLikelyChatGenerationModel(lowerModelId, metaText) {
+  const id = String(lowerModelId || '').toLowerCase();
+  const meta = String(metaText || '').toLowerCase();
+  const text = `${id} ${meta}`;
+
+  // Exclude clearly non-chat endpoints.
+  if (/(embedding|embed|rerank|text-embedding|speech|audio|asr|whisper|tts|transcri|vision-only|image|diffusion|sdxl|flux|moderation)/.test(text)) {
+    return false;
+  }
+
+  // Keep likely instruction/chat models.
+  if (/(instruct|chat|assistant|reason|r1|hermes|llama|qwen|mistral|nemotron|deepseek|phi|gemma|command|mixtral|yi)/.test(text)) {
+    return true;
+  }
+
+  // Default to true for unknown text models; routing fallback still exists.
+  return true;
+}
+
+function _scoreNebiusModelForRole(model, role) {
+  const r = _normalizeBrainRole(role, AI_BRAIN_ROLES.dialogue);
+  const id = String(model?.id || '').toLowerCase();
+  const meta = String(model?.meta || '').toLowerCase();
+  const text = `${id} ${meta}`;
+  const sizeB = _extractSizeB(id);
+  let score = 0;
+
+  // Broad quality priors.
+  if (/(instruct|chat|assistant)/.test(text)) score += 26;
+  if (/(llama|qwen|mistral|mixtral|deepseek|nemotron|hermes|phi|gemma|command)/.test(text)) score += 16;
+  if (/(preview|experimental|beta)/.test(text)) score -= 5;
+
+  if (r === AI_BRAIN_ROLES.reasoning) {
+    if (/(reason|r1|qwq|o1|think|cot)/.test(text)) score += 62;
+    if (/(deepseek\-r1|deepseek[\s\-]?r1)/.test(text)) score += 30;
+    if (sizeB !== null) {
+      if (sizeB >= 32) score += 10;
+      if (sizeB <= 10) score -= 10;
+    }
+  } else if (r === AI_BRAIN_ROLES.instruction) {
+    if (/(instruct|chat|assistant)/.test(text)) score += 22;
+    if (/(r1|reason)/.test(text)) score += 6;
+  } else if (r === AI_BRAIN_ROLES.dialogue) {
+    if (/(hermes|chat|assistant|roleplay)/.test(text)) score += 28;
+    if (/(instruct)/.test(text)) score += 14;
+    if (sizeB !== null && sizeB >= 30) score += 6;
+  } else if (r === AI_BRAIN_ROLES.reaction) {
+    if (/(chat|assistant|instruct)/.test(text)) score += 16;
+    if (sizeB !== null) {
+      if (sizeB <= 14) score += 14;
+      if (sizeB > 40) score -= 6;
+    }
+  } else if (r === AI_BRAIN_ROLES.scout) {
+    if (/(chat|assistant|instruct)/.test(text)) score += 16;
+    if (/(reason|r1)/.test(text)) score += 5;
+    if (sizeB !== null) {
+      if (sizeB <= 14) score += 16;
+      if (sizeB > 40) score -= 8;
+    }
+  } else if (r === AI_BRAIN_ROLES.mind) {
+    if (/(chat|assistant|instruct|reason)/.test(text)) score += 18;
+    if (sizeB !== null && sizeB >= 14) score += 4;
+  }
+
+  return score;
+}
+
+function _rankModelsForRole(models, role) {
+  const list = Array.isArray(models) ? models : [];
+  return list
+    .map((m) => ({ ...m, _score: _scoreNebiusModelForRole(m, role) }))
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 12);
+}
+
+function _rebuildNebiusRoleCandidates(models) {
+  const roles = Object.keys(AI_BRAIN_ROLES);
+  const out = {};
+  for (const role of roles) {
+    out[role] = _rankModelsForRole(models, role);
+  }
+  return out;
+}
+
+function _parseNebiusModelPayload(payload) {
+  const rawModels = Array.isArray(payload?.data)
+    ? payload.data
+    : (Array.isArray(payload?.models) ? payload.models : []);
+  const out = [];
+  const seen = new Set();
+  for (const raw of rawModels) {
+    const id = _extractModelId(raw);
+    if (!id || seen.has(id)) continue;
+    const meta = _modelMetaText(raw);
+    if (!_isLikelyChatGenerationModel(id.toLowerCase(), meta)) continue;
+    seen.add(id);
+    out.push({ id, raw, meta });
+  }
+  return out;
+}
+
+async function fetchNebiusModelCatalog(options = {}) {
+  const force = !!options.force;
+  if (!AI_CONFIG.enableNebiusModelRouting) return aiNebiusModelsState.models;
+
+  const now = Date.now();
+  if (!force && aiNebiusModelsState.models.length && (now - aiNebiusModelsState.fetchedAt) < AI_MODEL_CATALOG_TTL_MS) {
+    return aiNebiusModelsState.models;
+  }
+  if (!AI_CONFIG.apiKey) return aiNebiusModelsState.models;
+  if (aiNebiusModelsState.inFlight) return aiNebiusModelsState.inFlight;
+  if (!force && aiNebiusModelsState.failedAt && (now - aiNebiusModelsState.failedAt) < AI_MODEL_CATALOG_RETRY_MS) {
+    return aiNebiusModelsState.models;
+  }
+
+  aiNebiusModelsState.inFlight = (async () => {
+    const urls = [
+      `${AI_CONFIG.baseURL}/models?verbose=true`,
+      `${AI_CONFIG.baseURL}/models`,
+    ];
+    let lastErr = null;
+    for (const url of urls) {
+      try {
+        const resp = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${AI_CONFIG.apiKey}`,
+          },
+        });
+        if (!resp.ok) {
+          lastErr = new Error(`model catalog ${resp.status}`);
+          continue;
+        }
+        const data = await resp.json();
+        const models = _parseNebiusModelPayload(data);
+        if (models.length) {
+          aiNebiusModelsState.models = models;
+          aiNebiusModelsState.fetchedAt = Date.now();
+          aiNebiusModelsState.failedAt = 0;
+          aiNebiusModelsState.roleCandidates = _rebuildNebiusRoleCandidates(models);
+          return models;
+        }
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    aiNebiusModelsState.failedAt = Date.now();
+    if (lastErr) throw lastErr;
+    return aiNebiusModelsState.models;
+  })();
+
+  try {
+    return await aiNebiusModelsState.inFlight;
+  } finally {
+    aiNebiusModelsState.inFlight = null;
+  }
+}
+
+function primeNebiusModelCatalog() {
+  if (!AI_CONFIG.enableNebiusModelRouting || !AI_CONFIG.apiKey) return;
+  fetchNebiusModelCatalog().catch(() => {});
+}
+
+function _pickModelDeterministically(candidates, aiId, role) {
+  const list = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
+  if (!list.length) return '';
+  const topN = Math.max(1, Math.min(4, list.length));
+  const idx = _stableHash(`${String(aiId || 'anon')}|${String(role || '')}`) % topN;
+  const chosen = list[idx];
+  return String(chosen?.id || '');
+}
+
+function _buildModelRoutingForAI(ai) {
+  const roles = Object.keys(AI_BRAIN_ROLES);
+  const route = {};
+  for (const role of roles) {
+    const candidates = aiNebiusModelsState.roleCandidates?.[role] || [];
+    route[role] = _pickModelDeterministically(candidates, ai?.id || ai?.odId || ai?.name || 'anon', role)
+      || _defaultModelForBrainRole(role);
+  }
+  return route;
+}
+
+function _resolveModelForCall(options = {}, fallbackRole = AI_BRAIN_ROLES.dialogue) {
+  const explicit = String(options?.model || '').trim();
+  if (explicit) return explicit;
+
+  const role = _normalizeBrainRole(options?.brainRole, fallbackRole);
+  const ai = options?.ai || null;
+  if (!ai || !AI_CONFIG.enableNebiusModelRouting) return _defaultModelForBrainRole(role);
+
+  const core = ensureAICore(ai);
+  if (!core) return _defaultModelForBrainRole(role);
+  const stamp = Number(aiNebiusModelsState.fetchedAt || 0);
+  if (!core.modelRouting || core.modelRoutingStamp !== stamp) {
+    core.modelRouting = _buildModelRoutingForAI(ai);
+    core.modelRoutingStamp = stamp;
+  }
+
+  return String(core.modelRouting?.[role] || _defaultModelForBrainRole(role));
+}
+
 async function aiChatCompletion(messages, options = {}) {
 
   if (!ensureAIKeyPresent()) {
     throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (or paste when prompted) before using AI players.');
   }
 
+  if (AI_CONFIG.enableNebiusModelRouting && !aiNebiusModelsState.models.length) {
+    try { await fetchNebiusModelCatalog(); } catch (_) {}
+  } else {
+    primeNebiusModelCatalog();
+  }
+
+  const role = _normalizeBrainRole(options.brainRole, AI_BRAIN_ROLES.dialogue);
   const body = {
-    model: AI_CONFIG.model,
+    model: _resolveModelForCall(options, role),
     messages,
     temperature: options.temperature ?? 0.85,
     max_tokens: options.max_tokens ?? 512,
@@ -368,8 +668,15 @@ async function aiReasoningCompletion(messages, options = {}) {
     throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (or paste when prompted) before using AI players.');
   }
 
+  if (AI_CONFIG.enableNebiusModelRouting && !aiNebiusModelsState.models.length) {
+    try { await fetchNebiusModelCatalog(); } catch (_) {}
+  } else {
+    primeNebiusModelCatalog();
+  }
+
+  const role = _normalizeBrainRole(options.brainRole, AI_BRAIN_ROLES.reasoning);
   const body = {
-    model: AI_CONFIG.reasoningModel,
+    model: _resolveModelForCall(options, role),
     messages,
     max_tokens: options.max_tokens ?? 512,
   };
@@ -400,6 +707,7 @@ async function aiReasoningCompletion(messages, options = {}) {
   };
 }
 window.aiReasoningCompletion = aiReasoningCompletion;
+window.fetchNebiusModelCatalog = fetchNebiusModelCatalog;
 
 function appendReasoningToMind(ai, reasoning) {
   if (!reasoning) return;
@@ -418,43 +726,104 @@ function hasBlockingPendingClueReview(game) {
 
 // ─── Fetch Recent Team Chat (so AI can see human messages) ──────────────────
 
-async function fetchRecentTeamChat(gameId, teamColor, limit = 15) {
+function _teamChatCacheKey(gameId, teamColor, limit) {
+  return `${String(gameId || '').trim()}|${String(teamColor || '').trim().toLowerCase()}|${Math.max(1, Number(limit || 12) | 0)}`;
+}
+
+function _invalidateTeamChatCache(gameId, teamColor = '') {
   try {
-    const snap = await db.collection('games').doc(gameId)
-      .collection(`${teamColor}Chat`)
-      .orderBy('createdAt', 'desc')
-      .limit(limit)
-      .get();
-    const msgs = snap.docs.map(d => d.data()).reverse();
-    return msgs.map(m => `${m.senderName}: ${m.text}`).join('\n');
-  } catch (e) {
-    console.warn('Failed to fetch team chat for AI:', e);
+    const gid = String(gameId || '').trim();
+    const team = String(teamColor || '').trim().toLowerCase();
+    if (!gid) return;
+    for (const key of aiTeamChatQueryCache.keys()) {
+      if (!key.startsWith(`${gid}|`)) continue;
+      if (team && !key.startsWith(`${gid}|${team}|`)) continue;
+      aiTeamChatQueryCache.delete(key);
+    }
+  } catch (_) {}
+}
+
+async function fetchRecentTeamChat(gameId, teamColor, limit = 15, opts = {}) {
+  try {
+    const docs = await fetchRecentTeamChatDocs(gameId, teamColor, limit, opts);
+    return docs.map(m => `${m.senderName}: ${m.text}`).join('\n');
+  } catch (_) {
     return '';
   }
 }
 
 // Structured chat fetch (for conversational replies + de-duplication).
-async function fetchRecentTeamChatDocs(gameId, teamColor, limit = 12) {
+async function fetchRecentTeamChatDocs(gameId, teamColor, limit = 12, opts = {}) {
+  const gid = String(gameId || '').trim();
+  const team = String(teamColor || '').trim();
+  if (!gid || !team) return [];
+
+  const cacheMs = Number.isFinite(+opts.cacheMs) ? Math.max(0, +opts.cacheMs) : 950;
+  const bypassCache = !!opts.bypassCache;
+  const key = _teamChatCacheKey(gid, team, limit);
+  const now = Date.now();
+
+  if (!bypassCache) {
+    const cached = aiTeamChatQueryCache.get(key);
+    if (cached) {
+      if (cached.inFlight) {
+        try { return await cached.inFlight; } catch (_) {}
+      }
+      if ((now - Number(cached.at || 0)) <= cacheMs && Array.isArray(cached.docs)) {
+        return cached.docs.slice();
+      }
+    }
+  }
+
+  const queryPromise = (async () => {
+    try {
+      const snap = await db.collection('games').doc(gid)
+        .collection(`${team}Chat`)
+        .orderBy('createdAt', 'desc')
+        .limit(limit)
+        .get();
+
+      const out = snap.docs.map(d => {
+        const m = d.data() || {};
+        return {
+          senderId: String(m.senderId || ''),
+          senderName: String(m.senderName || ''),
+          text: String(m.text || ''),
+          createdAtMs: tsToMs(m.createdAt),
+        };
+      }).reverse();
+      return out;
+    } catch (e) {
+      console.warn('Failed to fetch team chat docs for AI:', e);
+      return [];
+    }
+  })();
+
+  if (!bypassCache) {
+    const prev = aiTeamChatQueryCache.get(key) || {};
+    aiTeamChatQueryCache.set(key, {
+      ...prev,
+      at: now,
+      inFlight: queryPromise,
+    });
+  }
+
   try {
-    const snap = await db.collection('games').doc(gameId)
-      .collection(`${teamColor}Chat`)
-      .orderBy('createdAt', 'desc')
-      .limit(limit)
-      .get();
-
-    const out = snap.docs.map(d => {
-      const m = d.data() || {};
-      return {
-        senderId: String(m.senderId || ''),
-        senderName: String(m.senderName || ''),
-        text: String(m.text || ''),
-        createdAtMs: tsToMs(m.createdAt),
-      };
-    }).reverse();
-
+    const out = await queryPromise;
+    if (!bypassCache) {
+      aiTeamChatQueryCache.set(key, {
+        at: Date.now(),
+        docs: out.slice(),
+        text: out.map(m => `${m.senderName}: ${m.text}`).join('\n'),
+        inFlight: null,
+      });
+    }
     return out;
-  } catch (e) {
-    console.warn('Failed to fetch team chat docs for AI:', e);
+  } catch (_) {
+    if (!bypassCache) {
+      const cached = aiTeamChatQueryCache.get(key);
+      if (cached) cached.inFlight = null;
+    }
     return [];
   }
 }
@@ -478,6 +847,8 @@ async function verifyAIReady(ai) {
       },
       { role: 'user', content: 'Ready check. Reply with JSON only.' }
     ], {
+      ai,
+      brainRole: AI_BRAIN_ROLES.instruction,
       max_tokens: 80,
       temperature: 0,
       response_format: { type: 'json_object' }
@@ -1141,7 +1512,7 @@ Now generate a COMPLETELY DIFFERENT personality for "${aiName}". Be creative and
   try {
     const raw = await aiChatCompletion(
       [{ role: 'user', content: prompt }],
-      { temperature: 1.05, max_tokens: 900 }
+      { brainRole: AI_BRAIN_ROLES.instruction, temperature: 1.05, max_tokens: 900 }
     );
     // Strip any accidental markdown fences
     const cleaned = raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
@@ -1325,7 +1696,52 @@ function buildPersonalityBlockBrief(persona) {
 }
 
 // Per-AI private state ("pocket dimension")
-let aiCore = {}; // aiId -> { temperature, personality, mindLog: string[], vision: object|null, visionSig: string, lastMindTickAt: number }
+let aiCore = {}; // aiId -> { temperature, personality, mindLog, vision, cadence, modelRouting, ... }
+
+function _buildAICadenceProfile(personality, seed = '') {
+  const stats = personality?.stats || {};
+  const tempo = _clamp(Number(stats.tempo ?? stats.speed ?? 60), 1, 100);
+  const depth = _clamp(Number(stats.reasoning_depth ?? 60), 1, 100);
+  const confidence = _clamp(Number(stats.confidence ?? 55), 1, 100);
+  const verbosity = _clamp(Number(stats.verbosity ?? 50), 1, 100);
+  const teamSpirit = _clamp(Number(stats.team_spirit ?? 50), 1, 100);
+
+  const h = _stableHash(String(seed || `${tempo}|${depth}|${confidence}|${verbosity}|${teamSpirit}`));
+  const jitter = 0.78 + (((h % 1000) / 1000) * 0.44); // 0.78 .. 1.22
+
+  const visionMinMs = Math.round(_clamp((420 + ((100 - tempo) * 7.8) + (depth * 2.1)) * jitter, 420, 1750));
+  const mindTickMinMs = Math.round(_clamp((900 + (depth * 10.5) + ((100 - tempo) * 4.4)) * jitter, 880, 3200));
+  const chatReplyMinMs = Math.round(_clamp((2500 + ((100 - verbosity) * 30) + ((100 - tempo) * 22) + ((100 - confidence) * 16)) * jitter, 2400, 9800));
+  const markerReactionMinMs = Math.round(_clamp((3200 + ((100 - verbosity) * 22) + ((100 - teamSpirit) * 20)) * jitter, 2600, 10800));
+  const offTurnScoutMinMs = Math.round(_clamp((7600 + ((100 - verbosity) * 50) + ((100 - confidence) * 28)) * jitter, 6200, 23000));
+
+  const baseReplyChance = _clamp(0.23 + (verbosity / 220) + (teamSpirit / 500), 0.22, 0.86);
+  const chatReplyChanceVsHuman = _clamp(baseReplyChance + (confidence / 680), 0.25, 0.92);
+  const chatReplyChanceVsAI = _clamp(baseReplyChance - 0.11 + (confidence / 920), 0.12, 0.79);
+  const offTurnChatChance = _clamp(0.40 + (verbosity / 260) + (confidence / 780), 0.34, 0.88);
+
+  const chatThinkMinMs = Math.round(_clamp(120 + (depth * 1.8) + ((100 - tempo) * 1.1), 120, 460));
+  const chatThinkMaxMs = Math.round(_clamp(chatThinkMinMs + 290 + (depth * 3.6) + ((100 - confidence) * 4.2), 420, 1900));
+
+  return {
+    visionMinMs,
+    mindTickMinMs,
+    chatReplyMinMs,
+    markerReactionMinMs,
+    offTurnScoutMinMs,
+    chatReplyChanceVsHuman,
+    chatReplyChanceVsAI,
+    offTurnChatChance,
+    chatThinkMinMs,
+    chatThinkMaxMs,
+    firstSeenChatLookbackMs: Math.round(_clamp(6000 + ((100 - tempo) * 55), 4500, 14000)),
+  };
+}
+
+function _getAICadence(ai) {
+  const core = ensureAICore(ai);
+  return core?.cadence || _buildAICadenceProfile(core?.personality, ai?.id || ai?.odId || ai?.name || '');
+}
 
 function ensureAICore(ai) {
   if (!ai || !ai.id) return null;
@@ -1336,11 +1752,15 @@ function ensureAICore(ai) {
     aiCore[ai.id] = {
       temperature,
       personality,
+      cadence: _buildAICadenceProfile(personality, ai.id || ai.odId || ai.name || ''),
       mindLog: [],
       vision: null,
       visionSig: '',
+      lastVisionUpdateAt: 0,
       lastMindTickAt: 0,
       lastSuggestionKey: '',
+      modelRouting: null,
+      modelRoutingStamp: -1,
       emotion: {
         // -100..100
         valence: Math.round((Math.random() * 18) - 9),
@@ -1353,10 +1773,18 @@ function ensureAICore(ai) {
     };
   } else {
     // Keep Firestore-persisted identity stable.
-    if (ai.personality) aiCore[ai.id].personality = ai.personality;
-    if (Number.isFinite(+ai.temperature)) aiCore[ai.id].temperature = +ai.temperature;
-    if (!aiCore[ai.id].emotion) {
-      aiCore[ai.id].emotion = { valence: 0, arousal: 35, intensity: _baselineEmotionalIntensity(aiCore[ai.id].personality) };
+    const core = aiCore[ai.id];
+    let refreshCadence = false;
+    if (ai.personality && core.personality !== ai.personality) {
+      core.personality = ai.personality;
+      refreshCadence = true;
+    }
+    if (Number.isFinite(+ai.temperature)) core.temperature = +ai.temperature;
+    if (!core.emotion) {
+      core.emotion = { valence: 0, arousal: 35, intensity: _baselineEmotionalIntensity(core.personality) };
+    }
+    if (!core.cadence || refreshCadence) {
+      core.cadence = _buildAICadenceProfile(core.personality, ai.id || ai.odId || ai.name || '');
     }
   }
   return aiCore[ai.id];
@@ -1403,9 +1831,13 @@ function maybeRefreshPracticeAIIdentities(game) {
       if (aiCore[ai.id]) {
         aiCore[ai.id].personality = persona;
         aiCore[ai.id].temperature = ai.temperature;
+        aiCore[ai.id].cadence = _buildAICadenceProfile(persona, ai.id || ai.odId || ai.name || '');
         aiCore[ai.id].mindLog = [];
         aiCore[ai.id].visionSig = '';
         aiCore[ai.id].vision = null;
+        aiCore[ai.id].lastVisionUpdateAt = 0;
+        aiCore[ai.id].modelRouting = null;
+        aiCore[ai.id].modelRoutingStamp = -1;
         aiCore[ai.id].emotion = { valence: Math.round((Math.random() * 18) - 9), arousal: Math.round(30 + Math.random() * 18), intensity: _baselineEmotionalIntensity(persona) };
       }
     }
@@ -1844,16 +2276,18 @@ function buildTeamMarkerContext(game, team, selfOwnerId = '') {
   }
 }
 
-async function maybeMindTick(ai, game) {
+async function maybeMindTick(ai, game, opts = {}) {
   const core = ensureAICore(ai);
   if (!core) return;
+  const cadence = core.cadence || _buildAICadenceProfile(core.personality, ai?.id || ai?.odId || ai?.name || '');
   const now = Date.now();
-  if (now - core.lastMindTickAt < 1200) return; // lightweight cadence
+  const force = !!opts.force;
+  if (!force && (now - core.lastMindTickAt < Number(cadence.mindTickMinMs || 1200))) return;
   core.lastMindTickAt = now;
 
   // Don't block the game loop; fire-and-forget inner monologue update.
   try {
-    const vision = buildAIVision(game, ai);
+    const vision = opts.vision || buildAIVision(game, ai);
     const persona = core.personality;
     const mindContext = core.mindLog.slice(-8).join("\n");
     const sys = [
@@ -1872,6 +2306,8 @@ ${JSON.stringify(vision)}
 RECENT MIND (for continuity):
 ${mindContext}`;
     aiChatCompletion([{ role: 'system', content: sys }, { role: 'user', content: user }], {
+      ai,
+      brainRole: AI_BRAIN_ROLES.mind,
       temperature: core.temperature,
       max_tokens: 180,
       response_format: { type: 'json_object' }
@@ -1884,6 +2320,98 @@ ${mindContext}`;
   } catch (_) {}
 }
 
+function _buildMarkerStateSig(markers) {
+  try {
+    if (!markers || typeof markers !== 'object') return '';
+    const rows = Object.keys(markers).map(k => Number(k)).filter(n => Number.isFinite(n)).sort((a, b) => a - b);
+    if (!rows.length) return '';
+    const parts = [];
+    for (const idx of rows) {
+      const bucket = _normalizeMarkerBucket(markers[idx]);
+      const owners = Object.keys(bucket).sort();
+      if (!owners.length) continue;
+      const votes = owners
+        .map((owner) => `${String(owner).slice(0, 6)}:${String(bucket[owner] || '').slice(0, 1)}`)
+        .join(',');
+      parts.push(`${idx}:${votes}`);
+    }
+    return parts.join(';');
+  } catch (_) {
+    return '';
+  }
+}
+
+function _buildVisionGlobalSignature(game) {
+  try {
+    const cards = Array.isArray(game?.cards) ? game.cards : [];
+    const revealSig = cards
+      .map((c, i) => (c && c.revealed) ? `${i}:${String(c.type || '')}` : '')
+      .filter(Boolean)
+      .join(',');
+    const clueWord = String(game?.currentClue?.word || '').trim().toUpperCase();
+    const clueNum = Number(game?.currentClue?.number || 0);
+    const guessesRemaining = Number.isFinite(+game?.guessesRemaining) ? +game.guessesRemaining : '';
+    const logTail = Array.isArray(game?.log)
+      ? game.log.slice(-4).map(x => String(x || '').slice(0, 90)).join('|')
+      : '';
+    const draft = (game?.liveClueDraft && typeof game.liveClueDraft === 'object')
+      ? `${String(game.liveClueDraft.team || '')}:${String(game.liveClueDraft.word || '')}:${String(game.liveClueDraft.number || '')}`
+      : '';
+    const redMarkers = _buildMarkerStateSig(game?.redAIMarkers);
+    const blueMarkers = _buildMarkerStateSig(game?.blueAIMarkers);
+    return [
+      String(game?.id || ''),
+      String(game?.currentPhase || ''),
+      String(game?.currentTeam || ''),
+      clueWord,
+      Number.isFinite(clueNum) ? clueNum : '',
+      guessesRemaining,
+      String(game?.winner || ''),
+      revealSig,
+      redMarkers,
+      blueMarkers,
+      logTail,
+      draft,
+    ].join('~');
+  } catch (_) {
+    return '';
+  }
+}
+
+function _buildAIVisionSignature(vision) {
+  try {
+    const cardsSig = (vision?.cards || [])
+      .map((c) => c && c.revealed
+        ? `${Number(c.index)}:${String(c.revealedType || c.type || '')}`
+        : `${Number(c?.index)}:0`)
+      .join(',');
+    const markersSig = (vision?.teamMarkers || [])
+      .map((m) => `${Number(m.index)}:${Number(m?.counts?.yes || 0)},${Number(m?.counts?.maybe || 0)},${Number(m?.counts?.no || 0)}`)
+      .join(';');
+    const clueStackSig = (vision?.clueStack || [])
+      .map((c) => `${String(c.word || '')}:${Number(c.remainingTargets || 0)}:${Number(c.number || 0)}`)
+      .join(';');
+    const clueWord = String(vision?.clue?.word || '').trim().toUpperCase();
+    const clueNum = Number(vision?.clue?.number || 0);
+    const logTail = (vision?.log || []).slice(-5).map(s => String(s || '').slice(0, 80)).join('|');
+    return [
+      String(vision?.role || ''),
+      String(vision?.team || ''),
+      String(vision?.phase || ''),
+      String(vision?.currentTeam || ''),
+      clueWord,
+      Number.isFinite(clueNum) ? clueNum : '',
+      Number.isFinite(+vision?.guessesRemaining) ? +vision.guessesRemaining : '',
+      cardsSig,
+      clueStackSig,
+      markersSig,
+      logTail,
+    ].join('~');
+  } catch (_) {
+    return '';
+  }
+}
+
 function updateAIVisionFromGame(game) {
   try {
     if (!game) return;
@@ -1891,21 +2419,24 @@ function updateAIVisionFromGame(game) {
     // Practice: new board ⇒ new AI identities.
     maybeRefreshPracticeAIIdentities(game);
 
+    const gid = String(game?.id || '').trim();
+    const now = Date.now();
+    const globalSig = _buildVisionGlobalSignature(game);
+    const prevGlobal = gid ? (aiGlobalVisionSigByGame.get(gid) || '') : '';
+    const globalChanged = globalSig !== prevGlobal;
+    if (gid && globalChanged) aiGlobalVisionSigByGame.set(gid, globalSig);
+
     for (const ai of (aiPlayers || [])) {
       const core = ensureAICore(ai);
       if (!core) continue;
+      const cadence = core.cadence || _buildAICadenceProfile(core.personality, ai?.id || ai?.odId || ai?.name || '');
+      const elapsed = now - Number(core.lastVisionUpdateAt || 0);
+      const due = elapsed >= Number(cadence.visionMinMs || 900);
+      if (!globalChanged && !due) continue;
 
       const vision = buildAIVision(game, ai);
-
-      // Build a signature that changes whenever anything visible changes.
-      const sig = JSON.stringify({
-        phase: vision.phase,
-        currentTeam: vision.currentTeam,
-        clue: vision.clue,
-        guessesRemaining: vision.guessesRemaining,
-        cards: (vision.cards || []).map(c => [c.word, !!c.revealed, String(c.revealedType || ''), String(c.type || '')]),
-        logTail: (vision.log || []).slice(-6),
-      });
+      const sig = _buildAIVisionSignature(vision);
+      core.lastVisionUpdateAt = now;
 
       if (sig !== core.visionSig) {
         core.visionSig = sig;
@@ -1913,15 +2444,10 @@ function updateAIVisionFromGame(game) {
 
         // Emotion: react to major visible events (reveals, turn changes).
         try {
-          const emoSig = JSON.stringify({
-            phase: vision.phase,
-            team: vision.currentTeam,
-            cards: (vision.cards || []).map(c => !!c.revealed),
-            winner: vision.winner || '',
-          });
+          const emoSig = `${String(vision.phase || '')}|${String(vision.currentTeam || '')}|${String(game?.winner || '')}|${(vision.cards || []).map(c => !!c.revealed ? '1' : '0').join('')}`;
           if (core._lastEmotionGameSig && core._lastEmotionGameSig !== emoSig) {
-            const prev = JSON.parse(core._lastEmotionGameSig);
-            const prevRevealed = Array.isArray(prev.cards) ? prev.cards : [];
+            const prevBits = String(core._lastEmotionGameSig || '').split('|').pop() || '';
+            const prevRevealed = prevBits.split('').map(ch => ch === '1');
             const nowRevealed = (vision.cards || []).map(c => !!c.revealed);
             let newReveals = 0;
             for (let i = 0; i < Math.min(prevRevealed.length, nowRevealed.length); i++) {
@@ -1944,7 +2470,7 @@ function updateAIVisionFromGame(game) {
               else bumpEmotion(ai, +6, +10);
             }
             // Turn change: mild reset.
-            if (String(prev.phase || '') !== String(vision.phase || '')) {
+            if (String(core._lastEmotionGameSig || '').split('|')[0] !== String(vision.phase || '')) {
               bumpEmotion(ai, 0, -6);
             }
           }
@@ -1956,7 +2482,12 @@ function updateAIVisionFromGame(game) {
         appendMind(ai, `ok board updated — ${vision.phase} phase, ${String(vision.currentTeam || '').toUpperCase()}'s turn, clue: ${clueStr}. let me think about this...`);
 
         // Optional additional inner-monologue tick (LLM-written) without blocking.
-        maybeMindTick(ai, game);
+        maybeMindTick(ai, game, { vision });
+      } else if (due) {
+        // Slow periodic mind refresh, even when state signature is unchanged.
+        if ((now - Number(core.lastMindTickAt || 0)) > Number(cadence.mindTickMinMs || 1200) * 1.45 && Math.random() < 0.24) {
+          maybeMindTick(ai, game, { vision });
+        }
       }
     }
   } catch (_) {}
@@ -2770,9 +3301,12 @@ function _chatSignature(chatDocs, take = 10) {
   }
 }
 
-async function getTeamChatState(gameId, team, limit = 12) {
+async function getTeamChatState(gameId, team, limit = 12, opts = {}) {
   try {
-    const docs = await fetchRecentTeamChatDocs(gameId, team, limit);
+    const docs = await fetchRecentTeamChatDocs(gameId, team, limit, {
+      cacheMs: Number.isFinite(+opts.cacheMs) ? Math.max(0, +opts.cacheMs) : 220,
+      bypassCache: !!opts.bypassCache,
+    });
     const newestMs = docs && docs.length ? Math.max(...docs.map(d => Number(d.createdAtMs || 0))) : 0;
     return { docs: docs || [], newestMs, sig: _chatSignature(docs || []) };
   } catch (_) {
@@ -2825,7 +3359,7 @@ async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDo
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.dialogue, temperature: core.temperature, max_tokens: 240, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -2965,7 +3499,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   const { content: raw, reasoning } = await aiReasoningCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { max_tokens: 360, response_format: { type: 'json_object' } }
+    { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 360, response_format: { type: 'json_object' } }
   );
   appendReasoningToMind(ai, reasoning);
 
@@ -3151,7 +3685,7 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+    { ai, brainRole: AI_BRAIN_ROLES.dialogue, temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -3269,7 +3803,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const { content: raw, reasoning } = await aiReasoningCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { max_tokens: 360, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 360, response_format: { type: 'json_object' } }
     );
     appendReasoningToMind(ai, reasoning);
 
@@ -3544,7 +4078,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
 
   const { content: raw, reasoning } = await aiReasoningCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { max_tokens: 360, response_format: { type: 'json_object' } }
+    { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 360, response_format: { type: 'json_object' } }
   );
   appendReasoningToMind(ai, reasoning);
 
@@ -3635,7 +4169,7 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
 
   const raw = await aiChatCompletion(
     [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    { temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
+    { ai, brainRole: AI_BRAIN_ROLES.dialogue, temperature: core.temperature, max_tokens: 220, response_format: { type: 'json_object' } }
   );
 
   let parsed = null;
@@ -4096,7 +4630,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const { content: raw, reasoning } = await aiReasoningCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { max_tokens: 360, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 360, response_format: { type: 'json_object' } }
     );
     appendReasoningToMind(ai, reasoning);
 
@@ -4357,7 +4891,7 @@ ${mindContext}`;
     for (let attempt = 1; attempt <= 3; attempt++) {
       const { content: raw, reasoning } = await aiReasoningCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { max_tokens: 420, response_format: { type: 'json_object' } }
+        { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 420, response_format: { type: 'json_object' } }
       );
       appendReasoningToMind(ai, reasoning);
 
@@ -4528,7 +5062,7 @@ async function aiGuessCard(ai, game) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const { content: raw, reasoning } = await aiReasoningCompletion(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { max_tokens: 360, response_format: { type: 'json_object' } }
+        { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 360, response_format: { type: 'json_object' } }
       );
       appendReasoningToMind(ai, reasoning);
       try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) { parsed = null; }
@@ -4810,11 +5344,13 @@ function buildFallbackReplyForChat(lastText, senderName = '') {
 
 async function generateAIChatMessage(ai, game, context, opts = {}) {
   try {
-    // Keep conversational output aligned with the latest board/chat state.
-    try {
-      const fresh = await getGameSnapshot(game?.id);
-      if (fresh && fresh.cards) game = fresh;
-    } catch (_) {}
+    // Optional snapshot refresh for call sites that want it.
+    if (opts.refreshSnapshot) {
+      try {
+        const fresh = await getGameSnapshot(game?.id);
+        if (fresh && fresh.cards) game = fresh;
+      } catch (_) {}
+    }
 
     const core = ensureAICore(ai);
     if (!core) return '';
@@ -4823,7 +5359,10 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const vision = buildAIVision(game, ai);
     const unrevealed = (vision.cards || []).filter(c => !c.revealed).map(c => String(c.word || '').toUpperCase());
-    const teamChat = await fetchRecentTeamChat(game.id, team, 10);
+    const chatDocs = Array.isArray(opts.chatDocs)
+      ? opts.chatDocs
+      : await fetchRecentTeamChatDocs(game.id, team, 10, { cacheMs: 900 });
+    const teamChat = (chatDocs || []).slice(-10).map(m => `${m.senderName}: ${m.text}`).join('\n');
     const lastMessage = (opts && opts.lastMessage) ? String(opts.lastMessage).trim() : '';
     const forceResponse = !!opts.forceResponse;
     const isReplyContext = String(context || '').toLowerCase() === 'reply';
@@ -4865,7 +5404,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.15, (core.temperature * 1.0) + 0.10), max_tokens: 140, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.dialogue, temperature: Math.min(1.15, (core.temperature * 1.0) + 0.10), max_tokens: 140, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -4925,7 +5464,7 @@ async function generateAIReaction(ai, revealedCard, clue) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.0, core.temperature * 0.75), max_tokens: 160, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.reaction, temperature: Math.min(1.0, core.temperature * 0.75), max_tokens: 160, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -5173,6 +5712,7 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
         text,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
+    try { _invalidateTeamChatCache(game.id, teamColor); } catch (_) {}
 
     // Remember the last few messages so we can de-dup future replies.
     try {
@@ -5195,26 +5735,23 @@ async function maybeAIRespondToTeamChat(ai, game) {
     if (!ai || !game?.id) return false;
     if (String(ai?.seatRole || '') !== 'operative') return false;
     if (aiThinkingState[ai.id]) return false;
-
-    // Keep replies grounded in the latest game state.
-    try {
-      const freshGame = await getGameSnapshot(game?.id);
-      if (freshGame && freshGame.cards) game = freshGame;
-    } catch (_) {}
     if (!game || game.winner) return false;
 
+    const core = ensureAICore(ai);
+    if (!core) return false;
+    const cadence = _getAICadence(ai);
     const now = Date.now();
     const lastReply = Number(aiLastChatReplyMs[ai.id] || 0);
-    // Keep responses fast but non-spammy.
-    if (now - lastReply < 3500) return false;
+    if (now - lastReply < Number(cadence.chatReplyMinMs || 3500)) return false;
 
-    const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 14);
+    const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 14, { cacheMs: 850 });
     if (!msgs || !msgs.length) return false;
 
     const newest = Math.max(...msgs.map(m => Number(m.createdAtMs || 0)));
     const lastSeen = Number(aiLastChatSeenMs[ai.id] || 0);
-    // On first run, only consider very recent messages so we don't respond to stale history.
-    const baseline = lastSeen > 0 ? lastSeen : Math.max(0, newest - 9000);
+    // On first run, only consider a short recency window so we ignore stale chat backlog.
+    const lookbackMs = Number(cadence.firstSeenChatLookbackMs || 9000);
+    const baseline = lastSeen > 0 ? lastSeen : Math.max(0, newest - lookbackMs);
 
     // Find new messages not from this AI.
     const fresh = msgs.filter(m => (
@@ -5239,17 +5776,34 @@ async function maybeAIRespondToTeamChat(ai, game) {
 
     let shouldReply = false;
     if (directHit || question || greeting) shouldReply = true;
-    else if (senderIsAI) shouldReply = Math.random() < 0.55;
-    else shouldReply = Math.random() < 0.72;
+    else {
+      const baseChance = senderIsAI
+        ? Number(cadence.chatReplyChanceVsAI || 0.55)
+        : Number(cadence.chatReplyChanceVsHuman || 0.72);
+      const recencyPenalty = Math.min(0.22, Math.max(0, fresh.length - 1) * 0.05);
+      const lengthBoost = Math.min(0.10, (text.length / 500));
+      const chance = _clamp(baseChance - recencyPenalty + lengthBoost, 0.08, 0.95);
+      shouldReply = Math.random() < chance;
+    }
 
     if (!shouldReply) return false;
 
     aiThinkingState[ai.id] = true;
     locked = true;
-    await humanDelay(120, 320);
+    const thinkFloor = Number(cadence.chatThinkMinMs || 120);
+    const thinkCeil = Number(cadence.chatThinkMaxMs || 650);
+    const contextual = Math.min(620, Math.round((text.length * 3.6) + (question ? 170 : 0) + (directHit ? 130 : 0)));
+    await sleep(_randMs(thinkFloor, thinkCeil) + Math.round(contextual * (0.25 + Math.random() * 0.30)));
+
+    let promptDocs = msgs;
+    try {
+      const latest = await fetchRecentTeamChatDocs(game.id, ai.team, 14, { cacheMs: 140 });
+      if (latest && latest.length) promptDocs = latest;
+    } catch (_) {}
 
     const forceResponse = !!(directHit || question || greeting);
     let reply = await generateAIChatMessage(ai, game, 'reply', {
+      chatDocs: promptDocs,
       lastMessage: `${senderName}: ${text}`,
       lastMessageText: text,
       lastSenderName: senderName,
@@ -5343,7 +5897,8 @@ async function maybeAIReactToTeamMarkers(ai, game) {
 
     const now = Date.now();
     const lastAt = Number(core.lastMarkerReactionAt || 0);
-    if (now - lastAt < 4500) return false;
+    const cadence = _getAICadence(ai);
+    if (now - lastAt < Number(cadence.markerReactionMinMs || 4500)) return false;
 
     const msg = buildMarkerReactionMessage(ai, otherRows, selfOwner);
     core.lastMarkerReactionSig = markerSig;
@@ -5383,10 +5938,10 @@ async function aiOffTurnScout(ai, game) {
 
     const now = Date.now();
     const last = Number(aiLastOffTurnScoutMs[ai.id] || 0);
-    if (now - last < 12000) return false;
-
     const core = ensureAICore(ai);
     if (!core) return false;
+    const cadence = _getAICadence(ai);
+    if (now - last < Number(cadence.offTurnScoutMinMs || 12000)) return false;
 
     const key = offTurnScoutKey(game, ai);
     if (core.lastOffTurnScoutKey === key) return false;
@@ -5421,7 +5976,7 @@ async function aiOffTurnScout(ai, game) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.0, core.temperature * 0.9), max_tokens: 300, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.scout, temperature: Math.min(1.0, core.temperature * 0.9), max_tokens: 300, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -5436,7 +5991,7 @@ async function aiOffTurnScout(ai, game) {
     if (mind) appendMind(ai, mind);
 
     let chat = sanitizeChatText(String(parsed.chat || '').trim(), vision, 140);
-    if (chat && (Math.random() < 0.72)) {
+    if (chat && (Math.random() < Number(cadence.offTurnChatChance || 0.72))) {
       await sendAIChatMessage(ai, game, chat);
     }
 
@@ -5520,109 +6075,127 @@ let aiGameLoopInterval = null;
 function startAIGameLoop() {
   if (aiGameLoopRunning) return;
   aiGameLoopRunning = true;
+  aiGameLoopTickInFlight = false;
+  primeNebiusModelCatalog();
 
   aiGameLoopInterval = setInterval(async () => {
-    // Get fresh game state
-    const gameId = currentGame?.id;
-    if (!gameId) return;
+    if (aiGameLoopTickInFlight) return;
+    aiGameLoopTickInFlight = true;
+    try {
+      // Get fresh game state
+      const gameId = currentGame?.id;
+      if (!gameId) return;
 
-    const game = await getGameSnapshot(gameId);
+      const game = await getGameSnapshot(gameId);
+      if (!game) return;
 
-    // Keep AI list synced from the game doc so every client can host them.
-    syncAIPlayersFromGame(game);
+      // Keep AI list synced from the game doc so every client can host them.
+      syncAIPlayersFromGame(game);
 
-    if (!aiPlayers.length) return;
+      if (!aiPlayers.length) return;
 
-    // Only one client should drive AI actions to avoid duplicate moves.
-    const amController = await maybeHeartbeatAIController(gameId, game);
-    if (!amController) return;
-    if (!game || game.winner) {
-      // Stop autonomous actions once the game is decided.
-      stopAIGameLoop();
-      return;
-    }
+      primeNebiusModelCatalog();
 
-    // Conversational listening: scan a few candidates each tick and let one reply.
-    // Reply throttling stays inside maybeAIRespondToTeamChat.
-    const chatCandidates = (aiPlayers || [])
-      .filter(a => a && a.mode === 'autonomous' && String(a.seatRole || '') === 'operative')
-      .sort((a, b) => Number(aiLastChatReplyMs[a.id] || 0) - Number(aiLastChatReplyMs[b.id] || 0));
-    for (const candidate of chatCandidates.slice(0, 3)) {
-      const replied = await maybeAIRespondToTeamChat(candidate, game);
-      if (replied) break;
-    }
+      // Only one client should drive AI actions to avoid duplicate moves.
+      const amController = await maybeHeartbeatAIController(gameId, game);
+      if (!amController) return;
+      if (game.winner) {
+        // Stop autonomous actions once the game is decided.
+        stopAIGameLoop();
+        return;
+      }
 
-    // Role selection phase
-    if (game.currentPhase === 'role-selection') {
-      for (const ai of aiPlayers) {
-        if (ai.seatRole === 'spymaster' && !aiThinkingState[ai.id]) {
-          await humanDelay(1000, 3000);
-          await aiSelectRole(ai, game);
+      // Conversational listening: scan only a rotating subset each tick.
+      const chatCandidates = (aiPlayers || [])
+        .filter(a => a && a.mode === 'autonomous' && String(a.seatRole || '') === 'operative')
+        .sort((a, b) => Number(aiLastChatReplyMs[a.id] || 0) - Number(aiLastChatReplyMs[b.id] || 0));
+      if (chatCandidates.length) {
+        const checksThisTick = Math.max(1, Math.min(2, chatCandidates.length));
+        const start = aiChatScanCursor % chatCandidates.length;
+        const ordered = [];
+        for (let i = 0; i < chatCandidates.length; i += 1) {
+          ordered.push(chatCandidates[(start + i) % chatCandidates.length]);
+        }
+        aiChatScanCursor = (start + checksThisTick) % chatCandidates.length;
+        for (const candidate of ordered.slice(0, checksThisTick)) {
+          const replied = await maybeAIRespondToTeamChat(candidate, game);
+          if (replied) break;
         }
       }
-      return;
-    }
 
-    const currentTeam = game.currentTeam;
-
-    // Off-turn chatter only: waiting-team operatives can discuss while waiting,
-    // but they are blocked from card marks and other game actions.
-    if (game.currentPhase === 'operatives' && game.currentClue && Math.random() < 0.68) {
-      const waitingOps = (aiPlayers || []).filter(a =>
-        a &&
-        a.mode === 'autonomous' &&
-        a.seatRole === 'operative' &&
-        String(a.team || '') !== String(currentTeam || '')
-      );
-      if (waitingOps.length) {
-        const scout = waitingOps[Math.floor(Math.random() * waitingOps.length)];
-        await aiOffTurnScout(scout, game);
-      }
-    }
-
-
-    // Spymaster phase
-    if (game.currentPhase === 'spymaster') {
-      if (hasBlockingPendingClueReview(game)) return;
-      const spies = (getAISpymasters(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
-      if (!spies.length) return;
-      if (spies.length === 1) {
-        const aiSpy = spies[0];
-        if (!aiThinkingState[aiSpy.id]) await aiGiveClue(aiSpy, game);
-      } else {
-        await runSpymasterCouncil(game, currentTeam);
-      }
-      return;
-    }
-
-    // Operatives phase
-    if (game.currentPhase === 'operatives') {
-      // Marker chatter: react when teammate marker consensus/conflicts shift.
-      const markerCandidates = (getAIOperatives(currentTeam) || [])
-        .filter(a => a && a.mode === 'autonomous')
-        .sort((a, b) => {
-          const ac = ensureAICore(a);
-          const bc = ensureAICore(b);
-          return Number(ac?.lastMarkerReactionAt || 0) - Number(bc?.lastMarkerReactionAt || 0);
-        });
-      for (const candidate of markerCandidates.slice(0, 2)) {
-        const reacted = await maybeAIReactToTeamMarkers(candidate, game);
-        if (reacted) break;
+      // Role selection phase
+      if (game.currentPhase === 'role-selection') {
+        for (const ai of aiPlayers) {
+          if (ai.seatRole === 'spymaster' && !aiThinkingState[ai.id]) {
+            await humanDelay(1000, 3000);
+            await aiSelectRole(ai, game);
+          }
+        }
+        return;
       }
 
-      const ops = (getAIOperatives(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
-      if (!ops.length) return;
-      if (ops.length === 1) {
-        const actor = ops[0];
-        if (aiThinkingState[actor.id]) return;
-        const result = await aiGuessCard(actor, game);
-        if (result === 'end_turn') await aiConsiderEndTurn(actor, game, true, true);
-      } else {
-        await runOperativeCouncil(game, currentTeam);
+      const currentTeam = game.currentTeam;
+
+      // Off-turn chatter only: waiting-team operatives can discuss while waiting,
+      // but they are blocked from card marks and other game actions.
+      if (game.currentPhase === 'operatives' && game.currentClue && Math.random() < 0.58) {
+        const waitingOps = (aiPlayers || []).filter(a =>
+          a &&
+          a.mode === 'autonomous' &&
+          a.seatRole === 'operative' &&
+          String(a.team || '') !== String(currentTeam || '')
+        ).sort((a, b) => Number(aiLastOffTurnScoutMs[a.id] || 0) - Number(aiLastOffTurnScoutMs[b.id] || 0));
+        if (waitingOps.length) {
+          const scout = waitingOps[0];
+          await aiOffTurnScout(scout, game);
+        }
       }
-      return;
+
+
+      // Spymaster phase
+      if (game.currentPhase === 'spymaster') {
+        if (hasBlockingPendingClueReview(game)) return;
+        const spies = (getAISpymasters(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
+        if (!spies.length) return;
+        if (spies.length === 1) {
+          const aiSpy = spies[0];
+          if (!aiThinkingState[aiSpy.id]) await aiGiveClue(aiSpy, game);
+        } else {
+          await runSpymasterCouncil(game, currentTeam);
+        }
+        return;
+      }
+
+      // Operatives phase
+      if (game.currentPhase === 'operatives') {
+        // Marker chatter: react when teammate marker consensus/conflicts shift.
+        const markerCandidates = (getAIOperatives(currentTeam) || [])
+          .filter(a => a && a.mode === 'autonomous')
+          .sort((a, b) => {
+            const ac = ensureAICore(a);
+            const bc = ensureAICore(b);
+            return Number(ac?.lastMarkerReactionAt || 0) - Number(bc?.lastMarkerReactionAt || 0);
+          });
+        for (const candidate of markerCandidates.slice(0, 2)) {
+          const reacted = await maybeAIReactToTeamMarkers(candidate, game);
+          if (reacted) break;
+        }
+
+        const ops = (getAIOperatives(currentTeam) || []).filter(a => a && a.mode === 'autonomous');
+        if (!ops.length) return;
+        if (ops.length === 1) {
+          const actor = ops[0];
+          if (aiThinkingState[actor.id]) return;
+          const result = await aiGuessCard(actor, game);
+          if (result === 'end_turn') await aiConsiderEndTurn(actor, game, true, true);
+        } else {
+          await runOperativeCouncil(game, currentTeam);
+        }
+      }
+    } finally {
+      aiGameLoopTickInFlight = false;
     }
-  }, 2800); // Check every ~3 seconds (slower for coordination)
+  }, 2300);
 }
 
 function stopAIGameLoop() {
@@ -5631,6 +6204,9 @@ function stopAIGameLoop() {
     aiGameLoopInterval = null;
   }
   aiGameLoopRunning = false;
+  aiGameLoopTickInFlight = false;
+  aiChatScanCursor = 0;
+  aiTeamChatQueryCache.clear();
   aiThinkingState = {};
 }
 
@@ -5660,6 +6236,11 @@ function cleanupAllAI() {
   aiIntervals = {};
   aiChatTimers = {};
   aiLastOffTurnScoutMs = {};
+  aiLastChatSeenMs = {};
+  aiLastChatReplyMs = {};
+  aiChatScanCursor = 0;
+  aiTeamChatQueryCache.clear();
+  aiGlobalVisionSigByGame.clear();
   aiThinkingState = {};
 }
 
