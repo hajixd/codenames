@@ -2004,6 +2004,9 @@ function _practiceAIPool() {
 }
 
 function _makePracticeAI(team, role, usedNames) {
+  // NOTE: practice AI names will be overwritten with match-unique persona-matched
+  // names after creation (see createPracticeGame). We still give them a temporary
+  // non-empty name for UI safety during early renders.
   const pool = _practiceAIPool().filter(n => !usedNames.has(n));
   const base = pool.length ? pool[Math.floor(Math.random() * pool.length)] : `Bot${Math.floor(Math.random()*999)}`;
   usedNames.add(base);
@@ -2019,6 +2022,53 @@ function _makePracticeAI(team, role, usedNames) {
     aiMode: 'autonomous',
     aiTemperature: 0.6 + Math.random() * 0.6,
   };
+}
+
+async function assignPracticeAIIdentities(players, usedNames, vibe) {
+  try {
+    const list = Array.isArray(players) ? players : [];
+    const ct = (typeof window !== 'undefined' && window.ctAI) ? window.ctAI : null;
+    const canLLM = !!(ct && typeof ct.generateUniquePersonality === 'function' && typeof window.aiChatCompletion === 'function');
+
+    for (const p of list) {
+      if (!p || !p.isAI) continue;
+
+      // Build a base name seed that varies by team/role/vibe so even the first
+      // LLM call is less likely to converge.
+      const seed = `${p.team || 'team'}-${p.role || 'role'}${vibe ? `-${vibe}` : ''}-${Math.random().toString(36).slice(2, 6)}`;
+
+      let persona = null;
+      if (canLLM) {
+        try { persona = await ct.generateUniquePersonality(seed); } catch (_) { persona = null; }
+      }
+      if (!persona && ct && typeof ct.randomPersonality === 'function') {
+        try { persona = ct.randomPersonality(); } catch (_) { persona = null; }
+      }
+      if (!persona || typeof persona !== 'object') persona = { key: 'default', label: 'Default', focus: [], stats: { reasoning_depth: 50, risk_tolerance: 50 }, rules: [] };
+
+      let name = '';
+      if (ct && typeof ct.generateAINameFromPersona === 'function') {
+        try { name = ct.generateAINameFromPersona(persona, usedNames); } catch (_) { name = ''; }
+      }
+      if (!name) {
+        // Fallback uniqueness.
+        const base = `Bot${Math.floor(Math.random() * 999)}`;
+        name = usedNames.has(base) ? `${base}_${Math.floor(Math.random() * 99)}` : base;
+        usedNames.add(name);
+      }
+
+      let temperature = 0.6 + Math.random() * 0.6;
+      if (ct && typeof ct.randomTemperature === 'function') {
+        try { temperature = ct.randomTemperature(); } catch (_) {}
+      }
+
+      p.name = name;
+      p.aiPersonality = persona;
+      p.aiTemperature = temperature;
+    }
+  } catch (e) {
+    console.warn('Failed assigning practice AI identities (best-effort):', e);
+  }
 }
 
 /**
@@ -2091,6 +2141,11 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   // Blue team all AI
   bluePlayers.push(_makePracticeAI('blue', 'spymaster', usedNames));
   for (let i = 0; i < needOps; i++) bluePlayers.push(_makePracticeAI('blue', 'operative', usedNames));
+
+  // Give every practice match its own unique AI personalities + persona-matched names.
+  // This happens at creation-time because practice is local-only (no Firestore controller).
+  await assignPracticeAIIdentities(redPlayers, usedNames, vibe);
+  await assignPracticeAIIdentities(bluePlayers, usedNames, vibe);
 
   // Ensure spymaster fields
   const redSpy = redPlayers.find(p => p.role === 'spymaster') || null;

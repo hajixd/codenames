@@ -821,6 +821,17 @@ function generateAINameFromPersona(persona, usedNames = new Set()) {
   return candidate;
 }
 
+// Expose a small, safe surface area for other modules (e.g., local practice)
+// to generate match-unique AI identities without duplicating logic.
+// NOTE: We intentionally do NOT expose API-key handling here.
+try {
+  window.ctAI = window.ctAI || {};
+  window.ctAI.randomPersonality = randomPersonality;
+  window.ctAI.generateUniquePersonality = generateUniquePersonality;
+  window.ctAI.generateAINameFromPersona = generateAINameFromPersona;
+  window.ctAI.randomTemperature = randomTemperature;
+} catch (_) {}
+
 // ─── LLM-Generated Personality ───────────────────────────────────────────────
 // Called once per AI at creation time. Returns a rich personality JSON with
 // voice rules, subject focus, and a full set of behavioral stat sliders.
