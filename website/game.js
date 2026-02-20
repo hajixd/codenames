@@ -10656,7 +10656,7 @@ function showStaticGameTimer(phase) {
 
   // Mirror static timer into the OG phase banner when applicable.
   try {
-    updateOgPhaseBannerTimerText(`${getRoleLabelForPhase(phase)}: ∞`, phase);
+    updateOgPhaseBannerTimerText('∞', phase);
   } catch (_) {
     // no-op
   }
@@ -11564,7 +11564,7 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
+  const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   // Drop pending-selection outline immediately when confirm starts.

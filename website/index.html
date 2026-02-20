@@ -1648,7 +1648,16 @@
                   <span class="toggle-slider"></span>
                 </div>
               </label>
-<div class="settings-row settings-row-volume">
+
+              <label class="settings-row settings-row-stacking">
+                <span class="settings-row-label">Stacking</span>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="settings-stacking-toggle" />
+                  <span class="toggle-slider"></span>
+                </div>
+              </label>
+
+              <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>
                 <input type="range" id="settings-volume-slider" class="settings-volume-slider" min="0" max="100" value="70" />
                 <span class="settings-volume-value" id="settings-volume-value">70%</span>
@@ -1679,7 +1688,10 @@
 
               <!-- In-Game Actions (shown whenever a user is in an active game) -->
               <div class="settings-in-game-actions" id="settings-in-game-actions">
-<div class="settings-account-actions">
+                <p class="settings-singleplayer-note" id="settings-singleplayer-note" style="display:none">
+                  Single-player — navigating away ends the game automatically.
+                </p>
+                <div class="settings-account-actions">
                   <button class="btn" id="leave-game-btn" type="button" disabled>Leave Game</button>
                   <button class="btn danger" id="end-game-btn" type="button" disabled>End Game</button>
                 </div>
