@@ -7934,59 +7934,65 @@ function buildCluesLeftLogHtml() {
     // Total targets: prefer indices, then explicit words, then the clue number.
     const clueNumberRaw = parseInt(clue.number, 10);
     const clueNumber = Number.isFinite(clueNumberRaw) ? Math.max(0, Math.min(9, clueNumberRaw)) : 0;
-    let total = targetIndices.length || targetWords.length || clueNumber;
+    const total = targetIndices.length || targetWords.length || clueNumber;
     if (!total) continue;
 
-    // If we have indices, we can compute remaining precisely. If we only have
-    // words, map them back to indices so we can still compute remaining.
-    let computedIndices = targetIndices;
-    if (!computedIndices.length && targetWords.length) {
-      const mapped = [];
-      targetWords.forEach((w) => {
-        const idx = wordIndex.get(String(w).trim().toUpperCase());
-        if (Number.isInteger(idx)) mapped.push(idx);
-      });
-      computedIndices = Array.from(new Set(mapped));
-      if (computedIndices.length) total = computedIndices.length;
-    }
+    const targetRecords = [];
 
-    let remainingCount = null;
-    let foundCount = null;
-    let remainingWords = [];
-    if (computedIndices.length) {
-      const remainingIndices = computedIndices.filter((idx) => {
+    // Best case: exact target indices are present.
+    if (targetIndices.length) {
+      const uniqueIndices = Array.from(new Set(targetIndices.filter((idx) => Number.isInteger(idx) && idx >= 0)));
+      uniqueIndices.forEach((idx) => {
         const card = cards[idx];
-        return !!card && !card.revealed;
+        const word = String(card?.word || '').trim();
+        if (!word) return;
+        targetRecords.push({
+          word,
+          found: !!card?.revealed
+        });
       });
-
-      // If everything is found, hide it from "Clues Left".
-      if (!remainingIndices.length) continue;
-
-      remainingCount = remainingIndices.length;
-      foundCount = Math.max(0, total - remainingCount);
-      remainingWords = remainingIndices
-        .map((idx) => String(cards[idx]?.word || '').trim())
-        .filter(Boolean);
     }
 
+    // Fallback: use stored target words and map to cards when possible.
+    if (!targetRecords.length && targetWords.length) {
+      const seen = new Set();
+      targetWords.forEach((rawWord) => {
+        const cleaned = String(rawWord || '').trim();
+        if (!cleaned) return;
+        const key = cleaned.toUpperCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        const idx = wordIndex.get(key);
+        const card = Number.isInteger(idx) ? cards[idx] : null;
+        targetRecords.push({
+          word: String(card?.word || cleaned).trim(),
+          found: !!card?.revealed
+        });
+      });
+    }
 
+    // Last fallback: we only know the count, so render anonymous hidden slots.
+    if (!targetRecords.length) {
+      for (let j = 0; j < total; j += 1) {
+        targetRecords.push({ word: '', found: false });
+      }
+    }
 
-    // Operatives want a simple "N words left" indicator.
-    const progressText = (remainingCount === null)
-      ? ''
-      : `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
+    const remainingCount = targetRecords.reduce((count, item) => count + (item.found ? 0 : 1), 0);
+    const countBadgeText = `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
 
-    // In the Clues Left (Game Log) UI, surface this directly in the count badge.
-    // This matches the user's mental model: "3 words left" rather than a bare "3".
-    const countBadgeText = progressText || String(clueNumber);
+    const wordsHtml = targetRecords.map((item) => {
+      const classes = ['gamelog-left-word-chip'];
+      if (item.found) classes.push('gamelog-left-word-chip-found', `team-${team}`);
 
-    const wordsHtml = canSeeWords
-      ? (remainingWords.length
-          ? remainingWords.map((word) => `<span class="gamelog-left-word-chip">${escapeHtml(String(word).toUpperCase())}</span>`).join('')
-          : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>')
-      : (remainingWords.length
-          ? remainingWords.map(() => '<span class="gamelog-left-word-chip gamelog-left-word-chip-hidden"><em>hidden</em></span>').join('')
-          : '<span class="gamelog-left-word-chip empty">Waiting for guesses</span>');
+      if (!canSeeWords) {
+        classes.push('gamelog-left-word-chip-hidden');
+        return `<span class="${classes.join(' ')}"><em>hidden</em></span>`;
+      }
+
+      const label = String(item.word || 'UNKNOWN').trim().toUpperCase();
+      return `<span class="${classes.join(' ')}">${escapeHtml(label)}</span>`;
+    }).join('');
 
     rows.push(`
       <div class="gamelog-left-item team-${escapeHtml(team)}">

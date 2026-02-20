@@ -26056,6 +26056,18 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   font-style: italic;
 }
 
+.gamelog-left-word-chip.gamelog-left-word-chip-found.team-red {
+  background: #C8553A;
+  border-color: #C8553A;
+  color: #ffffff;
+}
+
+.gamelog-left-word-chip.gamelog-left-word-chip-found.team-blue {
+  background: #3B8BEB;
+  border-color: #3B8BEB;
+  color: #ffffff;
+}
+
 @media (min-width: 1025px) {
   body:is(.og-mode, .cozy-mode) {
     /* Slightly taller than before on desktop. */
