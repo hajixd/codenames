@@ -10,11 +10,48 @@
 // ─── Configuration ───────────────────────────────────────────────────────────
 const AI_CONFIG = {
   baseURL: 'https://api.tokenfactory.nebius.com/v1',
-  apiKey: 'v1.CmQKHHN0YXRpY2tleS1lMDBlZnRkMTBoNnFxczQ1M2MSIXNlcnZpY2VhY2NvdW50LWUwMHhyM3gzZnhmamVzMXp2MzIMCJjkxcwGEKuvtJgDOgwImOfdlwcQwMrDjwFAAloDZTAw.AAAAAAAAAAHP2HFXdHB0QxWCfJOjr8yKyjq3zD_mW-ukhcrKV6F-T0FtxBXhXOhDiBzBW_hKBEou9V_nEy3BeevzBfX1PT0J',
-  model: 'meta-llama/Llama-3.3-70B-Instruct',            // instruct brain — chat, personality, reactions
+  // IMPORTANT: Never hardcode API keys in the repo.
+  // Key is stored locally per-browser.
+  apiKey: (function(){
+    try {
+      // Prefer the key from ai-key.local.js (window.CT_AI_API_KEY) if provided.
+      const fromFile = (typeof window !== 'undefined' && window.CT_AI_API_KEY) ? String(window.CT_AI_API_KEY).trim() : '';
+      if (fromFile) return fromFile;
+
+      // Fallback: key stored locally per-browser.
+      const k = localStorage.getItem('ct_ai_apiKey') || '';
+      return String(k || '').trim();
+    } catch (_) {
+      return '';
+    }
+  })(),
+  // Chat/reaction model. For more "human" banter, many teams like NousResearch's Hermes
+  // family (built for dialogue/roleplay). If your Nebius account has it, try:
+  //   'NousResearch/Hermes-3-Llama-3.1-70B'
+  // Otherwise keep a Llama Instruct model.
+  model: 'meta-llama/Llama-3.3-70B-Instruct',
   reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
   maxAIsPerTeam: 4,
 };
+
+// If the key is missing, allow a one-time prompt to set it (dev convenience).
+// This keeps secrets out of source control.
+let __ct_aiKeyPrompted = false;
+function ensureAIKeyPresent() {
+  try {
+    if (AI_CONFIG.apiKey) return true;
+    if (__ct_aiKeyPrompted) return false;
+    __ct_aiKeyPrompted = true;
+    const entered = prompt('AI API key not found. Paste your key to enable AI players (stored locally in this browser):');
+    const cleaned = String(entered || '').trim();
+    if (!cleaned) return false;
+    localStorage.setItem('ct_ai_apiKey', cleaned);
+    AI_CONFIG.apiKey = cleaned;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 // No artificial human-like delays. AIs act as soon as they can.
 
@@ -33,6 +70,48 @@ let aiLastChatSeenMs = {}; // keyed by ai id → last seen team-chat timestamp
 let aiLastChatReplyMs = {}; // keyed by ai id → last time we replied
 let aiLastOffTurnScoutMs = {}; // keyed by ai id → last off-turn analysis timestamp
 let aiNextId = 1;
+
+// ─── Emotion helpers (for in-the-moment reactions) ─────────────────────────
+function _clamp(n, lo, hi) { n = Number(n); if (!Number.isFinite(n)) return lo; return Math.max(lo, Math.min(hi, n)); }
+
+function _baselineEmotionalIntensity(persona) {
+  try {
+    const s = persona && persona.stats ? persona.stats : {};
+    const base = Number(s.emotional_intensity);
+    return _clamp(Number.isFinite(base) ? base : 45, 1, 100);
+  } catch (_) {
+    return 45;
+  }
+}
+
+function describeEmotion(core) {
+  try {
+    const val = Number(core?.emotion?.valence || 0); // -100..100
+    const ar = Number(core?.emotion?.arousal || 35); // 0..100
+    const intensity = _clamp(Number(core?.emotion?.intensity || 45), 1, 100);
+    // Coarse buckets the model can use as a style steer.
+    let mood = 'neutral';
+    if (val <= -55) mood = 'angry';
+    else if (val <= -30) mood = 'annoyed';
+    else if (val >= 55) mood = 'hyped';
+    else if (val >= 30) mood = 'happy';
+    else mood = 'neutral';
+    const energy = ar >= 70 ? 'high-energy' : (ar <= 25 ? 'low-energy' : 'steady');
+    return { mood, energy, intensity, valence: _clamp(val, -100, 100), arousal: _clamp(ar, 0, 100) };
+  } catch (_) {
+    return { mood: 'neutral', energy: 'steady', intensity: 45, valence: 0, arousal: 35 };
+  }
+}
+
+function bumpEmotion(ai, dv = 0, da = 0) {
+  try {
+    const core = ensureAICore(ai);
+    if (!core) return;
+    if (!core.emotion) core.emotion = { valence: 0, arousal: 35, intensity: _baselineEmotionalIntensity(core.personality) };
+    core.emotion.valence = _clamp((core.emotion.valence || 0) + Number(dv || 0), -100, 100);
+    core.emotion.arousal = _clamp((core.emotion.arousal || 35) + Number(da || 0), 0, 100);
+  } catch (_) {}
+}
 
 // ─── Multi-client AI hosting (one "controller" runs the AI loop) ─────────────
 const LS_AI_CLIENT_ID = 'ct_ai_clientId_v1';
@@ -192,6 +271,11 @@ function syncAIPlayersFromGame(game) {
 
   window.aiPlayers = aiPlayers;
 
+  // New match = new personalities.
+  // Best-effort: one client (the controller) assigns fresh personality+temperature
+  // to every AI the first time the match leaves the lobby.
+  try { maybeAssignNewMatchPersonalities(game); } catch (_) {}
+
   // Ensure each AI has a stable identity + private mind.
   try { for (const a of aiPlayers) ensureAICore(a); } catch (_) {}
 
@@ -242,6 +326,11 @@ window.AI_CONFIG = AI_CONFIG;
 // ─── LLM API Calls ──────────────────────────────────────────────────────────
 
 async function aiChatCompletion(messages, options = {}) {
+
+  if (!ensureAIKeyPresent()) {
+    throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (or paste when prompted) before using AI players.');
+  }
+
   const body = {
     model: AI_CONFIG.model,
     messages,
@@ -274,6 +363,11 @@ window.aiChatCompletion = aiChatCompletion;
 
 // ─── Reasoning model completion (strategic "deep thinking" brain) ────────────
 async function aiReasoningCompletion(messages, options = {}) {
+
+  if (!ensureAIKeyPresent()) {
+    throw new Error('Missing AI API key. Set localStorage "ct_ai_apiKey" (or paste when prompted) before using AI players.');
+  }
+
   const body = {
     model: AI_CONFIG.reasoningModel,
     messages,
@@ -569,6 +663,42 @@ const SUBJECT_POOL = [
   "Travel & Geography", "Magic & Illusion", "Astrology & Tarot",
   "Conspiracy Theories", "Military Tactics & Strategy",
   "Language Learning & Polyglottery"
+];// ─── Personality Stat Schema (used for generation + normalization) ─────────
+// Add new dials here to expand the behavior space. All values are clamped to 1–100.
+const PERSONALITY_STAT_KEYS = [
+  // Core cognition / strategy
+  'reasoning_depth',
+  'risk_tolerance',          // 1=always push / never end; 100=end at first doubt
+  'confidence',
+  'creativity',
+  'pattern_seeking',         // 1=surface links; 100=obsessive pattern hunter
+  'assassin_fear',           // 1=reckless around assassin; 100=paranoid about assassin
+  'bluff_suspicion',         // 1=trust clues blindly; 100=assume traps/misdirection
+  'memory_use',              // 1=ignores past turns; 100=tracks clue history meticulously
+
+  // Communication / teamwork
+  'verbosity',
+  'team_spirit',
+  'assertiveness',           // 1=always defer; 100=dominates decisions
+  'persuasion',              // 1=states guesses only; 100=sells plans convincingly
+  'emotional_intensity',
+  'humor',
+  'sports_commentary',       // 1=never sports framing; 100=constant sports metaphors (if in focus)
+
+  // Clue / association style
+  'focus_depth',             // 1=free-ranging; 100=nearly always uses focus subjects
+  'literalism',              // 1=metaphor-heavy; 100=literal/technical linking
+  'jargon_level',            // 1=plain language; 100=domain jargon
+  'pop_culture_density',     // 1=avoid pop culture; 100=references constantly
+  'pun_factor',              // 1=no wordplay; 100=loves puns/wordplay
+  'cleanliness',             // 1=muddy multi-sense clues; 100=single-sense clarity
+  'tempo',                   // 1=slow deliberator; 100=fast snap decisions
+
+  // Personality edges
+  'stubbornness',
+  'competitiveness',
+  'risk_escalation',         // 1=steady; 100=gets riskier when behind / excited
+  'tilt_resistance'          // 1=tilts hard after mistakes; 100=unshakeable
 ];
 
 // ─── Fallback personalities — used only when LLM generation fails ────────────
@@ -656,9 +786,239 @@ function randomTemperature() {
   return Math.round((min + Math.random() * (max - min)) * 100) / 100;
 }
 
-function randomPersonality() {
-  return AI_PERSONALITY_FALLBACK[Math.floor(Math.random() * AI_PERSONALITY_FALLBACK.length)];
+// ─── Fast Personality Generator (no LLM, match-unique) ─────────────────────
+// We generate personalities locally so each match feels fresh and bots spawn
+// instantly (practice + online).
+
+function _randInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1));
 }
+
+function _pickN(arr, n) {
+  const copy = Array.isArray(arr) ? [...arr] : [];
+  copy.sort(() => Math.random() - 0.5);
+  return copy.slice(0, Math.max(0, n));
+}
+
+function _snake(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+}
+
+function _clamp100(v, fallback = 50) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(1, Math.min(100, Math.round(n)));
+}
+
+function generateFastPersonality(opts = {}) {
+  const focusCount = Math.random() < 0.60 ? 2 : (Math.random() < 0.20 ? 3 : 1);
+  const focus = _pickN(SUBJECT_POOL, focusCount);
+
+  const archetypes = [
+    'ex-pro turned analyst',
+    'sleep-deprived grad student',
+    'retired spy (probably)',
+    'overconfident trivia goblin',
+    'calm puzzle nerd',
+    'dramatic theatre kid',
+    'deadpan engineer',
+    'nature doc narrator',
+    'sports radio caller',
+    'true crime podcaster',
+    'street-food critic',
+    'history buff with receipts'
+  ];
+
+  const arch = pick(archetypes);
+  const aName = String(opts.aiName || '').trim();
+
+  const reasoning_depth = _clamp100(_randInt(10, 95));
+  // 1 = never ends turn / always guesses; 100 = ends at first doubt
+  const risk_tolerance = _clamp100(_randInt(5, 95));
+  const verbosity = _clamp100(_randInt(15, 70));
+  const confidence = _clamp100(_randInt(15, 90));
+
+  const stats = {
+    reasoning_depth,
+    risk_tolerance,
+    confidence,
+    creativity: _clamp100(_randInt(10, 95)),
+    pattern_seeking: _clamp100(_randInt(10, 95)),
+    assassin_fear: _clamp100(_randInt(10, 95)),
+    bluff_suspicion: _clamp100(_randInt(10, 95)),
+    memory_use: _clamp100(_randInt(10, 95)),
+    verbosity,
+    team_spirit: _clamp100(_randInt(10, 95)),
+    assertiveness: _clamp100(_randInt(10, 95)),
+    persuasion: _clamp100(_randInt(10, 95)),
+    emotional_intensity: _clamp100(_randInt(10, 95)),
+    humor: _clamp100(_randInt(10, 90)),
+    sports_commentary: _clamp100(_randInt(1, 100)),
+    focus_depth: _clamp100(_randInt(10, 95)),
+    literalism: _clamp100(_randInt(10, 95)),
+    jargon_level: _clamp100(_randInt(10, 95)),
+    pop_culture_density: _clamp100(_randInt(1, 100)),
+    pun_factor: _clamp100(_randInt(1, 100)),
+    cleanliness: _clamp100(_randInt(10, 95)),
+    tempo: _clamp100(_randInt(10, 95)),
+    stubbornness: _clamp100(_randInt(10, 95)),
+    competitiveness: _clamp100(_randInt(10, 95)),
+    risk_escalation: _clamp100(_randInt(1, 100)),
+    tilt_resistance: _clamp100(_randInt(10, 95)),
+  };
+
+  const focus0 = focus[0] || 'Wildcard';
+  const labelBits = [
+    focus0.split('(')[0].trim(),
+    (confidence >= 75 ? 'Hotshot' : confidence <= 25 ? 'Skeptic' : 'Player'),
+  ].filter(Boolean);
+  const label = labelBits.slice(0, 2).join(' ');
+
+  const phrases = [
+    'wait wait',
+    'ok ok',
+    'ngl',
+    'i kinda like it',
+    'that feels sus',
+    'i’m not sold',
+    'lock it?',
+    'hold up',
+    'say less',
+    'hmm'
+  ].sort(() => Math.random() - 0.5).slice(0, 5);
+
+  const riskyLine = (risk_tolerance <= 25)
+    ? 'I hate ending turns — I’ll swing even if it’s thin.'
+    : (risk_tolerance >= 80)
+      ? 'If it’s not clean, we end. Assassin anxiety is real.'
+      : 'I’ll go one more if it’s decent; otherwise we end.';
+
+  const rules = [
+    `Voice: casual, short, texting vibe. Say stuff like: ${phrases.map(p => `"${p}"`).join(', ')}.`,
+    `Focus lean: default to references/associations from ${focus.join(' / ')}.`,
+    `Decision: reasoning_depth=${reasoning_depth}/100. ${reasoning_depth >= 70 ? '2–3 quick steps.' : 'Gut-check + one reason.'}`,
+    `Risk: risk_tolerance=${risk_tolerance}/100. ${riskyLine}`,
+    `Chat: one short sentence unless someone asks you directly.`
+  ];
+
+  const keyBase = _snake(`${label}_${focus.join('_')}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+  const key = keyBase || `persona_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  return {
+    key,
+    label,
+    focus,
+    bio: {
+      archetype: arch,
+      backstory: `${aName ? aName + ' is' : 'This bot is'} a ${arch} who can’t resist making everything about ${focus0}.`,
+      signature_phrases: phrases,
+      taboos: [],
+    },
+    stats,
+    rules,
+  };
+}
+
+function randomPersonality() {
+  try {
+    return generateFastPersonality({});
+  } catch (_) {
+    return AI_PERSONALITY_FALLBACK[Math.floor(Math.random() * AI_PERSONALITY_FALLBACK.length)];
+  }
+}
+
+// ─── Name generation (match names to personalities) ─────────────────────────
+function clampInt(v, lo = 1, hi = 100, fallback = 50) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, Math.round(n)));
+}
+
+function pick(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function normalizeFocus(focusArr) {
+  const focus = Array.isArray(focusArr) ? focusArr.filter(Boolean).map(s => String(s)) : [];
+  return focus.map(s => s.toLowerCase());
+}
+
+function generateAINameFromPersona(persona, usedNames = new Set()) {
+  const label = String(persona?.label || '').toLowerCase();
+  const arch = String(persona?.bio?.archetype || '').toLowerCase();
+  const focus = normalizeFocus(persona?.focus);
+  const stats = persona?.stats || {};
+
+  const isSportsy = focus.some(s => s.includes('sport') || s.includes('basketball') || s.includes('soccer') || s.includes('football') || s.includes('baseball') || s.includes('hockey'))
+    || label.includes('coach') || label.includes('commentator') || arch.includes('coach') || arch.includes('analyst');
+  const isAcademic = focus.some(s => s.includes('history') || s.includes('philosophy') || s.includes('psychology') || s.includes('science') || s.includes('math') || s.includes('linguistics'))
+    || arch.includes('prof') || arch.includes('phd') || arch.includes('doctor') || label.includes('prof');
+  const isDetective = focus.some(s => s.includes('true crime') || s.includes('mystery') || s.includes('forensics'))
+    || arch.includes('detective') || label.includes('detective');
+  const isChaotic = clampInt(stats?.emotional_intensity, 1, 100, 50) >= 75 || label.includes('chaos') || arch.includes('gremlin');
+  const isClinical = clampInt(stats?.reasoning_depth, 1, 100, 50) >= 85 && clampInt(stats?.verbosity, 1, 100, 50) <= 25;
+
+  const first = {
+    sports: ['Coach', 'Skipper', 'Stats', 'Ace', 'Captain', 'MVP'],
+    academic: ['Prof', 'Dr', 'Doc', 'Sage', 'Lecturer'],
+    detective: ['Detective', 'Inspector', 'Sleuth'],
+    chaotic: ['Chaos', 'Rage', 'Turbo', 'Zany', 'Spicy'],
+    clinical: ['GM', 'Prime', 'Logic', 'Vector', 'Sigma'],
+    default: ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery', 'Sage', 'Rowan', 'Finley', 'Skyler', 'Blake', 'Drew', 'Reese', 'Kai', 'Nova', 'Max', 'Sam', 'Jamie', 'Robin', 'Frankie', 'Charlie', 'Pat', 'Dana'],
+  };
+
+  const last = {
+    sports: ['Stone', 'Bishop', 'Carter', 'Reyes', 'Hayes', 'Miller', 'Griffin'],
+    academic: ['Hawking', 'Curie', 'Darwin', 'Sagan', 'Noether', 'Turing'],
+    detective: ['Marsh', 'Vale', 'Holloway', 'Blythe', 'Knox'],
+    chaotic: ['Spark', 'Glitch', 'Wobble', 'Boom', 'Vortex'],
+    clinical: ['Zero', 'Prime', 'Ledger', 'Index', 'Kernel'],
+    default: ['Stone', 'Lane', 'Brooks', 'Reed', 'Cole', 'Parker', 'Hayes', 'Rowe'],
+  };
+
+  let bucket = 'default';
+  if (isSportsy) bucket = 'sports';
+  else if (isAcademic) bucket = 'academic';
+  else if (isDetective) bucket = 'detective';
+  else if (isClinical) bucket = 'clinical';
+  else if (isChaotic) bucket = 'chaotic';
+
+  const base = (bucket === 'default')
+    ? pick(first.default)
+    : `${pick(first[bucket])} ${pick(last[bucket])}`;
+
+  // Keep names readable/short in the UI.
+  let name = String(base).replace(/\s+/g, ' ').trim();
+  if (name.length > 16) name = name.slice(0, 16).trim();
+
+  // Ensure uniqueness in a lobby.
+  let i = 2;
+  let candidate = name;
+  while (usedNames.has(candidate.toLowerCase())) {
+    candidate = `${name} ${i}`;
+    if (candidate.length > 18) candidate = `${name.slice(0, 14).trim()} ${i}`;
+    i++;
+    if (i > 9) break;
+  }
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
+}
+
+// Expose a small, safe surface area for other modules (e.g., local practice)
+// to generate match-unique AI identities without duplicating logic.
+// NOTE: We intentionally do NOT expose API-key handling here.
+try {
+  window.ctAI = window.ctAI || {};
+  window.ctAI.randomPersonality = randomPersonality;
+  window.ctAI.generateFastPersonality = generateFastPersonality;
+  window.ctAI.generateUniquePersonality = generateUniquePersonality;
+  window.ctAI.generateAINameFromPersona = generateAINameFromPersona;
+  window.ctAI.randomTemperature = randomTemperature;
+} catch (_) {}
 
 // ─── LLM-Generated Personality ───────────────────────────────────────────────
 // Called once per AI at creation time. Returns a rich personality JSON with
@@ -691,20 +1051,44 @@ Return ONLY valid JSON — no markdown fences, no extra text:
   "key": "snake_case_identifier",
   "label": "The Label (2–4 words)",
   "focus": ["Subject A", "Subject B"],
+  "bio": {
+    "archetype": "1 short phrase (e.g. 'ex-pro goalie turned analyst')",
+    "backstory": "1–2 sentences of colorful history that explains their vibe",
+    "signature_phrases": ["4–6 short phrases they'd actually say"],
+    "taboos": ["0–3 things they refuse to reference or do in chat (optional)"]
+  },
   "stats": {
-    "reasoning_depth":     <1–100>,
-    "risk_tolerance":      <1–100>,
-    "verbosity":           <1–100>,
-    "confidence":          <1–100>,
-    "creativity":          <1–100>,
-    "team_spirit":         <1–100>,
+    // Use ALL keys listed below exactly; each is an integer 1–100.
+    // risk_tolerance: 1=never ends turn / always guesses; 100=ends at first doubt
+    "reasoning_depth": <1–100>,
+    "risk_tolerance": <1–100>,
+    "confidence": <1–100>,
+    "creativity": <1–100>,
+    "pattern_seeking": <1–100>,
+    "assassin_fear": <1–100>,
+    "bluff_suspicion": <1–100>,
+    "memory_use": <1–100>,
+    "verbosity": <1–100>,
+    "team_spirit": <1–100>,
+    "assertiveness": <1–100>,
+    "persuasion": <1–100>,
     "emotional_intensity": <1–100>,
-    "stubbornness":        <1–100>,
-    "competitiveness":     <1–100>,
-    "humor":               <1–100>,
-    "focus_depth":         <1–100>
+    "humor": <1–100>,
+    "sports_commentary": <1–100>,
+    "focus_depth": <1–100>,
+    "literalism": <1–100>,
+    "jargon_level": <1–100>,
+    "pop_culture_density": <1–100>,
+    "pun_factor": <1–100>,
+    "cleanliness": <1–100>,
+    "tempo": <1–100>,
+    "stubbornness": <1–100>,
+    "competitiveness": <1–100>,
+    "risk_escalation": <1–100>,
+    "tilt_resistance": <1–100>
   },
   "rules": [
+
     "Rule 1: Core voice + speech style. Include 4–5 verbatim phrases they would actually say.",
     "Rule 2: Emotional reactions — what thrills them, what terrifies them, how they show it.",
     "Rule 3: Decision style — how they reason about guessing one more word vs ending the turn.",
@@ -713,18 +1097,33 @@ Return ONLY valid JSON — no markdown fences, no extra text:
   ]
 }
 
-STAT MEANINGS (set each to a value that fits the character — they do NOT need to be balanced):
+STAT MEANINGS (each 1–100 dial must fit the character — values do NOT need to be balanced):
   reasoning_depth:     1=gut instinct only, 100=exhaustive multi-step analysis
-  risk_tolerance:      1=never ends turn / always pushes, 100=ends turn at first doubt
-  verbosity:           1=almost silent, 100=narrates everything constantly
+  risk_tolerance:      1=never ends turn / always guesses, 100=ends turn at first doubt
   confidence:          1=self-doubting wreck, 100=supremely arrogant
   creativity:          1=only obvious associations, 100=wildly lateral/unexpected links
-  team_spirit:         1=lone wolf / ignores teammates, 100=defers entirely to consensus
-  emotional_intensity: 1=total stoic, 100=extremely dramatic about everything
-  stubbornness:        1=caves instantly to any pushback, 100=never changes their mind
-  competitiveness:     1=playing just for fun, 100=winning is life
-  humor:               1=deadly serious always, 100=everything is a joke
+  pattern_seeking:     1=surface links only, 100=sees patterns everywhere and chases them
+  assassin_fear:       1=barely thinks about the assassin, 100=paranoid and hyper-cautious around it
+  bluff_suspicion:     1=takes clues at face value, 100=expects traps/misdirection and double-meanings
+  memory_use:          1=forgets clue history, 100=tracks earlier clues/guesses meticulously
+  verbosity:           1=almost silent, 100=narrates everything constantly
+  team_spirit:         1=lone wolf, 100=consensus-driven
+  assertiveness:       1=always defer, 100=pushes their view hard
+  persuasion:          1=states picks only, 100=argues convincingly and frames strategy
+  emotional_intensity: 1=total stoic, 100=extremely dramatic
+  humor:               1=dead serious, 100=everything is a joke
+  sports_commentary:   1=no sports framing, 100=constant sports metaphors (especially if sports are in focus)
   focus_depth:         1=draws from any domain freely, 100=almost only uses focus subjects
+  literalism:          1=metaphor-heavy, 100=literal/technical linking
+  jargon_level:        1=plain language, 100=domain jargon & proper nouns
+  pop_culture_density: 1=avoid pop culture, 100=references constantly
+  pun_factor:          1=no wordplay, 100=loves puns/wordplay
+  cleanliness:         1=muddy multi-sense links, 100=single-sense clarity
+  tempo:               1=slow deliberator, 100=snap decisions
+  stubbornness:        1=changes mind easily, 100=never changes mind
+  competitiveness:     1=just for fun, 100=winning is life
+  risk_escalation:     1=steady risk, 100=gets riskier when behind/excited
+  tilt_resistance:     1=tilts hard after mistakes, 100=unshakeable
 
 AVAILABLE SUBJECT DOMAINS (pick 1–3 for the focus array — can be from this list or similar):
 ${sampleSubjects}
@@ -754,10 +1153,21 @@ Now generate a COMPLETELY DIFFERENT personality for "${aiName}". Be creative and
       Array.isArray(parsed.rules) && parsed.rules.length >= 3 &&
       parsed.stats && typeof parsed.stats === 'object'
     ) {
-      // Clamp all stat values to [1, 100]
-      for (const k of Object.keys(parsed.stats)) {
-        parsed.stats[k] = Math.min(100, Math.max(1, Math.round(Number(parsed.stats[k]) || 50)));
+      // Normalize stats: ensure every known key exists and clamp to [1, 100]
+      const nextStats = {};
+      for (const k of PERSONALITY_STAT_KEYS) {
+        const v = (parsed.stats && Object.prototype.hasOwnProperty.call(parsed.stats, k))
+          ? Number(parsed.stats[k])
+          : 50;
+        nextStats[k] = Math.min(100, Math.max(1, Math.round(Number.isFinite(v) ? v : 50)));
       }
+      // Keep any extra, unknown stat keys the model provided (also clamped)
+      for (const k of Object.keys(parsed.stats || {})) {
+        if (Object.prototype.hasOwnProperty.call(nextStats, k)) continue;
+        const v = Number(parsed.stats[k]);
+        nextStats[k] = Math.min(100, Math.max(1, Math.round(Number.isFinite(v) ? v : 50)));
+      }
+      parsed.stats = nextStats;
       if (!Array.isArray(parsed.focus)) parsed.focus = [];
       return parsed;
     }
@@ -922,6 +1332,7 @@ function ensureAICore(ai) {
   if (!aiCore[ai.id]) {
     const personality = ai.personality || randomPersonality();
     const temperature = Number.isFinite(+ai.temperature) ? +ai.temperature : randomTemperature();
+    const baseIntensity = _baselineEmotionalIntensity(personality);
     aiCore[ai.id] = {
       temperature,
       personality,
@@ -929,14 +1340,182 @@ function ensureAICore(ai) {
       vision: null,
       visionSig: '',
       lastMindTickAt: 0,
-      lastSuggestionKey: ''
+      lastSuggestionKey: '',
+      emotion: {
+        // -100..100
+        valence: Math.round((Math.random() * 18) - 9),
+        // 0..100
+        arousal: Math.round(30 + Math.random() * 18),
+        // stable baseline intensity for this AI
+        intensity: baseIntensity,
+      },
+      _lastEmotionGameSig: '',
     };
   } else {
     // Keep Firestore-persisted identity stable.
     if (ai.personality) aiCore[ai.id].personality = ai.personality;
     if (Number.isFinite(+ai.temperature)) aiCore[ai.id].temperature = +ai.temperature;
+    if (!aiCore[ai.id].emotion) {
+      aiCore[ai.id].emotion = { valence: 0, arousal: 35, intensity: _baselineEmotionalIntensity(aiCore[ai.id].personality) };
+    }
   }
   return aiCore[ai.id];
+}
+
+// ─── Per-match personality assignment ───────────────────────────────────────
+// Every started game (practice or online) should get fresh AI personalities.
+// We do this once per game doc by writing a nonce and regenerating AI fields.
+let __ct_lastSeenMatchNonceByGame = {}; // gameId -> nonce
+let __ct_matchAssignInFlightByGame = {}; // gameId -> true
+
+// Local practice doesn't have Firestore nonces, so we refresh AI identities when the board changes.
+let __ct_lastPracticeBoardSigByGame = {}; // gameId -> sig
+
+function maybeRefreshPracticeAIIdentities(game) {
+  try {
+    const gid = String(game?.id || '').trim();
+    if (!gid) return;
+    if (!(typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid))) return;
+
+    const phase = String(game?.currentPhase || '').toLowerCase();
+    if (!phase || phase === 'waiting') {
+      __ct_lastPracticeBoardSigByGame[gid] = '';
+      return;
+    }
+
+    const wordsSig = Array.isArray(game?.cards)
+      ? game.cards.map(c => String(c?.word || '').trim().toUpperCase()).join('|')
+      : '';
+    if (!wordsSig) return;
+    if (__ct_lastPracticeBoardSigByGame[gid] === wordsSig) return;
+    __ct_lastPracticeBoardSigByGame[gid] = wordsSig;
+
+    // Regenerate EVERYONE (names + personalities) quickly.
+    const used = new Set();
+    for (const ai of (aiPlayers || [])) {
+      if (!ai || !ai.isAI) continue;
+      const persona = randomPersonality();
+      const name = generateAINameFromPersona(persona, used);
+      ai.name = name;
+      ai.personality = persona;
+      ai.temperature = randomTemperature();
+      // Reset the cached core so chat/behavior refreshes immediately.
+      if (aiCore[ai.id]) {
+        aiCore[ai.id].personality = persona;
+        aiCore[ai.id].temperature = ai.temperature;
+        aiCore[ai.id].mindLog = [];
+        aiCore[ai.id].visionSig = '';
+        aiCore[ai.id].vision = null;
+        aiCore[ai.id].emotion = { valence: Math.round((Math.random() * 18) - 9), arousal: Math.round(30 + Math.random() * 18), intensity: _baselineEmotionalIntensity(persona) };
+      }
+    }
+    try {
+      if (typeof window.renderAIPlayersList === 'function') window.renderAIPlayersList();
+    } catch (_) {}
+  } catch (_) {}
+}
+
+async function maybeAssignNewMatchPersonalities(game) {
+  const gameId = getActiveGameIdForAI();
+  if (!gameId) return;
+  if (__ct_matchAssignInFlightByGame[gameId]) return;
+
+  const phase = String(game?.currentPhase || '').toLowerCase();
+  // If the match is back in the lobby, clear the nonce so the *next* start
+  // gets a fresh set of AI identities.
+  if (!phase || phase === 'waiting') {
+    const existing = String(game?.aiMatchNonce || '').trim();
+    if (!existing) return;
+    const amController = await maybeHeartbeatAIController(gameId, game);
+    if (!amController) return;
+    __ct_matchAssignInFlightByGame[gameId] = true;
+    try {
+      await db.collection('games').doc(gameId).update({
+        aiMatchNonce: firebase.firestore.FieldValue.delete(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+    finally { __ct_matchAssignInFlightByGame[gameId] = false; }
+    return;
+  }
+
+  const nonce = String(game?.aiMatchNonce || '').trim();
+  if (nonce) {
+    if (__ct_lastSeenMatchNonceByGame[gameId] !== nonce) __ct_lastSeenMatchNonceByGame[gameId] = nonce;
+    return;
+  }
+
+  // Only the controller writes to Firestore.
+  const amController = await maybeHeartbeatAIController(gameId, game);
+  if (!amController) return;
+
+  __ct_matchAssignInFlightByGame[gameId] = true;
+  try {
+    // Match identities should be fast. We avoid LLM calls by default and use
+    // the local personality generator.
+    const used = new Set();
+    const roster = (aiPlayers || []).filter(a => a && a.isAI);
+    if (!roster.length) return;
+
+    const assignments = {};
+    for (const ai of roster) {
+      let baseName = String(ai?.name || '').trim();
+      if (!baseName || baseName.toLowerCase() === 'ai') baseName = pick(AI_NAMES);
+
+      let persona = null;
+      persona = randomPersonality();
+
+      // Name should match the personality.
+      const name = generateAINameFromPersona(persona, used);
+      const temperature = randomTemperature();
+
+      assignments[String(ai.odId)] = { name, persona, temperature };
+    }
+
+    const ref = db.collection('games').doc(gameId);
+    const newNonce = `m_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const g = snap.data() || {};
+      const p = String(g?.currentPhase || '').toLowerCase();
+      if (!p || p === 'waiting') return;
+      if (String(g?.aiMatchNonce || '').trim()) return; // another controller already did it
+
+      const patchTeam = (teamKey) => {
+        const players = Array.isArray(g?.[teamKey]) ? [...g[teamKey]] : [];
+        for (let i = 0; i < players.length; i++) {
+          const pl = players[i];
+          if (!pl || !pl.isAI) continue;
+          const odId = String(pl.odId || '').trim();
+          if (!odId || !assignments[odId]) continue;
+          const a = assignments[odId];
+          players[i] = {
+            ...pl,
+            name: a.name,
+            aiTemperature: a.temperature,
+            aiPersonality: a.persona,
+          };
+        }
+        return players;
+      };
+
+      const redPlayers = patchTeam('redPlayers');
+      const bluePlayers = patchTeam('bluePlayers');
+
+      tx.update(ref, {
+        redPlayers,
+        bluePlayers,
+        aiMatchNonce: newNonce,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (e) {
+    console.warn('Match personality assignment failed (best-effort):', e);
+  } finally {
+    __ct_matchAssignInFlightByGame[gameId] = false;
+  }
 }
 
 function appendMind(ai, text) {
@@ -1011,6 +1590,20 @@ function extractTeamMarkersForVision(game, team) {
     const cards = Array.isArray(game?.cards) ? game.cards : [];
     const markers = (game && typeof game[field] === 'object' && game[field]) ? game[field] : {};
 
+    // Build a lightweight owner->display lookup so the AI can see who marked what.
+    const ownerNameById = {};
+    try {
+      const allPlayers = []
+        .concat(Array.isArray(game?.redPlayers) ? game.redPlayers : [])
+        .concat(Array.isArray(game?.bluePlayers) ? game.bluePlayers : []);
+      for (const p of allPlayers) {
+        const uid = String(p?.odId || p?.userId || '').trim();
+        const nm = String(p?.name || '').trim();
+        if (!uid || !nm) continue;
+        ownerNameById[`u:${uid}`] = nm;
+      }
+    } catch (_) {}
+
     const out = [];
     for (const [idxKey, raw] of Object.entries(markers)) {
       const idx = Number(idxKey);
@@ -1026,8 +1619,10 @@ function extractTeamMarkersForVision(game, team) {
         const tRaw = String(tag || '').toLowerCase().trim();
         if (!ownerId || !['yes', 'maybe', 'no'].includes(tRaw)) continue;
         counts[tRaw] += 1;
+        const displayName = ownerNameById[ownerId] || (ownerId.startsWith('ai:') || ownerId.startsWith('ai_') ? String(ownerId).replace(/^ai[:_]/, 'AI ') : ownerId);
         byOwner.push({
           owner: ownerId,
+          name: displayName,
           tag: tRaw,
           isAI: ownerId.startsWith('ai:') || ownerId.startsWith('ai_')
         });
@@ -1049,7 +1644,8 @@ function extractTeamMarkersForVision(game, team) {
       if (b.counts.yes !== a.counts.yes) return b.counts.yes - a.counts.yes;
       return a.index - b.index;
     });
-    return out.slice(0, 12);
+    // No cap: AIs can see all markers on all unrevealed cards.
+    return out;
   } catch (_) {
     return [];
   }
@@ -1108,6 +1704,23 @@ function buildAIVision(game, ai) {
     }
   } catch (_) {}
 
+  // Timer awareness: let the AI know how much phase time remains so it can
+  // calibrate urgency (less time → quicker decisions / shorter chat).
+  let secondsRemaining = null;
+  let totalPhaseSeconds = null;
+  try {
+    const timerEnd = game?.timerEnd;
+    if (timerEnd) {
+      const endMs = typeof timerEnd?.toMillis === 'function'
+        ? timerEnd.toMillis()
+        : (timerEnd instanceof Date ? timerEnd.getTime() : Number(timerEnd));
+      if (Number.isFinite(endMs)) {
+        secondsRemaining = Math.max(0, Math.round((endMs - Date.now()) / 1000));
+      }
+    }
+    totalPhaseSeconds = getPhaseTimerSecondsFromGame(game, role === 'spymaster' ? 'spymaster' : 'operatives');
+  } catch (_) {}
+
   return {
     role, team, phase, currentTeam,
     clue, guessesRemaining, guessesUsedThisTurn,
@@ -1116,7 +1729,9 @@ function buildAIVision(game, ai) {
     score,
     cards,
     log,
-    ui
+    ui,
+    secondsRemaining,
+    totalPhaseSeconds,
   };
 }
 
@@ -1272,6 +1887,10 @@ ${mindContext}`;
 function updateAIVisionFromGame(game) {
   try {
     if (!game) return;
+
+    // Practice: new board ⇒ new AI identities.
+    maybeRefreshPracticeAIIdentities(game);
+
     for (const ai of (aiPlayers || [])) {
       const core = ensureAICore(ai);
       if (!core) continue;
@@ -1291,6 +1910,46 @@ function updateAIVisionFromGame(game) {
       if (sig !== core.visionSig) {
         core.visionSig = sig;
         core.vision = vision;
+
+        // Emotion: react to major visible events (reveals, turn changes).
+        try {
+          const emoSig = JSON.stringify({
+            phase: vision.phase,
+            team: vision.currentTeam,
+            cards: (vision.cards || []).map(c => !!c.revealed),
+            winner: vision.winner || '',
+          });
+          if (core._lastEmotionGameSig && core._lastEmotionGameSig !== emoSig) {
+            const prev = JSON.parse(core._lastEmotionGameSig);
+            const prevRevealed = Array.isArray(prev.cards) ? prev.cards : [];
+            const nowRevealed = (vision.cards || []).map(c => !!c.revealed);
+            let newReveals = 0;
+            for (let i = 0; i < Math.min(prevRevealed.length, nowRevealed.length); i++) {
+              if (!prevRevealed[i] && nowRevealed[i]) newReveals++;
+            }
+            // Quick heuristic: reveals on your team's turn are stressful/exciting.
+            if (newReveals > 0) {
+              const mineTurn = String(vision.currentTeam || '') === String(ai.team || '');
+              // If our team just revealed cards on our turn, bias positive unless assassin.
+              const lastIdxs = [];
+              for (let i = 0; i < (vision.cards || []).length; i++) {
+                if (!prevRevealed[i] && nowRevealed[i]) lastIdxs.push(i);
+              }
+              const lastTypes = lastIdxs.map(i => String(vision.cards?.[i]?.revealedType || vision.cards?.[i]?.type || '')).join('|').toLowerCase();
+              const hitAssassin = /assassin/.test(lastTypes);
+              const hitTeam = mineTurn && (String(ai.team || '') && lastTypes.includes(String(ai.team).toLowerCase()));
+              if (hitAssassin) bumpEmotion(ai, -75, +35);
+              else if (hitTeam) bumpEmotion(ai, +26, +18);
+              else if (mineTurn) bumpEmotion(ai, -18, +14);
+              else bumpEmotion(ai, +6, +10);
+            }
+            // Turn change: mild reset.
+            if (String(prev.phase || '') !== String(vision.phase || '')) {
+              bumpEmotion(ai, 0, -6);
+            }
+          }
+          core._lastEmotionGameSig = emoSig;
+        } catch (_) {}
 
         // Mind always writes when vision changes.
         const clueStr = vision.clue ? `${String(vision.clue.word || '').toUpperCase()} ${vision.clue.number}` : 'none yet';
@@ -1328,7 +1987,8 @@ async function addAIPlayer(team, seatRole, mode) {
   }
 
   const name = pickAIName();
-  const personality = await generateUniquePersonality(name);
+  // Instant, local personality generation (fresh per bot).
+  const personality = generateFastPersonality({ aiName: name });
   const ai = {
     id: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     odId: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1629,6 +2289,23 @@ function _pickAIConsideringIndex(decisionLike) {
 async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag, ownerId = 'legacy') {
   try {
     if (!gameId) return;
+    // Local practice games: write markers into local game state via game.js helper.
+    try {
+      const gid = String(gameId);
+      if (typeof window.__setLocalPracticeTeamMarker === 'function' && typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
+        const requested = String(tag || '').toLowerCase().trim();
+        const clear = !requested || requested === 'clear';
+        window.__setLocalPracticeTeamMarker({
+          gameId: gid,
+          teamColor: String(team || '').toLowerCase(),
+          ownerId: _markerOwnerId(ownerId),
+          cardIndex,
+          tag: clear ? 'clear' : requested,
+        });
+        return;
+      }
+    } catch (_) {}
+
     const idx = Number(cardIndex);
     if (!Number.isFinite(idx) || idx < 0) return;
 
@@ -1670,20 +2347,85 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
     const owner = _markerOwnerId(ai.id);
     const desiredIdx = _pickAIConsideringIndex(decisionLike);
     const desiredMarkers = new Map();
+    // No hard cap on how many cards an AI can mark/consider.
     for (const m of (Array.isArray(decisionLike?.marks) ? decisionLike.marks : [])) {
       const idx = Number(m?.index);
       const tag = String(m?.tag || '').toLowerCase().trim();
       if (!Number.isFinite(idx) || idx < 0) continue;
       if (!['yes', 'maybe', 'no'].includes(tag)) continue;
       desiredMarkers.set(String(idx), tag);
-      if (desiredMarkers.size >= 3) break;
     }
     if (!desiredMarkers.size && Number.isFinite(desiredIdx) && desiredIdx >= 0) {
       desiredMarkers.set(String(desiredIdx), 'yes');
     }
+
+    // If the model didn't provide multiple marks, opportunistically add a couple
+    // based on the current team marker consensus so AIs visibly "use" markers.
+    try {
+      if (desiredMarkers.size < 2 && decisionLike?.action !== 'end_turn') {
+        const rows = extractTeamMarkersForVision(await getGameSnapshot(String(gameId)), String(team || '')).filter(r => !r.revealed);
+        rows
+          .sort((a, b) => {
+            const ax = (a?.counts?.yes || 0) * 3 + (a?.counts?.maybe || 0) - (a?.counts?.no || 0) * 2;
+            const bx = (b?.counts?.yes || 0) * 3 + (b?.counts?.maybe || 0) - (b?.counts?.no || 0) * 2;
+            return bx - ax;
+          })
+          .slice(0, 6)
+          .forEach(r => {
+            // No cap.
+            const idxKey = String(Number(r.index));
+            if (!idxKey || desiredMarkers.has(idxKey)) return;
+            if ((r?.counts?.no || 0) >= 2 && (r?.counts?.yes || 0) === 0) desiredMarkers.set(idxKey, 'no');
+            else if ((r?.counts?.yes || 0) >= 1) desiredMarkers.set(idxKey, 'maybe');
+          });
+      }
+    } catch (_) {}
     const rawAiName = String(ai?.name || '').trim() || 'AI';
     const name = /^ai\s+/i.test(rawAiName) ? rawAiName : `AI ${rawAiName}`;
     const initials = _nameInitials(rawAiName);
+
+    // Local practice: update markers in local game state (no Firestore).
+    try {
+      const gid = String(gameId);
+      if (typeof window.__setLocalPracticeTeamMarker === 'function' && typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
+        // Clear old marks for this AI (practice is local, so we do it explicitly).
+        for (let i = 0; i < 25; i++) {
+          window.__setLocalPracticeTeamMarker({
+            gameId: gid,
+            teamColor: String(team || '').toLowerCase(),
+            ownerId: owner,
+            cardIndex: i,
+            tag: 'clear',
+          });
+        }
+
+        for (const [idxKey, tagVal] of desiredMarkers.entries()) {
+          window.__setLocalPracticeTeamMarker({
+            gameId: gid,
+            teamColor: String(team || '').toLowerCase(),
+            ownerId: owner,
+            cardIndex: Number(idxKey),
+            tag: String(tagVal || '').toLowerCase(),
+          });
+        }
+
+        // Also mirror "considering" chips locally so humans see AI initials on multiple cards.
+        try {
+          const keys = Array.from(desiredMarkers.keys());
+          if (typeof window.__setLocalPracticeConsidering === 'function') {
+            window.__setLocalPracticeConsidering({
+              gameId: gid,
+              teamColor: String(team || '').toLowerCase(),
+              ownerId: owner,
+              initials,
+              name,
+              cardKeys: keys
+            });
+          }
+        } catch (_) {}
+        return;
+      }
+    } catch (_) {}
 
     const ref = db.collection('games').doc(String(gameId));
     await db.runTransaction(async (tx) => {
@@ -1720,15 +2462,19 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
         else delete considering[key];
       }
 
-      if (Number.isFinite(desiredIdx) && desiredIdx >= 0) {
-        const idx = Number(desiredIdx);
+      // Multi-consider support: show initials on every currently considered card.
+      // We use the AI's current marker set as the source of truth (yes/maybe/no).
+      const considerKeys = Array.from(desiredMarkers.keys());
+      const fallback = (Number.isFinite(desiredIdx) && desiredIdx >= 0) ? [String(Number(desiredIdx))] : [];
+      const keysToSet = considerKeys.length ? considerKeys : fallback;
+      for (const k of keysToSet) {
+        const idx = Number(k);
+        if (!Number.isFinite(idx) || idx < 0) continue;
         const card = cards[idx];
-        if (card && !card.revealed) {
-          const key = String(idx);
-          const bucket = _normalizeConsideringBucket(considering[key]);
-          bucket[owner] = { initials, name, ts: Date.now() };
-          considering[key] = bucket;
-        }
+        if (!card || card.revealed) continue;
+        const bucket = _normalizeConsideringBucket(considering[String(idx)]);
+        bucket[owner] = { initials, name, ts: Date.now() };
+        considering[String(idx)] = bucket;
       }
 
       tx.update(ref, {
@@ -2128,7 +2874,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const team = ai.team;
   const vision = buildAIVision(game, ai);
   const persona = core.personality;
-  const requireMarks = !!opts.requireMarks;
+  const requireMarks = (opts.requireMarks === undefined) ? true : !!opts.requireMarks;
 
 
   if (!vision.clue || !vision.clue.word) return null;
@@ -2177,7 +2923,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Maximum 2 AIs should agree on a word. After that, further agreement is redundant.`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
-    `- Actively use markers: set 1-3 yes/maybe/no marks every turn to show your current lean.`,
+    `- Mark cards generously: set YES/MAYBE/NO on EVERY card you have an opinion on. YES = top picks, MAYBE = worth considering, NO = too risky. Aim for 4-8+ marks — more marks means teammates can read your full thinking.`,
     `- React to teammate markers: if marker consensus/conflict changes your read, mention it briefly in chat.`,
     ``,
     `Return JSON only:`,
@@ -2189,6 +2935,15 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Your team has ${myLeft} words left. Opponent has ${opponentLeft} left.`,
     `- In chat, NEVER write card indices/numbers. Use the WORD itself.`,
     `- Read TEAM CHAT and actually respond to what people said. Don't ignore them.`,
+    ...(vision.secondsRemaining !== null && vision.totalPhaseSeconds > 0 ? [
+      vision.secondsRemaining <= 8
+        ? `- ⚠ TIME CRITICAL: Only ${vision.secondsRemaining}s left! Output your JSON NOW — pick the safest card or end_turn immediately. Zero deliberation.`
+        : vision.secondsRemaining <= 20
+        ? `- ⏱ LOW TIME: ${vision.secondsRemaining}s left. Be decisive — very short mind, skip long chat, act fast.`
+        : vision.secondsRemaining <= 45
+        ? `- ⏱ ${vision.secondsRemaining}s remaining. Stay focused — keep mind and chat concise, don't linger.`
+        : `- ⏱ ${vision.secondsRemaining}s remaining. You have time — think as deeply as your personality calls for and converse naturally.`,
+    ] : []),
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
@@ -2239,7 +2994,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     if (!['yes','maybe','no'].includes(tag)) continue;
     const ok = unrevealed.some(c => c.index === mi);
     if (ok) marks.push({ index: mi, tag });
-    if (marks.length >= 3) break;
+    if (marks.length >= 8) break;
   }
 
   if (requireMarks && (!marks || marks.length === 0) && action === 'guess' && candidate) {
@@ -2547,7 +3302,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       if (!['yes','maybe','no'].includes(tag)) continue;
       if (!unrevealedIdx.has(mi)) continue;
       marks.push({ index: mi, tag });
-      if (marks.length >= 3) break;
+      if (marks.length >= 8) break;
     }
 
     const out = { ai, chat, marks, continue: cont, focusClue };
@@ -2602,7 +3357,7 @@ async function runOperativeCouncil(game, team) {
     aiThinkingState[ai.id] = true;
     try {
       const prop = await aiOperativePropose(ai, working, {
-        requireMarks: ops.length >= 2,
+        requireMarks: true,
         councilSize: ops.length,
         chatDocs: chatBefore.docs
       });
@@ -3431,6 +4186,15 @@ async function aiGiveClue(ai, game) {
       `- EVERY clue must NOT be any board word: ${boardWords.join(', ')}`,
       `- numbers are integers 0-9.`,
       `- Give 2-4 candidates (including the final if you want), and then pick ONE final.`,
+      ...(vision.secondsRemaining !== null && vision.totalPhaseSeconds > 0 ? [
+        vision.secondsRemaining <= 8
+          ? `- ⚠ TIME CRITICAL: Only ${vision.secondsRemaining}s left! Pick ONE candidate and commit instantly — no elaborate mind, output JSON NOW.`
+          : vision.secondsRemaining <= 20
+          ? `- ⏱ LOW TIME: ${vision.secondsRemaining}s left. Be decisive — short mind, go with your first solid connection.`
+          : vision.secondsRemaining <= 45
+          ? `- ⏱ ${vision.secondsRemaining}s remaining. Keep your reasoning tight — don't over-analyze.`
+          : `- ⏱ ${vision.secondsRemaining}s remaining. You have time — explore multiple connections before committing.`,
+      ] : []),
     ].join('\n');
 
     const mindContext = core.mindLog.slice(-10).join('\n');
@@ -3920,9 +4684,11 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const isReplyContext = String(context || '').toLowerCase() === 'reply';
 
     const persona = core.personality;
+    const emo = describeEmotion(core);
     const systemPrompt = [
       `You are ${ai.name}, chatting with teammates during a Codenames game.`,
       buildPersonalityBlockBrief(persona),
+      `CURRENT EMOTION: mood=${emo.mood}, energy=${emo.energy}, intensity=${emo.intensity}/100.`,
       ``,
       `You're texting friends during a board game. Be casual and real.`,
       `- Respond to what the last person actually said. Don't ignore them.`,
@@ -3935,7 +4701,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `- Redundant enthusiasm is worse than silence. Only speak if you add something new.`,
       isReplyContext ? `- If someone greets you, greet back naturally first.` : '',
       isReplyContext ? `- In replies, react to the latest message and add a distinct angle.` : '',
-      `- 1-2 short sentences max. Keep it <=140 chars.`,
+      `- Keep it short: 1-2 quick sentences, <=170 chars.`,
       `- Never reference card indices/numbers. Use actual board WORDS only.`,
       `- Don't invent board words — only mention words from the unrevealed list.`,
       `- No formal language. No "I believe", "I suggest", "Additionally".`,
@@ -3954,7 +4720,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { temperature: Math.min(1.25, (core.temperature * 1.05) + 0.15), max_tokens: 220, response_format: { type: 'json_object' } }
+      { temperature: Math.min(1.15, (core.temperature * 1.0) + 0.10), max_tokens: 140, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -3965,7 +4731,13 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     if (mind) appendMind(ai, mind);
 
     let msg = String(parsed.msg || '').trim();
-    msg = sanitizeChatText(msg, vision, 160);
+    msg = sanitizeChatText(msg, vision, 170);
+    // Keep it short + conversational: up to ~2 sentences.
+    try {
+      const m = String(msg || '').trim();
+      const parts = m.split(/(?<=[.!?])\s+/).filter(Boolean);
+      msg = (parts.slice(0, 2).join(' ') || m).trim();
+    } catch (_) {}
     if (!msg && forceResponse && isReplyContext) {
       const src = String(opts.lastMessageText || lastMessage || '').trim();
       const sender = String(opts.lastSenderName || '').trim();
@@ -3978,10 +4750,10 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const upperMsg = msg.toUpperCase();
     for (const w of unrevealed) {
       // allow mentions of legitimate words
-      if (upperMsg.includes(w)) return msg.slice(0, 160);
+      if (upperMsg.includes(w)) return msg.slice(0, 170);
     }
     // If it mentions no unrevealed word, it's fine.
-    return msg.slice(0, 160);
+    return msg.slice(0, 110);
   } catch (_) {
     return '';
   }
@@ -4032,15 +4804,55 @@ async function generateAIReaction(ai, revealedCard, clue) {
 // the actual message is persisted. This simulates the same live-typing
 // experience that spymasters see for clue drafts.
 
-function _getAIChatTypingSpeed() {
-  // Characters per ms — gives a natural feel with variance
-  const base = 28 + Math.random() * 32; // 28-60ms per char
-  return base;
+function _getAIChatTypingProfile(aiLike) {
+  // A rough "human" typing profile with jitter, bursts, and occasional mistakes.
+  // More confident / higher tempo characters revise less and type a bit faster.
+  const p = (aiLike && aiLike.__typingProfile) ? aiLike.__typingProfile : null;
+  if (p) return p;
+
+  let tempo = 60;
+  let confidence = 60;
+  try {
+    const core = aiLike ? ensureAICore(aiLike) : null;
+    const stats = core?.personality?.stats || core?.personality?.stats || {};
+    tempo = Number(stats.tempo ?? stats.speed ?? 60);
+    confidence = Number(stats.confidence ?? 60);
+  } catch (_) {}
+  const t = Number.isFinite(tempo) ? Math.max(1, Math.min(100, tempo)) : 60;
+  const c = Number.isFinite(confidence) ? Math.max(1, Math.min(100, confidence)) : 60;
+
+  const base = 12 - (t / 12); // ~4–12ms base
+  const jitter = 10 + Math.random() * 22;
+  const burstChance = 0.18 + Math.random() * 0.12;
+  const pauseChance = 0.10 + Math.random() * 0.12;
+  const typoChance = Math.max(0.02, 0.10 - (c / 900));
+  const revisionChance = Math.max(0.05, 0.22 - (c / 400));
+
+  const out = {
+    baseMs: Math.max(3.5, base),
+    jitterMs: jitter,
+    burstChance,
+    pauseChance,
+    typoChance,
+    revisionChance,
+  };
+  if (aiLike) aiLike.__typingProfile = out;
+  return out;
 }
 
-async function _simulateAITyping(aiName, teamColor, text) {
+function _randChar() {
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  return letters[Math.floor(Math.random() * letters.length)];
+}
+
+async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
   const container = document.getElementById('operative-chat-messages');
   if (!container || !text) return;
+
+  const aiName = (typeof aiLikeOrName === 'string') ? aiLikeOrName : (`AI ${String(aiLikeOrName?.name || 'AI')}`);
+  const profile = _getAIChatTypingProfile(typeof aiLikeOrName === 'string' ? null : aiLikeOrName);
+  const allowTypos = opts.allowTypos !== false;
+  const allowRevisions = opts.allowRevisions !== false;
 
   // Create a typing indicator element
   const typingEl = document.createElement('div');
@@ -4062,31 +4874,79 @@ async function _simulateAITyping(aiName, teamColor, text) {
   const textEl = typingEl.querySelector('.ai-typing-text');
   const dotsEl = typingEl.querySelector('.chat-typing-indicator');
 
-  // Show dots for a brief moment before typing starts
-  await new Promise(r => setTimeout(r, 400 + Math.random() * 600));
+  // Short typing indicator so it doesn't feel laggy
+  await new Promise(r => setTimeout(r, 30 + Math.random() * 80));
 
-  // Start revealing characters
+  // Start revealing characters (with jitter, bursts, pauses, and small corrections)
   if (dotsEl) dotsEl.style.display = 'none';
   let revealed = '';
-  for (let i = 0; i < text.length; i++) {
-    revealed += text[i];
-    if (textEl) textEl.textContent = revealed;
 
-    // Keep scroll pinned to bottom during typing
+  const sleepMs = (ms) => new Promise(r => setTimeout(r, ms));
+  const setText = () => {
+    if (textEl) textEl.textContent = revealed;
     const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
     if (nearBottom) container.scrollTop = container.scrollHeight;
+  };
 
-    // Variable delay per character
-    let delay = _getAIChatTypingSpeed();
-    // Pause slightly longer after punctuation
-    if ('.!?,;:'.includes(text[i])) delay += 80 + Math.random() * 120;
-    // Speed up for spaces
-    if (text[i] === ' ') delay *= 0.5;
-    await new Promise(r => setTimeout(r, delay));
+  // Optional quick "draft then rethink" micro-revision at the start.
+  // This makes confident AIs commit faster, uncertain AIs hesitate.
+  try {
+    if (allowRevisions && text.length >= 18 && Math.random() < profile.revisionChance) {
+      const cut = Math.max(8, Math.min(22, Math.floor(text.length * (0.25 + Math.random() * 0.15))));
+      for (let i = 0; i < cut; i++) {
+        revealed += text[i];
+        setText();
+        await sleepMs(Math.max(3, profile.baseMs + Math.random() * profile.jitterMs));
+      }
+      // "Am I sure?" pause
+      await sleepMs(140 + Math.random() * 260);
+      // Delete some and continue
+      const del = Math.max(3, Math.min(14, Math.floor(cut * (0.35 + Math.random() * 0.35))));
+      for (let i = 0; i < del; i++) {
+        revealed = revealed.slice(0, -1);
+        setText();
+        await sleepMs(18 + Math.random() * 35);
+      }
+    }
+  } catch (_) {}
+
+  for (let i = revealed.length; i < text.length; i++) {
+    const ch = text[i];
+
+    // Occasional typo + correction on letters
+    if (allowTypos && /[a-zA-Z]/.test(ch) && Math.random() < profile.typoChance) {
+      revealed += _randChar();
+      setText();
+      await sleepMs(30 + Math.random() * 70);
+      // backspace
+      revealed = revealed.slice(0, -1);
+      setText();
+      await sleepMs(25 + Math.random() * 60);
+    }
+
+    revealed += ch;
+    setText();
+
+    // Burst typing sometimes (very short delays for a few chars)
+    const inBurst = Math.random() < profile.burstChance;
+    let delay = profile.baseMs + Math.random() * profile.jitterMs;
+    if (inBurst) delay *= 0.45;
+
+    // Pauses (thinking) sometimes
+    if (allowRevisions && Math.random() < profile.pauseChance && i > 6) {
+      delay += 90 + Math.random() * 220;
+    }
+
+    // Punctuation pause
+    if ('.!?,;:'.includes(ch)) delay += 55 + Math.random() * 160;
+    // Space speed-up
+    if (ch === ' ') delay *= 0.55;
+
+    await sleepMs(Math.max(2.5, delay));
   }
 
-  // Brief pause after finishing typing before the "real" message arrives
-  await new Promise(r => setTimeout(r, 150 + Math.random() * 250));
+  // Minimal pause after finishing typing
+  await new Promise(r => setTimeout(r, 25 + Math.random() * 70));
 
   // Remove the typing element — the Firestore snapshot will render the real message
   try { typingEl.remove(); } catch (_) {}
@@ -4111,9 +4971,31 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
     const vision = buildAIVision(game, ai);
     const human = makeChatMoreHuman(ai, game, text, vision, { bypassSimilarity: force });
     text = (human || '').trim();
+
+    // Guardrail: don't mention already-revealed words.
+    // If the model still references a revealed card, drop the message instead of confusing players.
+    try {
+      const cards = Array.isArray(vision?.cards) ? vision.cards : [];
+      const revealed = new Set(cards.filter(c => c && c.revealed).map(c => String(c.word || '').toUpperCase()));
+      const unrevealed = new Set(cards.filter(c => c && !c.revealed).map(c => String(c.word || '').toUpperCase()));
+      const tokens = String(text || '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+      const hit = tokens.find(w => revealed.has(w) && !unrevealed.has(w));
+      if (hit && !force) return;
+    } catch (_) {}
   } catch (_) {}
   if (!text && force) text = originalText.slice(0, 180);
   if (!text) return;
+
+  // Final shaping: shorter + more conversational.
+  try {
+    let t = String(text || '').trim();
+    // Max ~2 short sentences.
+    const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+    t = parts.slice(0, 2).join(' ').trim() || t;
+    // Hard cap.
+    if (t.length > 170) t = t.slice(0, 170).trim();
+    text = t;
+  } catch (_) {}
 
   // Extra: avoid the *same AI* paraphrasing itself over and over.
   try {
@@ -4130,7 +5012,10 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
 
   // Simulate typing animation before sending the actual message
   try {
-    await _simulateAITyping(`AI ${ai.name}`, teamColor, text);
+    await _simulateAITyping(ai, teamColor, text, {
+      allowTypos: true,
+      allowRevisions: true,
+    });
   } catch (_) {}
 
   try {
@@ -4175,7 +5060,7 @@ async function maybeAIRespondToTeamChat(ai, game) {
     const now = Date.now();
     const lastReply = Number(aiLastChatReplyMs[ai.id] || 0);
     // Keep responses fast but non-spammy.
-    if (now - lastReply < 8000) return false;
+    if (now - lastReply < 3500) return false;
 
     const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 14);
     if (!msgs || !msgs.length) return false;
@@ -4183,7 +5068,7 @@ async function maybeAIRespondToTeamChat(ai, game) {
     const newest = Math.max(...msgs.map(m => Number(m.createdAtMs || 0)));
     const lastSeen = Number(aiLastChatSeenMs[ai.id] || 0);
     // On first run, only consider very recent messages so we don't respond to stale history.
-    const baseline = lastSeen > 0 ? lastSeen : Math.max(0, newest - 15000);
+    const baseline = lastSeen > 0 ? lastSeen : Math.max(0, newest - 9000);
 
     // Find new messages not from this AI.
     const fresh = msgs.filter(m => (
@@ -4215,7 +5100,7 @@ async function maybeAIRespondToTeamChat(ai, game) {
 
     aiThinkingState[ai.id] = true;
     locked = true;
-    await humanDelay(500, 1200);
+    await humanDelay(120, 320);
 
     const forceResponse = !!(directHit || question || greeting);
     let reply = await generateAIChatMessage(ai, game, 'reply', {
@@ -4245,6 +5130,8 @@ async function maybeAIRespondToTeamChat(ai, game) {
 
 function buildMarkerReactionMessage(ai, markerRows = [], selfOwner = '') {
   try {
+    const core = ensureAICore(ai);
+    const emo = describeEmotion(core);
     const rows = (Array.isArray(markerRows) ? markerRows : []).filter(Boolean);
     if (!rows.length) return '';
     const row = rows[0];
@@ -4255,21 +5142,22 @@ function buildMarkerReactionMessage(ai, markerRows = [], selfOwner = '') {
     const otherMaybe = others.filter(x => x.tag === 'maybe').length;
     const otherNo = others.filter(x => x.tag === 'no').length;
 
+    const spicy = (emo.mood === 'angry' || emo.mood === 'annoyed') && emo.intensity >= 55;
     if (otherYes >= 2 && otherNo === 0) {
       return _pick([
-        `${row.word} has a strong yes stack, but i'm checking downside before we slam it`,
-        `seeing multiple yes tags on ${row.word}; i get it, just sanity-checking risk first`
+        spicy ? `ok i see the yes pile on ${row.word} 😅 just... check the downside first` : `${row.word} has a strong yes stack, but i'm checking downside before we slam it`,
+        spicy ? `everyone's tagging ${row.word} yes—hold up, let me sanity-check risk` : `seeing multiple yes tags on ${row.word}; i get it, just sanity-checking risk first`
       ]);
     }
     if (otherNo >= 2 && otherYes === 0) {
       return _pick([
-        `${row.word} getting hard-no tags tracks, that one feels shaky`,
-        `i'm with the no stack on ${row.word}, clue fit looks weak`
+        spicy ? `${row.word} is a HARD no for me too, that clue fit is sketchy` : `${row.word} getting hard-no tags tracks, that one feels shaky`,
+        spicy ? `yeah nah ${row.word} feels bad, i'm not touching that` : `i'm with the no stack on ${row.word}, clue fit looks weak`
       ]);
     }
     if (otherYes > 0 && otherNo > 0) {
       return _pick([
-        `markers are split on ${row.word}; i'm not convinced either side yet`,
+        spicy ? `we're split on ${row.word} and i'm kinda stressed lol—let's verify clue fit` : `markers are split on ${row.word}; i'm not convinced either side yet`,
         `${row.word} is mixed yes/no right now, i'd rather verify clue fit first`
       ]);
     }
@@ -4292,7 +5180,7 @@ async function maybeAIReactToTeamMarkers(ai, game) {
     if (String(ai?.mode || '') !== 'autonomous') return false;
     if (String(ai?.seatRole || '') !== 'operative') return false;
     if (String(game?.currentPhase || '') !== 'operatives') return false;
-    if (String(game?.currentTeam || '') !== String(ai?.team || '')) return false;
+    // React even when it's not our turn (banter / "why are you tagging that??").
     if (aiThinkingState[ai.id]) return false;
 
     const core = ensureAICore(ai);
@@ -4309,7 +5197,7 @@ async function maybeAIReactToTeamMarkers(ai, game) {
 
     const now = Date.now();
     const lastAt = Number(core.lastMarkerReactionAt || 0);
-    if (now - lastAt < 9000) return false;
+    if (now - lastAt < 4500) return false;
 
     const msg = buildMarkerReactionMessage(ai, otherRows, selfOwner);
     core.lastMarkerReactionSig = markerSig;
@@ -4317,7 +5205,7 @@ async function maybeAIReactToTeamMarkers(ai, game) {
 
     aiThinkingState[ai.id] = true;
     locked = true;
-    await humanDelay(300, 900);
+    await humanDelay(80, 220);
     await sendAIChatMessage(ai, game, msg, { force: true });
     core.lastMarkerReactionAt = Date.now();
     aiLastChatReplyMs[ai.id] = core.lastMarkerReactionAt;
