@@ -265,7 +265,9 @@ function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
     }
     const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
     const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
-    applyConfirmAnimationClasses(cardEl, confirmBackType);
+    // Snapshot replay path: always restore to revealed state when the replay ends.
+    // This avoids transient front-face flashes between animation end and rerender.
+    applyConfirmAnimationClasses(cardEl, confirmBackType, { replay: true });
     animatedAny = true;
   });
   return animatedAny;
