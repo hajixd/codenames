@@ -259,10 +259,13 @@ function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
     seen.add(idx);
     const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
     if (!cardEl) return;
+    if (cardEl.classList.contains('revealed')) {
+      // Never force already-revealed cards back face-down for replay.
+      return;
+    }
     const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
     const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
-    const replay = cardEl.classList.contains('revealed');
-    applyConfirmAnimationClasses(cardEl, confirmBackType, { replay });
+    applyConfirmAnimationClasses(cardEl, confirmBackType);
     animatedAny = true;
   });
   return animatedAny;
@@ -458,6 +461,11 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
 
   if (!opts.skipRender && currentGame?.id === key) {
     const prevCards = Array.isArray(prevLiveGame?.cards) ? prevLiveGame.cards : null;
+    // Keep the live model synced immediately, even if render is deferred.
+    // This avoids stale diffs that can treat already revealed cards as "new".
+    currentGame = cloneLocalValue(next);
+    if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
+    else stopPracticeInactivityWatcher();
 
     let boardChanged = false;
     try {
@@ -495,9 +503,6 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
       : false;
 
     const finishLocalRender = () => {
-      currentGame = cloneLocalValue(next);
-      if (currentGame?.type === 'practice') startPracticeInactivityWatcher();
-      else stopPracticeInactivityWatcher();
       try { renderGame(); } catch (_) {}
 
       // AI emotional reactions based on newly appended log lines.
@@ -10047,7 +10052,9 @@ function handleRevealedCardPeek(cardIndex) {
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
   const card = currentGame?.cards?.[idx];
-  if (!card || !card.revealed) return;
+  const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+  const revealedInUi = !!cardEl?.classList.contains('revealed');
+  if (!revealedInUi && !card?.revealed) return;
 
   if (revealedPeekCardIndex === idx) revealedPeekCardIndex = null;
   else revealedPeekCardIndex = idx;
