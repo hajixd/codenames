@@ -23247,17 +23247,15 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
     padding-top: clamp(0px, calc((1 - var(--desktop-game-scale, 1)) * 14vh), 56px);
   }
 
-  /* OG/Cozy desktop: visually align Game Log / Clue History width with the roster boxes
-     (which sit inside .og-team-panel padding). */
+  /* OG/Cozy desktop: the roster blocks are full-width within each sidebar.
+     Keep Game Log / Clue History / Team Chat the SAME exact width by removing
+     any horizontal insets and forcing them to stretch. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left > .clue-history-panel,
-  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left > #desktop-game-log-panel {
-    margin-inline: 14px;
-  }
-
-  /* OG/Cozy desktop: visually align Team Chat width with the roster boxes
-     (which sit inside .og-team-panel padding). */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left > #desktop-game-log-panel,
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-right > .operative-chat-panel {
-    margin-inline: 14px;
+    margin-inline: 0;
+    width: 100%;
+    align-self: stretch;
   }
 
   /* Keep OG/Cozy team stacks in normal flow (no transform clipping). */
