@@ -2923,7 +2923,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Maximum 2 AIs should agree on a word. After that, further agreement is redundant.`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
-    `- Actively use markers: set 1-3 yes/maybe/no marks every turn to show your current lean.`,
+    `- Mark cards generously: set YES/MAYBE/NO on EVERY card you have an opinion on. YES = top picks, MAYBE = worth considering, NO = too risky. Aim for 4-8+ marks — more marks means teammates can read your full thinking.`,
     `- React to teammate markers: if marker consensus/conflict changes your read, mention it briefly in chat.`,
     ``,
     `Return JSON only:`,
@@ -2994,7 +2994,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     if (!['yes','maybe','no'].includes(tag)) continue;
     const ok = unrevealed.some(c => c.index === mi);
     if (ok) marks.push({ index: mi, tag });
-    if (marks.length >= 3) break;
+    if (marks.length >= 8) break;
   }
 
   if (requireMarks && (!marks || marks.length === 0) && action === 'guess' && candidate) {
@@ -3302,7 +3302,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       if (!['yes','maybe','no'].includes(tag)) continue;
       if (!unrevealedIdx.has(mi)) continue;
       marks.push({ index: mi, tag });
-      if (marks.length >= 3) break;
+      if (marks.length >= 8) break;
     }
 
     const out = { ai, chat, marks, continue: cont, focusClue };

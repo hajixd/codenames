@@ -6332,7 +6332,7 @@ function renderBoard(isSpymaster) {
             ${visibleConsidering.map(entry => {
               const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
-              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}" title="${title}">${initials}</span>`;
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${initials}</span>`;
             }).join('')}
           </div>
         `
@@ -9292,6 +9292,16 @@ function setupBoardCardInteractions() {
       setupBoardCardInteractions._lastIdx = idx;
       setupBoardCardInteractions._lastAt = now;
       void handleCardConfirm(evt, idx);
+      return;
+    }
+
+    // Mine chip tap: toggle just that card's considering mark (don't clear others).
+    const toggleChip = target.closest('[data-toggle-considering]');
+    if (toggleChip && boardEl.contains(toggleChip)) {
+      const chipCardIdx = Number(toggleChip.getAttribute('data-toggle-considering'));
+      if (Number.isInteger(chipCardIdx) && chipCardIdx >= 0) {
+        void syncTeamConsidering(chipCardIdx);
+      }
       return;
     }
 
