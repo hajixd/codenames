@@ -260,7 +260,9 @@ function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
     const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
     const replay = cardEl.classList.contains('revealed');
     if (replay) {
-      animatedAny = replayRevealFlipOnRevealedCard(cardEl) || animatedAny;
+      // Avoid re-flipping already-revealed DOM nodes: this can fight with CSS
+      // state and cause visible "unflip" glitches / heavy repaint churn.
+      // The reliable reveal animation path is the local pre-commit confirm flip.
       return;
     }
     applyConfirmAnimationClasses(cardEl, confirmBackType, { replay: false });
@@ -6436,8 +6438,9 @@ function renderBoard(isSpymaster) {
       </div>
     `;
   }).join('');
+  _lastBoardDomKey = boardDomKey;
 
-  // Always re-fit card words after any board re-render.
+  // Re-fit card words after board/reveal or viewport changes (rAF-debounced).
   // The board can re-render for reasons that don't change our fit keys
   // (chat updates, timers, minor UI state). In those cases the DOM is
   // replaced and the fitted inline font sizing can be lost, letting long
@@ -9349,6 +9352,12 @@ function setupBoardCardInteractions() {
       const ownerCard = checkmark.closest('.game-card');
       const idx = Number(checkmark.getAttribute('data-card-index') || ownerCard?.dataset?.index);
       if (!Number.isInteger(idx) || idx < 0) return;
+      // If the card is already revealed, treat taps anywhere on it (including the
+      // checkmark area) as a peek toggle instead of trying to reconfirm.
+      if (ownerCard && ownerCard.classList.contains('revealed')) {
+        handleRevealedCardPeek(idx);
+        return;
+      }
       // Pointer-based devices often dispatch pointerup + click for the same tap.
       // Let pointerup win and ignore the duplicate click.
       const now = Date.now();
