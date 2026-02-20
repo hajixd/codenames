@@ -21088,19 +21088,58 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).con
   }
 }
 
+/* Unified reveal flip used after snapshots so all clients see the same motion. */
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
+  z-index: 96;
+  perspective: 1100px;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  will-change: transform;
+  animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  transition: none !important;
+  will-change: transform;
+  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
+  transform: rotateY(180deg);
+}
+
 /*
   Word-ghosting fallback for non-OG/non-cozy styles.
   We normally hide the back face in these modes, but we MUST allow it
   during the confirm flip animation (used for every guess).
 */
-body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold) .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold):not(.reveal-flip-animate) .card-back {
   display: none !important;
 }
 
 /* Prevent incidental 3D transforms in non-OG modes, but allow the explicit
    confirm flip animation to drive transforms when active. */
-body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold) .card-inner {
+body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold):not(.reveal-flip-animate) .card-inner {
   transform: none !important;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
+  z-index: 96;
+  perspective: 1100px;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  will-change: transform;
+  animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-inner {
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  transition: none !important;
+  will-change: transform;
+  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
+  transform: rotateY(180deg);
 }
 
 /* Non-OG/non-cozy confirmed guess animation (force flip every time). */

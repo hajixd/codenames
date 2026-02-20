@@ -46,30 +46,16 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-let _lastBoardDomKey = ''; // Track last rendered board state to avoid rerendering during animations
 const CARD_CONFIRM_ANIM_MS = 1100;
-const LOCAL_REVEAL_ANIM_SUPPRESS_MS = 4500;
-const _suppressRevealAnimByIndexUntil = new Map();
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
-let _pendingRevealRenderTimer = null;
-let _deferredSnapshotRender = null;
-let _localConfirmAnimUntil = 0;
 let _cardAnimOverlayTimer = null;
+const _revealFlipCleanupByIndex = new Map();
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
 function normalizeConfirmBackType(rawType) {
   const t = String(rawType || '').toLowerCase();
   return _CONFIRM_BACK_TYPES.includes(t) ? t : 'neutral';
-}
-
-function getConfirmBackLabel(confirmBackType) {
-  const type = normalizeConfirmBackType(confirmBackType);
-  if (type === 'red') return 'RED';
-  if (type === 'blue') return 'BLUE';
-  if (type === 'neutral') return 'NEUTRAL';
-  if (type === 'assassin') return 'ASSASSIN';
-  return 'NEUTRAL';
 }
 
 function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
@@ -83,126 +69,52 @@ function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
   }, Math.max(260, Number(holdMs) || 0));
 }
 
-function clearConfirmAnimationClasses(cardEl) {
+function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
-  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold');
+  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
 
-  // If a replay animation temporarily stripped the revealed classes, restore them
-  // when cleanup runs so the card cannot remain visually face-down.
-  const replayWasRevealed = cardEl.dataset && cardEl.dataset.confirmReplayWasRevealed === '1';
-  if (replayWasRevealed) {
-    const finalType = normalizeConfirmBackType(cardEl.dataset.confirmReplayFinalType || '');
-    cardEl.classList.add('revealed', `card-${finalType}`);
+  const idx = Number(cardIndex);
+  if (Number.isInteger(idx) && idx >= 0) {
+    const oldTid = _revealFlipCleanupByIndex.get(idx);
+    if (oldTid) clearTimeout(oldTid);
+    _revealFlipCleanupByIndex.delete(idx);
   }
 }
 
 function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
   if (!cardEl) return;
-  const replay = !!opts.replay;
   const type = normalizeConfirmBackType(confirmBackType);
+  const idx = Number(opts.cardIndex);
 
-  // Cancel any pending cleanup from a prior replay on this same node.
-  try {
-    const prevTimer = Number(cardEl.dataset.confirmReplayRestoreTimer || 0);
-    if (prevTimer) clearTimeout(prevTimer);
-  } catch (_) {}
-  try { delete cardEl.dataset.confirmReplayRestoreTimer; } catch (_) {}
-
-  if (replay) {
-    // For snapshot replays, briefly restore the unrevealed presentation first.
-    // Remember the final state so cleanup can restore it without another rerender.
-    cardEl.dataset.confirmReplayWasRevealed = '1';
-    cardEl.dataset.confirmReplayFinalType = type;
-    cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
-  } else {
-    try { delete cardEl.dataset.confirmReplayWasRevealed; } catch (_) {}
-    try { delete cardEl.dataset.confirmReplayFinalType; } catch (_) {}
-  }
-  // Ensure the flip animation reliably restarts every time:
-  // 1) clear classes
-  // 2) add base state immediately
-  // 3) add the animating class after stable layout frames
-  clearConfirmAnimationClasses(cardEl);
-  cardEl.classList.add('confirming-guess', `confirm-back-${type}`);
-  cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
-  // Force layout so browsers don't coalesce class changes.
-  // eslint-disable-next-line no-unused-expressions
+  clearConfirmAnimationClasses(cardEl, idx);
+  cardEl.classList.add(`confirm-back-${type}`);
   void cardEl.offsetWidth;
-  try { void cardEl.querySelector('.card-inner')?.offsetWidth; } catch (_) {}
-  requestAnimationFrame(() => {
+  cardEl.classList.add('reveal-flip-animate');
+  pulseCardAnimationOverlay();
+
+  const tid = window.setTimeout(() => {
+    if (Number.isInteger(idx) && idx >= 0) {
+      _revealFlipCleanupByIndex.delete(idx);
+    }
     if (!cardEl.isConnected) return;
-    // eslint-disable-next-line no-unused-expressions
-    void cardEl.offsetWidth;
-    requestAnimationFrame(() => {
-      if (!cardEl.isConnected) return;
-      cardEl.classList.add('confirm-animate');
-      pulseCardAnimationOverlay();
-      if (replay) {
-        const restore = () => {
-          if (!cardEl.isConnected) return;
-          const finalType = normalizeConfirmBackType(cardEl.dataset.confirmReplayFinalType || type);
-          cardEl.classList.add('revealed', `card-${finalType}`);
-          clearConfirmAnimationClasses(cardEl);
-          try { delete cardEl.dataset.confirmReplayWasRevealed; } catch (_) {}
-          try { delete cardEl.dataset.confirmReplayFinalType; } catch (_) {}
-          try { delete cardEl.dataset.confirmReplayRestoreTimer; } catch (_) {}
-        };
-        const tid = window.setTimeout(restore, CARD_CONFIRM_ANIM_MS + 80);
-        try { cardEl.dataset.confirmReplayRestoreTimer = String(tid); } catch (_) {}
-      }
-    });
-  });
-}
-
-function flushDeferredSnapshotRender() {
-  const fn = _deferredSnapshotRender;
-  _deferredSnapshotRender = null;
-  if (typeof fn === 'function') fn();
-}
-
-function scheduleSnapshotRender(fn, delayMs = 0, opts = {}) {
-  _deferredSnapshotRender = fn;
-  const delay = Number.isFinite(delayMs) ? Math.max(0, Math.floor(delayMs)) : 0;
-  const extend = !!opts.extend;
-
-  if (delay <= 0) {
-    // Keep latest callback queued if an animation hold is already active.
-    if (_pendingRevealRenderTimer) return;
-    flushDeferredSnapshotRender();
-    return;
+    clearConfirmAnimationClasses(cardEl);
+  }, CARD_CONFIRM_ANIM_MS + 80);
+  if (Number.isInteger(idx) && idx >= 0) {
+    _revealFlipCleanupByIndex.set(idx, tid);
   }
-
-  if (_pendingRevealRenderTimer) {
-    if (!extend) return;
-    clearTimeout(_pendingRevealRenderTimer);
-    _pendingRevealRenderTimer = null;
-  }
-
-  _pendingRevealRenderTimer = window.setTimeout(() => {
-    _pendingRevealRenderTimer = null;
-    flushDeferredSnapshotRender();
-  }, delay);
-}
-
-function markRevealAnimationSuppressed(cardIndex) {
-  const idx = Number(cardIndex);
-  if (!Number.isInteger(idx) || idx < 0) return;
-  _suppressRevealAnimByIndexUntil.set(idx, Date.now() + LOCAL_REVEAL_ANIM_SUPPRESS_MS);
-}
-
-function consumeRevealAnimationSuppressed(cardIndex) {
-  const idx = Number(cardIndex);
-  if (!Number.isInteger(idx) || idx < 0) return false;
-  const until = Number(_suppressRevealAnimByIndexUntil.get(idx) || 0);
-  if (!until) return false;
-  _suppressRevealAnimByIndexUntil.delete(idx);
-  return until > Date.now();
 }
 
 function clearRevealAnimationSuppressions() {
-  _suppressRevealAnimByIndexUntil.clear();
+  for (const tid of _revealFlipCleanupByIndex.values()) {
+    clearTimeout(tid);
+  }
+  _revealFlipCleanupByIndex.clear();
+  try {
+    document.querySelectorAll('.game-card.reveal-flip-animate, .game-card.confirming-guess, .game-card.confirm-animate, .game-card.confirm-hold')
+      .forEach((el) => clearConfirmAnimationClasses(el));
+  } catch (_) {}
 }
 
 function collectNewlyRevealedCardIndices(prevCards, nextCards) {
@@ -217,10 +129,7 @@ function collectNewlyRevealedCardIndices(prevCards, nextCards) {
   return out;
 }
 
-function animateNewlyRevealedCards(cardIndices = []) {
-  // OG/Cozy use the local confirm replay path before render. This function is
-  // kept for non-OG styles that still use reveal keyframe classes.
-  if (isOgLikeStyleActive()) return;
+function animateNewlyRevealedCards(cardIndices = [], cards = currentGame?.cards) {
   if (!Array.isArray(cardIndices) || !cardIndices.length) return;
   const seen = new Set();
   cardIndices.forEach((rawIdx) => {
@@ -231,46 +140,10 @@ function animateNewlyRevealedCards(cardIndices = []) {
     const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
     if (!cardEl || !cardEl.classList.contains('revealed')) return;
 
-    const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
+    const cardTypeRaw = String(cards?.[idx]?.type || currentGame?.cards?.[idx]?.type || '').toLowerCase();
     const revealType = normalizeConfirmBackType(cardTypeRaw);
-    if (revealType) cardEl.classList.add(`card-${revealType}`);
-    // Restart animation classes in case snapshots arrive quickly.
-    cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-    void cardEl.offsetWidth;
-    cardEl.classList.add('guess-animate');
-    cardEl.classList.add('revealing');
-    pulseCardAnimationOverlay();
-
-    window.setTimeout(() => {
-      if (!cardEl.isConnected) return;
-      cardEl.classList.remove('guess-animate', 'revealing', 'flip-glow');
-    }, CARD_CONFIRM_ANIM_MS);
+    applyConfirmAnimationClasses(cardEl, revealType, { cardIndex: idx });
   });
-}
-
-function replayConfirmAnimationOnCurrentBoard(cardIndices = [], cards = []) {
-  if (!isOgLikeStyleActive()) return false;
-  if (!Array.isArray(cardIndices) || !cardIndices.length) return false;
-  let animatedAny = false;
-  const seen = new Set();
-  cardIndices.forEach((rawIdx) => {
-    const idx = Number(rawIdx);
-    if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
-    seen.add(idx);
-    const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-    if (!cardEl) return;
-    if (cardEl.classList.contains('revealed')) {
-      // Never force already-revealed cards back face-down for replay.
-      return;
-    }
-    const cardTypeRaw = String(cards?.[idx]?.type || '').toLowerCase();
-    const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
-    // Snapshot replay path: always restore to revealed state when the replay ends.
-    // This avoids transient front-face flashes between animation end and rerender.
-    applyConfirmAnimationClasses(cardEl, confirmBackType, { replay: true });
-    animatedAny = true;
-  });
-  return animatedAny;
 }
 
 // Best-effort local resume: remember the last active game so a page refresh can jump straight back in.
@@ -494,15 +367,10 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
     const clueChanged = !!(newClueWord && newClueWord !== _prevClue);
     let newlyRevealedIndices = [];
     if (!opts.skipAnimation && prevCards && !boardChanged) {
-      newlyRevealedIndices = collectNewlyRevealedCardIndices(prevCards, next.cards)
-        .filter((idx) => !consumeRevealAnimationSuppressed(idx));
+      newlyRevealedIndices = collectNewlyRevealedCardIndices(prevCards, next.cards);
     } else {
       clearRevealAnimationSuppressions();
     }
-
-    const replayedPreRenderConfirm = (!opts.skipAnimation)
-      ? replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, next.cards)
-      : false;
 
     const finishLocalRender = () => {
       try { renderGame(); } catch (_) {}
@@ -514,8 +382,8 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
         maybeQueueAIReactionsFromLogEntries(newEntries, currentGame);
       } catch (_) {}
 
-      if (!opts.skipAnimation && newlyRevealedIndices.length && !replayedPreRenderConfirm) {
-        animateNewlyRevealedCards(newlyRevealedIndices);
+      if (!opts.skipAnimation && newlyRevealedIndices.length) {
+        animateNewlyRevealedCards(newlyRevealedIndices, next.cards);
       }
       if (clueChanged && newClueWord) {
         showClueAnimation(newClueWord, newClueNumber, currentGame.currentTeam);
@@ -524,18 +392,7 @@ function setLocalPracticeGame(gameId, gameData, opts = {}) {
       try { window.bumpPresence?.(); } catch (_) {}
     };
 
-    if (opts.skipAnimation) {
-      finishLocalRender();
-    } else if (replayedPreRenderConfirm) {
-      scheduleSnapshotRender(finishLocalRender, CARD_CONFIRM_ANIM_MS, { extend: true });
-    } else {
-      const holdForLocalConfirmMs = Math.max(0, _localConfirmAnimUntil - Date.now());
-      if (holdForLocalConfirmMs > 0) {
-        scheduleSnapshotRender(finishLocalRender, holdForLocalConfirmMs, { extend: true });
-      } else {
-        scheduleSnapshotRender(finishLocalRender, 0);
-      }
-    }
+    finishLocalRender();
   }
 
   return cloneLocalValue(next);
@@ -4288,8 +4145,6 @@ const renderTeamList = (players) => {
       </div>
     `;
   }).join('');
-
-  _lastBoardDomKey = boardDomKey;
 };
 
 const renderSpecList = (players) => {
@@ -5330,13 +5185,10 @@ function startGameListener(gameId, options = {}) {
     const clueChanged = newClueWord && (newClueWord !== _prevClue);
     let newlyRevealedIndices = [];
     if (!isFirstSnapshot && !boardChanged) {
-      newlyRevealedIndices = collectNewlyRevealedCardIndices(prevCards, currentGame.cards)
-        .filter((idx) => !consumeRevealAnimationSuppressed(idx));
+      newlyRevealedIndices = collectNewlyRevealedCardIndices(prevCards, currentGame.cards);
     } else {
       clearRevealAnimationSuppressions();
     }
-
-    const replayedPreRenderConfirm = replayConfirmAnimationOnCurrentBoard(newlyRevealedIndices, currentGame.cards);
     const finishSnapshotRender = () => {
       renderGame();
 
@@ -5347,8 +5199,8 @@ function startGameListener(gameId, options = {}) {
         maybeQueueAIReactionsFromLogEntries(newEntries, currentGame);
       } catch (_) {}
 
-      if (newlyRevealedIndices.length && !replayedPreRenderConfirm) {
-        animateNewlyRevealedCards(newlyRevealedIndices);
+      if (newlyRevealedIndices.length) {
+        animateNewlyRevealedCards(newlyRevealedIndices, currentGame.cards);
       }
 
       // If the app is entering Quick Play directly into an in-progress game,
@@ -5365,17 +5217,7 @@ function startGameListener(gameId, options = {}) {
       _prevClue = newClueWord;
       isFirstSnapshot = false;
     };
-
-    if (replayedPreRenderConfirm) {
-      scheduleSnapshotRender(finishSnapshotRender, CARD_CONFIRM_ANIM_MS, { extend: true });
-    } else {
-      const holdForLocalConfirmMs = Math.max(0, _localConfirmAnimUntil - Date.now());
-      if (holdForLocalConfirmMs > 0) {
-        scheduleSnapshotRender(finishSnapshotRender, holdForLocalConfirmMs, { extend: true });
-      } else {
-        scheduleSnapshotRender(finishSnapshotRender, 0);
-      }
-    }
+    finishSnapshotRender();
   }, (err) => {
     console.error('Game listener error:', err);
   });
@@ -5416,12 +5258,6 @@ function stopGameListener() {
   _clueChallengeActionBusy = false;
   _councilReviewRunning.clear();
   _liveJudgeVerdicts = {};
-  if (_pendingRevealRenderTimer) {
-    clearTimeout(_pendingRevealRenderTimer);
-    _pendingRevealRenderTimer = null;
-  }
-  _deferredSnapshotRender = null;
-  _localConfirmAnimUntil = 0;
   try { syncTeamConsidering(null); } catch (_) {}
   clearRevealAnimationSuppressions();
   currentGame = null;
@@ -6278,23 +6114,6 @@ function renderBoard(isSpymaster) {
   const boardWordFitKey = currentGame.cards.map((c) => `${String(c?.word || '')}:${c?.revealed ? 1 : 0}`).join('|');
   const boardWordFitViewportKey = `${window.innerWidth}x${window.innerHeight}`;
 
-  const boardDomKey = currentGame.cards.map((c) => `${c?.revealed ? 1 : 0}${String(c?.type || '')}`).join('|');
-  // Hard-block board re-renders while a confirm flip is armed/running.
-  // The key failure mode was: presence / "considering" updates (or other UI refresh)
-  // re-render the board between the click and the next animation frame, replacing the
-  // card DOM before the confirm flip class gets applied.
-  const hasConfirmFlipRunning = !!document.querySelector('.game-card.confirming-guess, .game-card.confirm-animate');
-  const hasConfirmHoldActive = !!document.querySelector('.game-card.confirm-hold');
-  if (hasConfirmFlipRunning) {
-    // Keep the existing DOM stable so the flip animation can start and complete.
-    return;
-  }
-  if (hasConfirmHoldActive && boardDomKey === _lastBoardDomKey) {
-    // While holding on the back face waiting for the reveal snapshot, avoid
-    // no-op rerenders that can cause a one-frame flash.
-    return;
-  }
-
   // If the peeked card is no longer revealed (new board / reset), clear stale state.
   if (revealedPeekCardIndex !== null && revealedPeekCardIndex !== undefined) {
     const peeked = currentGame.cards[revealedPeekCardIndex];
@@ -6442,7 +6261,6 @@ function renderBoard(isSpymaster) {
       </div>
     `;
   }).join('');
-  _lastBoardDomKey = boardDomKey;
 
   // Always re-fit card words after any board re-render.
   // The board can re-render for reasons that don't change our fit keys
@@ -11642,65 +11460,14 @@ async function handleCardConfirm(evt, cardIndex) {
     setPendingCardSelection(idx);
   }
 
-  // NOTE: clearPendingCardSelection() can trigger a board re-render, which replaces
-  // the clicked card DOM node. If we query before clearing selection, the confirm
-  // flip may get applied to a detached node and silently never start.
-  const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
-  const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   // Drop pending-selection outline immediately when confirm starts.
   clearPendingCardSelection();
-  const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
-  if (runPhysicalConfirmAnim) {
-    // Local OG/Cozy confirm already animates this guess, so don't replay it on snapshot.
-    _localConfirmAnimUntil = Date.now() + CARD_CONFIRM_ANIM_MS;
-    markRevealAnimationSuppressed(idx);
-    applyConfirmAnimationClasses(cardEl, confirmBackType);
-  } else {
-    cardEl?.classList.add('confirming-guess');
-  }
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
-  let confirmCommitted = false;
 
   try {
-    if (runPhysicalConfirmAnim) {
-      await new Promise((resolve) => setTimeout(resolve, CARD_CONFIRM_ANIM_MS));
-    }
-    const guessCommitted = await _originalHandleCardClick(idx);
-    confirmCommitted = !!guessCommitted;
+    await _originalHandleCardClick(idx);
   } finally {
     clearTimeout(lockGuard);
-    _localConfirmAnimUntil = 0;
-    if (runPhysicalConfirmAnim && confirmCommitted && cardEl?.isConnected && !cardEl.classList.contains('revealed')) {
-      // Keep the card on its back face until the reveal snapshot lands.
-      cardEl.classList.remove('confirm-animate');
-      cardEl.classList.add('confirm-hold');
-      const holdStartedAt = Date.now();
-      const maxHoldMs = 5000;
-      const releaseHoldWhenReady = () => {
-        if (!cardEl.isConnected) return;
-        if (cardEl.classList.contains('revealed')) {
-          clearConfirmAnimationClasses(cardEl);
-          return;
-        }
-        if ((Date.now() - holdStartedAt) >= maxHoldMs) {
-          clearConfirmAnimationClasses(cardEl);
-          return;
-        }
-        // Keep the hold if Firestore has already marked the card revealed but
-        // this DOM node has not been re-rendered yet. Releasing here causes a
-        // one-frame front-face flash before the snapshot render swaps DOM.
-        const liveIsRevealed = !!currentGame?.cards?.[idx]?.revealed;
-        if (liveIsRevealed) {
-          window.setTimeout(releaseHoldWhenReady, 40);
-          return;
-        }
-        window.setTimeout(releaseHoldWhenReady, 120);
-      };
-      window.setTimeout(releaseHoldWhenReady, 120);
-    } else {
-      clearConfirmAnimationClasses(cardEl);
-    }
   }
 }
 
