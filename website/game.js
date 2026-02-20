@@ -6361,7 +6361,7 @@ function renderBoard(isSpymaster) {
     if (card.revealed) {
       classes.push('revealed');
       classes.push(`card-${card.type}`);
-      if (isOgMode && revealedPeekCardIndex === i) classes.push('revealed-peek');
+      if (revealedPeekCardIndex === i) classes.push('revealed-peek');
     } else if (isSpymaster && !spectator) {
       classes.push('spymaster-view');
       classes.push(`card-${card.type}`);
@@ -9354,7 +9354,7 @@ function setupBoardCardInteractions() {
       if (!Number.isInteger(idx) || idx < 0) return;
       // If the card is already revealed, treat taps anywhere on it (including the
       // checkmark area) as a peek toggle instead of trying to reconfirm.
-      if (ownerCard && ownerCard.classList.contains('revealed')) {
+      if (ownerCard && (ownerCard.classList.contains('revealed') || !!currentGame?.cards?.[idx]?.revealed)) {
         handleRevealedCardPeek(idx);
         return;
       }
@@ -9394,7 +9394,7 @@ function setupBoardCardInteractions() {
     const idx = Number(cardEl.dataset.index);
     if (!Number.isInteger(idx) || idx < 0) return;
 
-    if (cardEl.classList.contains('revealed')) {
+    if (cardEl.classList.contains('revealed') || !!currentGame?.cards?.[idx]?.revealed) {
       const now = Date.now();
       if (
         source === 'click' &&
@@ -11676,7 +11676,7 @@ async function handleCardConfirm(evt, cardIndex) {
       const maxHoldMs = 5000;
       const releaseHoldWhenReady = () => {
         if (!cardEl.isConnected) return;
-        if (cardEl.classList.contains('revealed')) {
+        if (cardEl.classList.contains('revealed') || !!currentGame?.cards?.[idx]?.revealed) {
           clearConfirmAnimationClasses(cardEl);
           return;
         }
