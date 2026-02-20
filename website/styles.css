@@ -21108,6 +21108,16 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
   transform: rotateY(180deg);
 }
 
+/* OG decorative shell layers live on .game-card itself, not .card-inner.
+   Animate them with the same Y timeline so the frame never drifts from the card. */
+body.og-mode .game-card.reveal-flip-animate::before,
+body.og-mode .game-card.reveal-flip-animate::after {
+  transform-origin: center center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
 /*
   Word-ghosting fallback for non-OG/non-cozy styles.
   We normally hide the back face in these modes, but we MUST allow it
