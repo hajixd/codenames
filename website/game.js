@@ -8680,7 +8680,6 @@ async function handleEndTurn() {
       draft.pendingClue = null;
       draft.liveClueDraft = null;
       draft.guessesRemaining = 0;
-      draft.timerEnd = buildPhaseTimerEndValue(draft, 'spymaster');
       draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
       draft.log.push(`${userName} (${draftTeamName}) ended their turn.`);
       draft.updatedAtMs = Date.now();
@@ -9152,14 +9151,9 @@ let ogChatOriginalParent = null;
 let ogChatOriginalNextSibling = null;
 let gameTimerInterval = null;
 let gameTimerEnd = null;
-let gameTimerPauseDepth = 0;
-let gameTimerPauseStartedAt = 0;
-let gameTimerPauseTimer = null;
 let timerBackfillInFlight = false;
 let timerBackfillLastKey = '';
 let timerBackfillLastAt = 0;
-let turnTimerExpiryKey = '';
-let turnTimerExpiryAt = 0;
 
 function maybeBackfillCurrentTurnTimer(game) {
   if (!game || game.type !== 'quick' || game.winner) return;
@@ -10626,101 +10620,6 @@ function startGameTimer(endTime, phase) {
 
     if (remaining <= 0) {
       stopGameTimer();
-
-async function handleTurnTimerExpired(phase) {
-  try {
-    if (!currentGame || currentGame.winner) return;
-    if (isSpectating()) return;
-
-    const p = String(phase || '');
-    if (p !== 'spymaster' && p !== 'operatives') return;
-
-    // Only act if the snapshot still matches this phase and the timer is actually expired.
-    if (String(currentGame.currentPhase || '') !== p) return;
-
-    const endTime = currentGame.timerEnd;
-    let endMs = 0;
-    if (endTime instanceof Date) endMs = endTime.getTime();
-    else if (typeof endTime?.toDate === 'function') endMs = endTime.toDate().getTime();
-    else if (typeof endTime?.seconds === 'number') endMs = endTime.seconds * 1000 + Math.round((endTime.nanoseconds || 0) / 1e6);
-    else endMs = new Date(endTime).getTime();
-
-    if (!endMs || isNaN(endMs) || Date.now() < endMs) return;
-
-    const key = `${currentGame.id || ''}:${p}:${endMs}`;
-    const now = Date.now();
-    if (turnTimerExpiryKey === key && (now - turnTimerExpiryAt) < 3000) return;
-    turnTimerExpiryKey = key;
-    turnTimerExpiryAt = now;
-
-    if (p === 'operatives') {
-      // Time's up: end the current team's turn.
-      await handleEndTurn();
-      return;
-    }
-
-    // Spymaster timer expired: end turn without a clue.
-    await handleSpymasterTimeoutEndTurn();
-  } catch (e) {
-    console.warn('Timer expiry handler failed (best-effort):', e);
-  }
-}
-
-async function handleSpymasterTimeoutEndTurn() {
-  if (!currentGame || currentGame.currentPhase !== 'spymaster') return;
-  if (isSpectating()) return;
-  if (currentGame.winner) return;
-
-  const myTeamColor = getMyTeamColor();
-  if (currentGame.currentTeam !== myTeamColor) return;
-
-  const teamName = currentGame.currentTeam === 'red' ? currentGame.redTeamName : currentGame.blueTeamName;
-  const userName = getUserName() || 'Someone';
-
-  // Optional sound
-  if (window.playSound) window.playSound('endTurn');
-
-  if (isCurrentLocalPracticeGame()) {
-    mutateLocalPracticeGame(currentGame.id, (draft) => {
-      const draftTeam = draft.currentTeam === 'red' ? 'red' : 'blue';
-      const draftTeamName = draftTeam === 'red' ? draft.redTeamName : draft.blueTeamName;
-
-      draft.currentTeam = draftTeam === 'red' ? 'blue' : 'red';
-      draft.currentPhase = 'spymaster';
-      draft.currentClue = null;
-      draft.pendingClue = null;
-      draft.liveClueDraft = null;
-      draft.guessesRemaining = 0;
-      draft.timerEnd = buildPhaseTimerEndValue(draft, 'spymaster');
-
-      draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
-      draft.log.push(`${userName} (${draftTeamName}) ran out of time (no clue).`);
-      draft.updatedAtMs = Date.now();
-      draft.lastMoveAtMs = Date.now();
-    });
-    maybeStartLocalPracticeAI();
-    return;
-  }
-
-  try {
-    await db.collection('games').doc(currentGame.id).update({
-      currentTeam: currentGame.currentTeam === 'red' ? 'blue' : 'red',
-      currentPhase: 'spymaster',
-      currentClue: null,
-      pendingClue: firebase.firestore.FieldValue.delete(),
-      liveClueDraft: firebase.firestore.FieldValue.delete(),
-      guessesRemaining: 0,
-      timerEnd: buildPhaseTimerEndValue(currentGame, 'spymaster'),
-      log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ran out of time (no clue).`),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  } catch (e) {
-    console.error('Failed to end spymaster turn on timeout:', e);
-  }
-}
-
-
-      handleTurnTimerExpired(phase);
     }
   }, 100);
 }
@@ -10757,7 +10656,7 @@ function showStaticGameTimer(phase) {
 
   // Mirror static timer into the OG phase banner when applicable.
   try {
-    updateOgPhaseBannerTimerText('∞', phase);
+    updateOgPhaseBannerTimerText(`${getRoleLabelForPhase(phase)}: ∞`, phase);
   } catch (_) {
     // no-op
   }
@@ -10769,12 +10668,6 @@ function stopGameTimer() {
     gameTimerInterval = null;
   }
   gameTimerEnd = null;
-  gameTimerPauseDepth = 0;
-  gameTimerPauseStartedAt = 0;
-  if (gameTimerPauseTimer) {
-    clearTimeout(gameTimerPauseTimer);
-    gameTimerPauseTimer = null;
-  }
 
   const timerEl = document.getElementById('game-timer');
   const ogTimerEl = document.getElementById('og-topbar-timer');
@@ -10784,45 +10677,6 @@ function stopGameTimer() {
     ogTimerEl.classList.remove('warning', 'danger');
   }
 }
-
-function pauseGameTimerFor(ms) {
-  const duration = Number.isFinite(ms) ? Math.max(0, Math.floor(ms)) : 0;
-  if (!duration || !gameTimerEnd) return;
-
-  // Begin pause
-  gameTimerPauseDepth += 1;
-  if (gameTimerPauseDepth === 1) {
-    gameTimerPauseStartedAt = Date.now();
-  }
-
-  // Extend/refresh a single resume timer so we don't create a pile of timeouts.
-  if (gameTimerPauseTimer) {
-    clearTimeout(gameTimerPauseTimer);
-    gameTimerPauseTimer = null;
-  }
-
-  gameTimerPauseTimer = window.setTimeout(() => {
-    gameTimerPauseTimer = null;
-    resumeGameTimerPause();
-  }, duration);
-}
-
-function resumeGameTimerPause() {
-  if (gameTimerPauseDepth <= 0) return;
-  gameTimerPauseDepth = 0;
-
-  if (gameTimerEnd && gameTimerPauseStartedAt) {
-    const pausedMs = Math.max(0, Date.now() - gameTimerPauseStartedAt);
-    try {
-      gameTimerEnd = new Date(gameTimerEnd.getTime() + pausedMs);
-    } catch (_) {
-      // no-op
-    }
-  }
-  gameTimerPauseStartedAt = 0;
-}
-
-
 
 /* =========================
    Team Roster
@@ -11710,7 +11564,7 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
+  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   // Drop pending-selection outline immediately when confirm starts.
