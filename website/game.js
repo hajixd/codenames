@@ -97,10 +97,21 @@ function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
     // For snapshot replays, briefly restore the unrevealed presentation first.
     cardEl.classList.remove('revealed', ..._CONFIRM_BACK_TYPES.map((t) => `card-${t}`));
   }
+  // Ensure the flip animation reliably restarts every time:
+  // 1) clear classes
+  // 2) add base state immediately
+  // 3) add the animating class on the next frame (forces a fresh animation)
   clearConfirmAnimationClasses(cardEl);
-  cardEl.classList.add('confirming-guess', 'confirm-animate', `confirm-back-${type}`);
+  cardEl.classList.add('confirming-guess', `confirm-back-${type}`);
   cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
-  pulseCardAnimationOverlay();
+  // Force layout so browsers don't coalesce class changes.
+  // eslint-disable-next-line no-unused-expressions
+  void cardEl.offsetWidth;
+  requestAnimationFrame(() => {
+    if (!cardEl.isConnected) return;
+    cardEl.classList.add('confirm-animate');
+    pulseCardAnimationOverlay();
+  });
 }
 
 function flushDeferredSnapshotRender() {
@@ -5497,7 +5508,11 @@ function updateSettingsInGameActions(isInGame) {
 
   const leaveBtn = document.getElementById('leave-game-btn');
   const endBtn = document.getElementById('end-game-btn');
+  const spNote = document.getElementById('settings-singleplayer-note');
   const isPractice = !!(currentGame && currentGame.type === 'practice');
+
+  // Show a note in singleplayer explaining why the buttons are disabled.
+  if (spNote) spNote.style.display = isPractice ? 'block' : 'none';
 
   // End Game permissions:
   // - Tournament games: only your team's spymaster can end.
@@ -6328,21 +6343,21 @@ function renderBoard(isSpymaster) {
             ${visibleConsidering.map(entry => {
               const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
-              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}" title="${title}">${initials}</span>`;
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${initials}</span>`;
             }).join('')}
           </div>
         `
       : '';
-    const backFace = isOgMode
-      ? `
+    // Always render a back face so the confirm/reveal flip animation can run
+    // in every visual mode. (Non-OG modes keep the back hidden unless an
+    // animation explicitly flips the card.)
+    const backFace = `
           <div class="card-face card-back">
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
-        `
-      : '';
+        `;
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
-        ${consideringHtml}
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
@@ -6355,6 +6370,7 @@ function renderBoard(isSpymaster) {
           ${backFace}
         </div>
         <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
+        ${consideringHtml}
       </div>
     `;
   }).join('');
@@ -9291,6 +9307,16 @@ function setupBoardCardInteractions() {
       return;
     }
 
+    // Mine chip tap: toggle just that card's considering mark (don't clear others).
+    const toggleChip = target.closest('[data-toggle-considering]');
+    if (toggleChip && boardEl.contains(toggleChip)) {
+      const chipCardIdx = Number(toggleChip.getAttribute('data-toggle-considering'));
+      if (Number.isInteger(chipCardIdx) && chipCardIdx >= 0) {
+        void syncTeamConsidering(chipCardIdx);
+      }
+      return;
+    }
+
     const cardEl = target.closest('.game-card');
     if (!cardEl || !boardEl.contains(cardEl)) return;
 
@@ -10642,7 +10668,7 @@ function showStaticGameTimer(phase) {
 
   // Mirror static timer into the OG phase banner when applicable.
   try {
-    updateOgPhaseBannerTimerText('∞', phase);
+    updateOgPhaseBannerTimerText(`${getRoleLabelForPhase(phase)}: ∞`, phase);
   } catch (_) {
     // no-op
   }
@@ -11550,7 +11576,7 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-  const runPhysicalConfirmAnim = !!(cardEl && isOgLikeStyleActive());
+  const runPhysicalConfirmAnim = !!cardEl; // run flip confirm animation whenever the card exists
   const cardTypeRaw = String(currentGame?.cards?.[idx]?.type || '').toLowerCase();
   const confirmBackType = normalizeConfirmBackType(cardTypeRaw);
   // Drop pending-selection outline immediately when confirm starts.

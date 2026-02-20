@@ -1704,6 +1704,23 @@ function buildAIVision(game, ai) {
     }
   } catch (_) {}
 
+  // Timer awareness: let the AI know how much phase time remains so it can
+  // calibrate urgency (less time → quicker decisions / shorter chat).
+  let secondsRemaining = null;
+  let totalPhaseSeconds = null;
+  try {
+    const timerEnd = game?.timerEnd;
+    if (timerEnd) {
+      const endMs = typeof timerEnd?.toMillis === 'function'
+        ? timerEnd.toMillis()
+        : (timerEnd instanceof Date ? timerEnd.getTime() : Number(timerEnd));
+      if (Number.isFinite(endMs)) {
+        secondsRemaining = Math.max(0, Math.round((endMs - Date.now()) / 1000));
+      }
+    }
+    totalPhaseSeconds = getPhaseTimerSecondsFromGame(game, role === 'spymaster' ? 'spymaster' : 'operatives');
+  } catch (_) {}
+
   return {
     role, team, phase, currentTeam,
     clue, guessesRemaining, guessesUsedThisTurn,
@@ -1712,7 +1729,9 @@ function buildAIVision(game, ai) {
     score,
     cards,
     log,
-    ui
+    ui,
+    secondsRemaining,
+    totalPhaseSeconds,
   };
 }
 
@@ -2904,7 +2923,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Maximum 2 AIs should agree on a word. After that, further agreement is redundant.`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
-    `- Actively use markers: set 1-3 yes/maybe/no marks every turn to show your current lean.`,
+    `- Mark cards generously: set YES/MAYBE/NO on EVERY card you have an opinion on. YES = top picks, MAYBE = worth considering, NO = too risky. Aim for 4-8+ marks — more marks means teammates can read your full thinking.`,
     `- React to teammate markers: if marker consensus/conflict changes your read, mention it briefly in chat.`,
     ``,
     `Return JSON only:`,
@@ -2916,6 +2935,15 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Your team has ${myLeft} words left. Opponent has ${opponentLeft} left.`,
     `- In chat, NEVER write card indices/numbers. Use the WORD itself.`,
     `- Read TEAM CHAT and actually respond to what people said. Don't ignore them.`,
+    ...(vision.secondsRemaining !== null && vision.totalPhaseSeconds > 0 ? [
+      vision.secondsRemaining <= 8
+        ? `- ⚠ TIME CRITICAL: Only ${vision.secondsRemaining}s left! Output your JSON NOW — pick the safest card or end_turn immediately. Zero deliberation.`
+        : vision.secondsRemaining <= 20
+        ? `- ⏱ LOW TIME: ${vision.secondsRemaining}s left. Be decisive — very short mind, skip long chat, act fast.`
+        : vision.secondsRemaining <= 45
+        ? `- ⏱ ${vision.secondsRemaining}s remaining. Stay focused — keep mind and chat concise, don't linger.`
+        : `- ⏱ ${vision.secondsRemaining}s remaining. You have time — think as deeply as your personality calls for and converse naturally.`,
+    ] : []),
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-10).join('\n');
@@ -2966,7 +2994,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
     if (!['yes','maybe','no'].includes(tag)) continue;
     const ok = unrevealed.some(c => c.index === mi);
     if (ok) marks.push({ index: mi, tag });
-    if (marks.length >= 3) break;
+    if (marks.length >= 8) break;
   }
 
   if (requireMarks && (!marks || marks.length === 0) && action === 'guess' && candidate) {
@@ -3274,7 +3302,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       if (!['yes','maybe','no'].includes(tag)) continue;
       if (!unrevealedIdx.has(mi)) continue;
       marks.push({ index: mi, tag });
-      if (marks.length >= 3) break;
+      if (marks.length >= 8) break;
     }
 
     const out = { ai, chat, marks, continue: cont, focusClue };
@@ -4158,6 +4186,15 @@ async function aiGiveClue(ai, game) {
       `- EVERY clue must NOT be any board word: ${boardWords.join(', ')}`,
       `- numbers are integers 0-9.`,
       `- Give 2-4 candidates (including the final if you want), and then pick ONE final.`,
+      ...(vision.secondsRemaining !== null && vision.totalPhaseSeconds > 0 ? [
+        vision.secondsRemaining <= 8
+          ? `- ⚠ TIME CRITICAL: Only ${vision.secondsRemaining}s left! Pick ONE candidate and commit instantly — no elaborate mind, output JSON NOW.`
+          : vision.secondsRemaining <= 20
+          ? `- ⏱ LOW TIME: ${vision.secondsRemaining}s left. Be decisive — short mind, go with your first solid connection.`
+          : vision.secondsRemaining <= 45
+          ? `- ⏱ ${vision.secondsRemaining}s remaining. Keep your reasoning tight — don't over-analyze.`
+          : `- ⏱ ${vision.secondsRemaining}s remaining. You have time — explore multiple connections before committing.`,
+      ] : []),
     ].join('\n');
 
     const mindContext = core.mindLog.slice(-10).join('\n');

@@ -149,7 +149,7 @@ body.light-mode {
   display: inline-flex;
   align-items: center;
   pointer-events: none;
-  z-index: 15;
+  z-index: 25;
 }
 
 .game-card .card-considering-chip{
@@ -178,6 +178,11 @@ body.light-mode {
   background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.32), rgba(255,255,255,0.06) 44%, rgba(0,0,0,0.14) 85%), linear-gradient(180deg, rgba(66, 145, 220, 0.96), rgba(32, 91, 162, 0.96));
   border-color: rgba(164, 212, 255, 0.88);
   color: #ffffff;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.game-card .card-considering-chip.mine:hover{
+  filter: brightness(1.18);
 }
 
 .game-card .card-considering-chip.more{
@@ -7801,6 +7806,19 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 
 .settings-row-volume .settings-volume-value {
   min-width: 36px;
+}
+
+/* Singleplayer note shown above the disabled Leave/End buttons */
+.settings-singleplayer-note {
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.4;
 }
 
 /* Settings Account Actions */
@@ -21083,13 +21101,88 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).con
   }
 }
 
-/* Word-ghosting fallback for non-OG/non-cozy styles that don't use card backs. */
-body:not(.og-mode):not(.cozy-mode) .game-card .card-back {
+/*
+  Word-ghosting fallback for non-OG/non-cozy styles.
+  We normally hide the back face in these modes, but we MUST allow it
+  during the confirm flip animation (used for every guess).
+*/
+body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold) .card-back {
   display: none !important;
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card .card-inner {
+/* Prevent incidental 3D transforms in non-OG modes, but allow the explicit
+   confirm flip animation to drive transforms when active. */
+body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm-hold) .card-inner {
   transform: none !important;
+}
+
+/* Non-OG/non-cozy confirmed guess animation (force flip every time). */
+body:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed) {
+  z-index: 96;
+  perspective: 1100px;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  outline: none !important;
+  box-shadow: none !important;
+  will-change: transform;
+  animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner {
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+  transition: none;
+  will-change: transform;
+  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
+  transform: rotateY(0deg);
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card.confirm-hold:not(.revealed) .card-inner {
+  transition: none;
+  animation: none;
+  transform: rotateY(180deg);
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back {
+  display: flex !important;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back .card-word {
+  opacity: 0 !important;
+  visibility: hidden;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after {
+  content: attr(data-confirm-back-label);
+  opacity: 1;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after{
+  position: absolute;
+  inset: 12px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.96);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-red .card-back {
+  background: linear-gradient(135deg, rgba(255, 77, 77, 0.55), rgba(140, 20, 20, 0.55));
+}
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-blue .card-back {
+  background: linear-gradient(135deg, rgba(90, 170, 255, 0.55), rgba(18, 62, 140, 0.55));
+}
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-neutral .card-back {
+  background: linear-gradient(135deg, rgba(210, 210, 210, 0.55), rgba(120, 120, 120, 0.45));
+}
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-assassin .card-back {
+  background: linear-gradient(135deg, rgba(30, 30, 30, 0.72), rgba(0, 0, 0, 0.72));
 }
 
 .clue-variant-og .clue-announcement-backdrop.clue-og-backdrop{
