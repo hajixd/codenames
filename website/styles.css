@@ -20922,7 +20922,8 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
 /* OG/Cozy confirmed guess animation:
    - outer card handles lift/tilt
    - inner wrapper handles Y flip so we see the real back face (not mirrored front text) */
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed),
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
   z-index: 96;
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
@@ -20933,13 +20934,21 @@ body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) {
   animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner {
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner,
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
   transition: none;
   will-change: transform;
   animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
   transform: rotateY(0deg);
+}
+
+/* During replay flip, disable revealed-face transitions so the motion matches
+   the original pre-reveal confirm animation exactly. */
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front,
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back {
+  transition: none !important;
 }
 
 /* Hold state to bridge between local confirm animation end and reveal snapshot render.
@@ -20958,13 +20967,16 @@ body.og-mode .game-card.confirm-hold:not(.revealed)::after {
 
 /* OG shell layers are drawn on .game-card (not .card-inner), so flip them with
    the same Y timeline to keep the frame/plate visually attached to the card face. */
-body.og-mode .game-card.confirm-animate:not(.revealed) {
+body.og-mode .game-card.confirm-animate:not(.revealed),
+body.og-mode .game-card.reveal-flip-animate {
   background: transparent;
   border-color: transparent;
 }
 
 body.og-mode .game-card.confirm-animate:not(.revealed)::before,
-body.og-mode .game-card.confirm-animate:not(.revealed)::after {
+body.og-mode .game-card.confirm-animate:not(.revealed)::after,
+body.og-mode .game-card.reveal-flip-animate::before,
+body.og-mode .game-card.reveal-flip-animate::after {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   -webkit-transform-style: preserve-3d;
@@ -20982,60 +20994,62 @@ body.cozy-mode .game-card.confirm-animate.pending-select:not(.revealed):not(.dis
   border-color: #c4b494;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back .card-word {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back .card-word,
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-word {
   opacity: 0 !important;
   visibility: hidden;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after,
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after {
   content: attr(data-confirm-back-label);
   opacity: 1;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-red .card-back {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-red .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-blue .card-back {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-blue .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-neutral .card-back {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-neutral .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-assassin .card-back {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-assassin .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0px, rgba(255, 255, 255, 0.07) 9px, rgba(0, 0, 0, 0.18) 9px, rgba(0, 0, 0, 0.18) 18px),
     linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-red .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-red .card-back::after {
   content: "RED";
   color: #6f2a22;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-blue .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-blue .card-back::after {
   content: "BLUE";
   color: #24486a;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-neutral .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-neutral .card-back::after {
   content: "NEUTRAL";
   color: #5b4a39;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-assassin .card-back::after {
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-assassin .card-back::after {
   content: "ASSASSIN";
   color: #d3dae7;
 }
@@ -21088,36 +21102,6 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).con
   }
 }
 
-/* Unified reveal flip used after snapshots so all clients see the same motion. */
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
-  z-index: 96;
-  perspective: 1100px;
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  pointer-events: none;
-  will-change: transform;
-  animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
-}
-
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
-  -webkit-transform-style: preserve-3d;
-  transform-style: preserve-3d;
-  transition: none !important;
-  will-change: transform;
-  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
-  transform: rotateY(180deg);
-}
-
-/* OG decorative shell layers live on .game-card itself, not .card-inner.
-   Animate them with the same Y timeline so the frame never drifts from the card. */
-body.og-mode .game-card.reveal-flip-animate::before,
-body.og-mode .game-card.reveal-flip-animate::after {
-  transform-origin: center center;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
-}
-
 /*
   Word-ghosting fallback for non-OG/non-cozy styles.
   We normally hide the back face in these modes, but we MUST allow it
@@ -21133,6 +21117,7 @@ body:not(.og-mode):not(.cozy-mode) .game-card:not(.confirm-animate):not(.confirm
   transform: none !important;
 }
 
+body:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed),
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
   z-index: 96;
   perspective: 1100px;
@@ -21143,13 +21128,14 @@ body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
   animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
 }
 
+body:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-inner {
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
   transition: none !important;
   will-change: transform;
   animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
-  transform: rotateY(180deg);
+  transform: rotateY(0deg);
 }
 
 /* Non-OG/non-cozy confirmed guess animation (force flip every time). */
@@ -21180,21 +21166,25 @@ body:not(.og-mode):not(.cozy-mode) .game-card.confirm-hold:not(.revealed) .card-
   transform: rotateY(180deg);
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back {
   display: flex !important;
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back .card-word {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back .card-word,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back .card-word {
   opacity: 0 !important;
   visibility: hidden;
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::after {
   content: attr(data-confirm-back-label);
   opacity: 1;
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after{
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::after{
   position: absolute;
   inset: 12px;
   border-radius: 16px;
@@ -21208,16 +21198,16 @@ body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold
   text-shadow: 0 2px 10px rgba(0,0,0,0.35);
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-red .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-red .card-back {
   background: linear-gradient(135deg, rgba(255, 77, 77, 0.55), rgba(140, 20, 20, 0.55));
 }
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-blue .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-blue .card-back {
   background: linear-gradient(135deg, rgba(90, 170, 255, 0.55), rgba(18, 62, 140, 0.55));
 }
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-neutral .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-neutral .card-back {
   background: linear-gradient(135deg, rgba(210, 210, 210, 0.55), rgba(120, 120, 120, 0.45));
 }
-body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-assassin .card-back {
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-assassin .card-back {
   background: linear-gradient(135deg, rgba(30, 30, 30, 0.72), rgba(0, 0, 0, 0.72));
 }
 

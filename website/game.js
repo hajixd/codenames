@@ -58,6 +58,14 @@ function normalizeConfirmBackType(rawType) {
   return _CONFIRM_BACK_TYPES.includes(t) ? t : 'neutral';
 }
 
+function getConfirmBackLabel(confirmBackType) {
+  const type = normalizeConfirmBackType(confirmBackType);
+  if (type === 'red') return 'RED';
+  if (type === 'blue') return 'BLUE';
+  if (type === 'assassin') return 'ASSASSIN';
+  return 'NEUTRAL';
+}
+
 function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
   const host = document.getElementById('game-board-container');
   if (!host) return;
@@ -90,6 +98,7 @@ function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
 
   clearConfirmAnimationClasses(cardEl, idx);
   cardEl.classList.add(`confirm-back-${type}`);
+  cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
   void cardEl.offsetWidth;
   cardEl.classList.add('reveal-flip-animate');
   pulseCardAnimationOverlay();
