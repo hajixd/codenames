@@ -20854,7 +20854,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
 :root{
   --card-reveal-duration: 920ms;
   --card-select-duration: 280ms;
-  --card-confirm-duration: 1100ms;
+  --card-confirm-duration: 1220ms;
   --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -20864,7 +20864,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   :root{
     --card-reveal-duration: 920ms;
     --card-select-duration: 280ms;
-    --card-confirm-duration: 1100ms;
+    --card-confirm-duration: 1220ms;
     --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   }
 }
@@ -20925,6 +20925,7 @@ body.og-mode .game-card.pending-select:not(.revealed):not(.disabled) {
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed),
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
   z-index: 96;
+  transform-origin: 50% 50%;
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
   pointer-events: none;
@@ -20936,6 +20937,7 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner,
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
+  transform-origin: 50% 50%;
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
   transition: none;
@@ -20977,6 +20979,7 @@ body.og-mode .game-card.confirm-animate:not(.revealed)::before,
 body.og-mode .game-card.confirm-animate:not(.revealed)::after,
 body.og-mode .game-card.reveal-flip-animate::before,
 body.og-mode .game-card.reveal-flip-animate::after {
+  transform-origin: 50% 50%;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   -webkit-transform-style: preserve-3d;
@@ -21062,19 +21065,19 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
     transform: translate3d(0, -2px, 4px) rotateX(2deg) rotateZ(-0.3deg) scale(1.015);
   }
   30% {
-    transform: translate3d(0, -16px, 20px) rotateX(10deg) rotateZ(-0.85deg) scale(1.045);
+    transform: translate3d(0, -18px, 22px) rotateX(10deg) rotateZ(-0.75deg) scale(1.045);
   }
   44% {
-    transform: translate3d(0, -30px, 40px) rotateX(14deg) rotateZ(-0.4deg) scale(1.065);
+    transform: translate3d(0, -36px, 48px) rotateX(14deg) rotateZ(-0.25deg) scale(1.065);
   }
   76% {
-    transform: translate3d(0, -30px, 40px) rotateX(13deg) rotateZ(0.4deg) scale(1.065);
+    transform: translate3d(0, -36px, 48px) rotateX(13deg) rotateZ(0.25deg) scale(1.065);
   }
   88% {
-    transform: translate3d(0, -8px, 12px) rotateX(7deg) rotateZ(0.22deg) scale(1.028);
+    transform: translate3d(0, -10px, 14px) rotateX(7deg) rotateZ(0.16deg) scale(1.028);
   }
   95% {
-    transform: translate3d(0, 8px, -6px) rotateX(-4deg) rotateZ(-0.2deg) scale(0.985);
+    transform: translate3d(0, 5px, -4px) rotateX(-3deg) rotateZ(-0.14deg) scale(0.985);
   }
   100% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
