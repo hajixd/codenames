@@ -1092,7 +1092,8 @@ Teamwork & communication:
   - Avoid “silent” endings; a quick "I think we should stop unless someone sees a safe pick" is better.
 
 Spymaster fundamentals:
-- Your job is to give a single-word clue that connects multiple of your unrevealed team words while avoiding the assassin and minimizing pulls to opponent/neutral words.
+- Your job is to give a clue that connects multiple of your unrevealed team words while avoiding the assassin and minimizing pulls to opponent/neutral words.
+- Multi-word clues are acceptable only when they express one unified concept.
 - Strong clues have a tight “center” that naturally pulls toward your targets and away from everything else.
 - Prefer clues that:
   - Connect 2–4 targets cleanly
@@ -4451,10 +4452,10 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
     `Keep chat short. No formal language.`,
     `NEVER mention confidence scores/percentages in chat.`,
     `Return JSON only:`,
-    `{"mind":"first-person thinking (2-8 lines)", "clue":"ONEWORD", "number":N, "confidence":1-10, "chat":"optional short teammate message"}`,
+    `{"mind":"first-person thinking (2-8 lines)", "clue":"CLUE_TEXT", "number":N, "confidence":1-10, "chat":"optional short teammate message"}`,
     ``,
     `Rules:`,
-    `- clue: ONE word (no spaces, no hyphens), NOT any board word.`,
+    `- clue may contain multiple words only when it expresses one clear unified concept, and it must NOT be any board word.`,
     `- Forbidden board words: ${boardWords.join(', ')}`,
     `- number: integer 0-9.`,
     `- In chat, NEVER reference card indices/numbers.`,
@@ -4484,7 +4485,7 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
   const mind = String(parsed.mind || '').trim();
   if (mind) appendMind(ai, mind);
 
-  let clueWord = String(parsed.clue || '').trim().toUpperCase();
+  let clueWord = _sanitizeOneWordClue(parsed.clue);
   let clueNumber = parseInt(parsed.number, 10);
   if (!Number.isFinite(clueNumber)) clueNumber = 1;
   clueNumber = Math.max(0, Math.min(9, clueNumber));
@@ -4492,7 +4493,6 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
 
   const bad =
     (!clueWord) ? 'empty clue' :
-    (clueWord.includes(' ') || clueWord.includes('-')) ? 'clue must be one word' :
     (boardWords.includes(clueWord)) ? 'clue is on the board' :
     null;
 
@@ -4750,10 +4750,10 @@ async function _setAILiveClueDraft(game, team, ai, word, number, opts = {}) {
 }
 
 function _sanitizeOneWordClue(raw) {
-  const w = String(raw || '').trim().toUpperCase();
+  const w = String(raw || '').trim().toUpperCase().replace(/\s+/g, ' ').slice(0, 40);
   if (!w) return '';
-  if (w.includes(' ') || w.includes('-')) return '';
-  return w.replace(/[^A-Z0-9]/g, '').slice(0, 40);
+  if (!/^[A-Z0-9][A-Z0-9 '\-]*$/.test(w)) return '';
+  return w;
 }
 
 function _dedupeConsideredClues(items) {
@@ -5003,8 +5003,8 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
       `- Casual tone, short messages. No formal language.`,
       `- NEVER mention confidence numbers/percentages in chat.`,
       `Return JSON only:`,
-      `{"mind":"2-6 lines thinking", "chat":"(empty if nothing new)", "action":"propose|no_change", "clue":"ONEWORD", "number":N, "confidence":1-10, "continue":true|false}`,
-      `clue must be ONE word (no spaces/hyphens), NOT a board word.`,
+      `{"mind":"2-6 lines thinking", "chat":"(empty if nothing new)", "action":"propose|no_change", "clue":"CLUE_TEXT", "number":N, "confidence":1-10, "continue":true|false}`,
+      `clue may contain multiple words only when it expresses one clear unified concept, and must NOT be a board word.`,
       `In chat, NEVER write card indices/numbers.`,
     ].join('\n');
 
@@ -5044,14 +5044,13 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
 
     const out = { ai, chat, continue: cont };
     if (action === 'propose') {
-      let clueWord = String(parsed.clue || '').trim().toUpperCase();
+      let clueWord = _sanitizeOneWordClue(parsed.clue);
       let clueNumber = parseInt(parsed.number, 10);
       if (!Number.isFinite(clueNumber)) clueNumber = 1;
       clueNumber = Math.max(0, Math.min(9, clueNumber));
       const conf = normalizeConfidence10(parsed.confidence, 6);
       const bad =
         (!clueWord) ? 'empty clue' :
-        (clueWord.includes(' ') || clueWord.includes('-')) ? 'not one word' :
         (boardWords.includes(clueWord)) ? 'clue is on the board' :
         null;
       if (!bad) {
@@ -5253,10 +5252,10 @@ async function aiGiveClue(ai, game) {
       ``,
       `MIND RULE: You have a private inner monologue. The only way you think is by writing.`,
       `Return JSON only with this schema:`,
-      `{"mind":"first-person inner monologue", "candidates":[{"clue":"ONEWORD","number":N}], "final":{"clue":"ONEWORD","number":N}}`,
+      `{"mind":"first-person inner monologue", "candidates":[{"clue":"CLUE_TEXT","number":N}], "final":{"clue":"CLUE_TEXT","number":N}}`,
       ``,
       `Hard requirements:`,
-      `- EVERY clue (candidates + final) must be ONE word (no spaces, no hyphens).`,
+      `- EVERY clue (candidates + final) may contain multiple words only when it expresses one clear unified concept.`,
       `- EVERY clue must NOT be any board word: ${boardWords.join(', ')}`,
       `- numbers are integers 0-9.`,
       `- Give 2-4 candidates (including the final if you want), and then pick ONE final.`,
@@ -5315,7 +5314,6 @@ ${mindContext}`;
 
       const bad =
         (!clueWord) ? 'empty clue' :
-        (clueWord.includes(' ') || clueWord.includes('-')) ? 'clue must be one word' :
         (boardWords.includes(clueWord)) ? 'clue is on the board' :
         null;
 

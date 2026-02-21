@@ -726,9 +726,9 @@ function clampLocalPracticeClueNumber(value, fallback = 1) {
 function sanitizeLocalPracticeClueWord(raw, boardWordsSet) {
   let word = String(raw || '').trim().toUpperCase();
   if (!word) return '';
-  if (word.includes(' ') || word.includes('-')) return '';
-  if (!/^[A-Z0-9]+$/.test(word)) return '';
-  if (word.length < 2 || word.length > 14) return '';
+  word = word.replace(/\s+/g, ' ').slice(0, 40);
+  if (!/^[A-Z0-9][A-Z0-9 '\-]*$/.test(word)) return '';
+  if (word.length < 2) return '';
   if (boardWordsSet?.has(word)) return '';
   return word;
 }
@@ -768,9 +768,9 @@ async function generateLocalPracticeAICluePlan(game, team, aiSpy = null) {
   const systemPrompt = [
     `You are a Codenames spymaster for team ${teamLabel}.`,
     `Choose ONE safe clue for the current board.`,
-    `Return JSON only: {"clue":"ONEWORD","number":N}`,
+    `Return JSON only: {"clue":"CLUE_TEXT","number":N}`,
     `Rules:`,
-    `- clue must be one word (A-Z or digits only, no spaces, no hyphens)`,
+    `- clue may contain multiple words only if it expresses one clear unified concept`,
     `- clue must NOT be any board word`,
     `- prefer clues that connect 2-4 own words when safe; otherwise lower number`,
     `- avoid clues that pull toward opponent, neutral, or assassin words`,
@@ -1002,10 +1002,10 @@ async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNum
 }
 
 function _sanitizeOneWordTyping(raw) {
-  const w = String(raw || '').trim().toUpperCase();
+  const w = String(raw || '').trim().toUpperCase().replace(/\s+/g, ' ').slice(0, 40);
   if (!w) return '';
-  if (w.includes(' ') || w.includes('-')) return '';
-  return w.replace(/[^A-Z0-9]/g, '').slice(0, 40);
+  if (!/^[A-Z0-9][A-Z0-9 '\-]*$/.test(w)) return '';
+  return w;
 }
 
 function _dedupeTypingCandidates(items, finalWord) {
@@ -6960,7 +6960,7 @@ function buildCouncilSummaryLine(pending, review) {
   const legalVotes = Number(review?.legalVotes || 0);
   const illegalVotes = Number(review?.illegalVotes || 0);
   const verdict = review?.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
-  return `Council ruled "${pending.word}" for ${pending.number}: ${verdict} (${legalVotes}-${illegalVotes}).`;
+  return `AI Judge Merry ruled "${pending.word}" for ${pending.number}: ${verdict} (${legalVotes}-${illegalVotes}).`;
 }
 
 function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
@@ -7034,14 +7034,13 @@ function canCurrentUserChallengePendingClue(pending, game = currentGame) {
 }
 
 function basicClueLegalityCheck(pending, game = currentGame) {
-  const word = String(pending?.word || '').trim().toUpperCase();
+  const word = String(pending?.word || '').trim().toUpperCase().replace(/\s+/g, ' ');
   if (!word) return { legal: false, reason: 'Clue is empty.' };
-  if (word.includes(' ') || word.includes('-')) return { legal: false, reason: 'Clue must be one word.' };
   const boardWords = new Set((game?.cards || []).map((c) => String(c?.word || '').trim().toUpperCase()).filter(Boolean));
   if (boardWords.has(word)) return { legal: false, reason: 'Clue cannot match a board word.' };
   const n = Number(pending?.number);
   if (!Number.isFinite(n) || n < 0 || n > 9) return { legal: false, reason: 'Clue number must be 0-9.' };
-  return { legal: true, reason: 'Passes hard-rule checks.' };
+  return { legal: true, reason: 'Passes baseline checks.' };
 }
 
 async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
@@ -7058,7 +7057,7 @@ async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
   if (typeof chatFn !== 'function') {
     return {
       decision: 'allow',
-      reason: 'Fallback allow (hard checks passed).',
+      reason: 'Fallback allow (baseline checks passed).',
       baseline,
     };
   }
@@ -7067,12 +7066,17 @@ async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
     .map((c) => String(c?.word || '').trim().toUpperCase())
     .filter(Boolean);
   const system = [
-    'You are a Codenames spymaster deciding whether to challenge an opponent clue for legality.',
-    'Challenge only for likely ILLEGAL clues. Do not challenge for strategy disagreement.',
-    'Hard rules:',
-    '- one word only (no spaces or hyphens)',
-    '- cannot match any board word',
-    '- clue number must be 0-9',
+    'You decide whether to challenge an opponent clue for legality under AI Judge Merry rules.',
+    'Challenge only if the clue clearly breaks a rule. Do not challenge for strategy disagreement.',
+    'Rules:',
+    '- Multi-word clues are allowed only if they express one single clear concept, name, or idea.',
+    '- Valid examples: legal document, cardiac arrest, insulin resistance, new york city.',
+    '- Word-form clues are illegal: using a board word, part of it, variation, or shared root.',
+    '- Word-form examples: magic -> magician, history -> historical, run -> running.',
+    '- Forced-connection clues are illegal: combining unrelated ideas to target multiple concepts.',
+    '- Forced-connection examples: german demon, metal food, fast cold.',
+    '- If the clue does not clearly break these rules, allow it.',
+    '- Clue number must be 0-9.',
     'Return JSON only:',
     '{"decision":"allow|challenge","reason":"short reason"}',
   ].join('\n');
@@ -7081,7 +7085,7 @@ async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
     `CLUE: "${pending.word}"`,
     `NUMBER: ${pending.number}`,
     `BOARD WORDS: ${boardWords.join(', ')}`,
-    `HARD CHECK: pass`,
+    `BASELINE CHECK: pass`,
     'Would you ALLOW or CHALLENGE this clue for legality?',
   ].join('\n');
 
@@ -7160,11 +7164,11 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
   return true;
 }
 
-async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
+async function judgePendingClueWithAI(game, pending, baseline) {
   const chatFn = window.aiChatCompletion;
   if (typeof chatFn !== 'function') {
     return {
-      judge: `AI-${judgeIdx + 1}`,
+      judge: 'AI Judge Merry',
       verdict: baseline.legal ? 'legal' : 'illegal',
       reason: baseline.reason,
     };
@@ -7174,12 +7178,20 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
     .map((c) => String(c?.word || '').trim().toUpperCase())
     .filter(Boolean);
   const system = [
-    'You are one judge in a 3-AI Codenames clue legality council.',
+    'You are AI Judge Merry, the single Codenames clue legality judge.',
     'Judge ONLY legality, not clue quality.',
-    'Strict legality rules:',
-    '- clue must be exactly one word (no spaces or hyphens)',
-    '- clue must not match any board word',
-    '- clue number must be an integer from 0 to 9',
+    'Allowed clue format:',
+    '- Clues may contain more than one word only if they refer to one single clear concept, name, or idea.',
+    '- The clue should point to one unified meaning, not multiple unrelated meanings.',
+    '- Valid examples: legal document, cardiac arrest, insulin resistance, new york city.',
+    'Not allowed clues:',
+    '- Word-form clues are illegal: a clue may not contain an exact board word, any part of it, a variation, or a shared root.',
+    '- Word-form examples: magic -> magician, history -> historical, run -> running.',
+    '- Forced-connection clues are illegal: combining unrelated ideas to target different concepts at the same time.',
+    '- Forced-connection examples: german demon, metal food, fast cold.',
+    'Judging principle:',
+    '- If a clue does not clearly break one of the rules above, it should be accepted.',
+    '- Clue number must be an integer from 0 to 9.',
     'Return JSON only:',
     '{"verdict":"legal|illegal","reason":"short reason"}',
   ].join('\n');
@@ -7188,7 +7200,7 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
     `CLUE: "${pending.word}"`,
     `NUMBER: ${pending.number}`,
     `BOARD WORDS: ${boardWords.join(', ')}`,
-    `HARD CHECK: ${baseline.legal ? 'pass' : `fail (${baseline.reason})`}`,
+    `BASELINE CHECK: ${baseline.legal ? 'pass' : `fail (${baseline.reason})`}`,
     `Decide legal or illegal.`,
   ].join('\n');
 
@@ -7196,7 +7208,7 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
     const raw = await chatFn(
       [{ role: 'system', content: system }, { role: 'user', content: user }],
       {
-        temperature: [0.15, 0.35, 0.55][judgeIdx] || 0.35,
+        temperature: 0.25,
         max_tokens: 180,
         response_format: { type: 'json_object' },
       }
@@ -7204,10 +7216,10 @@ async function judgePendingClueWithAI(game, pending, judgeIdx, baseline) {
     const parsed = safeJsonParse(raw);
     const verdict = String(parsed?.verdict || '').trim().toLowerCase() === 'illegal' ? 'illegal' : 'legal';
     const reason = String(parsed?.reason || '').trim().slice(0, 160) || 'No reason provided.';
-    return { judge: `AI-${judgeIdx + 1}`, verdict, reason };
+    return { judge: 'AI Judge Merry', verdict, reason };
   } catch (e) {
     return {
-      judge: `AI-${judgeIdx + 1}`,
+      judge: 'AI Judge Merry',
       verdict: baseline.legal ? 'legal' : 'illegal',
       reason: `Fallback: ${baseline.reason}`,
     };
@@ -7224,14 +7236,10 @@ function buildCouncilTribunalHtml(liveState, scope) {
     return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
   };
 
-  const judgeNames = ['Aria', 'Kai', 'Nova'];
+  const judgeName = 'AI Judge Merry';
   const safeScope = scope ? String(scope) : 'panel';
   const j0cls = liveState?.judges?.[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-  const j1cls = liveState?.judges?.[1] ? (liveState.judges[1].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-  const j2cls = liveState?.judges?.[2] ? (liveState.judges[2].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
   const j0label = liveState?.judges?.[0] ? voteHtml(liveState.judges[0].verdict) : '';
-  const j1label = liveState?.judges?.[1] ? voteHtml(liveState.judges[1].verdict) : '';
-  const j2label = liveState?.judges?.[2] ? voteHtml(liveState.judges[2].verdict) : '';
 
   const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
   const verdictShowCls = liveState?.finalVerdict ? 'verdict-show' : '';
@@ -7247,27 +7255,13 @@ function buildCouncilTribunalHtml(liveState, scope) {
   return `
     <div class="council-tribunal ${flashCls} ${verdictShowCls}" id="judge-courtroom-${safeScope}">
       ${stampText ? `<div class="council-verdict-stamp ${stampCls}" id="council-verdict-stamp-${safeScope}">${stampText}</div>` : ''}
-      <div class="council-judges-row" aria-label="AI legality council">
+      <div class="council-judges-row" aria-label="AI Judge Merry legality review">
         <div class="council-judge-card ${j0cls}" id="judge-avatar-${safeScope}-0" style="--judge-idx:0">
           <div class="council-judge-avatar">
-            <span class="council-judge-initial">${judgeNames[0][0]}</span>
+            <span class="council-judge-initial">M</span>
           </div>
-          <div class="council-judge-name">${judgeNames[0]}</div>
+          <div class="council-judge-name">${judgeName}</div>
           <div class="council-judge-verdict">${j0label || pendingDots}</div>
-        </div>
-        <div class="council-judge-card ${j1cls}" id="judge-avatar-${safeScope}-1" style="--judge-idx:1">
-          <div class="council-judge-avatar">
-            <span class="council-judge-initial">${judgeNames[1][0]}</span>
-          </div>
-          <div class="council-judge-name">${judgeNames[1]}</div>
-          <div class="council-judge-verdict">${j1label || pendingDots}</div>
-        </div>
-        <div class="council-judge-card ${j2cls}" id="judge-avatar-${safeScope}-2" style="--judge-idx:2">
-          <div class="council-judge-avatar">
-            <span class="council-judge-initial">${judgeNames[2][0]}</span>
-          </div>
-          <div class="council-judge-name">${judgeNames[2]}</div>
-          <div class="council-judge-verdict">${j2label || pendingDots}</div>
         </div>
       </div>
     </div>
@@ -7306,15 +7300,17 @@ function _updateJudgeCourtUI(pid) {
 
   const scopes = ['panel', 'modal', null]; // null supports any legacy ids
   for (const scope of scopes) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 1; i++) {
       const el = scope ? document.getElementById(`judge-avatar-${scope}-${i}`) : document.getElementById(`judge-avatar-${i}`);
       if (!el) continue;
       const j = state.judges[i];
+      el.classList.remove('judge-center', 'judge-legal', 'judge-illegal');
       if (j) {
-        el.classList.remove('judge-center');
         el.classList.add(j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal');
         const labelEl = el.querySelector('.council-judge-verdict');
         if (labelEl) labelEl.innerHTML = renderVoteHtml(j.verdict);
+      } else {
+        el.classList.add('judge-center');
       }
     }
   }
@@ -7340,23 +7336,19 @@ async function evaluatePendingClueWithCouncil(game, pending) {
   // Initialize live judge tracking
   _liveJudgeVerdicts[pid] = { judges: [], finalVerdict: null, flashDone: false };
 
-  const judges = [];
-  for (let idx = 0; idx < 3; idx += 1) {
-    const verdict = await judgePendingClueWithAI(game, pending, idx, baseline);
-    judges.push(verdict);
-    // Update live tracking and animate this judge sliding
-    _liveJudgeVerdicts[pid].judges = [...judges];
-    _updateJudgeCourtUI(pid);
-    // Brief pause so the slide animation is visible before next judge
-    await new Promise(r => setTimeout(r, 700));
-  }
-  let legalVotes = judges.filter((j) => j.verdict === 'legal').length;
-  let illegalVotes = judges.length - legalVotes;
-  let verdict = legalVotes >= illegalVotes ? 'legal' : 'illegal';
-  if (!baseline.legal) verdict = 'illegal';
-  if (verdict === 'illegal' && legalVotes >= illegalVotes) {
-    illegalVotes = Math.max(illegalVotes, 2);
-    legalVotes = Math.min(legalVotes, 1);
+  const judgeVerdict = await judgePendingClueWithAI(game, pending, baseline);
+  const judges = [judgeVerdict];
+  _liveJudgeVerdicts[pid].judges = [...judges];
+  _updateJudgeCourtUI(pid);
+  await new Promise(r => setTimeout(r, 700));
+
+  let legalVotes = judgeVerdict.verdict === 'legal' ? 1 : 0;
+  let illegalVotes = judgeVerdict.verdict === 'illegal' ? 1 : 0;
+  let verdict = judgeVerdict.verdict;
+  if (!baseline.legal) {
+    verdict = 'illegal';
+    legalVotes = 0;
+    illegalVotes = 1;
   }
   // Set final verdict and trigger flash animation
   _liveJudgeVerdicts[pid].finalVerdict = verdict;
@@ -7793,7 +7785,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       statusText = 'Awaiting Decision';
       metaText = `Submitted by ${pending.byName || 'Spymaster'}`;
       if (canChallenge) {
-        hintText = 'Challenge sends this clue to a 3-AI legality council.';
+        hintText = 'Challenge sends this clue to AI Judge Merry.';
         if (reviewActionsEl) reviewActionsEl.style.display = 'flex';
         if (allowBtn) allowBtn.disabled = _clueChallengeActionBusy;
         if (challengeBtn) challengeBtn.disabled = _clueChallengeActionBusy;
@@ -7803,7 +7795,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         hintText = 'Clue is pending review.';
       }
     } else if (pending.state === 'reviewing') {
-      statusText = 'Council Reviewing';
+      statusText = 'AI Judge Merry Reviewing';
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
       const liveState = _liveJudgeVerdicts[pending.id];
       hintHtml = buildCouncilTribunalHtml(liveState, 'panel');
@@ -7814,7 +7806,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       const legalVotes = Number(pendingReview?.legalVotes || 0);
       const illegalVotes = Number(pendingReview?.illegalVotes || 0);
       metaText = (pendingReview && (legalVotes || illegalVotes))
-        ? `Council vote: legal ${legalVotes} · illegal ${illegalVotes}`
+        ? `AI Judge Merry vote: legal ${legalVotes} · illegal ${illegalVotes}`
         : 'The clue was judged illegal.';
       hintText = myActiveSpymaster && myTeamColor === pending.team
         ? 'Submit a new clue.'
@@ -7986,7 +7978,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       waitingEl.style.display = 'block';
       if (waitingForEl) {
         if (pending.state === 'reviewing') {
-          waitingForEl.textContent = 'AI council verdict…';
+          waitingForEl.textContent = 'AI Judge Merry verdict…';
         } else if (myActiveSpymaster && myTeamColor === pending.team) {
           waitingForEl.textContent = 'opposing spymaster decision…';
         } else if (canCurrentUserChallengePendingClue(pending, currentGame)) {
@@ -8455,12 +8447,6 @@ async function handleClueSubmit(e) {
   }
 
   if (!word || isNaN(number) || number < 0 || number > 9) {
-    return;
-  }
-
-  // Validate clue is one word
-  if (word.includes(' ')) {
-    alert('Clue must be a single word!');
     return;
   }
 
@@ -9208,7 +9194,7 @@ let _lastSentClueDraftSig = '';
 let _clueChallengeActionBusy = false;
 const _councilReviewRunning = new Set();
 // Live judge verdict tracking for animated UI
-let _liveJudgeVerdicts = {}; // { pendingId: { judges: [{judge,verdict,reason},...], finalVerdict: null|'legal'|'illegal', flashDone: false } }
+let _liveJudgeVerdicts = {}; // { pendingId: { judges: [{judge,verdict,reason}], finalVerdict: null|'legal'|'illegal', flashDone: false } }
 let _lastCardConfirmAt = 0;
 let _lastCardConfirmIndex = -1;
 let operativeChatUnsub = null;
