@@ -2993,6 +2993,16 @@ function _nameInitials(name) {
   return plain.slice(0, 2).toUpperCase();
 }
 
+function _stableMarkerHash(seed) {
+  let h = 2166136261 >>> 0;
+  const s = String(seed || '');
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 function _pickAIConsideringIndex(decisionLike) {
   const action = String(decisionLike?.action || '').toLowerCase().trim();
   if (action === 'end_turn') return null;
@@ -3019,9 +3029,13 @@ function _pickAIConsideringIndex(decisionLike) {
 async function syncAIConsideringState(gameId, team, ai, decisionLike) {
   try {
     if (!gameId || !ai || !ai.id) return;
+    const core = ensureAICore(ai);
+    const previousKeys = Array.isArray(core?.lastConsideringKeys) ? core.lastConsideringKeys.map(k => String(k)) : [];
+    const action = String(decisionLike?.action || '').toLowerCase().trim();
+    const hardClear = !!(decisionLike?.clear === true || action === 'clear_considering');
     const consideringField = (team === 'red') ? 'redConsidering' : 'blueConsidering';
     const owner = _markerOwnerId(ai.id);
-    const desiredIdx = _pickAIConsideringIndex(decisionLike);
+    const desiredIdx = hardClear ? null : _pickAIConsideringIndex(decisionLike);
     const desiredConsidering = new Map();
     // Internal ranking only; UI renders initials chips from considering buckets.
     for (const m of (Array.isArray(decisionLike?.marks) ? decisionLike.marks : [])) {
@@ -3034,12 +3048,28 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
     if (!desiredConsidering.size && Number.isFinite(desiredIdx) && desiredIdx >= 0) {
       desiredConsidering.set(String(desiredIdx), 'yes');
     }
+    if (!desiredConsidering.size && !hardClear) {
+      const prev = Array.isArray(core?.lastConsideringKeys) ? core.lastConsideringKeys : [];
+      for (const raw of prev) {
+        if (desiredConsidering.size >= 8) break;
+        const idx = Number(raw);
+        if (!Number.isFinite(idx) || idx < 0) continue;
+        desiredConsidering.set(String(idx), 'maybe');
+      }
+    }
 
     // If model output is sparse, expand to multiple considering chips so humans
     // can actually see the AI's active options.
     try {
-      if (desiredConsidering.size < 4 && decisionLike?.action !== 'end_turn') {
-        const live = await getGameSnapshot(String(gameId));
+      if (desiredConsidering.size < 4 && !hardClear) {
+        let live = null;
+        try {
+          if (typeof currentGame !== 'undefined' && currentGame && String(currentGame?.id || '') === String(gameId)) {
+            live = currentGame;
+          }
+        } catch (_) {}
+        if (!live) live = await getGameSnapshot(String(gameId));
+        if (!live) throw new Error('no_live_snapshot');
         // Follow teammate considering chips first.
         const consideringRows = extractTeamConsideringForVision(live, String(team || ''));
         consideringRows
@@ -3095,17 +3125,80 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
             desiredConsidering.set(k, 'maybe');
           }
         }
+
+        // Final fallback: pick deterministic unrevealed cards so initials stay
+        // visible even when model output is sparse/no_change.
+        if (desiredConsidering.size < 3) {
+          const cards = Array.isArray(live?.cards) ? live.cards : [];
+          const unrevealed = [];
+          for (let i = 0; i < cards.length; i += 1) {
+            const card = cards[i];
+            if (!card || card.revealed) continue;
+            unrevealed.push(i);
+          }
+          const turnSig = [
+            String(live?.id || gameId),
+            String(live?.currentPhase || ''),
+            String(live?.currentTeam || ''),
+            String(live?.currentClue?.word || '').toUpperCase(),
+            String(Number(live?.currentClue?.number || 0)),
+          ].join('|');
+          const aiSeed = String(ai?.id || ai?.odId || ai?.name || owner);
+          unrevealed
+            .sort((a, b) => {
+              const ah = _stableMarkerHash(`${aiSeed}|${turnSig}|${a}`);
+              const bh = _stableMarkerHash(`${aiSeed}|${turnSig}|${b}`);
+              return ah - bh;
+            })
+            .forEach((idx) => {
+              if (desiredConsidering.size >= 6) return;
+              const k = String(Number(idx));
+              if (!desiredConsidering.has(k)) desiredConsidering.set(k, 'maybe');
+            });
+        }
       }
     } catch (_) {}
     const rawAiName = String(ai?.name || '').trim() || 'AI';
     const name = /^ai\s+/i.test(rawAiName) ? rawAiName : `AI ${rawAiName}`;
     const initials = _nameInitials(rawAiName);
+    const desiredKeys = Array.from(desiredConsidering.keys());
+    const sameKeysAsBefore = (
+      desiredKeys.length === previousKeys.length &&
+      desiredKeys.every((k, i) => String(k) === String(previousKeys[i]))
+    );
+    if (!hardClear && desiredKeys.length) {
+      core.lastConsideringKeys = desiredKeys.slice(0, 8);
+    }
+    if (!hardClear && !desiredKeys.length) {
+      return; // keep previous markers instead of clearing on no_change/no-output turns
+    }
+    if (!hardClear && sameKeysAsBefore) {
+      return; // no visible change; avoid churn/re-renders/writes
+    }
+    if (hardClear) {
+      core.lastConsideringKeys = [];
+    }
+
+    // Always mirror AI considering locally for immediate UI visibility.
+    // Firestore remains canonical, this is a render fail-safe.
+    try {
+      if (typeof window.__setAIGlobalConsidering === 'function') {
+        window.__setAIGlobalConsidering({
+          gameId: String(gameId),
+          teamColor: String(team || '').toLowerCase(),
+          ownerId: owner,
+          initials,
+          name,
+          cardKeys: desiredKeys
+        });
+      }
+    } catch (_) {}
 
     // Local practice: update considering chips in local state (no Firestore).
     try {
       const gid = String(gameId);
       if (typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
-        const keys = Array.from(desiredConsidering.keys());
+        const keys = desiredKeys;
         if (typeof window.__setLocalPracticeConsidering === 'function') {
           window.__setLocalPracticeConsidering({
             gameId: gid,
@@ -4535,14 +4628,14 @@ function _getAISpyDraftTypingProfile(ai) {
   const c = _clamp(Number.isFinite(confidence) ? confidence : 55, 1, 100);
   const d = _clamp(Number.isFinite(depth) ? depth : 62, 1, 100);
 
-  const typeMinMs = Math.round(_clamp(92 - (t * 0.6), 26, 105));
-  const typeMaxMs = Math.round(_clamp(typeMinMs + 34 + ((100 - t) * 0.58), 58, 185));
-  const deleteMinMs = Math.round(_clamp(typeMinMs * 0.55, 16, 84));
-  const deleteMaxMs = Math.round(_clamp(typeMaxMs * 0.66, 40, 138));
+  const typeMinMs = Math.round(_clamp(262 - (t * 0.92), 146, 350));
+  const typeMaxMs = Math.round(_clamp(typeMinMs + 178 + ((100 - t) * 1.9) + (d * 0.85), 310, 860));
+  const deleteMinMs = Math.round(_clamp(typeMinMs * 0.9, 112, 330));
+  const deleteMaxMs = Math.round(_clamp(typeMaxMs * 1.04, 210, 740));
   const typoChance = _clamp(0.045 + ((100 - c) / 780), 0.02, 0.20);
   const hesitationChance = _clamp(0.10 + (d / 620), 0.12, 0.32);
   const burstChance = _clamp(0.16 + (t / 700), 0.12, 0.35);
-  const minSendGapMs = Math.round(_clamp(70 + ((100 - t) * 0.85), 55, 180));
+  const minSendGapMs = Math.round(_clamp(310 + ((100 - t) * 2.3), 250, 720));
 
   return {
     typeMinMs,
@@ -4553,12 +4646,12 @@ function _getAISpyDraftTypingProfile(ai) {
     hesitationChance,
     burstChance,
     minSendGapMs,
-    thinkMinMs: Math.round(380 + (d * 4.2)),
-    thinkMaxMs: Math.round(940 + (d * 7.8) + ((100 - c) * 3.2)),
-    sureMinMs: Math.round(320 + ((100 - c) * 4.8)),
-    sureMaxMs: Math.round(920 + (d * 3.1) + ((100 - c) * 5.4)),
-    rethinkMinMs: Math.round(460 + ((100 - c) * 3.6)),
-    rethinkMaxMs: Math.round(1320 + (d * 4.2) + ((100 - c) * 6.8)),
+    thinkMinMs: Math.round(1900 + (d * 14.5)),
+    thinkMaxMs: Math.round(4300 + (d * 26.5) + ((100 - c) * 15.5)),
+    sureMinMs: Math.round(1400 + ((100 - c) * 12.5)),
+    sureMaxMs: Math.round(3600 + (d * 16.4) + ((100 - c) * 19.4)),
+    rethinkMinMs: Math.round(2300 + ((100 - c) * 11.6)),
+    rethinkMaxMs: Math.round(5800 + (d * 19.5) + ((100 - c) * 25.2)),
   };
 }
 
@@ -4735,7 +4828,7 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
       if (canTypo && Math.random() < profile.typoChance) {
         draft += _randUpperAlpha();
         await _setAILiveClueDraft(game, team, ai, draft, null, { minGapMs: profile.minSendGapMs });
-        await sleep(_randMs(profile.typeMinMs * 0.6, profile.typeMaxMs * 0.95));
+        await sleep(_randMs(profile.typeMinMs * 1.02, profile.typeMaxMs * 1.22));
 
         draft = draft.slice(0, -1);
         await _setAILiveClueDraft(game, team, ai, draft || null, null, { minGapMs: profile.minSendGapMs });
@@ -4752,9 +4845,9 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
       });
 
       let delay = _randMs(profile.typeMinMs, profile.typeMaxMs);
-      if (Math.random() < profile.burstChance) delay = Math.max(14, Math.round(delay * 0.58));
+      if (Math.random() < profile.burstChance) delay = Math.max(130, Math.round(delay * 0.84));
       if (Math.random() < profile.hesitationChance && i >= 1) {
-        delay += _randMs(90, 340);
+        delay += _randMs(620, 2200);
       }
       await sleep(delay);
     }
@@ -4770,8 +4863,8 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
         minGapMs: profile.minSendGapMs,
       });
       let delay = _randMs(profile.deleteMinMs, profile.deleteMaxMs);
-      if (Math.random() < 0.25) delay += _randMs(60, 180);
-      await sleep(Math.max(14, delay));
+      if (Math.random() < 0.25) delay += _randMs(420, 1380);
+      await sleep(Math.max(110, delay));
     }
   };
 
@@ -4795,12 +4888,12 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
     await sleep(_randMs(profile.sureMinMs, profile.sureMaxMs));
 
     if (attempt.isFinal) {
-      await sleep(_randMs(180, 520));
+      await sleep(_randMs(1500, 4200));
       return; // Keep the final draft visible; submit happens immediately after.
     }
 
     await deleteDraftWord(candidateWord);
-    await sleep(_randMs(120, 360));
+    await sleep(_randMs(420, 1400));
   }
 }
 
@@ -5389,7 +5482,7 @@ async function aiGuessCard(ai, game) {
 
       const action = String(parsed.action || '').toLowerCase().trim();
       if (action === 'end_turn') {
-        try { await syncAIConsideringState(game.id, team, ai, { action: 'end_turn', marks: [] }); } catch (_) {}
+        try { await syncAIConsideringState(game.id, team, ai, { action: 'end_turn', marks: [], clear: true }); } catch (_) {}
         return 'end_turn';
       }
 
@@ -5429,7 +5522,7 @@ async function aiGuessCard(ai, game) {
 
     // Fallback: if parsing failed repeatedly, end turn rather than random-guess.
     appendMind(ai, `I couldn't produce a valid guess JSON. I'll end the turn to avoid chaos.`);
-    try { await syncAIConsideringState(game.id, team, ai, { action: 'end_turn', marks: [] }); } catch (_) {}
+    try { await syncAIConsideringState(game.id, team, ai, { action: 'end_turn', marks: [], clear: true }); } catch (_) {}
     return 'end_turn';
   } catch (err) {
     console.error(`AI ${ai.name} guess error:`, err);
@@ -5625,7 +5718,7 @@ didEnd = true;
     });
 
     if (didEnd) {
-      try { await syncAIConsideringState(game.id, ai.team, ai, { action: 'end_turn', marks: [] }); } catch (_) {}
+      try { await syncAIConsideringState(game.id, ai.team, ai, { action: 'end_turn', marks: [], clear: true }); } catch (_) {}
     }
 
     return didEnd;
@@ -6235,9 +6328,9 @@ function _getAIChatTypingProfile(aiLike) {
   const d = Number.isFinite(reasoningDepth) ? Math.max(1, Math.min(100, reasoningDepth)) : 58;
 
   // Broad range so a single message can swing from quick bursts to hesitant pauses.
-  const baseMinMs = Math.round(_clamp(38 + ((100 - t) * 0.45), 32, 115));
-  const baseMaxMs = Math.round(_clamp(120 + ((100 - t) * 1.15) + (d * 0.55), 95, 320));
-  const jitterMs = Math.round(_clamp(65 + ((100 - c) * 0.9) + (d * 0.45), 55, 260));
+  const baseMinMs = Math.round(_clamp(190 + ((100 - t) * 1.65), 170, 520));
+  const baseMaxMs = Math.round(_clamp(520 + ((100 - t) * 3.9) + (d * 2.1), 500, 1650));
+  const jitterMs = Math.round(_clamp(190 + ((100 - c) * 2.2) + (d * 1.25), 160, 760));
 
   const burstChance = _clamp(0.14 + (t / 420), 0.14, 0.44);
   const slowStretchChance = _clamp(0.08 + ((100 - t) / 560) + (d / 760), 0.08, 0.34);
@@ -6252,10 +6345,10 @@ function _getAIChatTypingProfile(aiLike) {
   const halfDeleteChance = _clamp(0.12 + ((100 - c) / 300) + (d / 880), 0.10, 0.46);
   const fullWordRestartChance = _clamp(0.025 + ((100 - c) / 1700), 0.02, 0.10);
 
-  const preThinkMinMs = Math.round(_clamp(80 + (d * 1.9), 70, 280));
-  const preThinkMaxMs = Math.round(_clamp(preThinkMinMs + 260 + ((100 - t) * 4.2) + (d * 3.8), 260, 1600));
-  const submitPauseMinMs = Math.round(_clamp(60 + ((100 - c) * 0.95), 45, 250));
-  const submitPauseMaxMs = Math.round(_clamp(submitPauseMinMs + 180 + (d * 2.6), 170, 820));
+  const preThinkMinMs = Math.round(_clamp(980 + (d * 7.6), 940, 2700));
+  const preThinkMaxMs = Math.round(_clamp(preThinkMinMs + 1450 + ((100 - t) * 14.8) + (d * 13.4), 2200, 9800));
+  const submitPauseMinMs = Math.round(_clamp(650 + ((100 - c) * 3.4), 600, 1600));
+  const submitPauseMaxMs = Math.round(_clamp(submitPauseMinMs + 920 + (d * 9.5), 1250, 5200));
 
   const out = {
     baseMinMs,
@@ -6315,7 +6408,7 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
   const dotsEl = typingEl.querySelector('.chat-typing-indicator');
 
   // Variable "thinking before typing" delay.
-  const preThink = _randMs(profile.preThinkMinMs, profile.preThinkMaxMs) + Math.min(1100, Math.round(String(text || '').length * (2.4 + Math.random() * 4.8)));
+  const preThink = _randMs(profile.preThinkMinMs, profile.preThinkMaxMs) + Math.min(7600, Math.round(String(text || '').length * (20.5 + Math.random() * 31.2)));
   await new Promise(r => setTimeout(r, preThink));
 
   // Start revealing characters (with rhythm shifts, bursts, pauses, typo bursts,
@@ -6372,24 +6465,24 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
 
     d *= rhythm;
 
-    if (Math.random() < profile.burstChance) d *= (0.34 + Math.random() * 0.34);
+    if (Math.random() < profile.burstChance) d *= (0.62 + Math.random() * 0.33);
     if (Math.random() < profile.slowStretchChance) d *= (1.2 + Math.random() * 0.95);
-    if (allowRevisions && Math.random() < profile.pauseChance && idx > 3) d += _randMs(85, 360);
-    if (Math.random() < profile.microPauseChance && idx > 1) d += _randMs(28, 120);
+    if (allowRevisions && Math.random() < profile.pauseChance && idx > 3) d += _randMs(230, 980);
+    if (Math.random() < profile.microPauseChance && idx > 1) d += _randMs(70, 280);
 
-    if ('.!?,;:'.includes(ch)) d += _randMs(85, 320);
-    if (ch === ' ') d *= (0.34 + Math.random() * 0.28);
+    if ('.!?,;:'.includes(ch)) d += _randMs(190, 920);
+    if (ch === ' ') d *= (0.52 + Math.random() * 0.34);
 
-    return Math.max(2.8, d);
+    return Math.max(95, d);
   };
 
-  const backspaceMany = async (count, minMs = 18, maxMs = 86) => {
+  const backspaceMany = async (count, minMs = 54, maxMs = 210) => {
     let remaining = Math.max(0, Number(count) || 0);
     while (remaining > 0) {
       revealed = revealed.slice(0, -1);
       setText();
       remaining -= 1;
-      await sleepMs(_randMs(minMs, maxMs));
+      await sleepMs(_randMs(Math.max(82, minMs), Math.max(320, maxMs)));
     }
   };
 
@@ -6400,9 +6493,9 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
       for (let t = 0; t < typoBurst; t += 1) {
         revealed += _randChar();
         setText();
-        await sleepMs(_randMs(16, 88));
+        await sleepMs(_randMs(120, 420));
       }
-      await backspaceMany(typoBurst, 14, 74);
+      await backspaceMany(typoBurst, 88, 320);
     }
 
     revealed += targetChar;
@@ -6418,9 +6511,9 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
       await typeCharWithPossibleTypo(ch, i);
       if (Math.random() < profile.rhythmSwapChance) rhythm = pickRhythm(Math.random() < 0.56);
     }
-    await sleepMs(_randMs(160, 560));
+    await sleepMs(_randMs(760, 2600));
     const del = Math.max(3, Math.min(16, Math.floor(cut * (0.34 + Math.random() * 0.42))));
-    await backspaceMany(del, 18, 64);
+    await backspaceMany(del, 90, 320);
   }
 
   for (let i = revealed.length; i < text.length; i += 1) {
@@ -6444,9 +6537,9 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
         const suffixStart = (meta.end - deleteCount) + 1;
         const suffix = text.slice(suffixStart, meta.end + 1);
 
-        await sleepMs(_randMs(70, 260));
-        await backspaceMany(deleteCount, 14, 62);
-        await sleepMs(_randMs(45, 190));
+        await sleepMs(_randMs(420, 1650));
+        await backspaceMany(deleteCount, 92, 340);
+        await sleepMs(_randMs(320, 1200));
 
         for (let s = 0; s < suffix.length; s += 1) {
           const srcIdx = suffixStart + s;

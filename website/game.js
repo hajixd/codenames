@@ -5208,6 +5208,7 @@ function startGameListener(gameId, options = {}) {
     const prevLogLen = Array.isArray(currentGame?.log) ? currentGame.log.length : 0;
     if (!snap.exists) {
       clearRevealAnimationSuppressions();
+      try { clearAIConsideringOverlayForGame(gameId); } catch (_) {}
       currentGame = null;
       stopPracticeInactivityWatcher();
       showGameLobby();
@@ -5230,6 +5231,7 @@ function startGameListener(gameId, options = {}) {
       boardSignature = sig;
       if (sig && _prevBoardSignature && sig !== _prevBoardSignature) {
         boardChanged = true;
+        try { clearAIConsideringOverlayForGame(currentGame?.id || gameId); } catch (_) {}
         // Clear all local tags without writing anything to Firestore (markers are reset server-side).
         cardTags = {};
         pendingCardSelection = null;
@@ -5364,6 +5366,7 @@ function stopGameListener() {
   _councilReviewRunning.clear();
   _liveJudgeVerdicts = {};
   try { syncTeamConsidering(null); } catch (_) {}
+  try { clearAIConsideringOverlayForGame(currentGame?.id); } catch (_) {}
   clearRevealAnimationSuppressions();
   currentGame = null;
   stopPracticeInactivityWatcher();
@@ -6268,8 +6271,10 @@ function renderBoard(isSpymaster) {
     isCurrentLocalPracticeGame() ||
     !!myTeamColor ||
     (currentGame?.currentTeam === 'red' || currentGame?.currentTeam === 'blue');
-  const redConsidering = canViewConsidering ? (currentGame?.redConsidering || {}) : {};
-  const blueConsidering = canViewConsidering ? (currentGame?.blueConsidering || {}) : {};
+  const overlayRed = canViewConsidering ? getAIConsideringOverlayForGame(currentGame?.id, 'red') : {};
+  const overlayBlue = canViewConsidering ? getAIConsideringOverlayForGame(currentGame?.id, 'blue') : {};
+  const redConsidering = canViewConsidering ? mergeTeamConsideringMaps(currentGame?.redConsidering || {}, overlayRed) : {};
+  const blueConsidering = canViewConsidering ? mergeTeamConsideringMaps(currentGame?.blueConsidering || {}, overlayBlue) : {};
   const myOwnerId = getCurrentMarkerOwnerId();
   const boardRenderSignature = [
     `spy:${isSpymaster ? 1 : 0}`,
@@ -9119,6 +9124,7 @@ let ogChatLastSeenMs = 0;
 let ogChatLastMessageMs = 0;
 let ogChatUnreadKey = '';
 let _consideringSyncNonce = 0;
+const aiConsideringOverlayByGameTeam = new Map(); // `${gameId}:${team}` -> considering bucket map
 
 // When Cozy/Online (OG-style) panels are active, we dock the existing chat panel
 // into the left OG panel so it sits bottom-left parallel to the Game Log.
@@ -9385,6 +9391,52 @@ function normalizeTeamConsideringBucket(raw) {
   return out;
 }
 
+function _normalizeConsideringTeamColor(input) {
+  return String(input || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+}
+
+function _aiConsideringOverlayKey(gameId, teamColor) {
+  const gid = String(gameId || '').trim();
+  const team = _normalizeConsideringTeamColor(teamColor);
+  return gid ? `${gid}:${team}` : '';
+}
+
+function clearAIConsideringOverlayForGame(gameId) {
+  const gid = String(gameId || '').trim();
+  if (!gid) return;
+  for (const key of Array.from(aiConsideringOverlayByGameTeam.keys())) {
+    if (key.startsWith(`${gid}:`)) aiConsideringOverlayByGameTeam.delete(key);
+  }
+}
+
+function getAIConsideringOverlayForGame(gameId, teamColor) {
+  const key = _aiConsideringOverlayKey(gameId, teamColor);
+  if (!key) return {};
+  return aiConsideringOverlayByGameTeam.get(key) || {};
+}
+
+function mergeTeamConsideringMaps(baseRaw, overlayRaw) {
+  const out = {};
+  const ingest = (src) => {
+    if (!src || typeof src !== 'object') return;
+    for (const [idxKey, raw] of Object.entries(src || {})) {
+      const idx = Number(idxKey);
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      const key = String(idx);
+      const existing = normalizeTeamConsideringBucket(out[key]);
+      const incoming = normalizeTeamConsideringBucket(raw);
+      for (const [owner, value] of Object.entries(incoming)) {
+        existing[owner] = value;
+      }
+      if (Object.keys(existing).length) out[key] = existing;
+      else delete out[key];
+    }
+  };
+  ingest(baseRaw);
+  ingest(overlayRaw);
+  return out;
+}
+
 function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId = '') {
   const raw = teamConsidering ? (teamConsidering[String(cardIndex)] ?? teamConsidering[cardIndex]) : null;
   const bucket = normalizeTeamConsideringBucket(raw);
@@ -9550,6 +9602,54 @@ window.__setLocalPracticeConsidering = function({ gameId, teamColor, ownerId, in
       draft[field] = considering;
       draft.updatedAtMs = Date.now();
     });
+  } catch (_) {}
+};
+
+// AI considering mirror for all game types.
+// This keeps initials visible immediately even if Firestore latency/race delays
+// the canonical considering buckets for a moment.
+window.__setAIGlobalConsidering = function({ gameId, teamColor, ownerId, initials, name, cardKeys }) {
+  try {
+    const gid = String(gameId || '').trim();
+    if (!gid) return;
+    const team = _normalizeConsideringTeamColor(teamColor);
+    const owner = String(ownerId || '').trim();
+    if (!owner) return;
+    const key = _aiConsideringOverlayKey(gid, team);
+    if (!key) return;
+
+    const displayName = String(name || '').trim();
+    const chipInitials = (String(initials || getPlayerInitials(displayName || 'AI')).trim() || '?').slice(0, 3).toUpperCase();
+    const previous = aiConsideringOverlayByGameTeam.get(key) || {};
+    const next = { ...previous };
+
+    for (const idxKey of Object.keys(next)) {
+      const bucket = normalizeTeamConsideringBucket(next[idxKey]);
+      delete bucket[owner];
+      if (Object.keys(bucket).length) next[idxKey] = bucket;
+      else delete next[idxKey];
+    }
+
+    const keys = Array.isArray(cardKeys) ? cardKeys : [];
+    for (const raw of keys) {
+      const idx = Number(raw);
+      if (!Number.isInteger(idx) || idx < 0) continue;
+      const card = currentGame?.cards?.[idx];
+      if (card && card.revealed) continue;
+      const idxKey = String(idx);
+      const bucket = normalizeTeamConsideringBucket(next[idxKey]);
+      bucket[owner] = {
+        initials: chipInitials,
+        name: displayName || 'AI',
+        ts: Date.now()
+      };
+      next[idxKey] = bucket;
+    }
+
+    aiConsideringOverlayByGameTeam.set(key, next);
+    if (currentGame && String(currentGame.id || '') === gid) {
+      try { renderGame(); } catch (_) {}
+    }
   } catch (_) {}
 };
 
