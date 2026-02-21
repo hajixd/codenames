@@ -23352,7 +23352,9 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-main-layout {
     overflow: visible;
-    align-items: start;
+    /* Stretch columns to the row height so bottom-docked UI stays flush even
+       when the center action bar is in its shorter non-stacking state. */
+    align-items: stretch;
   }
 
   #game-board-container.game-container-expanded {
@@ -26093,7 +26095,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
     min-height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
     max-height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
-    bottom: 6px;
+    bottom: 0;
   }
 
   /* Ensure both panels keep internal scrolling even when legacy rules try to disable it. */
