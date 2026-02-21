@@ -6263,18 +6263,13 @@ function renderBoard(isSpymaster) {
     pendingCardSelection = pendingIdx;
   }
 
-  const turnTeam = (currentGame?.currentTeam === 'red' || currentGame?.currentTeam === 'blue')
-    ? currentGame.currentTeam
-    : null;
-  // Always show your own team's considering chips, even off-turn.
-  // Spectators still track the active (turn) team.
-  const visibleConsideringTeam = spectator
-    ? turnTeam
-    : ((myTeamColor === 'red' || myTeamColor === 'blue') ? myTeamColor : turnTeam);
-  const canViewTurnConsidering = !!visibleConsideringTeam && (spectator || isCurrentLocalPracticeGame() || !!myTeamColor);
-  const teamConsidering = canViewTurnConsidering
-    ? (visibleConsideringTeam === 'red' ? (currentGame?.redConsidering || {}) : (currentGame?.blueConsidering || {}))
-    : {};
+  const canViewConsidering =
+    spectator ||
+    isCurrentLocalPracticeGame() ||
+    !!myTeamColor ||
+    (currentGame?.currentTeam === 'red' || currentGame?.currentTeam === 'blue');
+  const redConsidering = canViewConsidering ? (currentGame?.redConsidering || {}) : {};
+  const blueConsidering = canViewConsidering ? (currentGame?.blueConsidering || {}) : {};
   const myOwnerId = getCurrentMarkerOwnerId();
   const boardRenderSignature = [
     `spy:${isSpymaster ? 1 : 0}`,
@@ -6290,7 +6285,8 @@ function renderBoard(isSpymaster) {
     `peek:${revealedPeekCardIndex ?? ''}`,
     `ctx:${String(currentSelectionContextKey || '')}`,
     `cards:${currentGame.cards.map((c) => `${String(c?.word || '')}:${String(c?.type || '')}:${c?.revealed ? 1 : 0}`).join('|')}`,
-    `considering:${canViewTurnConsidering ? JSON.stringify(teamConsidering || {}) : ''}`,
+    `considering:red:${canViewConsidering ? JSON.stringify(redConsidering || {}) : ''}`,
+    `considering:blue:${canViewConsidering ? JSON.stringify(blueConsidering || {}) : ''}`,
   ].join('||');
   if (_lastBoardRenderSignature === boardRenderSignature) return;
   _lastBoardRenderSignature = boardRenderSignature;
@@ -6326,10 +6322,19 @@ function renderBoard(isSpymaster) {
     const stackOrderHtml = stackOrder
       ? `<div class="card-stack-order" aria-hidden="true">${stackOrder}</div>`
       : '';
-    const consideringEntries = (!card.revealed)
-      ? getTeamConsideringEntriesForCard(teamConsidering, i, myOwnerId)
+    const redEntries = (!card.revealed)
+      ? getTeamConsideringEntriesForCard(redConsidering, i, myOwnerId)
       : [];
-    let consideringVisible = [...consideringEntries];
+    const blueEntries = (!card.revealed)
+      ? getTeamConsideringEntriesForCard(blueConsidering, i, myOwnerId)
+      : [];
+    let consideringVisible = [...redEntries, ...blueEntries]
+      .sort((a, b) => {
+        if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
+        const at = Number(a?.ts || 0);
+        const bt = Number(b?.ts || 0);
+        return bt - at;
+      });
     if (canSelectForConsidering && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
       consideringVisible.unshift({
         owner: myOwnerId,
@@ -9384,7 +9389,7 @@ function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId 
   const raw = teamConsidering ? (teamConsidering[String(cardIndex)] ?? teamConsidering[cardIndex]) : null;
   const bucket = normalizeTeamConsideringBucket(raw);
   const now = Date.now();
-  const MAX_CONSIDERING_AGE_MS = 3 * 60 * 1000;
+  const MAX_CONSIDERING_AGE_MS = 20 * 60 * 1000;
   return Object.entries(bucket)
     .map(([owner, value]) => {
       const ts = Number(value?.ts || 0);
