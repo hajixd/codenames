@@ -50,6 +50,7 @@ const CARD_CONFIRM_ANIM_MS = 4200;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
+const _revealColorShiftByIndex = new Map();
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -87,7 +88,7 @@ function clearCardAnimationOverlayState() {
 
 function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
-  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
+  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate', 'reveal-color-shifted');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
   cardEl.removeAttribute('data-confirm-back-type');
@@ -97,6 +98,9 @@ function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
     const oldTid = _revealFlipCleanupByIndex.get(idx);
     if (oldTid) clearTimeout(oldTid);
     _revealFlipCleanupByIndex.delete(idx);
+    const oldColorTid = _revealColorShiftByIndex.get(idx);
+    if (oldColorTid) clearTimeout(oldColorTid);
+    _revealColorShiftByIndex.delete(idx);
   }
 }
 
@@ -113,9 +117,22 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   cardEl.setAttribute('data-confirm-back-type', confirmBackType);
   pulseCardAnimationOverlay();
 
+  const colorShiftDelayMs = Math.max(0, Math.round(CARD_CONFIRM_ANIM_MS * 0.64));
+  const colorTid = window.setTimeout(() => {
+    if (!cardEl.isConnected) return;
+    if (!cardEl.classList.contains('reveal-flip-animate')) return;
+    cardEl.classList.add('reveal-color-shifted');
+  }, colorShiftDelayMs);
+  if (Number.isInteger(idx) && idx >= 0) {
+    _revealColorShiftByIndex.set(idx, colorTid);
+  }
+
   const tid = window.setTimeout(() => {
     if (Number.isInteger(idx) && idx >= 0) {
       _revealFlipCleanupByIndex.delete(idx);
+      const oldColorTid = _revealColorShiftByIndex.get(idx);
+      if (oldColorTid) clearTimeout(oldColorTid);
+      _revealColorShiftByIndex.delete(idx);
     }
     if (!cardEl.isConnected) return;
     clearConfirmAnimationClasses(cardEl);
@@ -130,10 +147,49 @@ function clearRevealAnimationSuppressions() {
     clearTimeout(tid);
   }
   _revealFlipCleanupByIndex.clear();
+  for (const tid of _revealColorShiftByIndex.values()) {
+    clearTimeout(tid);
+  }
+  _revealColorShiftByIndex.clear();
   try {
     document.querySelectorAll('.game-card.reveal-flip-animate, .game-card.confirming-guess, .game-card.confirm-animate, .game-card.confirm-hold')
       .forEach((el) => clearConfirmAnimationClasses(el));
   } catch (_) {}
+}
+
+function initAnimationTestingPanel() {
+  const panel = document.getElementById('home-animation-tests');
+  if (!panel) return;
+  if (panel.dataset.bound === '1') return;
+  panel.dataset.bound = '1';
+
+  const cards = Array.from(panel.querySelectorAll('.anim-test-card[data-anim-type]'));
+  cards.forEach((cardEl, idx) => {
+    cardEl.dataset.animTestIndex = String(1000 + idx);
+  });
+
+  const runTestCardAnimation = (cardEl) => {
+    if (!cardEl) return;
+    const revealType = normalizeConfirmBackType(cardEl.dataset.animType || 'neutral');
+    const cardIndex = Number(cardEl.dataset.animTestIndex || -1);
+    applyConfirmAnimationClasses(cardEl, revealType, { cardIndex });
+  };
+
+  cards.forEach((cardEl) => {
+    cardEl.addEventListener('click', () => runTestCardAnimation(cardEl));
+    cardEl.addEventListener('keydown', (evt) => {
+      if (evt.key !== 'Enter' && evt.key !== ' ') return;
+      evt.preventDefault();
+      runTestCardAnimation(cardEl);
+    });
+  });
+
+  const replayAllBtn = panel.querySelector('#anim-test-replay-all');
+  replayAllBtn?.addEventListener('click', () => {
+    cards.forEach((cardEl, idx) => {
+      window.setTimeout(() => runTestCardAnimation(cardEl), idx * 180);
+    });
+  });
 }
 
 function collectNewlyRevealedCardIndices(prevCards, nextCards) {
@@ -1546,6 +1602,7 @@ function teamIsFullyReady(game, team) {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadWords();
   initGameUI();
+  initAnimationTestingPanel();
   listenToChallenges();
   listenToQuickPlayDoc();
 });

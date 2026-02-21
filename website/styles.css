@@ -4836,6 +4836,59 @@ button:disabled{
 .home-hero{ margin-bottom: 14px; }
 .home-title{ font-size: 30px; letter-spacing: 0.2px; }
 
+.animation-test-section{
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: linear-gradient(160deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+}
+
+.animation-test-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.animation-test-title{
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.animation-test-subtitle{
+  margin: 6px 0 10px;
+}
+
+.animation-test-grid{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.animation-test-grid .anim-test-card{
+  min-height: 96px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.animation-test-grid .anim-test-card .card-checkmark{
+  display: none !important;
+}
+
+.animation-test-grid .anim-test-card:focus-visible{
+  outline: 2px solid color-mix(in srgb, var(--accent) 78%, #ffffff 22%);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px){
+  .animation-test-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Member boxes in modals + My Team: give them room and keep them slim */
 .players-list{
   display: flex;
@@ -5677,7 +5730,7 @@ button.player-tag.pill-action:disabled{
   will-change: opacity, clip-path, -webkit-clip-path;
   background: var(--card-liquid-tint, linear-gradient(160deg, #6b7687 0%, #4f5b6d 52%, #3b4657 100%));
   mix-blend-mode: hue;
-  filter: saturate(1.12);
+  filter: saturate(1.06);
 }
 
 .game-card .card-face .card-recolor-sweep::before {
@@ -26550,9 +26603,7 @@ body .game-card.reveal-flip-animate {
   --reveal-front-border: var(--base-front-border);
   --reveal-back-bg: var(--base-back-bg);
 
-  animation:
-    ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both,
-    cardRevealPaletteShift var(--card-confirm-duration) linear both !important;
+  animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both !important;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-red {
@@ -26627,6 +26678,19 @@ body .game-card.reveal-flip-animate.confirm-back-assassin {
     linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
 }
 
+body .game-card.reveal-flip-animate.reveal-color-shifted {
+  --reveal-card-border: var(--target-card-border, var(--base-card-border));
+  --reveal-card-bg: var(--target-card-bg, var(--base-card-bg));
+  --reveal-inner-border: var(--target-inner-border, var(--base-inner-border));
+  --reveal-inner-bg: var(--target-inner-bg, var(--base-inner-bg));
+  --reveal-word-bg: var(--target-word-bg, var(--base-word-bg));
+  --reveal-edge-color: var(--target-edge-color, var(--base-edge-color));
+  --reveal-edge-dark: var(--target-edge-dark, var(--base-edge-dark));
+  --reveal-front-bg: var(--target-front-bg, var(--base-front-bg));
+  --reveal-front-border: var(--target-front-border, var(--base-front-border));
+  --reveal-back-bg: var(--target-back-bg, var(--base-back-bg));
+}
+
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
   --cardBorder: var(--reveal-card-border) !important;
   --cardBg: var(--reveal-card-bg) !important;
@@ -26668,12 +26732,9 @@ body .game-card.reveal-flip-animate .card-face .card-recolor-sweep {
   animation: cardLiquidDiagonalSweep var(--card-confirm-duration) cubic-bezier(0.22, 0.86, 0.3, 1) both;
 }
 
-body .game-card.reveal-flip-animate .card-face .card-recolor-sweep::before {
-  animation: cardLiquidSpecularSweep var(--card-confirm-duration) cubic-bezier(0.18, 0.9, 0.28, 1) both;
-}
-
+body .game-card.reveal-flip-animate .card-face .card-recolor-sweep::before,
 body .game-card.reveal-flip-animate .card-face .card-recolor-sweep::after {
-  animation: cardLiquidShadowSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  display: none;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after,
@@ -26681,35 +26742,6 @@ body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::af
   color: var(--card-sweep-label-color, rgba(226, 233, 243, 0.9));
   opacity: 0 !important;
   animation: cardRevealBackLabel var(--card-confirm-duration) linear both;
-}
-
-@keyframes cardRevealPaletteShift {
-  0%,
-  63% {
-    --reveal-card-border: var(--base-card-border);
-    --reveal-card-bg: var(--base-card-bg);
-    --reveal-inner-border: var(--base-inner-border);
-    --reveal-inner-bg: var(--base-inner-bg);
-    --reveal-word-bg: var(--base-word-bg);
-    --reveal-edge-color: var(--base-edge-color);
-    --reveal-edge-dark: var(--base-edge-dark);
-    --reveal-front-bg: var(--base-front-bg);
-    --reveal-front-border: var(--base-front-border);
-    --reveal-back-bg: var(--base-back-bg);
-  }
-  64%,
-  100% {
-    --reveal-card-border: var(--target-card-border, var(--base-card-border));
-    --reveal-card-bg: var(--target-card-bg, var(--base-card-bg));
-    --reveal-inner-border: var(--target-inner-border, var(--base-inner-border));
-    --reveal-inner-bg: var(--target-inner-bg, var(--base-inner-bg));
-    --reveal-word-bg: var(--target-word-bg, var(--base-word-bg));
-    --reveal-edge-color: var(--target-edge-color, var(--base-edge-color));
-    --reveal-edge-dark: var(--target-edge-dark, var(--base-edge-dark));
-    --reveal-front-bg: var(--target-front-bg, var(--base-front-bg));
-    --reveal-front-border: var(--target-front-border, var(--base-front-border));
-    --reveal-back-bg: var(--target-back-bg, var(--base-back-bg));
-  }
 }
 
 @keyframes cardLiquidDiagonalSweep {
