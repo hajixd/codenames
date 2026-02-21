@@ -46,7 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 1220;
+const CARD_CONFIRM_ANIM_MS = 1850;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
@@ -6403,6 +6403,7 @@ function renderBoard(isSpymaster) {
     // animation explicitly flips the card.)
     const backFace = `
           <div class="card-face card-back">
+            <span class="card-liquid-fill" aria-hidden="true"></span>
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
         `;
