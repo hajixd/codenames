@@ -26038,21 +26038,6 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   }
 }
 
-/* ── Game Log: match right-sidebar column width, scale with game zoom ────
-   The og-gamelog-slidedown stays fixed (it needs viewport-relative placement)
-   but its width is now tied to the right-sidebar column × desktop-game-scale,
-   so it shrinks/grows at exactly the same rate as the spymaster/operative
-   blocks on the right side. */
-@media (min-width: 1025px) {
-  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
-  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open {
-    width:      calc((var(--col-right, 260px) + 20px) * var(--desktop-game-scale, 1));
-    height:     calc(clamp(210px, 30vh, 300px) * var(--desktop-game-scale, 1));
-    max-height: calc(clamp(210px, 30vh, 300px) * var(--desktop-game-scale, 1));
-    bottom: 0;
-  }
-}
-
 /* Final overrides: clue masking + desktop chat/log parity + scroll stability */
 .gamelog-left-word-chip-hidden {
   text-transform: none;
@@ -26081,6 +26066,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   body:is(.og-mode, .cozy-mode) {
     /* Slightly taller than before on desktop. */
     --og-desktop-docked-panel-h: clamp(220px, 31vh, 320px);
+    --og-desktop-gamelog-shell-w: calc(var(--col-right, 260px) + 20px);
   }
 
   /* Left docked Team Chat: match Game Log height (same on-screen size after zoom). */
@@ -26090,13 +26076,27 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     max-height: var(--og-desktop-docked-panel-h);
   }
 
-  /* Right docked Game Log keeps scale-compensation because it is outside the zoomed container. */
+  /* Right docked Game Log: match Team Chat height and apply the SAME global multiplier
+     to the entire shell (text + spacing + controls), not just width/height. */
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open {
-    height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
-    min-height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
-    max-height: calc(var(--og-desktop-docked-panel-h) * var(--desktop-game-scale, 1));
+    width: var(--og-desktop-gamelog-shell-w);
+    height: var(--og-desktop-docked-panel-h);
+    min-height: var(--og-desktop-docked-panel-h);
+    max-height: var(--og-desktop-docked-panel-h);
+    transform-origin: right bottom;
+    transform: scale(var(--desktop-game-scale, 1)) !important;
     bottom: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner {
+    height: 100%;
+    max-height: 100% !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown-inner .gamelog-entries {
+    max-height: none !important;
+    flex: 1 1 auto;
   }
 
   /* Ensure both panels keep internal scrolling even when legacy rules try to disable it. */
