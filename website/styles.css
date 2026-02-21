@@ -26578,7 +26578,10 @@ body .game-card.reveal-flip-animate .card-front .card-face-post {
   border: 1px solid var(--anim-post-card-border);
   border-color: var(--anim-post-card-border);
   background: var(--anim-post-card-bg);
-  animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  opacity: 0;
+  clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+  -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+  animation: none !important;
 }
 
 body .game-card.reveal-flip-animate .card-front .card-face-post::before {

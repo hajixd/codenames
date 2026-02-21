@@ -50,6 +50,8 @@ const CARD_CONFIRM_ANIM_MS = 4200;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
+const _frontSweepByIndex = new Map();
+const _frontSweepByCard = new WeakMap();
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -64,6 +66,120 @@ function getConfirmBackLabel(confirmBackType) {
   if (type === 'blue') return 'BLUE';
   if (type === 'assassin') return 'ASSASSIN';
   return 'NEUTRAL';
+}
+
+function buildDiagonalSweepClipPath(linePercentRaw) {
+  const linePercent = Number(linePercentRaw);
+  if (!Number.isFinite(linePercent) || linePercent <= 0) {
+    return 'polygon(0% 0%, 0% 0%, 0% 0%, 0% 0%)';
+  }
+  if (linePercent >= 200) {
+    return 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)';
+  }
+  if (linePercent < 100) {
+    return `polygon(0% 0%, ${linePercent.toFixed(3)}% 0%, 0% ${linePercent.toFixed(3)}%)`;
+  }
+  const edge = (linePercent - 100).toFixed(3);
+  return `polygon(0% 0%, 100% 0%, 100% ${edge}%, ${edge}% 100%, 0% 100%)`;
+}
+
+function clearFrontSweepAnimation(cardEl, cardIndex = null) {
+  const idx = Number(cardIndex);
+  let record = null;
+
+  if (Number.isInteger(idx) && idx >= 0) {
+    record = _frontSweepByIndex.get(idx) || null;
+  }
+  if (!record && cardEl) {
+    record = _frontSweepByCard.get(cardEl) || null;
+  }
+
+  if (record?.rafId) {
+    window.cancelAnimationFrame(record.rafId);
+  }
+  if (record?.cardEl) {
+    _frontSweepByCard.delete(record.cardEl);
+  }
+  if (record && Number.isInteger(record.idx) && record.idx >= 0 && _frontSweepByIndex.get(record.idx) === record) {
+    _frontSweepByIndex.delete(record.idx);
+  } else if (Number.isInteger(idx) && idx >= 0) {
+    _frontSweepByIndex.delete(idx);
+  }
+
+  const targetEl = cardEl || record?.cardEl || null;
+  const frontPost = targetEl?.querySelector?.('.card-front .card-face-post');
+  if (frontPost) {
+    frontPost.style.removeProperty('opacity');
+    frontPost.style.removeProperty('clip-path');
+    frontPost.style.removeProperty('-webkit-clip-path');
+    frontPost.style.removeProperty('will-change');
+  }
+}
+
+function startFrontSweepAnimation(cardEl, cardIndex = null) {
+  if (!cardEl) return;
+  const frontPost = cardEl.querySelector('.card-front .card-face-post');
+  if (!frontPost) return;
+
+  const idx = Number(cardIndex);
+  clearFrontSweepAnimation(cardEl, idx);
+
+  const totalMs = Math.max(300, CARD_CONFIRM_ANIM_MS);
+  const sweepStartMs = totalMs * 0.48;
+  const sweepEndMs = totalMs * 0.66;
+  const startedAt = performance.now();
+  const hiddenClip = 'polygon(0% 0%, 0% 0%, 0% 0%, 0% 0%)';
+  const fullClip = 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)';
+
+  frontPost.style.opacity = '0';
+  frontPost.style.clipPath = hiddenClip;
+  frontPost.style.webkitClipPath = hiddenClip;
+  frontPost.style.willChange = 'opacity, clip-path, -webkit-clip-path';
+
+  const record = { rafId: 0, idx, cardEl };
+  _frontSweepByCard.set(cardEl, record);
+  if (Number.isInteger(idx) && idx >= 0) {
+    _frontSweepByIndex.set(idx, record);
+  }
+
+  const tick = (now) => {
+    if (!cardEl.isConnected || !cardEl.classList.contains('reveal-flip-animate')) {
+      clearFrontSweepAnimation(cardEl, idx);
+      return;
+    }
+
+    const elapsedMs = now - startedAt;
+    if (elapsedMs < sweepStartMs) {
+      frontPost.style.opacity = '0';
+      frontPost.style.clipPath = hiddenClip;
+      frontPost.style.webkitClipPath = hiddenClip;
+    } else if (elapsedMs < sweepEndMs) {
+      const phase = (elapsedMs - sweepStartMs) / Math.max(1, (sweepEndMs - sweepStartMs));
+      const linePercent = -2 + (phase * 206);
+      const clip = buildDiagonalSweepClipPath(linePercent);
+      frontPost.style.opacity = '1';
+      frontPost.style.clipPath = clip;
+      frontPost.style.webkitClipPath = clip;
+    } else {
+      frontPost.style.opacity = '1';
+      frontPost.style.clipPath = fullClip;
+      frontPost.style.webkitClipPath = fullClip;
+      frontPost.style.removeProperty('will-change');
+    }
+
+    if (elapsedMs >= totalMs + 64) {
+      if (Number.isInteger(idx) && idx >= 0 && _frontSweepByIndex.get(idx) === record) {
+        _frontSweepByIndex.delete(idx);
+      }
+      _frontSweepByCard.delete(cardEl);
+      record.rafId = 0;
+      return;
+    }
+
+    record.rafId = window.requestAnimationFrame(tick);
+  };
+
+  record.rafId = window.requestAnimationFrame(tick);
 }
 
 function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
@@ -87,6 +203,7 @@ function clearCardAnimationOverlayState() {
 
 function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
+  clearFrontSweepAnimation(cardEl, cardIndex);
   cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
@@ -111,6 +228,7 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   cardEl.classList.add('reveal-flip-animate', `confirm-back-${confirmBackType}`);
   cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
   cardEl.setAttribute('data-confirm-back-type', confirmBackType);
+  startFrontSweepAnimation(cardEl, idx);
   pulseCardAnimationOverlay();
 
   const tid = window.setTimeout(() => {
