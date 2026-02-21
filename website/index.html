@@ -514,42 +514,39 @@
                   </select>
                 </label>
 
-                <label class="setting-row qp-setting" data-accent="clue">
+                <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue">
+                  <span class="setting-label">Timer mode</span>
+                  <div class="segmented qp-timer-mode" role="group" aria-label="Timer mode">
+                    <button class="seg-btn active" id="practice-page-timer-mode-turn" data-timer-mode="turn" type="button" aria-pressed="true">Per Turn</button>
+                    <button class="seg-btn" id="practice-page-timer-mode-team" data-timer-mode="team" type="button" aria-pressed="false">Per Team</button>
+                  </div>
+                </div>
+
+                <label class="setting-row qp-setting qp-setting-time" data-accent="clue" id="practice-page-turn-clue-row">
                   <span class="setting-label">Spymaster clue timer</span>
-                  <select class="input setting-select" id="practice-page-clue-timer">
-                    <option value="0" selected>∞ (no limit)</option>
-                    <option value="30">30 seconds</option>
-                    <option value="45">45 seconds</option>
-                    <option value="60">1 minute</option>
-                    <option value="120">2 minutes</option>
-                    <option value="180">3 minutes</option>
-                    <option value="240">4 minutes</option>
-                    <option value="300">5 minutes</option>
-                    <option value="360">6 minutes</option>
-                    <option value="420">7 minutes</option>
-                    <option value="480">8 minutes</option>
-                    <option value="540">9 minutes</option>
-                    <option value="600">10 minutes</option>
-                  </select>
+                  <div class="mmss-input">
+                    <input class="input mmss-part" id="practice-page-clue-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Practice clue timer minutes" />
+                    <span class="mmss-sep">:</span>
+                    <input class="input mmss-part" id="practice-page-clue-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Practice clue timer seconds" />
+                  </div>
                 </label>
 
-                <label class="setting-row qp-setting" data-accent="guess">
+                <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="practice-page-turn-guess-row">
                   <span class="setting-label">Guess timer</span>
-                  <select class="input setting-select" id="practice-page-guess-timer">
-                    <option value="0" selected>∞ (no limit)</option>
-                    <option value="30">30 seconds</option>
-                    <option value="45">45 seconds</option>
-                    <option value="60">1 minute</option>
-                    <option value="120">2 minutes</option>
-                    <option value="180">3 minutes</option>
-                    <option value="240">4 minutes</option>
-                    <option value="300">5 minutes</option>
-                    <option value="360">6 minutes</option>
-                    <option value="420">7 minutes</option>
-                    <option value="480">8 minutes</option>
-                    <option value="540">9 minutes</option>
-                    <option value="600">10 minutes</option>
-                  </select>
+                  <div class="mmss-input">
+                    <input class="input mmss-part" id="practice-page-guess-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Practice guess timer minutes" />
+                    <span class="mmss-sep">:</span>
+                    <input class="input mmss-part" id="practice-page-guess-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Practice guess timer seconds" />
+                  </div>
+                </label>
+
+                <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="practice-page-team-timer-row" style="display:none;">
+                  <span class="setting-label">Team clock</span>
+                  <div class="mmss-input">
+                    <input class="input mmss-part" id="practice-page-team-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="12" aria-label="Practice team timer minutes" />
+                    <span class="mmss-sep">:</span>
+                    <input class="input mmss-part" id="practice-page-team-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Practice team timer seconds" />
+                  </div>
                 </label>
 
                 <label class="setting-row qp-setting qp-setting-toggle" data-accent="stacking">
@@ -718,15 +715,15 @@
                     <label class="anim-choice-item" for="anim-card-pulse">
                       <input type="radio" id="anim-card-pulse" name="anim-card-style" value="pulse" />
                       <span class="anim-choice-copy">
-                        <strong>Pulse Reveal</strong>
-                        <span>No flip. Quick impact pulse on reveal.</span>
+                        <strong>Bloom Pulse</strong>
+                        <span>No flip. A polished bloom with a quick settle.</span>
                       </span>
                     </label>
                     <label class="anim-choice-item" for="anim-card-sweep">
                       <input type="radio" id="anim-card-sweep" name="anim-card-style" value="sweep" />
                       <span class="anim-choice-copy">
-                        <strong>Sweep Reveal</strong>
-                        <span>No flip. Smooth highlight sweep across the card.</span>
+                        <strong>Aurora Wash</strong>
+                        <span>No flip. A smooth color wash with subtle shine.</span>
                       </span>
                     </label>
                   </div>
@@ -752,22 +749,22 @@
                     <label class="anim-choice-item" for="anim-clue-light">
                       <input type="radio" id="anim-clue-light" name="anim-clue-style" value="light" />
                       <span class="anim-choice-copy">
-                        <strong>Light</strong>
-                        <span>Clean typography with underline accent.</span>
+                        <strong>Noir Line</strong>
+                        <span>Dark stage with sharp typography and line accents.</span>
                       </span>
                     </label>
                     <label class="anim-choice-item" for="anim-clue-cozy">
                       <input type="radio" id="anim-clue-cozy" name="anim-clue-style" value="cozy" />
                       <span class="anim-choice-copy">
-                        <strong>Cozy</strong>
-                        <span>Warm hand-drawn motion and softer pacing.</span>
+                        <strong>Noir Soft</strong>
+                        <span>Dark warm spotlight with softer motion pacing.</span>
                       </span>
                     </label>
                     <label class="anim-choice-item" for="anim-clue-og">
                       <input type="radio" id="anim-clue-og" name="anim-clue-style" value="og" />
                       <span class="anim-choice-copy">
-                        <strong>Tech</strong>
-                        <span>Scanline + digital glitch reveal.</span>
+                        <strong>Noir Tech</strong>
+                        <span>Dark scanline reveal with digital-tech accents.</span>
                       </span>
                     </label>
                   </div>
@@ -813,15 +810,15 @@
                     <label class="anim-choice-item" for="anim-peek-focus">
                       <input type="radio" id="anim-peek-focus" name="anim-peek-style" value="focus" />
                       <span class="anim-choice-copy">
-                        <strong>Focus Ring</strong>
-                        <span>No flap. A clean focus pulse around the card.</span>
+                        <strong>Focus Pulse</strong>
+                        <span>No flap. Crisp focus pulse and controlled lift.</span>
                       </span>
                     </label>
                     <label class="anim-choice-item" for="anim-peek-halo">
                       <input type="radio" id="anim-peek-halo" name="anim-peek-style" value="halo" />
                       <span class="anim-choice-copy">
-                        <strong>Halo</strong>
-                        <span>No flap. Subtle glow and label emphasis.</span>
+                        <strong>Signal Halo</strong>
+                        <span>No flap. Glow halo with clearer word emphasis.</span>
                       </span>
                     </label>
                   </div>
@@ -1078,42 +1075,39 @@
                           </select>
                         </label>
 
-                        <label class="setting-row qp-setting" data-accent="clue">
+                        <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue">
+                          <span class="setting-label">Timer mode</span>
+                          <div class="segmented qp-timer-mode" role="group" aria-label="Timer mode">
+                            <button class="seg-btn active" id="qp-timer-mode-turn" data-timer-mode="turn" type="button" aria-pressed="true">Per Turn</button>
+                            <button class="seg-btn" id="qp-timer-mode-team" data-timer-mode="team" type="button" aria-pressed="false">Per Team</button>
+                          </div>
+                        </div>
+
+                        <label class="setting-row qp-setting qp-setting-time" data-accent="clue" id="qp-turn-clue-row">
                           <span class="setting-label">Spymaster clue timer</span>
-                          <select class="input setting-select" id="qp-clue-timer">
-                            <option value="0" selected>∞ (no limit)</option>
-                            <option value="30">30 seconds</option>
-                            <option value="45">45 seconds</option>
-                            <option value="60">1 minute</option>
-                            <option value="120">2 minutes</option>
-                            <option value="180">3 minutes</option>
-                            <option value="240">4 minutes</option>
-                            <option value="300">5 minutes</option>
-                            <option value="360">6 minutes</option>
-                            <option value="420">7 minutes</option>
-                            <option value="480">8 minutes</option>
-                            <option value="540">9 minutes</option>
-                            <option value="600">10 minutes</option>
-                          </select>
+                          <div class="mmss-input">
+                            <input class="input mmss-part" id="qp-clue-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Clue timer minutes" />
+                            <span class="mmss-sep">:</span>
+                            <input class="input mmss-part" id="qp-clue-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Clue timer seconds" />
+                          </div>
                         </label>
 
-                        <label class="setting-row qp-setting" data-accent="guess">
+                        <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="qp-turn-guess-row">
                           <span class="setting-label">Guess timer</span>
-                          <select class="input setting-select" id="qp-guess-timer">
-                            <option value="0" selected>∞ (no limit)</option>
-                            <option value="30">30 seconds</option>
-                            <option value="45">45 seconds</option>
-                            <option value="60">1 minute</option>
-                            <option value="120">2 minutes</option>
-                            <option value="180">3 minutes</option>
-                            <option value="240">4 minutes</option>
-                            <option value="300">5 minutes</option>
-                            <option value="360">6 minutes</option>
-                            <option value="420">7 minutes</option>
-                            <option value="480">8 minutes</option>
-                            <option value="540">9 minutes</option>
-                            <option value="600">10 minutes</option>
-                          </select>
+                          <div class="mmss-input">
+                            <input class="input mmss-part" id="qp-guess-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Guess timer minutes" />
+                            <span class="mmss-sep">:</span>
+                            <input class="input mmss-part" id="qp-guess-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Guess timer seconds" />
+                          </div>
+                        </label>
+
+                        <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="qp-team-timer-row" style="display:none;">
+                          <span class="setting-label">Team clock</span>
+                          <div class="mmss-input">
+                            <input class="input mmss-part" id="qp-team-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="12" aria-label="Team timer minutes" />
+                            <span class="mmss-sep">:</span>
+                            <input class="input mmss-part" id="qp-team-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Team timer seconds" />
+                          </div>
                         </label>
                         <label class="setting-row qp-setting qp-setting-toggle" data-accent="stacking">
                           <span class="setting-label">Stacking clues</span>
@@ -1302,6 +1296,10 @@
         <div class="timer-fill" id="timer-fill"></div>
       </div>
       <span class="timer-text" id="timer-text">0:00</span>
+      <div class="team-timer-row" id="team-timer-row" style="display:none;">
+        <span class="team-timer-pill team-blue" id="team-timer-blue">Team Blue: ∞</span>
+        <span class="team-timer-pill team-red" id="team-timer-red">Team Red: ∞</span>
+      </div>
     </div>
   </div>
 

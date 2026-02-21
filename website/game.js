@@ -295,6 +295,10 @@ function buildLiveDraftFastPathSignature(game) {
     String(game.redSpymaster || ''),
     String(game.blueSpymaster || ''),
     String(draftToMs(game.timerEnd)),
+    String(Number.isFinite(+game.teamTimerRedMs) ? +game.teamTimerRedMs : ''),
+    String(Number.isFinite(+game.teamTimerBlueMs) ? +game.teamTimerBlueMs : ''),
+    String(normalizeQuickTimerMode(game?.quickSettings?.timerMode || game?.practice?.timerMode || 'turn')),
+    String(Number(game?.quickSettings?.teamTimerSeconds ?? game?.practice?.teamTimerSeconds ?? 0) || 0),
     cardsSig,
     teamPlayersSig(Array.isArray(game.redPlayers) ? game.redPlayers : []),
     teamPlayersSig(Array.isArray(game.bluePlayers) ? game.bluePlayers : []),
@@ -702,20 +706,31 @@ function applyLocalPracticeGuessState(game, idx, actorName) {
     timestamp: new Date().toISOString()
   };
 
+  const nextTeamAfterTurn = team === 'red' ? 'blue' : 'red';
+  const timerTransitionFields = (winner || endTurn)
+    ? getTimerTransitionFields(game, {
+      phase: winner ? 'ended' : 'spymaster',
+      team: winner ? team : nextTeamAfterTurn,
+      winner: winner || null,
+    })
+    : null;
+
   if (winner) {
     game.winner = winner;
     game.currentPhase = 'ended';
     game.pendingClue = null;
     game.liveClueDraft = null;
+    if (timerTransitionFields) Object.assign(game, timerTransitionFields);
     const winnerName = truncateTeamNameGame(winner === 'red' ? game.redTeamName : game.blueTeamName);
     game.log.push(`${winnerName} wins!`);
   } else if (endTurn) {
-    game.currentTeam = team === 'red' ? 'blue' : 'red';
+    game.currentTeam = nextTeamAfterTurn;
     game.currentPhase = 'spymaster';
     game.currentClue = null;
     game.pendingClue = null;
     game.liveClueDraft = null;
     game.guessesRemaining = 0;
+    if (timerTransitionFields) Object.assign(game, timerTransitionFields);
   }
 
   if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
@@ -944,7 +959,11 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
   game.currentClue = { word: clueWord, number: clueNumber };
   game.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
   game.currentPhase = 'operatives';
-  game.timerEnd = buildPhaseTimerEndValue(game, 'operatives');
+  Object.assign(game, getTimerTransitionFields(game, {
+    phase: 'operatives',
+    team: actingTeam,
+    winner: null,
+  }));
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
   game.clueHistory = Array.isArray(game.clueHistory) ? [...game.clueHistory] : [];
@@ -971,7 +990,11 @@ function applyLocalPracticeOperativeEndTurnState(game, actorName) {
   game.pendingClue = null;
   game.liveClueDraft = null;
   game.guessesRemaining = 0;
-  game.timerEnd = buildPhaseTimerEndValue(game, 'spymaster');
+  Object.assign(game, getTimerTransitionFields(game, {
+    phase: 'spymaster',
+    team: game.currentTeam,
+    winner: null,
+  }));
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(`${actorName} (${teamName}) ended their turn.`);
   game.updatedAtMs = Date.now();
@@ -1936,10 +1959,77 @@ function ensureQuickAtLeastOneJudge(changedEl = null) {
   else if (all[0]) all[0].checked = true;
 }
 
+function normalizeQuickTimerMode(raw) {
+  return String(raw || '').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+}
+
+function isTimedGameplayPhase(phase) {
+  const p = String(phase || '').trim().toLowerCase();
+  return p === 'spymaster' || p === 'operatives';
+}
+
+function readMmssInputSeconds(minId, secId, fallback = 0) {
+  const minRaw = parseInt(document.getElementById(minId)?.value || '0', 10);
+  const secRaw = parseInt(document.getElementById(secId)?.value || '0', 10);
+  const min = Number.isFinite(minRaw) ? Math.max(0, Math.min(99, minRaw)) : 0;
+  const sec = Number.isFinite(secRaw) ? Math.max(0, Math.min(59, secRaw)) : 0;
+  const total = (min * 60) + sec;
+  return Number.isFinite(total) ? total : fallback;
+}
+
+function writeMmssInputSeconds(minId, secId, totalSeconds = 0) {
+  const total = Number.isFinite(+totalSeconds) ? Math.max(0, Math.min(5999, +totalSeconds)) : 0;
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  const minEl = document.getElementById(minId);
+  const secEl = document.getElementById(secId);
+  if (minEl) minEl.value = String(min);
+  if (secEl) secEl.value = String(sec);
+}
+
+function clampMmssInputField(el, max) {
+  if (!el) return;
+  const raw = parseInt(el.value, 10);
+  const val = Number.isFinite(raw) ? Math.max(0, Math.min(max, raw)) : 0;
+  el.value = String(val);
+}
+
+function getQuickTimerModeFromUI() {
+  const turnBtn = document.getElementById('qp-timer-mode-turn');
+  const teamBtn = document.getElementById('qp-timer-mode-team');
+  if (teamBtn?.getAttribute('aria-pressed') === 'true' || teamBtn?.classList.contains('active')) return 'team';
+  if (turnBtn?.getAttribute('aria-pressed') === 'true' || turnBtn?.classList.contains('active')) return 'turn';
+  return 'turn';
+}
+
+function setQuickTimerModeUI(modeRaw) {
+  const mode = normalizeQuickTimerMode(modeRaw);
+  const turnBtn = document.getElementById('qp-timer-mode-turn');
+  const teamBtn = document.getElementById('qp-timer-mode-team');
+  const clueRow = document.getElementById('qp-turn-clue-row');
+  const guessRow = document.getElementById('qp-turn-guess-row');
+  const teamRow = document.getElementById('qp-team-timer-row');
+  if (turnBtn) {
+    const active = mode === 'turn';
+    turnBtn.classList.toggle('active', active);
+    turnBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  if (teamBtn) {
+    const active = mode === 'team';
+    teamBtn.classList.toggle('active', active);
+    teamBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  if (clueRow) clueRow.style.display = mode === 'turn' ? 'flex' : 'none';
+  if (guessRow) guessRow.style.display = mode === 'turn' ? 'flex' : 'none';
+  if (teamRow) teamRow.style.display = mode === 'team' ? 'flex' : 'none';
+}
+
 function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
-  const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
-  const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
+  const timerMode = getQuickTimerModeFromUI();
+  const clueTimerSeconds = readMmssInputSeconds('qp-clue-timer-min', 'qp-clue-timer-sec', 0);
+  const guessTimerSeconds = readMmssInputSeconds('qp-guess-timer-min', 'qp-guess-timer-sec', 0);
+  const teamTimerSeconds = readMmssInputSeconds('qp-team-timer-min', 'qp-team-timer-sec', 12 * 60);
   const stackingToggle = document.getElementById('qp-stacking-toggle');
   const stackingEnabled = stackingToggle ? !!stackingToggle.checked : true;
   const judgeSettings = readQuickAIJudgeSettingsFromUI();
@@ -1948,6 +2038,8 @@ function readQuickSettingsFromUI() {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
+    timerMode: normalizeQuickTimerMode(timerMode),
+    teamTimerSeconds: Number.isFinite(teamTimerSeconds) ? teamTimerSeconds : (12 * 60),
     stackingEnabled,
     aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
     aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
@@ -1963,8 +2055,10 @@ function getQuickSettings(game) {
     const judgeSettings = sanitizeAIJudgeSettings(base);
     return {
       blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
-      clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
-      guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
+      clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? Math.max(0, +base.clueTimerSeconds) : 0,
+      guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? Math.max(0, +base.guessTimerSeconds) : 0,
+      timerMode: normalizeQuickTimerMode(base.timerMode),
+      teamTimerSeconds: Number.isFinite(+base.teamTimerSeconds) ? Math.max(0, +base.teamTimerSeconds) : (12 * 60),
       stackingEnabled: base.stackingEnabled !== false,
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
       aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
@@ -1978,8 +2072,10 @@ function getQuickSettings(game) {
     const judgeSettings = sanitizeAIJudgeSettings(practice);
     return {
       blackCards: Number.isFinite(+practice.blackCards) ? +practice.blackCards : 1,
-      clueTimerSeconds: Number.isFinite(+practice.clueTimerSeconds) ? +practice.clueTimerSeconds : 0,
-      guessTimerSeconds: Number.isFinite(+practice.guessTimerSeconds) ? +practice.guessTimerSeconds : 0,
+      clueTimerSeconds: Number.isFinite(+practice.clueTimerSeconds) ? Math.max(0, +practice.clueTimerSeconds) : 0,
+      guessTimerSeconds: Number.isFinite(+practice.guessTimerSeconds) ? Math.max(0, +practice.guessTimerSeconds) : 0,
+      timerMode: normalizeQuickTimerMode(practice.timerMode),
+      teamTimerSeconds: Number.isFinite(+practice.teamTimerSeconds) ? Math.max(0, +practice.teamTimerSeconds) : (12 * 60),
       stackingEnabled: practice.stackingEnabled !== false,
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
       aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
@@ -1992,6 +2088,8 @@ function getQuickSettings(game) {
     blackCards: 1,
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
+    timerMode: 'turn',
+    teamTimerSeconds: 12 * 60,
     stackingEnabled: true,
     aiJudgesEnabled: true,
     aiChallengeEnabled: true,
@@ -2003,6 +2101,7 @@ function getQuickSettings(game) {
 
 function getPhaseTimerSeconds(game, phase) {
   const s = getQuickSettings(game);
+  if (normalizeQuickTimerMode(s.timerMode) !== 'turn') return 0;
   if (phase === 'spymaster') {
     const secs = Number(s?.clueTimerSeconds);
     return Number.isFinite(secs) ? Math.max(0, secs) : 0;
@@ -2012,6 +2111,16 @@ function getPhaseTimerSeconds(game, phase) {
     return Number.isFinite(secs) ? Math.max(0, secs) : 0;
   }
   return 0;
+}
+
+function getTeamTimerSeconds(game) {
+  const s = getQuickSettings(game);
+  const secs = Number(s?.teamTimerSeconds);
+  return Number.isFinite(secs) ? Math.max(0, secs) : 0;
+}
+
+function isTeamTimerMode(game) {
+  return normalizeQuickTimerMode(getQuickSettings(game).timerMode) === 'team';
 }
 
 function buildPhaseTimerEndValue(game, phase) {
@@ -2025,6 +2134,101 @@ function buildPhaseTimerEndValue(game, phase) {
   }
 }
 
+function toTimerTimestampFromMs(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  try {
+    return firebase.firestore.Timestamp.fromDate(new Date(ms));
+  } catch (_) {
+    return new Date(ms);
+  }
+}
+
+function getTeamClockBaseMs(game) {
+  const secs = getTeamTimerSeconds(game);
+  if (!secs) return 0;
+  return Math.max(0, Math.round(secs * 1000));
+}
+
+function getStoredTeamClockMs(game, team) {
+  const key = team === 'blue' ? 'teamTimerBlueMs' : 'teamTimerRedMs';
+  const raw = Number(game?.[key]);
+  if (Number.isFinite(raw) && raw >= 0) return Math.max(0, Math.round(raw));
+  return getTeamClockBaseMs(game);
+}
+
+function getTeamClockSnapshot(game, nowMs = Date.now()) {
+  if (!game || !isTeamTimerMode(game)) return null;
+  const baseMs = getTeamClockBaseMs(game);
+  const unlimited = baseMs <= 0;
+  let redMs = getStoredTeamClockMs(game, 'red');
+  let blueMs = getStoredTeamClockMs(game, 'blue');
+  const runningTeam = (!game?.winner && isTimedGameplayPhase(game?.currentPhase))
+    ? (game.currentTeam === 'blue' ? 'blue' : 'red')
+    : null;
+
+  if (!unlimited && runningTeam) {
+    const endMs = draftToMs(game?.timerEnd);
+    if (endMs > 0) {
+      const remaining = Math.max(0, endMs - nowMs);
+      if (runningTeam === 'red') redMs = remaining;
+      else blueMs = remaining;
+    }
+  }
+  return {
+    redMs: Math.max(0, Math.round(redMs)),
+    blueMs: Math.max(0, Math.round(blueMs)),
+    runningTeam,
+    unlimited,
+  };
+}
+
+function getTeamTimerTransitionFields(game, nextState = {}) {
+  const now = Date.now();
+  const prevPhase = String(game?.currentPhase || '');
+  const prevTeam = game?.currentTeam === 'blue' ? 'blue' : 'red';
+  const nextPhase = String(nextState.phase ?? prevPhase ?? '');
+  const nextTeamRaw = String(nextState.team ?? prevTeam ?? '');
+  const nextTeam = nextTeamRaw === 'blue' ? 'blue' : 'red';
+  const nextWinner = (typeof nextState.winner !== 'undefined') ? nextState.winner : game?.winner;
+  const resetTeamClocks = !!nextState.resetTeamClocks;
+
+  const baseMs = getTeamClockBaseMs(game);
+  const unlimited = baseMs <= 0;
+  let redMs = resetTeamClocks ? baseMs : getStoredTeamClockMs(game, 'red');
+  let blueMs = resetTeamClocks ? baseMs : getStoredTeamClockMs(game, 'blue');
+
+  const prevRunning = !game?.winner && isTimedGameplayPhase(prevPhase) && (prevTeam === 'red' || prevTeam === 'blue');
+  if (!unlimited && !resetTeamClocks && prevRunning) {
+    const endMs = draftToMs(game?.timerEnd);
+    if (endMs > 0) {
+      const remaining = Math.max(0, endMs - now);
+      if (prevTeam === 'red') redMs = remaining;
+      else blueMs = remaining;
+    }
+  }
+
+  const nextRunning = !nextWinner && isTimedGameplayPhase(nextPhase) && (nextTeam === 'red' || nextTeam === 'blue');
+  let timerEnd = null;
+  if (!unlimited && nextRunning) {
+    const activeMs = nextTeam === 'red' ? redMs : blueMs;
+    if (activeMs > 0) timerEnd = toTimerTimestampFromMs(now + activeMs);
+  }
+
+  return {
+    timerEnd,
+    teamTimerRedMs: Math.max(0, Math.round(redMs)),
+    teamTimerBlueMs: Math.max(0, Math.round(blueMs)),
+  };
+}
+
+function getTimerTransitionFields(game, nextState = {}) {
+  const nextPhase = String(nextState.phase ?? game?.currentPhase ?? '');
+  const nextWinner = (typeof nextState.winner !== 'undefined') ? nextState.winner : game?.winner;
+  if (isTeamTimerMode(game)) return getTeamTimerTransitionFields(game, nextState);
+  if (nextWinner || !isTimedGameplayPhase(nextPhase)) return { timerEnd: null };
+  return { timerEnd: buildPhaseTimerEndValue(game, nextPhase) };
+}
+
 function formatSeconds(sec) {
   const s = parseInt(sec || 0, 10);
   if (!s) return '∞';
@@ -2036,12 +2240,27 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, aiJudgesEnabled: true, aiChallengeEnabled: true, enabledAIJudges: getAIJudgeDefaultKeys(), vibe: '' };
+  const s = settings || {
+    blackCards: 1,
+    clueTimerSeconds: 0,
+    guessTimerSeconds: 0,
+    timerMode: 'turn',
+    teamTimerSeconds: 12 * 60,
+    stackingEnabled: true,
+    aiJudgesEnabled: true,
+    aiChallengeEnabled: true,
+    enabledAIJudges: getAIJudgeDefaultKeys(),
+    vibe: ''
+  };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
   const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
   const challengeStr = s.aiJudgesEnabled === false ? 'Off' : (s.aiChallengeEnabled === false ? 'Off' : 'On');
   const judgesStr = formatAIJudgeSettingsSummary(s);
-  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
+  const timerMode = normalizeQuickTimerMode(s.timerMode);
+  const timerStr = timerMode === 'team'
+    ? `Team ${formatSeconds(s.teamTimerSeconds)}`
+    : `Clue ${formatSeconds(s.clueTimerSeconds)} · Guess ${formatSeconds(s.guessTimerSeconds)}`;
+  return `Assassin: ${s.blackCards} · Timer: ${timerStr} (${timerMode === 'team' ? 'Per Team' : 'Per Turn'}) · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
 }
 
 
@@ -2701,6 +2920,9 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const clueTimerSeconds = Number.isFinite(clueTimerRaw) ? Math.max(0, clueTimerRaw) : 0;
   const guessTimerRaw = parseInt(opts.guessTimerSeconds, 10);
   const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
+  const timerMode = normalizeQuickTimerMode(opts.timerMode || 'turn');
+  const teamTimerRaw = parseInt(opts.teamTimerSeconds, 10);
+  const teamTimerSeconds = Number.isFinite(teamTimerRaw) ? Math.max(0, teamTimerRaw) : (12 * 60);
   const stackingEnabled = opts?.stackingEnabled !== false;
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
@@ -2709,6 +2931,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     blackCards,
     clueTimerSeconds,
     guessTimerSeconds,
+    timerMode,
+    teamTimerSeconds,
     stackingEnabled,
     aiJudgesEnabled,
     aiChallengeEnabled,
@@ -2789,6 +3013,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     liveClueDraft: null,
     guessesRemaining: 0,
     timerEnd: null,
+    teamTimerRedMs: null,
+    teamTimerBlueMs: null,
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     winner: null,
@@ -2809,6 +3035,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
       blackCards,
       clueTimerSeconds,
       guessTimerSeconds,
+      timerMode,
+      teamTimerSeconds,
       stackingEnabled,
       aiJudgesEnabled,
       aiChallengeEnabled,
@@ -2821,7 +3049,12 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     lastMoveAtMs: Date.now(),
     updatedAtMs: Date.now(),
   };
-  gameData.timerEnd = buildPhaseTimerEndValue(gameData, 'spymaster');
+  Object.assign(gameData, getTimerTransitionFields(gameData, {
+    phase: 'spymaster',
+    team: 'red',
+    winner: null,
+    resetTeamClocks: true,
+  }));
 
   setLocalPracticeGame(gameData.id, gameData, { skipRender: true });
   return gameData.id;
@@ -3003,6 +3236,16 @@ function initGameUI() {
   document.getElementById('quick-settings-close')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-backdrop')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-offer')?.addEventListener('click', offerQuickRulesFromModal);
+  document.getElementById('qp-timer-mode-turn')?.addEventListener('click', () => setQuickTimerModeUI('turn'));
+  document.getElementById('qp-timer-mode-team')?.addEventListener('click', () => setQuickTimerModeUI('team'));
+  ['qp-clue-timer-min', 'qp-guess-timer-min', 'qp-team-timer-min'].forEach((id) => {
+    const el = document.getElementById(id);
+    el?.addEventListener('blur', () => clampMmssInputField(el, 99));
+  });
+  ['qp-clue-timer-sec', 'qp-guess-timer-sec', 'qp-team-timer-sec'].forEach((id) => {
+    const el = document.getElementById(id);
+    el?.addEventListener('blur', () => clampMmssInputField(el, 59));
+  });
   document.getElementById('qp-ai-judges-toggle')?.addEventListener('change', (e) => {
     const enabled = !!e?.currentTarget?.checked;
     if (enabled) ensureQuickAtLeastOneJudge();
@@ -3660,15 +3903,15 @@ function openQuickSettingsModal() {
   const s = getQuickSettings(g);
 
   const blackCardsEl = document.getElementById('qp-black-cards');
-  const clueTimerEl = document.getElementById('qp-clue-timer');
-  const guessTimerEl = document.getElementById('qp-guess-timer');
   const stackingToggleEl = document.getElementById('qp-stacking-toggle');
   const aiJudgesToggleEl = document.getElementById('qp-ai-judges-toggle');
   const aiChallengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
 
   if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
-  if (clueTimerEl) clueTimerEl.value = String(s.clueTimerSeconds ?? 0);
-  if (guessTimerEl) guessTimerEl.value = String(s.guessTimerSeconds ?? 0);
+  setQuickTimerModeUI(s.timerMode || 'turn');
+  writeMmssInputSeconds('qp-clue-timer-min', 'qp-clue-timer-sec', s.clueTimerSeconds ?? 0);
+  writeMmssInputSeconds('qp-guess-timer-min', 'qp-guess-timer-sec', s.guessTimerSeconds ?? 0);
+  writeMmssInputSeconds('qp-team-timer-min', 'qp-team-timer-sec', s.teamTimerSeconds ?? (12 * 60));
   if (stackingToggleEl) stackingToggleEl.checked = s.stackingEnabled !== false;
   const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, getAIJudgeDefaultKeys());
   if (aiJudgesToggleEl) aiJudgesToggleEl.checked = s.aiJudgesEnabled !== false;
@@ -4154,10 +4397,14 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
     liveClueDraft: null,
     guessesRemaining: 0,
     timerEnd: null,
+    teamTimerRedMs: null,
+    teamTimerBlueMs: null,
     quickSettings: {
       blackCards: settings.blackCards,
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
+      timerMode: normalizeQuickTimerMode(settings.timerMode),
+      teamTimerSeconds: Number.isFinite(+settings.teamTimerSeconds) ? Math.max(0, +settings.teamTimerSeconds) : (12 * 60),
       stackingEnabled: settings.stackingEnabled !== false,
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
       aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
@@ -4199,6 +4446,8 @@ async function ensureQuickPlayGameExists() {
         blackCards: 1,
         clueTimerSeconds: 0,
         guessTimerSeconds: 0,
+        timerMode: 'turn',
+        teamTimerSeconds: 12 * 60,
         stackingEnabled: true,
         aiJudgesEnabled: true,
         aiChallengeEnabled: true,
@@ -4212,6 +4461,26 @@ async function ensureQuickPlayGameExists() {
       if (typeof next.stackingEnabled === 'undefined') {
         next.stackingEnabled = true;
         changed = true;
+      }
+      if (typeof next.timerMode === 'undefined') {
+        next.timerMode = 'turn';
+        changed = true;
+      } else {
+        const normalizedMode = normalizeQuickTimerMode(next.timerMode);
+        if (next.timerMode !== normalizedMode) {
+          next.timerMode = normalizedMode;
+          changed = true;
+        }
+      }
+      if (!Number.isFinite(+next.teamTimerSeconds)) {
+        next.teamTimerSeconds = 12 * 60;
+        changed = true;
+      } else {
+        const teamSecs = Math.max(0, +next.teamTimerSeconds);
+        if (+next.teamTimerSeconds !== teamSecs) {
+          next.teamTimerSeconds = teamSecs;
+          changed = true;
+        }
       }
       if (typeof next.aiJudgesEnabled === 'undefined') {
         next.aiJudgesEnabled = true;
@@ -4528,6 +4797,10 @@ async function maybeAutoStartQuickPlay(game) {
   const s0 = getQuickSettings(game);
   const settingsSig0 = JSON.stringify({
     blackCards: Number(s0.blackCards || 1),
+    clueTimerSeconds: Number(s0.clueTimerSeconds || 0),
+    guessTimerSeconds: Number(s0.guessTimerSeconds || 0),
+    timerMode: normalizeQuickTimerMode(s0.timerMode),
+    teamTimerSeconds: Number(s0.teamTimerSeconds || 0),
     stackingEnabled: s0.stackingEnabled !== false,
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
     aiChallengeEnabled: s0.aiChallengeEnabled !== false,
@@ -4557,6 +4830,10 @@ async function maybeAutoStartQuickPlay(game) {
       const s = getQuickSettings(g);
       const settingsSig1 = JSON.stringify({
         blackCards: Number(s.blackCards || 1),
+        clueTimerSeconds: Number(s.clueTimerSeconds || 0),
+        guessTimerSeconds: Number(s.guessTimerSeconds || 0),
+        timerMode: normalizeQuickTimerMode(s.timerMode),
+        teamTimerSeconds: Number(s.teamTimerSeconds || 0),
         stackingEnabled: s.stackingEnabled !== false,
         aiJudgesEnabled: s.aiJudgesEnabled !== false,
         aiChallengeEnabled: s.aiChallengeEnabled !== false,
@@ -4577,7 +4854,12 @@ async function maybeAutoStartQuickPlay(game) {
       const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
-      const startTimerEnd = (startPhase === 'spymaster') ? buildPhaseTimerEndValue(g, 'spymaster') : null;
+      const timerFields = getTimerTransitionFields(g, {
+        phase: startPhase,
+        team: firstTeam,
+        winner: null,
+        resetTeamClocks: true,
+      });
 
       tx.update(ref, {
         cards,
@@ -4593,7 +4875,7 @@ async function maybeAutoStartQuickPlay(game) {
         pendingClue: null,
         liveClueDraft: null,
         guessesRemaining: 0,
-        timerEnd: startTimerEnd,
+        ...timerFields,
         winner: null,
         log: firebase.firestore.FieldValue.arrayUnion('All players ready. Starting game…'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -4628,6 +4910,10 @@ window.startQuickGame = async function startQuickGame(gameId) {
   const s0 = getQuickSettings(g0);
   const settingsSig0 = JSON.stringify({
     blackCards: Number(s0.blackCards || 1),
+    clueTimerSeconds: Number(s0.clueTimerSeconds || 0),
+    guessTimerSeconds: Number(s0.guessTimerSeconds || 0),
+    timerMode: normalizeQuickTimerMode(s0.timerMode),
+    teamTimerSeconds: Number(s0.teamTimerSeconds || 0),
     stackingEnabled: s0.stackingEnabled !== false,
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
     aiChallengeEnabled: s0.aiChallengeEnabled !== false,
@@ -4658,6 +4944,10 @@ window.startQuickGame = async function startQuickGame(gameId) {
       const qs = getQuickSettings(g);
       const settingsSig1 = JSON.stringify({
         blackCards: Number(qs.blackCards || 1),
+        clueTimerSeconds: Number(qs.clueTimerSeconds || 0),
+        guessTimerSeconds: Number(qs.guessTimerSeconds || 0),
+        timerMode: normalizeQuickTimerMode(qs.timerMode),
+        teamTimerSeconds: Number(qs.teamTimerSeconds || 0),
         stackingEnabled: qs.stackingEnabled !== false,
         aiJudgesEnabled: qs.aiJudgesEnabled !== false,
         aiChallengeEnabled: qs.aiChallengeEnabled !== false,
@@ -4675,7 +4965,12 @@ window.startQuickGame = async function startQuickGame(gameId) {
       const redSpy = redPlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const blueSpy = bluePlayers.find(p => String(p?.role || 'operative') === 'spymaster')?.name || null;
       const startPhase = (redSpy && blueSpy) ? 'spymaster' : 'role-selection';
-      const startTimerEnd = (startPhase === 'spymaster') ? buildPhaseTimerEndValue(g, 'spymaster') : null;
+      const timerFields = getTimerTransitionFields(g, {
+        phase: startPhase,
+        team: firstTeam,
+        winner: null,
+        resetTeamClocks: true,
+      });
 
       tx.update(ref, {
         cards,
@@ -4691,7 +4986,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
         pendingClue: null,
         liveClueDraft: null,
         guessesRemaining: 0,
-        timerEnd: startTimerEnd,
+        ...timerFields,
         winner: null,
         log: firebase.firestore.FieldValue.arrayUnion('Game started.'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -6299,11 +6594,17 @@ function renderAdvancedFeatures() {
 
   // Handle timer if present
   const timerPhase = String(currentGame?.currentPhase || '');
+  const timerMode = normalizeQuickTimerMode(getQuickSettings(currentGame).timerMode);
   if (currentGame?.winner) {
     stopGameTimer();
   } else if (timerPhase === 'spymaster' || timerPhase === 'operatives') {
-    if (currentGame?.timerEnd) startGameTimer(currentGame.timerEnd, timerPhase);
-    else showStaticGameTimer(timerPhase);
+    if (timerMode === 'team') {
+      startTeamGameTimer(currentGame);
+    } else if (currentGame?.timerEnd) {
+      startGameTimer(currentGame.timerEnd, timerPhase);
+    } else {
+      showStaticGameTimer(timerPhase);
+    }
   } else {
     stopGameTimer();
   }
@@ -7533,13 +7834,18 @@ function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
   const clueLog = `${teamName} Spymaster: "${pending.word}" for ${pending.number}`;
   const logLines = [clueLog];
   if (opts.review) logLines.push(buildCouncilSummaryLine(pending, opts.review));
+  const timerFields = getTimerTransitionFields(game, {
+    phase: 'operatives',
+    team: pending.team === 'blue' ? 'blue' : 'red',
+    winner: null,
+  });
   const updates = {
     currentClue: { word: pending.word, number: pending.number },
     pendingClue: firebase.firestore.FieldValue.delete(),
     liveClueDraft: firebase.firestore.FieldValue.delete(),
     guessesRemaining: (pending.number === 0 ? 0 : (pending.number + 1)),
     currentPhase: 'operatives',
-    timerEnd: buildPhaseTimerEndValue(game, 'operatives'),
+    ...timerFields,
     log: firebase.firestore.FieldValue.arrayUnion(...logLines),
     clueHistory: firebase.firestore.FieldValue.arrayUnion(buildClueEntryFromPending(pending)),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -7550,12 +7856,17 @@ function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
 
 function applyAcceptedClueLocalState(draft, pending, opts = {}) {
   const teamName = pending.team === 'red' ? (draft.redTeamName || 'Red Team') : (draft.blueTeamName || 'Blue Team');
+  const timerFields = getTimerTransitionFields(draft, {
+    phase: 'operatives',
+    team: pending.team === 'blue' ? 'blue' : 'red',
+    winner: null,
+  });
   draft.currentClue = { word: pending.word, number: pending.number };
   draft.pendingClue = null;
   draft.liveClueDraft = null;
   draft.guessesRemaining = (pending.number === 0 ? 0 : (pending.number + 1));
   draft.currentPhase = 'operatives';
-  draft.timerEnd = buildPhaseTimerEndValue(draft, 'operatives');
+  Object.assign(draft, timerFields);
   draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
   draft.log.push(`${teamName} Spymaster: "${pending.word}" for ${pending.number}`);
   if (opts.review) draft.log.push(buildCouncilSummaryLine(pending, opts.review));
@@ -9078,6 +9389,11 @@ async function selectRole(role) {
       }
       if (draft.redSpymaster && draft.blueSpymaster) {
         draft.currentPhase = 'spymaster';
+        Object.assign(draft, getTimerTransitionFields(draft, {
+          phase: 'spymaster',
+          team: draft.currentTeam === 'blue' ? 'blue' : 'red',
+          winner: null,
+        }));
         draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
         draft.log.push('Game started! Red team goes first.');
       }
@@ -9107,7 +9423,11 @@ async function selectRole(role) {
 
   if (willHaveRedSpymaster && willHaveBlueSpymaster) {
     updates.currentPhase = 'spymaster';
-    updates.timerEnd = buildPhaseTimerEndValue(currentGame, 'spymaster');
+    Object.assign(updates, getTimerTransitionFields(currentGame, {
+      phase: 'spymaster',
+      team: currentGame.currentTeam === 'blue' ? 'blue' : 'red',
+      winner: null,
+    }));
     updates.log = firebase.firestore.FieldValue.arrayUnion('Game started! Red team goes first.');
   }
 
@@ -9367,17 +9687,26 @@ async function handleCardClick(cardIndex) {
         updates.currentPhase = 'ended';
         updates.pendingClue = firebase.firestore.FieldValue.delete();
         updates.liveClueDraft = firebase.firestore.FieldValue.delete();
-        updates.timerEnd = null;
+        Object.assign(updates, getTimerTransitionFields(liveGame, {
+          phase: 'ended',
+          team: teamLive,
+          winner,
+        }));
         const winnerName = truncateTeamNameGame(winner === 'red' ? liveGame.redTeamName : liveGame.blueTeamName);
         logEntries.push(`${winnerName} wins!`);
       } else if (endTurn) {
-        updates.currentTeam = teamLive === 'red' ? 'blue' : 'red';
+        const nextTeam = teamLive === 'red' ? 'blue' : 'red';
+        updates.currentTeam = nextTeam;
         updates.currentPhase = 'spymaster';
         updates.currentClue = null;
         updates.pendingClue = firebase.firestore.FieldValue.delete();
         updates.liveClueDraft = firebase.firestore.FieldValue.delete();
         updates.guessesRemaining = 0;
-        updates.timerEnd = buildPhaseTimerEndValue(liveGame, 'spymaster');
+        Object.assign(updates, getTimerTransitionFields(liveGame, {
+          phase: 'spymaster',
+          team: nextTeam,
+          winner: null,
+        }));
       }
       updates.log = firebase.firestore.FieldValue.arrayUnion(...logEntries);
 
@@ -9459,6 +9788,11 @@ async function handleEndTurn() {
       draft.pendingClue = null;
       draft.liveClueDraft = null;
       draft.guessesRemaining = 0;
+      Object.assign(draft, getTimerTransitionFields(draft, {
+        phase: 'spymaster',
+        team: draft.currentTeam,
+        winner: null,
+      }));
       draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
       draft.log.push(`${userName} (${draftTeamName}) ended their turn.`);
       draft.updatedAtMs = Date.now();
@@ -9469,14 +9803,19 @@ async function handleEndTurn() {
   }
 
   try {
+    const nextTeam = currentGame.currentTeam === 'red' ? 'blue' : 'red';
     await db.collection('games').doc(currentGame.id).update({
-      currentTeam: currentGame.currentTeam === 'red' ? 'blue' : 'red',
+      currentTeam: nextTeam,
       currentPhase: 'spymaster',
       currentClue: null,
       pendingClue: firebase.firestore.FieldValue.delete(),
       liveClueDraft: firebase.firestore.FieldValue.delete(),
       guessesRemaining: 0,
-      timerEnd: buildPhaseTimerEndValue(currentGame, 'spymaster'),
+      ...getTimerTransitionFields(currentGame, {
+        phase: 'spymaster',
+        team: nextTeam,
+        winner: null,
+      }),
       log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ended their turn.`),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -9937,6 +10276,7 @@ let timerBackfillLastAt = 0;
 
 function maybeBackfillCurrentTurnTimer(game) {
   if (!game || game.type !== 'quick' || game.winner) return;
+  if (isTeamTimerMode(game)) return;
   const phase = String(game.currentPhase || '');
   if (phase !== 'spymaster' && phase !== 'operatives') return;
   if (game.timerEnd) return;
@@ -9958,6 +10298,7 @@ function maybeBackfillCurrentTurnTimer(game) {
     const snap = await tx.get(ref);
     if (!snap.exists) return;
     const current = snap.data() || {};
+    if (isTeamTimerMode({ quickSettings: current.quickSettings })) return;
     if (current.winner) return;
     if (String(current.currentPhase || '') !== phase) return;
     if (String(current.currentTeam || '') !== String(game.currentTeam || '')) return;
@@ -11119,6 +11460,24 @@ function formatPhaseTimerText(remainingMs, phase) {
   return `${getRoleLabelForPhase(phase)}: ${time}`;
 }
 
+function formatTeamClockTime(remainingMs, unlimited = false) {
+  if (unlimited) return '∞';
+  const safeRemaining = Math.max(0, Number(remainingMs) || 0);
+  const totalSeconds = safeRemaining / 1000;
+  const minutes = Math.floor(totalSeconds / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  const tenths = Math.floor((safeRemaining % 1000) / 100);
+  return `${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
+}
+
+function getTeamTimerLabel(team) {
+  if (!currentGame) return team === 'blue' ? 'Team Blue' : 'Team Red';
+  const raw = team === 'blue' ? String(currentGame.blueTeamName || 'Blue') : String(currentGame.redTeamName || 'Red');
+  const clean = raw.trim() || (team === 'blue' ? 'Blue' : 'Red');
+  if (/^team\s+/i.test(clean)) return clean;
+  return `Team ${clean}`;
+}
+
 function updateOgMobileTurnStrip(timerText, phaseOverride) {
   const stripEl = document.getElementById('og-mobile-turn-strip');
   const stripTextEl = document.getElementById('og-mobile-turn-strip-text');
@@ -11206,6 +11565,7 @@ function startGameTimer(endTime, phase) {
   const timerEl = document.getElementById('game-timer');
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
+  const teamRowEl = document.getElementById('team-timer-row');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
@@ -11213,6 +11573,10 @@ function startGameTimer(endTime, phase) {
   if (!timerEl || !fillEl || !textEl) return;
 
   timerEl.style.display = 'flex';
+  timerEl.classList.remove('team-mode');
+  if (teamRowEl) teamRowEl.style.display = 'none';
+  fillEl.style.display = '';
+  textEl.style.display = '';
   if (ogTimerEl) ogTimerEl.style.display = 'inline-flex';
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
@@ -11261,6 +11625,77 @@ function startGameTimer(endTime, phase) {
   }, 100);
 }
 
+function startTeamGameTimer(game) {
+  stopGameTimer();
+
+  const timerEl = document.getElementById('game-timer');
+  const fillEl = document.getElementById('timer-fill');
+  const textEl = document.getElementById('timer-text');
+  const teamRowEl = document.getElementById('team-timer-row');
+  const blueEl = document.getElementById('team-timer-blue');
+  const redEl = document.getElementById('team-timer-red');
+  const ogTimerEl = document.getElementById('og-topbar-timer');
+  const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
+  const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
+  if (!timerEl || !fillEl || !textEl || !teamRowEl || !blueEl || !redEl) return;
+
+  timerEl.style.display = 'flex';
+  timerEl.classList.add('team-mode');
+  fillEl.style.display = 'none';
+  textEl.style.display = 'none';
+  teamRowEl.style.display = 'flex';
+
+  if (ogTimerEl) ogTimerEl.style.display = 'inline-flex';
+  if (ogTimerPhaseEl) ogTimerPhaseEl.textContent = 'TEAM';
+
+  const render = () => {
+    const live = currentGame || game;
+    const snap = getTeamClockSnapshot(live, Date.now());
+    if (!snap) {
+      stopGameTimer();
+      return;
+    }
+
+    const blueText = `${getTeamTimerLabel('blue')}: ${formatTeamClockTime(snap.blueMs, snap.unlimited)}`;
+    const redText = `${getTeamTimerLabel('red')}: ${formatTeamClockTime(snap.redMs, snap.unlimited)}`;
+    blueEl.textContent = blueText;
+    redEl.textContent = redText;
+
+    blueEl.classList.remove('is-active', 'is-idle', 'warning', 'danger');
+    redEl.classList.remove('is-active', 'is-idle', 'warning', 'danger');
+
+    if (snap.runningTeam === 'blue') {
+      blueEl.classList.add('is-active');
+      redEl.classList.add('is-idle');
+    } else if (snap.runningTeam === 'red') {
+      redEl.classList.add('is-active');
+      blueEl.classList.add('is-idle');
+    }
+
+    if (!snap.unlimited && snap.runningTeam) {
+      const activeMs = snap.runningTeam === 'blue' ? snap.blueMs : snap.redMs;
+      const seconds = Math.ceil(activeMs / 1000);
+      if (seconds <= 10) {
+        (snap.runningTeam === 'blue' ? blueEl : redEl).classList.add('danger');
+      } else if (seconds <= 30) {
+        (snap.runningTeam === 'blue' ? blueEl : redEl).classList.add('warning');
+      }
+    }
+
+    const activeTimerText = snap.runningTeam
+      ? `${getTeamTimerLabel(snap.runningTeam)}: ${formatTeamClockTime(snap.runningTeam === 'blue' ? snap.blueMs : snap.redMs, snap.unlimited)}`
+      : `${getTeamTimerLabel('red')}: ${formatTeamClockTime(snap.redMs, snap.unlimited)}`;
+    if (ogTimerTextEl) ogTimerTextEl.textContent = activeTimerText;
+    updateOgMobileTurnStrip(activeTimerText, live?.currentPhase);
+    try {
+      updateOgPhaseBannerTimerText(activeTimerText, live?.currentPhase);
+    } catch (_) {}
+  };
+
+  render();
+  gameTimerInterval = setInterval(render, 100);
+}
+
 function showStaticGameTimer(phase) {
   if (gameTimerInterval) {
     clearInterval(gameTimerInterval);
@@ -11271,12 +11706,17 @@ function showStaticGameTimer(phase) {
   const timerEl = document.getElementById('game-timer');
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
+  const teamRowEl = document.getElementById('team-timer-row');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
   if (!timerEl || !fillEl || !textEl) return;
 
   timerEl.style.display = 'flex';
+  timerEl.classList.remove('team-mode');
+  fillEl.style.display = '';
+  textEl.style.display = '';
+  if (teamRowEl) teamRowEl.style.display = 'none';
   fillEl.style.width = '100%';
   fillEl.classList.remove('warning', 'danger');
   textEl.classList.remove('warning', 'danger');
@@ -11308,8 +11748,15 @@ function stopGameTimer() {
   gameTimerEnd = null;
 
   const timerEl = document.getElementById('game-timer');
+  const fillEl = document.getElementById('timer-fill');
+  const textEl = document.getElementById('timer-text');
+  const teamRowEl = document.getElementById('team-timer-row');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   if (timerEl) timerEl.style.display = 'none';
+  if (timerEl) timerEl.classList.remove('team-mode');
+  if (fillEl) fillEl.style.display = '';
+  if (textEl) textEl.style.display = '';
+  if (teamRowEl) teamRowEl.style.display = 'none';
   if (ogTimerEl) {
     ogTimerEl.style.display = 'none';
     ogTimerEl.classList.remove('warning', 'danger');

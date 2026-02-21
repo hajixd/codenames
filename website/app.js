@@ -13004,6 +13004,9 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const clueTimerSeconds = Number.isFinite(clueTimerRaw) ? Math.max(0, clueTimerRaw) : 0;
   const guessTimerRaw = parseInt(opts?.guessTimerSeconds, 10);
   const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
+  const timerMode = String(opts?.timerMode || 'turn').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+  const teamTimerRaw = parseInt(opts?.teamTimerSeconds, 10);
+  const teamTimerSeconds = Number.isFinite(teamTimerRaw) ? Math.max(0, teamTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
@@ -13030,6 +13033,8 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
     blackCards,
     clueTimerSeconds,
     guessTimerSeconds,
+    timerMode,
+    teamTimerSeconds,
     stackingEnabled,
     aiJudgesEnabled,
     aiChallengeEnabled,
@@ -13060,8 +13065,17 @@ function initPracticePage() {
   const settingsStatusEl = document.getElementById('practice-page-settings-status');
   const settingsVibeEl = document.getElementById('practice-page-vibe');
   const settingsBlackCardsEl = document.getElementById('practice-page-black-cards');
-  const settingsClueTimerEl = document.getElementById('practice-page-clue-timer');
-  const settingsGuessTimerEl = document.getElementById('practice-page-guess-timer');
+  const settingsTimerModeTurnBtn = document.getElementById('practice-page-timer-mode-turn');
+  const settingsTimerModeTeamBtn = document.getElementById('practice-page-timer-mode-team');
+  const settingsTurnClueRowEl = document.getElementById('practice-page-turn-clue-row');
+  const settingsTurnGuessRowEl = document.getElementById('practice-page-turn-guess-row');
+  const settingsTeamTimerRowEl = document.getElementById('practice-page-team-timer-row');
+  const settingsClueTimerMinEl = document.getElementById('practice-page-clue-timer-min');
+  const settingsClueTimerSecEl = document.getElementById('practice-page-clue-timer-sec');
+  const settingsGuessTimerMinEl = document.getElementById('practice-page-guess-timer-min');
+  const settingsGuessTimerSecEl = document.getElementById('practice-page-guess-timer-sec');
+  const settingsTeamTimerMinEl = document.getElementById('practice-page-team-timer-min');
+  const settingsTeamTimerSecEl = document.getElementById('practice-page-team-timer-sec');
   const settingsStackingToggleEl = document.getElementById('practice-page-stacking-toggle');
   const settingsAiJudgesToggleEl = document.getElementById('practice-page-ai-judges-toggle');
   const settingsAiChallengeRowEl = document.getElementById('practice-page-ai-challenge-row');
@@ -13078,6 +13092,8 @@ function initPracticePage() {
       blackCards: 1,
       clueTimerSeconds: 0,
       guessTimerSeconds: 0,
+      timerMode: 'turn',
+      teamTimerSeconds: 12 * 60,
       stackingEnabled: true,
       aiJudgesEnabled: true,
       aiChallengeEnabled: true,
@@ -13212,8 +13228,36 @@ function initPracticePage() {
     return Math.max(min, Math.min(max, n));
   };
 
+  const normalizeTimerMode = (raw) => String(raw || '').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+
+  const splitSecondsToClockParts = (seconds) => {
+    const total = normalizeInt(seconds, 0, 0, 5999);
+    const min = Math.floor(total / 60);
+    const sec = total % 60;
+    return { min, sec };
+  };
+
+  const readClockPartsToSeconds = (minEl, secEl, fallback = 0) => {
+    const mm = normalizeInt(minEl?.value, 0, 0, 99);
+    const ss = normalizeInt(secEl?.value, 0, 0, 59);
+    const total = (mm * 60) + ss;
+    return Number.isFinite(total) ? total : fallback;
+  };
+
+  const writeClockParts = (minEl, secEl, seconds) => {
+    const parts = splitSecondsToClockParts(seconds);
+    if (minEl) minEl.value = String(parts.min);
+    if (secEl) secEl.value = String(parts.sec);
+  };
+
+  const normalizeClockInput = (el, max) => {
+    if (!el) return;
+    const n = normalizeInt(el.value, 0, 0, max);
+    el.value = String(n);
+  };
+
   const formatSeconds = (sec) => {
-    const s = normalizeInt(sec, 0, 0, 600);
+    const s = normalizeInt(sec, 0, 0, 5999);
     if (!s) return '∞';
     if (s % 60 === 0) return `${s / 60}m`;
     return `${s}s`;
@@ -13226,15 +13270,38 @@ function initPracticePage() {
       ? 'Off'
       : (s.aiChallengeEnabled === false ? 'Off' : 'On');
     const judgesStr = formatJudgeSummary(s);
+    const timerMode = normalizeTimerMode(s.timerMode);
+    const timerStr = timerMode === 'team'
+      ? `Team: ${formatSeconds(s.teamTimerSeconds)}`
+      : `Turn: Clue ${formatSeconds(s.clueTimerSeconds)} · Guess ${formatSeconds(s.guessTimerSeconds)}`;
     const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-    return `Rules: Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
+    return `Rules: Assassin: ${s.blackCards} · Timer: ${timerStr} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
+  };
+
+  const setTimerModeUi = (modeRaw) => {
+    const mode = normalizeTimerMode(modeRaw);
+    if (settingsTimerModeTurnBtn) {
+      const isActive = mode === 'turn';
+      settingsTimerModeTurnBtn.classList.toggle('active', isActive);
+      settingsTimerModeTurnBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
+    if (settingsTimerModeTeamBtn) {
+      const isActive = mode === 'team';
+      settingsTimerModeTeamBtn.classList.toggle('active', isActive);
+      settingsTimerModeTeamBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
+    if (settingsTurnClueRowEl) settingsTurnClueRowEl.style.display = mode === 'turn' ? 'flex' : 'none';
+    if (settingsTurnGuessRowEl) settingsTurnGuessRowEl.style.display = mode === 'turn' ? 'flex' : 'none';
+    if (settingsTeamTimerRowEl) settingsTeamTimerRowEl.style.display = mode === 'team' ? 'flex' : 'none';
   };
 
   const syncModalFromState = () => {
     if (settingsVibeEl) settingsVibeEl.value = state.settings.vibe || '';
     if (settingsBlackCardsEl) settingsBlackCardsEl.value = String(state.settings.blackCards || 1);
-    if (settingsClueTimerEl) settingsClueTimerEl.value = String(state.settings.clueTimerSeconds || 0);
-    if (settingsGuessTimerEl) settingsGuessTimerEl.value = String(state.settings.guessTimerSeconds || 0);
+    setTimerModeUi(state.settings.timerMode);
+    writeClockParts(settingsClueTimerMinEl, settingsClueTimerSecEl, state.settings.clueTimerSeconds || 0);
+    writeClockParts(settingsGuessTimerMinEl, settingsGuessTimerSecEl, state.settings.guessTimerSeconds || 0);
+    writeClockParts(settingsTeamTimerMinEl, settingsTeamTimerSecEl, state.settings.teamTimerSeconds || 0);
     if (settingsStackingToggleEl) settingsStackingToggleEl.checked = state.settings.stackingEnabled !== false;
     if (settingsAiJudgesToggleEl) settingsAiJudgesToggleEl.checked = state.settings.aiJudgesEnabled !== false;
     if (settingsAiChallengeToggleEl) settingsAiChallengeToggleEl.checked = state.settings.aiChallengeEnabled !== false;
@@ -13248,8 +13315,10 @@ function initPracticePage() {
   const syncStateFromModal = () => {
     state.settings.vibe = String(settingsVibeEl?.value || '').trim();
     state.settings.blackCards = normalizeInt(settingsBlackCardsEl?.value, 1, 1, 3);
-    state.settings.clueTimerSeconds = normalizeInt(settingsClueTimerEl?.value, 0, 0, 600);
-    state.settings.guessTimerSeconds = normalizeInt(settingsGuessTimerEl?.value, 0, 0, 600);
+    state.settings.timerMode = (settingsTimerModeTeamBtn?.getAttribute('aria-pressed') === 'true') ? 'team' : 'turn';
+    state.settings.clueTimerSeconds = readClockPartsToSeconds(settingsClueTimerMinEl, settingsClueTimerSecEl, 0);
+    state.settings.guessTimerSeconds = readClockPartsToSeconds(settingsGuessTimerMinEl, settingsGuessTimerSecEl, 0);
+    state.settings.teamTimerSeconds = readClockPartsToSeconds(settingsTeamTimerMinEl, settingsTeamTimerSecEl, 12 * 60);
     state.settings.stackingEnabled = !!settingsStackingToggleEl?.checked;
     state.settings.aiJudgesEnabled = !!settingsAiJudgesToggleEl?.checked;
     state.settings.aiChallengeEnabled = state.settings.aiJudgesEnabled
@@ -13338,6 +13407,8 @@ function initPracticePage() {
         blackCards: state.settings.blackCards,
         clueTimerSeconds: state.settings.clueTimerSeconds,
         guessTimerSeconds: state.settings.guessTimerSeconds,
+        timerMode: state.settings.timerMode,
+        teamTimerSeconds: state.settings.teamTimerSeconds,
         stackingEnabled: state.settings.stackingEnabled !== false,
         aiJudgesEnabled: state.settings.aiJudgesEnabled !== false,
         aiChallengeEnabled: state.settings.aiChallengeEnabled !== false,
@@ -13352,6 +13423,20 @@ function initPracticePage() {
   settingsBtn?.addEventListener('click', openSettingsModal);
   settingsCloseBtn?.addEventListener('click', closeSettingsModal);
   settingsBackdrop?.addEventListener('click', closeSettingsModal);
+  settingsTimerModeTurnBtn?.addEventListener('click', () => {
+    state.settings.timerMode = 'turn';
+    setTimerModeUi('turn');
+  });
+  settingsTimerModeTeamBtn?.addEventListener('click', () => {
+    state.settings.timerMode = 'team';
+    setTimerModeUi('team');
+  });
+  [settingsClueTimerMinEl, settingsGuessTimerMinEl, settingsTeamTimerMinEl].forEach((el) => {
+    el?.addEventListener('blur', () => normalizeClockInput(el, 99));
+  });
+  [settingsClueTimerSecEl, settingsGuessTimerSecEl, settingsTeamTimerSecEl].forEach((el) => {
+    el?.addEventListener('blur', () => normalizeClockInput(el, 59));
+  });
   settingsAiJudgesToggleEl?.addEventListener('change', () => {
     if (settingsAiJudgesToggleEl.checked) enforceAtLeastOneJudge();
     syncJudgePanelVisibility();
