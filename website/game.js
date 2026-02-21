@@ -8116,6 +8116,24 @@ function buildCluesLeftLogHtml() {
       }
     }
 
+    // If some slots are found but anonymous, backfill them with known correct guess words.
+    // This keeps the "Clues Left" tab informative for operatives once a word is guessed.
+    if (targetRecords.length) {
+      const used = new Set(targetRecords.map(item => String(item.word || '').trim().toUpperCase()).filter(Boolean));
+      const fillWords = Array.from(correctGuessWords).filter(w => !used.has(w));
+      let fillIdx = 0;
+      for (let j = 0; j < targetRecords.length; j += 1) {
+        const row = targetRecords[j];
+        if (!row || !row.found) continue;
+        const hasWord = String(row.word || '').trim();
+        if (hasWord) continue;
+        if (fillIdx < fillWords.length) {
+          targetRecords[j] = { ...row, word: fillWords[fillIdx] };
+          fillIdx += 1;
+        }
+      }
+    }
+
     const remainingCount = targetRecords.reduce((count, item) => count + (item.found ? 0 : 1), 0);
     const countBadgeText = `${remainingCount} word${remainingCount === 1 ? '' : 's'} left`;
 
@@ -8123,12 +8141,12 @@ function buildCluesLeftLogHtml() {
       const classes = ['gamelog-left-word-chip'];
       if (item.found) classes.push('gamelog-left-word-chip-found', `team-${team}`);
 
-      if (!canSeeWords) {
+      if (!canSeeWords && !item.found) {
         classes.push('gamelog-left-word-chip-hidden');
         return `<span class="${classes.join(' ')}"><em>hidden</em></span>`;
       }
 
-      const label = String(item.word || 'UNKNOWN').trim().toUpperCase();
+      const label = String(item.word || (item.found ? 'FOUND' : 'UNKNOWN')).trim().toUpperCase();
       return `<span class="${classes.join(' ')}">${escapeHtml(label)}</span>`;
     }).join('');
 
@@ -10326,6 +10344,14 @@ async function postOperativeChatMessage(teamColor, senderId, senderName, text) {
 
 let _lastAIReactionKey = '';
 function maybeQueueAIReactionsFromLogEntries(newEntries, game) {
+  try {
+    const advanced = window.queueAIReactionsFromLogEntries;
+    if (typeof advanced === 'function') {
+      void advanced(newEntries, game);
+      return;
+    }
+  } catch (_) {}
+
   const entries = Array.isArray(newEntries) ? newEntries.map(e => String(e || '')).filter(Boolean) : [];
   if (!entries.length) return;
 

@@ -148,6 +148,8 @@ body.light-mode {
   left: 5px;
   display: inline-flex;
   align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
   pointer-events: none;
   z-index: 25;
 }
@@ -156,7 +158,6 @@ body.light-mode {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  margin-left: -4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -168,9 +169,6 @@ body.light-mode {
   border: 1px solid rgba(255, 255, 255, 0.55);
   background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.28), rgba(255,255,255,0.05) 42%, rgba(0,0,0,0.16) 85%), linear-gradient(180deg, rgba(73, 92, 117, 0.92), rgba(34, 46, 63, 0.92));
   box-shadow: 0 2px 6px rgba(0,0,0,0.34);
-}
-
-.game-card .card-considering-chip:first-child{
   margin-left: 0;
 }
 
