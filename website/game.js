@@ -6411,6 +6411,7 @@ function renderBoard(isSpymaster) {
       <div class="${classes.join(' ')}" data-index="${i}">
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
+        <span class="card-recolor-sweep" aria-hidden="true"></span>
         <div class="card-inner">
           <div class="card-face card-front">
             <span class="card-word"><span class="word-text">${word}</span></span>

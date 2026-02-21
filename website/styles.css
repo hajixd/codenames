@@ -5664,6 +5664,65 @@ button.player-tag.pill-action:disabled{
   transform: translateX(calc(var(--card-thickness) * 0.5)) rotateY(-90deg);
 }
 
+.game-card .card-recolor-sweep {
+  position: absolute;
+  inset: calc(var(--card-thickness) * -0.55);
+  border-radius: calc(12px + var(--card-thickness));
+  pointer-events: none;
+  opacity: 0;
+  z-index: 28;
+  transform: translateZ(0);
+  clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+  -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+  will-change: opacity, clip-path, -webkit-clip-path;
+  background:
+    radial-gradient(130% 120% at 12% 8%, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.07) 36%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 28%, rgba(255, 255, 255, 0) 74%),
+    var(--card-liquid-fill-bg, linear-gradient(160deg, #58677f 0%, #3f4d63 52%, #252f3f 100%));
+}
+
+.game-card .card-recolor-sweep::before {
+  content: "";
+  position: absolute;
+  left: -52%;
+  top: -48%;
+  width: 210%;
+  height: 56%;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.08) 30%,
+      rgba(255, 255, 255, 0.45) 50%,
+      rgba(255, 255, 255, 0.14) 70%,
+      rgba(255, 255, 255, 0) 100%
+    );
+  opacity: 0;
+  transform: translate3d(-135%, -135%, 0) rotate(36deg) scale(1);
+  will-change: transform, opacity;
+}
+
+.game-card .card-recolor-sweep::after {
+  content: "";
+  position: absolute;
+  left: -65%;
+  top: -56%;
+  width: 240%;
+  height: 64%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.09) 44%,
+    rgba(0, 0, 0, 0.2) 60%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  opacity: 0;
+  transform: translate3d(-128%, -128%, 0) rotate(36deg);
+  will-change: transform, opacity;
+}
+
 .game-card .card-face {
   position: absolute;
   inset: 0;
@@ -5672,11 +5731,19 @@ button.player-tag.pill-action:disabled{
   justify-content: center;
   padding: 6px;
   z-index: 2;
+  -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+}
+
+.game-card .card-front {
+  transform: rotateY(0deg) translateZ(0.1px);
 }
 
 .game-card .card-back {
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) translateZ(0.1px);
+  isolation: isolate;
 }
 
 /* In OG/Cozy styles we render revealed cards on the back face.
@@ -21038,14 +21105,17 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
   inset: 0;
   pointer-events: none;
   opacity: 0;
-  z-index: 1;
+  z-index: 4;
   transform: translate3d(0, 0, 0);
   clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+  -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
   border-radius: inherit;
-  will-change: clip-path, opacity;
+  will-change: clip-path, -webkit-clip-path, opacity;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
   background:
-    radial-gradient(130% 120% at 12% 8%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.06) 36%, rgba(255, 255, 255, 0) 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 34%, rgba(255, 255, 255, 0) 74%),
+    radial-gradient(130% 120% at 12% 8%, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.07) 36%, rgba(255, 255, 255, 0) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 28%, rgba(255, 255, 255, 0) 74%),
     var(--card-liquid-fill-bg, linear-gradient(160deg, #58677f 0%, #3f4d63 52%, #252f3f 100%));
 }
 
@@ -21066,9 +21136,29 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
       rgba(255, 255, 255, 0.14) 70%,
       rgba(255, 255, 255, 0) 100%
     );
-  mix-blend-mode: screen;
+  mix-blend-mode: normal;
   opacity: 0;
   transform: translate3d(-135%, -135%, 0) rotate(36deg) scale(1);
+  will-change: transform, opacity;
+}
+
+.game-card .card-back .card-liquid-fill::after {
+  content: "";
+  position: absolute;
+  left: -65%;
+  top: -56%;
+  width: 240%;
+  height: 64%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.09) 44%,
+    rgba(0, 0, 0, 0.2) 60%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  opacity: 0;
+  transform: translate3d(-128%, -128%, 0) rotate(36deg);
   will-change: transform, opacity;
 }
 
@@ -21137,35 +21227,44 @@ body.og-mode .game-card.reveal-flip-animate {
   --wordBg: var(--neutral-darkWordBg);
 }
 
-body.og-mode .game-card.reveal-flip-animate::before,
-body.og-mode .game-card.reveal-flip-animate::after {
-  opacity: 1 !important;
-}
-
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front,
-body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-front {
-  background: transparent !important;
-}
-
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill::before,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill::before,
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill::after,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill::after {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-recolor-sweep,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-recolor-sweep {
   opacity: 1;
   animation: ogConfirmLiquidFill var(--card-confirm-duration) linear both;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill::before,
-body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill::before {
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-recolor-sweep::before,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-recolor-sweep::before {
   animation: ogConfirmLiquidCrest var(--card-confirm-duration) linear both;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-recolor-sweep::after,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-recolor-sweep::after {
+  animation: ogConfirmLiquidShadow var(--card-confirm-duration) linear both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::before,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::before {
-  z-index: 2;
+  z-index: 5;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::after {
-  z-index: 3;
+  z-index: 6;
 }
 
 /* During replay flip, disable revealed-face transitions so the motion matches
@@ -21191,8 +21290,7 @@ body.og-mode .game-card.confirm-hold:not(.revealed)::after {
 
 /* OG shell layers are drawn on .game-card (not .card-inner), so flip them with
    the same Y timeline to keep the frame/plate visually attached to the card face. */
-body.og-mode .game-card.confirm-animate:not(.revealed),
-body.og-mode .game-card.reveal-flip-animate {
+body.og-mode .game-card.confirm-animate:not(.revealed) {
   background: transparent;
   border-color: transparent;
 }
@@ -21206,7 +21304,20 @@ body.og-mode .game-card.reveal-flip-animate::after {
   backface-visibility: hidden;
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
+}
+
+body.og-mode .game-card.confirm-animate:not(.revealed)::before,
+body.og-mode .game-card.confirm-animate:not(.revealed)::after {
   animation: ogConfirmInnerFlip var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
+/* For reveal playback, hide OG shell plates and rely on true front/back faces.
+   This avoids split/ghost artifacts during long slow flips. */
+body.og-mode .game-card.reveal-flip-animate::before,
+body.og-mode .game-card.reveal-flip-animate::after {
+  opacity: 0 !important;
+  animation: none !important;
+  transform: none !important;
 }
 
 /* Remove pending-selection ring immediately when confirm animation starts. */
@@ -21228,7 +21339,15 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-wo
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after,
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after {
   content: attr(data-confirm-back-label);
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after {
   opacity: 1;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after {
+  opacity: 0;
+  animation: ogConfirmLabelAppear var(--card-confirm-duration) linear both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-red .card-back {
@@ -21313,17 +21432,8 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   80% {
     transform: rotateY(0deg);
   }
-  86% {
-    transform: rotateY(112deg);
-  }
-  90% {
-    transform: rotateY(202deg);
-  }
-  93% {
-    transform: rotateY(184deg);
-  }
   94% {
-    transform: rotateY(180.8deg);
+    transform: rotateY(180deg);
   }
   100% {
     transform: rotateY(180deg);
@@ -21335,30 +21445,37 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   38% {
     opacity: 0;
     clip-path: polygon(0 0, 0 0, 0 0, 0 0);
+    -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
   }
   42% {
     opacity: 1;
     clip-path: polygon(0 0, 22% 0, 0 22%, 0 0);
+    -webkit-clip-path: polygon(0 0, 22% 0, 0 22%, 0 0);
   }
   50% {
     opacity: 1;
     clip-path: polygon(0 0, 56% 0, 0 56%, 0 0);
+    -webkit-clip-path: polygon(0 0, 56% 0, 0 56%, 0 0);
   }
   58% {
     opacity: 1;
     clip-path: polygon(0 0, 100% 0, 0 100%, 0 0);
+    -webkit-clip-path: polygon(0 0, 100% 0, 0 100%, 0 0);
   }
   64% {
     opacity: 1;
     clip-path: polygon(0 0, 100% 0, 74% 100%, 0 100%);
+    -webkit-clip-path: polygon(0 0, 100% 0, 74% 100%, 0 100%);
   }
   70% {
     opacity: 1;
     clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
   }
   100% {
     opacity: 1;
     clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
   }
 }
 
@@ -21391,6 +21508,51 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   100% {
     opacity: 0;
     transform: translate3d(108%, 108%, 0) rotate(36deg) scale(0.95);
+  }
+}
+
+@keyframes ogConfirmLiquidShadow {
+  0%,
+  38% {
+    opacity: 0;
+    transform: translate3d(-128%, -128%, 0) rotate(36deg);
+  }
+  42% {
+    opacity: 0.4;
+    transform: translate3d(-84%, -84%, 0) rotate(36deg);
+  }
+  50% {
+    opacity: 0.62;
+    transform: translate3d(-28%, -28%, 0) rotate(36deg);
+  }
+  58% {
+    opacity: 0.52;
+    transform: translate3d(20%, 20%, 0) rotate(36deg);
+  }
+  64% {
+    opacity: 0.26;
+    transform: translate3d(66%, 66%, 0) rotate(36deg);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: translate3d(112%, 112%, 0) rotate(36deg);
+  }
+}
+
+@keyframes ogConfirmLabelAppear {
+  0%,
+  70% {
+    opacity: 0;
+  }
+  76% {
+    opacity: 0.28;
+  }
+  84% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
@@ -21472,7 +21634,15 @@ body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back .ca
 body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::after {
   content: attr(data-confirm-back-label);
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after {
   opacity: 1;
+}
+
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::after {
+  opacity: 0;
+  animation: ogConfirmLabelAppear var(--card-confirm-duration) linear both;
 }
 
 body:not(.og-mode):not(.cozy-mode) .game-card:is(.confirm-animate, .confirm-hold):not(.revealed) .card-back::after,
