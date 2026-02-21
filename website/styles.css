@@ -26112,6 +26112,11 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final pass: bottom docking + mobile turn strip + clue readability + compositor stability */
 @media (min-width: 1025px) {
+  body:is(.og-mode, .cozy-mode) {
+    --og-desktop-bottom-gap: clamp(6px, 0.8vh, 10px);
+    --og-desktop-clue-lift: clamp(3px, 0.45vh, 7px);
+  }
+
   /* Critical: anchor the whole game container to the bottom of the panel.
      Without this, shorter non-stacking states sit higher and leave a gap. */
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .panel-inner {
@@ -26143,6 +26148,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   /* Keep bottom docking consistent in BOTH stacking on/off and all turn phases. */
   body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
     margin-top: auto !important;
+    margin-bottom: calc(var(--og-desktop-bottom-gap) + var(--og-desktop-clue-lift)) !important;
   }
 
   /* Neutralize short-window rules that un-stretch columns and create bottom gaps. */
@@ -26166,10 +26172,12 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown,
   body:is(.og-mode, .cozy-mode) .og-gamelog-slidedown.open {
     right: calc(clamp(10px, 1.1vw, 20px) * var(--desktop-game-scale, 1));
+    bottom: calc(var(--og-desktop-bottom-gap) * var(--desktop-game-scale, 1)) !important;
   }
 
   body:is(.og-mode, .cozy-mode) #og-chat-section {
     margin-top: auto !important;
+    padding-bottom: var(--og-desktop-bottom-gap) !important;
   }
 
   /* Avoid long-session GPU artifacts from extra compositor layers on OG cards. */
