@@ -1356,9 +1356,11 @@ function setLaunchAnimationLabOpen(open) {
   const modeRow = modeScreen.querySelector('.launch-mode-row');
   const labPage = document.getElementById('launch-animation-page');
   if (!modeRow || !labPage) return;
-  modeRow.style.display = open ? 'none' : '';
-  labPage.style.display = open ? 'block' : 'none';
-  modeScreen.classList.toggle('launch-animation-open', !!open);
+  const allowOpen = !!isAdminUser();
+  const nextOpen = !!open && allowOpen;
+  modeRow.style.display = nextOpen ? 'none' : '';
+  labPage.style.display = nextOpen ? 'block' : 'none';
+  modeScreen.classList.toggle('launch-animation-open', nextOpen);
 }
 
 function showAuthScreen() {
@@ -1674,6 +1676,10 @@ function initLaunchScreen() {
     if (!u || !name) {
       try { showAuthScreen(); } catch (_) {}
       if (hint) hint.textContent = 'Sign in to continue.';
+      return;
+    }
+    if (!isAdminUser()) {
+      if (hint) hint.textContent = 'Animations tab is admin-only.';
       return;
     }
     if (hint) hint.textContent = '';
@@ -2893,9 +2899,14 @@ function refreshNameUI() {
   const launchBrackets = document.getElementById('launch-brackets');
   const launchPractice = document.getElementById('launch-practice');
   const launchAnimations = document.getElementById('launch-animations');
+  const canUseAnimationLab = canEnter && !!isAdminUser();
   if (launchBrackets) launchBrackets.disabled = !canEnter;
   if (launchPractice) launchPractice.disabled = !canEnter;
-  if (launchAnimations) launchAnimations.disabled = !canEnter;
+  if (launchAnimations) {
+    launchAnimations.disabled = !canUseAnimationLab;
+    launchAnimations.style.display = isAdminUser() ? '' : 'none';
+  }
+  if (!isAdminUser()) setLaunchAnimationLabOpen(false);
 
   // Hide account-only header controls until signed in.
   // Re-query headerNamePill to avoid variable shadowing.

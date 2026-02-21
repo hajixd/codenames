@@ -50,8 +50,6 @@ const CARD_CONFIRM_ANIM_MS = 4200;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
-const _frontSweepByIndex = new Map();
-const _frontSweepByCard = new WeakMap();
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -66,135 +64,6 @@ function getConfirmBackLabel(confirmBackType) {
   if (type === 'blue') return 'BLUE';
   if (type === 'assassin') return 'ASSASSIN';
   return 'NEUTRAL';
-}
-
-function buildDiagonalSweepMask(leadPercentRaw) {
-  const lead = Math.max(0, Math.min(100, Number(leadPercentRaw) || 0));
-  const feather = 1.2;
-  const edge = Math.min(100, lead + feather);
-  return `linear-gradient(to bottom right, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) ${lead.toFixed(3)}%, rgba(0, 0, 0, 0) ${edge.toFixed(3)}%, rgba(0, 0, 0, 0) 100%)`;
-}
-
-function clearFrontSweepAnimation(cardEl, cardIndex = null) {
-  const idx = Number(cardIndex);
-  let record = null;
-
-  if (Number.isInteger(idx) && idx >= 0) {
-    record = _frontSweepByIndex.get(idx) || null;
-  }
-  if (!record && cardEl) {
-    record = _frontSweepByCard.get(cardEl) || null;
-  }
-
-  if (record?.rafId) {
-    window.cancelAnimationFrame(record.rafId);
-  }
-  if (record?.cardEl) {
-    _frontSweepByCard.delete(record.cardEl);
-  }
-  if (record && Number.isInteger(record.idx) && record.idx >= 0 && _frontSweepByIndex.get(record.idx) === record) {
-    _frontSweepByIndex.delete(record.idx);
-  } else if (Number.isInteger(idx) && idx >= 0) {
-    _frontSweepByIndex.delete(idx);
-  }
-
-  const targetEl = cardEl || record?.cardEl || null;
-  const frontPost = targetEl?.querySelector?.('.card-front .card-face-post');
-  if (frontPost) {
-    frontPost.style.removeProperty('opacity');
-    frontPost.style.removeProperty('clip-path');
-    frontPost.style.removeProperty('-webkit-clip-path');
-    frontPost.style.removeProperty('mask-image');
-    frontPost.style.removeProperty('-webkit-mask-image');
-    frontPost.style.removeProperty('mask-size');
-    frontPost.style.removeProperty('-webkit-mask-size');
-    frontPost.style.removeProperty('mask-repeat');
-    frontPost.style.removeProperty('-webkit-mask-repeat');
-    frontPost.style.removeProperty('mask-position');
-    frontPost.style.removeProperty('-webkit-mask-position');
-    frontPost.style.removeProperty('will-change');
-  }
-}
-
-function startFrontSweepAnimation(cardEl, cardIndex = null) {
-  if (!cardEl) return;
-  const frontPost = cardEl.querySelector('.card-front .card-face-post');
-  if (!frontPost) return;
-
-  const idx = Number(cardIndex);
-  clearFrontSweepAnimation(cardEl, idx);
-
-  const totalMs = Math.max(300, CARD_CONFIRM_ANIM_MS);
-  const sweepStartMs = totalMs * 0.48;
-  const sweepEndMs = totalMs * 0.66;
-  const startedAt = performance.now();
-  const fullClip = 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)';
-  const hiddenMask = 'linear-gradient(to bottom right, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 100%)';
-
-  frontPost.style.opacity = '0';
-  frontPost.style.clipPath = fullClip;
-  frontPost.style.webkitClipPath = fullClip;
-  frontPost.style.maskImage = hiddenMask;
-  frontPost.style.webkitMaskImage = hiddenMask;
-  frontPost.style.maskSize = '100% 100%';
-  frontPost.style.webkitMaskSize = '100% 100%';
-  frontPost.style.maskRepeat = 'no-repeat';
-  frontPost.style.webkitMaskRepeat = 'no-repeat';
-  frontPost.style.maskPosition = '0 0';
-  frontPost.style.webkitMaskPosition = '0 0';
-  frontPost.style.willChange = 'opacity, mask-image, -webkit-mask-image';
-
-  const record = { rafId: 0, idx, cardEl };
-  _frontSweepByCard.set(cardEl, record);
-  if (Number.isInteger(idx) && idx >= 0) {
-    _frontSweepByIndex.set(idx, record);
-  }
-
-  const tick = (now) => {
-    if (!cardEl.isConnected || !cardEl.classList.contains('reveal-flip-animate')) {
-      clearFrontSweepAnimation(cardEl, idx);
-      return;
-    }
-
-    const elapsedMs = now - startedAt;
-    if (elapsedMs < sweepStartMs) {
-      frontPost.style.opacity = '0';
-      frontPost.style.maskImage = hiddenMask;
-      frontPost.style.webkitMaskImage = hiddenMask;
-    } else if (elapsedMs < sweepEndMs) {
-      const phase = (elapsedMs - sweepStartMs) / Math.max(1, (sweepEndMs - sweepStartMs));
-      const mask = buildDiagonalSweepMask(phase * 100);
-      frontPost.style.opacity = '1';
-      frontPost.style.maskImage = mask;
-      frontPost.style.webkitMaskImage = mask;
-    } else {
-      frontPost.style.opacity = '1';
-      frontPost.style.clipPath = fullClip;
-      frontPost.style.webkitClipPath = fullClip;
-      frontPost.style.removeProperty('mask-image');
-      frontPost.style.removeProperty('-webkit-mask-image');
-      frontPost.style.removeProperty('mask-size');
-      frontPost.style.removeProperty('-webkit-mask-size');
-      frontPost.style.removeProperty('mask-repeat');
-      frontPost.style.removeProperty('-webkit-mask-repeat');
-      frontPost.style.removeProperty('mask-position');
-      frontPost.style.removeProperty('-webkit-mask-position');
-      frontPost.style.removeProperty('will-change');
-    }
-
-    if (elapsedMs >= totalMs + 64) {
-      if (Number.isInteger(idx) && idx >= 0 && _frontSweepByIndex.get(idx) === record) {
-        _frontSweepByIndex.delete(idx);
-      }
-      _frontSweepByCard.delete(cardEl);
-      record.rafId = 0;
-      return;
-    }
-
-    record.rafId = window.requestAnimationFrame(tick);
-  };
-
-  record.rafId = window.requestAnimationFrame(tick);
 }
 
 function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
@@ -218,7 +87,6 @@ function clearCardAnimationOverlayState() {
 
 function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
-  clearFrontSweepAnimation(cardEl, cardIndex);
   cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
@@ -243,7 +111,6 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   cardEl.classList.add('reveal-flip-animate', `confirm-back-${confirmBackType}`);
   cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
   cardEl.setAttribute('data-confirm-back-type', confirmBackType);
-  startFrontSweepAnimation(cardEl, idx);
   pulseCardAnimationOverlay();
 
   const tid = window.setTimeout(() => {
