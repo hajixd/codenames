@@ -46,7 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 1220;
+const CARD_CONFIRM_ANIM_MS = 4200;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
@@ -90,6 +90,7 @@ function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
+  cardEl.removeAttribute('data-confirm-back-type');
 
   const idx = Number(cardIndex);
   if (Number.isInteger(idx) && idx >= 0) {
@@ -102,10 +103,14 @@ function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
 function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   if (!cardEl) return;
   const idx = Number(opts.cardIndex);
+  const confirmBackType = normalizeConfirmBackType(_confirmBackType);
+  const confirmBackLabel = getConfirmBackLabel(confirmBackType);
 
   clearConfirmAnimationClasses(cardEl, idx);
   void cardEl.offsetWidth;
-  cardEl.classList.add('reveal-flip-animate');
+  cardEl.classList.add('reveal-flip-animate', `confirm-back-${confirmBackType}`);
+  cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
+  cardEl.setAttribute('data-confirm-back-type', confirmBackType);
   pulseCardAnimationOverlay();
 
   const tid = window.setTimeout(() => {
@@ -6400,6 +6405,7 @@ function renderBoard(isSpymaster) {
     // animation explicitly flips the card.)
     const backFace = `
           <div class="card-face card-back">
+            <span class="card-recolor-sweep" aria-hidden="true"></span>
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
         `;
@@ -6409,6 +6415,7 @@ function renderBoard(isSpymaster) {
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
           <div class="card-face card-front">
+            <span class="card-recolor-sweep" aria-hidden="true"></span>
             <span class="card-word"><span class="word-text">${word}</span></span>
             <div class="og-reveal-face" aria-hidden="true">
               <div class="og-reveal-icon"></div>
