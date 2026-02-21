@@ -7757,12 +7757,14 @@ function activatePanel(panelId) {
   if (!targetId) return;
   tabs.forEach(t => t.classList.toggle('active', t.dataset.panel === targetId));
   panels.forEach(p => p.classList.toggle('active', p.id === targetId));
+  activePanelId = targetId;
 
   try {
     const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
     document.body.classList.toggle('no-primary-tabs', !!noTabs);
     document.body.classList.toggle('brackets-mobile-no-tabs', !!noTabs);
   } catch (_) {}
+  try { window.bumpPresence?.(); } catch (_) {}
 }
 
 function esc(s) {
@@ -8963,12 +8965,14 @@ function openSettingsModal() {
   // Trigger reflow for animation
   void modal.offsetWidth;
   modal.classList.add('modal-open');
+  try { window.bumpPresence?.(); } catch (_) {}
 }
 
 function closeSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
   modal.classList.remove('modal-open');
+  try { window.bumpPresence?.(); } catch (_) {}
   setTimeout(() => {
     if (!modal.classList.contains('modal-open')) {
       modal.style.display = 'none';
@@ -10119,102 +10123,232 @@ const PRESENCE_COLLECTION = 'presence';
 const PRESENCE_INACTIVE_MS = 5 * 60 * 1000;  // 5 minutes
 const PRESENCE_OFFLINE_MS = 15 * 60 * 1000;  // 15 minutes
 const PRESENCE_UPDATE_INTERVAL_MS = 60 * 1000; // Update every 1 minute
+const PRESENCE_BUMP_INTERVAL_MS = 1200;
 
 
 const PRESENCE_WHERE_LABELS = {
-  menus: 'In Multiplayer',
-  tournament: 'In Teams',
-  lobby: 'In Multiplayer',
-  game: 'In Multiplayer',
-  practice: 'In Singleplayer'
+  menus: 'In Menus',
+  settings: 'In Settings',
+  multiplayer_lobby: 'In Multiplayer Lobby',
+  multiplayer_game: 'In Multiplayer Game',
+  singleplayer_lobby: 'In Singleplayer Lobby',
+  singleplayer_game: 'In Singleplayer Game',
+  teams: 'In Teams',
+  brackets: 'In Brackets',
 };
+const PRESENCE_SETTINGS_MODAL_IDS = [
+  'settings-modal',
+  'quick-settings-modal',
+  'practice-page-settings-modal',
+];
+const PRESENCE_TEAM_PANEL_IDS = new Set([
+  'panel-home',
+  'panel-teams',
+  'panel-players',
+  'panel-myteam',
+  'panel-chat',
+]);
+
+function isPresenceElementVisible(el) {
+  if (!el) return false;
+  try {
+    const st = window.getComputedStyle(el);
+    const op = Number(st.opacity || '1');
+    if (st.display === 'none' || st.visibility === 'hidden' || op <= 0.01) return false;
+  } catch (_) {
+    return String(el?.style?.display || '').toLowerCase() !== 'none';
+  }
+  return true;
+}
+
+function isAnyPresenceSettingsModalOpen() {
+  for (const id of PRESENCE_SETTINGS_MODAL_IDS) {
+    const modal = document.getElementById(id);
+    if (!modal) continue;
+    const open = modal.classList.contains('modal-open') || isPresenceElementVisible(modal);
+    if (open) return true;
+  }
+  return false;
+}
+
+function getPresenceActivePanelId() {
+  const active = document.querySelector('.panel.active')?.id;
+  return String(active || activePanelId || '').trim();
+}
+
+function normalizePresenceWhereKey(rawWhereKey, presenceLike = null) {
+  const key = String(rawWhereKey || '').trim().toLowerCase();
+  if (!key) return '';
+  if (Object.prototype.hasOwnProperty.call(PRESENCE_WHERE_LABELS, key)) return key;
+
+  const panelId = String(presenceLike?.activePanelId || '').trim();
+  const legacyHint = `${presenceLike?.whereLabel || ''} ${presenceLike?.where || ''}`.toLowerCase();
+  const hintSingle = /single.?player|practice/.test(legacyHint);
+  const hintMulti = /multi.?player|quick|tournament/.test(legacyHint);
+  switch (key) {
+    case 'menu':
+    case 'menus':
+      return 'menus';
+    case 'setting':
+    case 'settings':
+      return 'settings';
+    case 'tournament':
+    case 'team':
+    case 'teams':
+      return 'teams';
+    case 'bracket':
+    case 'brackets':
+      return 'brackets';
+    case 'lobby':
+      if (hintSingle) return 'singleplayer_lobby';
+      if (hintMulti) return 'multiplayer_lobby';
+      return panelId === 'panel-practice' ? 'singleplayer_lobby' : 'multiplayer_lobby';
+    case 'game':
+      if (hintSingle) return 'singleplayer_game';
+      if (hintMulti) return 'multiplayer_game';
+      return panelId === 'panel-practice' ? 'singleplayer_game' : 'multiplayer_game';
+    case 'practice':
+      return panelId === 'panel-game' ? 'singleplayer_game' : 'singleplayer_lobby';
+    case 'multiplayer':
+      return 'multiplayer_lobby';
+    case 'singleplayer':
+      return 'singleplayer_lobby';
+    default:
+      return '';
+  }
+}
+
+function derivePresenceWhereKeyFromLegacyPanel(presence) {
+  const panelId = String(presence?.activePanelId || '').trim();
+  if (!panelId) return '';
+  if (panelId === 'panel-brackets') return 'brackets';
+  if (panelId === 'panel-practice') return 'singleplayer_lobby';
+  if (PRESENCE_TEAM_PANEL_IDS.has(panelId)) return 'teams';
+  if (panelId !== 'panel-game') return '';
+
+  const normalized = normalizePresenceWhereKey(presence?.whereKey || presence?.where || '', presence);
+  if (normalized === 'singleplayer_game' || normalized === 'singleplayer_lobby') return normalized;
+  if (normalized === 'multiplayer_game' || normalized === 'multiplayer_lobby') return normalized;
+  return 'multiplayer_lobby';
+}
 
 function computeLocalPresenceWhereKey() {
-  // Presence "where" should reflect the *active* UI, not just elements that exist in the DOM.
-  // Panels are often absolutely positioned, so relying on computed display alone can be misleading.
-  const isDisplayed = (el) => {
-    if (!el) return false;
-    const st = window.getComputedStyle(el);
-    // Treat elements as hidden if display/visibility hide them, or if opacity is effectively 0.
-    const op = Number(st.opacity || '1');
-    return st.display !== 'none' && st.visibility !== 'hidden' && op > 0.01;
-  };
+  if (isAnyPresenceSettingsModalOpen()) return 'settings';
 
-  // 1) If the game board is visible, we're either in lobby (waiting) or actively in a game.
-  const gameBoard = document.getElementById('game-board-container');
-  if (isDisplayed(gameBoard)) {
-    try {
-      if (typeof window.isPracticeGameActive === 'function' && window.isPracticeGameActive()) {
-        return 'practice';
-      }
-    } catch (_) {}
-    const phase = (typeof window.getCurrentGamePhase === 'function') ? window.getCurrentGamePhase() : null;
-    if (phase && phase !== 'waiting') return 'game';
-    return 'lobby';
-  }
-
-  // 2) Dedicated lobbies (these are explicit containers that flip display on/off)
-  const tournamentLobby = document.getElementById('tournament-lobby');
-  if (isDisplayed(tournamentLobby)) return 'tournament';
-
-  const quickLobby = document.getElementById('quick-play-lobby');
-  if (isDisplayed(quickLobby)) return 'lobby';
-
-  // 3) Otherwise, use mode + active panel as the source of truth.
-  // Tournament mode: any non-gameboard view is "In Tournament".
-  if (document.body.classList.contains('tournament')) {
-    return 'tournament';
-  }
-
-  // Quick play mode: outside the gameboard/lobby we treat as menus.
-  if (document.body.classList.contains('quickplay')) {
+  const body = document.body;
+  const launchScreen = document.getElementById('launch-screen');
+  const authScreen = document.getElementById('auth-screen');
+  if (body.classList.contains('launch') || isPresenceElementVisible(launchScreen) || isPresenceElementVisible(authScreen)) {
     return 'menus';
   }
 
-  // 4) Launch / home menus (mode selection visible)
-  const modeSelect = document.getElementById('play-mode-select');
-  if (isDisplayed(modeSelect)) return 'menus';
+  const panelId = getPresenceActivePanelId();
+  if (panelId === 'panel-brackets') return 'brackets';
+  if (PRESENCE_TEAM_PANEL_IDS.has(panelId)) return 'teams';
+  if (panelId === 'panel-practice') return 'singleplayer_lobby';
 
+  const gameBoard = document.getElementById('game-board-container');
+  const quickLobby = document.getElementById('quick-play-lobby');
+  const tournamentLobby = document.getElementById('tournament-lobby');
+  const gameBoardVisible = isPresenceElementVisible(gameBoard);
+  const quickLobbyVisible = isPresenceElementVisible(quickLobby);
+  const tournamentLobbyVisible = isPresenceElementVisible(tournamentLobby);
+  const inPracticeMode = !!body.classList.contains('practice');
+
+  let isPracticeGame = false;
+  try { isPracticeGame = !!(typeof window.isPracticeGameActive === 'function' && window.isPracticeGameActive()); } catch (_) {}
+  if (isPracticeGame || inPracticeMode) {
+    if (panelId === 'panel-game' || gameBoardVisible) return 'singleplayer_game';
+    return 'singleplayer_lobby';
+  }
+
+  let phase = '';
+  try {
+    phase = String((typeof window.getCurrentGamePhase === 'function' ? window.getCurrentGamePhase() : '') || '')
+      .trim()
+      .toLowerCase();
+  } catch (_) {}
+  const hasStartedPhase = !!(phase && phase !== 'waiting');
+  if ((panelId === 'panel-game' || gameBoardVisible) && hasStartedPhase) return 'multiplayer_game';
+
+  if (panelId === 'panel-game' || gameBoardVisible || quickLobbyVisible || tournamentLobbyVisible || body.classList.contains('quickplay')) {
+    return 'multiplayer_lobby';
+  }
+
+  if (body.classList.contains('tournament')) return 'teams';
   return 'menus';
-}
-
-function getPresencePanelLabel(presence) {
-  const panelId = String(presence?.activePanelId || '').trim();
-  const whereKey = String(presence?.whereKey || presence?.where || '').trim();
-  if (!panelId) return '';
-  if (panelId === 'panel-practice') return 'In Singleplayer';
-  if (panelId === 'panel-brackets') return 'In Brackets';
-  if (panelId === 'panel-teams' || panelId === 'panel-home' || panelId === 'panel-myteam') return 'In Teams';
-  if (panelId === 'panel-game' && whereKey === 'practice') return 'In Singleplayer';
-  if (panelId === 'panel-game') return 'In Multiplayer';
-  return '';
 }
 
 function getPresenceWhereLabel(presenceOrUserId) {
   const presence = resolvePresenceArg(presenceOrUserId);
   if (!presence) return '';
 
-  const byPanel = getPresencePanelLabel(presence);
-  if (byPanel) return byPanel;
+  const normalized = normalizePresenceWhereKey(presence?.whereKey || presence?.where || '', presence);
+  if (normalized) return PRESENCE_WHERE_LABELS[normalized] || '';
 
-  const key = (presence.whereKey || presence.where || '').toString().trim();
-  if (key) return PRESENCE_WHERE_LABELS[key] || key;
+  const byPanel = derivePresenceWhereKeyFromLegacyPanel(presence);
+  if (byPanel) return PRESENCE_WHERE_LABELS[byPanel] || '';
 
   // Legacy docs may only have a freeform whereLabel.
-  const legacy = String(presence.whereLabel || '').trim();
+  const legacy = String(presence?.whereLabel || '').trim();
   if (!legacy) return '';
-  if (/tournament/i.test(legacy)) return 'In Teams';
-  if (/(menu|lobby|game)/i.test(legacy)) return 'In Multiplayer';
-  return legacy;
+  if (/settings?/i.test(legacy)) return PRESENCE_WHERE_LABELS.settings;
+  if (/single.?player/i.test(legacy)) {
+    if (/lobby|menu/i.test(legacy)) return PRESENCE_WHERE_LABELS.singleplayer_lobby;
+    return PRESENCE_WHERE_LABELS.singleplayer_game;
+  }
+  if (/multiplayer/i.test(legacy)) {
+    if (/game/i.test(legacy)) return PRESENCE_WHERE_LABELS.multiplayer_game;
+    return PRESENCE_WHERE_LABELS.multiplayer_lobby;
+  }
+  if (/bracket/i.test(legacy)) return PRESENCE_WHERE_LABELS.brackets;
+  if (/team|tournament/i.test(legacy)) return PRESENCE_WHERE_LABELS.teams;
+  if (/menu/i.test(legacy)) return PRESENCE_WHERE_LABELS.menus;
+  return '';
 }
 
 // Expose for game.js or other modules
 window.getPresenceWhereLabel = getPresenceWhereLabel;
 
-// Debounced helper: bump presence after UI state changes
-window.bumpPresence = throttle(() => {
+// Debounced helper: bump presence after UI state changes.
+// Uses leading+trailing behavior so fast transitions still settle on the newest state.
+let presenceBumpTimer = null;
+let presenceBumpLastAt = 0;
+
+function runPresenceBumpUpdate() {
   try { updatePresence(); } catch (_) {}
-}, 3000);
+}
+
+window.bumpPresence = function bumpPresence() {
+  const now = Date.now();
+  const elapsed = now - presenceBumpLastAt;
+  if (elapsed >= PRESENCE_BUMP_INTERVAL_MS) {
+    presenceBumpLastAt = now;
+    if (presenceBumpTimer) {
+      clearTimeout(presenceBumpTimer);
+      presenceBumpTimer = null;
+    }
+    runPresenceBumpUpdate();
+    return;
+  }
+
+  const wait = Math.max(40, PRESENCE_BUMP_INTERVAL_MS - elapsed);
+  if (presenceBumpTimer) clearTimeout(presenceBumpTimer);
+  presenceBumpTimer = setTimeout(() => {
+    presenceBumpTimer = null;
+    presenceBumpLastAt = Date.now();
+    runPresenceBumpUpdate();
+  }, wait);
+};
+
+window.bumpPresenceNow = function bumpPresenceNow() {
+  if (presenceBumpTimer) {
+    clearTimeout(presenceBumpTimer);
+    presenceBumpTimer = null;
+  }
+  presenceBumpLastAt = Date.now();
+  runPresenceBumpUpdate();
+};
 
 let presenceUnsub = null;
 let presenceCache = [];
@@ -10285,13 +10419,15 @@ async function updatePresence() {
 
   try {
     const presenceRef = db.collection(PRESENCE_COLLECTION).doc(userId);
-    const whereKey = computeLocalPresenceWhereKey();
+    const rawWhereKey = computeLocalPresenceWhereKey();
+    const whereKey = normalizePresenceWhereKey(rawWhereKey) || 'menus';
+    const panelId = getPresenceActivePanelId();
     await presenceRef.set({
       odId: userId,
       name: name,
       whereKey: whereKey,
-      whereLabel: PRESENCE_WHERE_LABELS[whereKey] || whereKey,
-      activePanelId: activePanelId,
+      whereLabel: PRESENCE_WHERE_LABELS[whereKey] || PRESENCE_WHERE_LABELS.menus,
+      activePanelId: panelId,
       lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -12711,6 +12847,7 @@ function openPracticeGameInApp(gameId) {
   try { window.showGameBoard?.(); } catch (_) {}
   try { window.startGameListener?.(gid, { spectator: false, ephemeral: true }); } catch (e) { console.warn(e); }
   try { document.body.classList.add('practice'); } catch (_) {}
+  try { window.bumpPresenceNow?.(); } catch (_) { try { window.bumpPresence?.(); } catch (_) {} }
 
   // Keep URL clean in same-tab mode.
   try {
@@ -13009,6 +13146,7 @@ function initPracticePage() {
     void settingsModal.offsetWidth;
     settingsModal.classList.add('modal-open');
     settingsModal.setAttribute('aria-hidden', 'false');
+    try { window.bumpPresence?.(); } catch (_) {}
     // Status hint removed (requested to keep settings panel clean)
     if (settingsStatusEl) settingsStatusEl.textContent = '';
   };
@@ -13017,6 +13155,7 @@ function initPracticePage() {
     if (!settingsModal) return;
     settingsModal.classList.remove('modal-open');
     settingsModal.setAttribute('aria-hidden', 'true');
+    try { window.bumpPresence?.(); } catch (_) {}
     setTimeout(() => {
       if (!settingsModal.classList.contains('modal-open')) settingsModal.style.display = 'none';
     }, 200);

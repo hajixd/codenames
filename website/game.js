@@ -3632,6 +3632,7 @@ function openQuickSettingsModal() {
   void modal.offsetWidth; // Trigger reflow for animation
   modal.classList.add('modal-open');
   modal.setAttribute('aria-hidden', 'false');
+  try { window.bumpPresence?.(); } catch (_) {}
 
   // Fill current values from the live lobby if we have it.
   const g = quickLobbyGame;
@@ -3666,6 +3667,7 @@ function closeQuickSettingsModal() {
   const modal = document.getElementById('quick-settings-modal');
   if (!modal) return;
   modal.classList.remove('modal-open');
+  try { window.bumpPresence?.(); } catch (_) {}
   setTimeout(() => {
     if (!modal.classList.contains('modal-open')) {
       modal.style.display = 'none';
