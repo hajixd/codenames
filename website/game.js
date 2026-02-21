@@ -158,36 +158,40 @@ function clearRevealAnimationSuppressions() {
 }
 
 function initAnimationTestingPanel() {
-  const panel = document.getElementById('home-animation-tests');
-  if (!panel) return;
-  if (panel.dataset.bound === '1') return;
-  panel.dataset.bound = '1';
+  const panels = Array.from(document.querySelectorAll('#launch-animation-tests'));
+  if (!panels.length) return;
 
-  const cards = Array.from(panel.querySelectorAll('.anim-test-card[data-anim-type]'));
-  cards.forEach((cardEl, idx) => {
-    cardEl.dataset.animTestIndex = String(1000 + idx);
-  });
+  let seq = 1200;
+  panels.forEach((panel) => {
+    if (!panel || panel.dataset.bound === '1') return;
+    panel.dataset.bound = '1';
 
-  const runTestCardAnimation = (cardEl) => {
-    if (!cardEl) return;
-    const revealType = normalizeConfirmBackType(cardEl.dataset.animType || 'neutral');
-    const cardIndex = Number(cardEl.dataset.animTestIndex || -1);
-    applyConfirmAnimationClasses(cardEl, revealType, { cardIndex });
-  };
-
-  cards.forEach((cardEl) => {
-    cardEl.addEventListener('click', () => runTestCardAnimation(cardEl));
-    cardEl.addEventListener('keydown', (evt) => {
-      if (evt.key !== 'Enter' && evt.key !== ' ') return;
-      evt.preventDefault();
-      runTestCardAnimation(cardEl);
+    const cards = Array.from(panel.querySelectorAll('.anim-test-card[data-anim-type]'));
+    cards.forEach((cardEl) => {
+      cardEl.dataset.animTestIndex = String(seq++);
     });
-  });
 
-  const replayAllBtn = panel.querySelector('#anim-test-replay-all');
-  replayAllBtn?.addEventListener('click', () => {
-    cards.forEach((cardEl, idx) => {
-      window.setTimeout(() => runTestCardAnimation(cardEl), idx * 180);
+    const runTestCardAnimation = (cardEl) => {
+      if (!cardEl) return;
+      const revealType = normalizeConfirmBackType(cardEl.dataset.animType || 'neutral');
+      const cardIndex = Number(cardEl.dataset.animTestIndex || -1);
+      applyConfirmAnimationClasses(cardEl, revealType, { cardIndex });
+    };
+
+    cards.forEach((cardEl) => {
+      cardEl.addEventListener('click', () => runTestCardAnimation(cardEl));
+      cardEl.addEventListener('keydown', (evt) => {
+        if (evt.key !== 'Enter' && evt.key !== ' ') return;
+        evt.preventDefault();
+        runTestCardAnimation(cardEl);
+      });
+    });
+
+    const replayAllBtn = panel.closest('.launch-animation-page')?.querySelector('[data-anim-replay-all]');
+    replayAllBtn?.addEventListener('click', () => {
+      cards.forEach((cardEl, idx) => {
+        window.setTimeout(() => runTestCardAnimation(cardEl), idx * 180);
+      });
     });
   });
 }

@@ -1350,11 +1350,23 @@ function setBrowserTitle(mode) {
   document.title = 'Codenames';
 }
 
+function setLaunchAnimationLabOpen(open) {
+  const modeScreen = document.getElementById('launch-screen');
+  if (!modeScreen) return;
+  const modeRow = modeScreen.querySelector('.launch-mode-row');
+  const labPage = document.getElementById('launch-animation-page');
+  if (!modeRow || !labPage) return;
+  modeRow.style.display = open ? 'none' : '';
+  labPage.style.display = open ? 'block' : 'none';
+  modeScreen.classList.toggle('launch-animation-open', !!open);
+}
+
 function showAuthScreen() {
   const authScreen = document.getElementById('auth-screen');
   const modeScreen = document.getElementById('launch-screen');
   if (authScreen) authScreen.style.display = 'flex';
   if (modeScreen) modeScreen.style.display = 'none';
+  setLaunchAnimationLabOpen(false);
   document.body.classList.add('launch');
   document.body.classList.remove('quickplay');
   document.body.classList.remove('tournament');
@@ -1370,6 +1382,7 @@ function showLaunchScreen() {
   const modeScreen = document.getElementById('launch-screen');
   if (authScreen) authScreen.style.display = 'none';
   if (modeScreen) modeScreen.style.display = 'flex';
+  setLaunchAnimationLabOpen(false);
   document.body.classList.add('launch');
   document.body.classList.remove('quickplay');
   document.body.classList.remove('tournament');
@@ -1609,6 +1622,8 @@ function initLaunchScreen() {
   const tournBtn = document.getElementById('launch-tournament');
   const bracketsBtn = document.getElementById('launch-brackets');
   const practiceBtn = document.getElementById('launch-practice');
+  const animBtn = document.getElementById('launch-animations');
+  const animBackBtn = document.getElementById('launch-animation-back');
 
   const hint = document.getElementById('launch-name-hint');
 
@@ -1653,6 +1668,18 @@ function initLaunchScreen() {
   tournBtn?.addEventListener('click', () => requireAuthThen('tournament'));
   bracketsBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-brackets' }));
   practiceBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-practice' }));
+  animBtn?.addEventListener('click', () => {
+    const u = auth.currentUser;
+    const name = getUserName();
+    if (!u || !name) {
+      try { showAuthScreen(); } catch (_) {}
+      if (hint) hint.textContent = 'Sign in to continue.';
+      return;
+    }
+    if (hint) hint.textContent = '';
+    setLaunchAnimationLabOpen(true);
+  });
+  animBackBtn?.addEventListener('click', () => setLaunchAnimationLabOpen(false));
 
   // Auth UI on launch (username + password)
   const loginForm = document.getElementById('launch-login-form');
@@ -2865,8 +2892,10 @@ function refreshNameUI() {
   if (launchTourn) launchTourn.disabled = !canEnter;
   const launchBrackets = document.getElementById('launch-brackets');
   const launchPractice = document.getElementById('launch-practice');
+  const launchAnimations = document.getElementById('launch-animations');
   if (launchBrackets) launchBrackets.disabled = !canEnter;
   if (launchPractice) launchPractice.disabled = !canEnter;
+  if (launchAnimations) launchAnimations.disabled = !canEnter;
 
   // Hide account-only header controls until signed in.
   // Re-query headerNamePill to avoid variable shadowing.

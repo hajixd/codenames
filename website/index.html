@@ -180,7 +180,71 @@
               <div class="mode-card-title">Bracket</div>
               <div class="mode-card-desc">Browse all teams and standings.</div>
             </button>
+            <button class="mode-card" id="launch-animations" type="button">
+              <div class="mode-card-icon">🎞️</div>
+              <div class="mode-card-title">Animations</div>
+              <div class="mode-card-desc">Open the animation lab and test card reveals instantly.</div>
+            </button>
+          </div>
+
+          <div class="launch-animation-page" id="launch-animation-page" style="display:none;">
+            <div class="launch-animation-toolbar">
+              <button class="btn" id="launch-animation-back" type="button">Back</button>
+              <div class="launch-animation-title">Testing Animations</div>
+              <button class="btn small" data-anim-replay-all type="button">Replay All</button>
             </div>
+            <p class="subtitle small launch-animation-subtitle">Tap a card to replay the reveal sequence.</p>
+            <div class="launch-animation-grid" id="launch-animation-tests">
+              <div class="game-card anim-test-card" data-anim-type="red" role="button" tabindex="0" aria-label="Test red reveal">
+                <div class="card-inner">
+                  <div class="card-face card-front">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">RUBY</span></span>
+                  </div>
+                  <div class="card-face card-back">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">RUBY</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="game-card anim-test-card" data-anim-type="blue" role="button" tabindex="0" aria-label="Test blue reveal">
+                <div class="card-inner">
+                  <div class="card-face card-front">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">AZURE</span></span>
+                  </div>
+                  <div class="card-face card-back">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">AZURE</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="game-card anim-test-card" data-anim-type="neutral" role="button" tabindex="0" aria-label="Test neutral reveal">
+                <div class="card-inner">
+                  <div class="card-face card-front">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">SMOKE</span></span>
+                  </div>
+                  <div class="card-face card-back">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">SMOKE</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="game-card anim-test-card" data-anim-type="assassin" role="button" tabindex="0" aria-label="Test assassin reveal">
+                <div class="card-inner">
+                  <div class="card-face card-front">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">ONYX</span></span>
+                  </div>
+                  <div class="card-face card-back">
+                    <span class="card-recolor-sweep" aria-hidden="true"></span>
+                    <span class="card-word"><span class="word-text">ONYX</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -281,64 +345,6 @@
                 <span class="lbl">Players</span>
               </div>
             </div>
-
-            <section class="animation-test-section" id="home-animation-tests" aria-label="Testing Animations">
-              <div class="animation-test-head">
-                <h3 class="animation-test-title">Testing Animations</h3>
-                <button class="btn small" id="anim-test-replay-all" type="button">Replay All</button>
-              </div>
-              <p class="subtitle small animation-test-subtitle">Tap any card to replay the full reveal animation instantly.</p>
-              <div class="animation-test-grid">
-                <div class="game-card anim-test-card" data-anim-type="red" role="button" tabindex="0" aria-label="Test red reveal">
-                  <div class="card-inner">
-                    <div class="card-face card-front">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">RUBY</span></span>
-                    </div>
-                    <div class="card-face card-back">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">RUBY</span></span>
-                    </div>
-                  </div>
-                </div>
-                <div class="game-card anim-test-card" data-anim-type="blue" role="button" tabindex="0" aria-label="Test blue reveal">
-                  <div class="card-inner">
-                    <div class="card-face card-front">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">AZURE</span></span>
-                    </div>
-                    <div class="card-face card-back">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">AZURE</span></span>
-                    </div>
-                  </div>
-                </div>
-                <div class="game-card anim-test-card" data-anim-type="neutral" role="button" tabindex="0" aria-label="Test neutral reveal">
-                  <div class="card-inner">
-                    <div class="card-face card-front">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">SMOKE</span></span>
-                    </div>
-                    <div class="card-face card-back">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">SMOKE</span></span>
-                    </div>
-                  </div>
-                </div>
-                <div class="game-card anim-test-card" data-anim-type="assassin" role="button" tabindex="0" aria-label="Test assassin reveal">
-                  <div class="card-inner">
-                    <div class="card-face card-front">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">ONYX</span></span>
-                    </div>
-                    <div class="card-face card-back">
-                      <span class="card-recolor-sweep" aria-hidden="true"></span>
-                      <span class="card-word"><span class="word-text">ONYX</span></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
 
             <!-- Sleek name dock (bottom on mobile, top-right on desktop header) -->
             <div class="name-dock" id="name-card">
