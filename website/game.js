@@ -6297,7 +6297,7 @@ function renderBoard(isSpymaster) {
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
-    const canTargetThisCard = canStackTargets && !card.revealed && String(card.type || '') === String(myTeamColor || '');
+    const canTargetThisCard = canStackTargets && !card.revealed;
 
     if (card.revealed) {
       classes.push('revealed');
@@ -6516,9 +6516,6 @@ function isStackingEnabledForGame(game = currentGame) {
 
 function normalizeClueTargetSelection(selection = [], game = currentGame, teamOverride = null, opts = {}) {
   const cards = Array.isArray(game?.cards) ? game.cards : [];
-  const team = (teamOverride === 'blue' || teamOverride === 'red')
-    ? teamOverride
-    : ((game?.currentTeam === 'blue') ? 'blue' : 'red');
   const allowRevealed = !!opts.allowRevealed;
   const seen = new Set();
   const normalized = [];
@@ -6528,11 +6525,33 @@ function normalizeClueTargetSelection(selection = [], game = currentGame, teamOv
     if (seen.has(idx)) return;
     const card = cards[idx];
     if (!card || (!allowRevealed && card.revealed)) return;
-    if (String(card.type || '') !== team) return;
     seen.add(idx);
     normalized.push(idx);
   });
   return normalized;
+}
+
+function hasOffTeamClueTargets(selection = [], game = currentGame, teamOverride = null) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const team = (teamOverride === 'blue' || teamOverride === 'red')
+    ? teamOverride
+    : ((game?.currentTeam === 'blue') ? 'blue' : 'red');
+  const selected = Array.isArray(selection) ? selection : [];
+  for (const rawIdx of selected) {
+    const idx = Number(rawIdx);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= cards.length) continue;
+    const card = cards[idx];
+    if (!card) continue;
+    if (String(card.type || '') !== team) return true;
+  }
+  return false;
+}
+
+function getStackingClueNumberFromSelection(selection = [], game = currentGame, teamOverride = null) {
+  const selected = normalizeClueTargetSelection(selection, game, teamOverride);
+  if (!selected.length) return 0;
+  if (hasOffTeamClueTargets(selected, game, teamOverride)) return 0;
+  return Math.max(0, Math.min(9, selected.length));
 }
 
 function canCurrentUserStackClueTargets() {
@@ -6572,10 +6591,8 @@ function toggleClueTargetSelection(cardIndex) {
   if (!canCurrentUserStackClueTargets()) return;
   const idx = Number(cardIndex);
   if (!Number.isInteger(idx) || idx < 0) return;
-  const myTeamColor = getMyTeamColor();
   const card = currentGame?.cards?.[idx];
   if (!card || card.revealed) return;
-  if (String(card.type || '') !== String(myTeamColor || '')) return;
 
   const next = getCurrentClueTargetSelection(currentGame);
   const at = next.indexOf(idx);
@@ -6622,9 +6639,12 @@ function renderClueStackingPanel() {
   }
 
   if (selected.length > 0) {
-    summaryEl.textContent = `${selected.length} target${selected.length === 1 ? '' : 's'} selected`;
+    const offTeamSelected = hasOffTeamClueTargets(selected, currentGame, getMyTeamColor());
+    summaryEl.textContent = offTeamSelected
+      ? `${selected.length} card${selected.length === 1 ? '' : 's'} selected · avoid mode (0)`
+      : `${selected.length} target${selected.length === 1 ? '' : 's'} selected`;
   } else {
-    summaryEl.textContent = 'Tap your team cards to mark clue targets';
+    summaryEl.textContent = 'Tap unrevealed cards to mark targets (off-team cards force clue 0)';
   }
 
   const words = getClueTargetWords(selected, currentGame);
@@ -6639,7 +6659,7 @@ function renderClueStackingPanel() {
   if (numInput) {
     numInput.disabled = true;
     if (selected.length > 0) {
-      numInput.value = String(Math.max(0, Math.min(9, selected.length)));
+      numInput.value = String(getStackingClueNumberFromSelection(selected, currentGame, getMyTeamColor()));
     } else if (!String(numInput.value || '').trim()) {
       numInput.value = '1';
     }
@@ -8325,7 +8345,7 @@ async function handleClueSubmit(e) {
   }
 
   if (stackingOnTurn && selectedTargets.length > 0) {
-    number = Math.max(0, Math.min(9, selectedTargets.length));
+    number = getStackingClueNumberFromSelection(selectedTargets, currentGame, getMyTeamColor());
     if (numInput) numInput.value = String(number);
   }
 

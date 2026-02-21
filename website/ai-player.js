@@ -129,15 +129,29 @@ function describeEmotion(core) {
     const intensity = _clamp(Number(core?.emotion?.intensity || 45), 1, 100);
     // Coarse buckets the model can use as a style steer.
     let mood = 'neutral';
-    if (val <= -55) mood = 'angry';
+    if (val <= -70) mood = 'tilted';
+    else if (val <= -55) mood = 'angry';
     else if (val <= -30) mood = 'annoyed';
+    else if (val >= 70) mood = 'ecstatic';
     else if (val >= 55) mood = 'hyped';
     else if (val >= 30) mood = 'happy';
     else mood = 'neutral';
     const energy = ar >= 70 ? 'high-energy' : (ar <= 25 ? 'low-energy' : 'steady');
-    return { mood, energy, intensity, valence: _clamp(val, -100, 100), arousal: _clamp(ar, 0, 100) };
+    const socialTone = (mood === 'tilted' || mood === 'angry')
+      ? (intensity >= 60 ? 'sharp' : 'guarded')
+      : ((mood === 'happy' || mood === 'hyped' || mood === 'ecstatic')
+        ? (intensity >= 58 ? 'warm' : 'supportive')
+        : 'measured');
+    return {
+      mood,
+      energy,
+      socialTone,
+      intensity,
+      valence: _clamp(val, -100, 100),
+      arousal: _clamp(ar, 0, 100)
+    };
   } catch (_) {
-    return { mood: 'neutral', energy: 'steady', intensity: 45, valence: 0, arousal: 35 };
+    return { mood: 'neutral', energy: 'steady', socialTone: 'measured', intensity: 45, valence: 0, arousal: 35 };
   }
 }
 
@@ -148,6 +162,137 @@ function bumpEmotion(ai, dv = 0, da = 0) {
     if (!core.emotion) core.emotion = { valence: 0, arousal: 35, intensity: _baselineEmotionalIntensity(core.personality) };
     core.emotion.valence = _clamp((core.emotion.valence || 0) + Number(dv || 0), -100, 100);
     core.emotion.arousal = _clamp((core.emotion.arousal || 35) + Number(da || 0), 0, 100);
+  } catch (_) {}
+}
+
+function _emotionBaseValence(core) {
+  try {
+    const stats = core?.personality?.stats || {};
+    const confidence = _clamp(Number(stats.confidence ?? 55), 1, 100);
+    const teamSpirit = _clamp(Number(stats.team_spirit ?? 50), 1, 100);
+    const competitiveness = _clamp(Number(stats.competitiveness ?? 50), 1, 100);
+    return _clamp(
+      ((confidence - 50) * 0.38) + ((teamSpirit - 50) * 0.34) + ((competitiveness - 50) * 0.12),
+      -26,
+      26
+    );
+  } catch (_) {
+    return 0;
+  }
+}
+
+function _emotionBaseArousal(core) {
+  try {
+    const stats = core?.personality?.stats || {};
+    const tempo = _clamp(Number(stats.tempo ?? stats.speed ?? 60), 1, 100);
+    const intensity = _baselineEmotionalIntensity(core?.personality);
+    return _clamp(18 + (tempo * 0.36) + (intensity * 0.42), 18, 84);
+  } catch (_) {
+    return 35;
+  }
+}
+
+function _teamWordsLeftFromVision(vision, team) {
+  try {
+    const score = vision?.score;
+    if (!score) return null;
+    if (String(team || '') === 'red') return Number(score.redLeft);
+    if (String(team || '') === 'blue') return Number(score.blueLeft);
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function _remainingSecondsFromGameTimer(game) {
+  try {
+    const end = game?.timerEnd;
+    const endMs = (typeof end?.toMillis === 'function')
+      ? end.toMillis()
+      : (end instanceof Date ? end.getTime() : Number(end));
+    if (!Number.isFinite(endMs)) return null;
+    return Math.max(0, Math.round((endMs - Date.now()) / 1000));
+  } catch (_) {
+    return null;
+  }
+}
+
+function applyEmotionDriftFromState(ai, game, vision, opts = {}) {
+  try {
+    const core = ensureAICore(ai);
+    if (!core) return;
+    if (!core.emotion) {
+      core.emotion = {
+        valence: 0,
+        arousal: 35,
+        intensity: _baselineEmotionalIntensity(core.personality),
+      };
+    }
+    const now = Date.now();
+    const force = !!opts.force;
+    const minGapMs = force ? 120 : 1400;
+    if (!force && (now - Number(core.lastEmotionDriftAt || 0)) < minGapMs) return;
+
+    const me = String(ai?.team || '').toLowerCase();
+    const opp = me === 'red' ? 'blue' : 'red';
+    const phase = String(vision?.phase || game?.currentPhase || '').toLowerCase();
+    const currentTeam = String(vision?.currentTeam || game?.currentTeam || '').toLowerCase();
+
+    let dv = 0;
+    let da = 0;
+
+    const myLeft = _teamWordsLeftFromVision(vision, me);
+    const oppLeft = _teamWordsLeftFromVision(vision, opp);
+    if (Number.isFinite(myLeft) && Number.isFinite(oppLeft)) {
+      const lead = oppLeft - myLeft; // positive means we are ahead
+      dv += _clamp(lead * 2.35, -13, 13);
+      if (myLeft <= 2) da += 8;
+      if (oppLeft <= 2) da += 6;
+    }
+
+    const clueStackRows = Array.isArray(vision?.clueStack) ? vision.clueStack : [];
+    const unresolvedTotal = clueStackRows.reduce((sum, row) => sum + Math.max(0, Number(row?.remainingTargets || 0)), 0);
+    if (phase === 'operatives' && currentTeam === me) {
+      if (unresolvedTotal >= 3) {
+        da += Math.min(9, unresolvedTotal * 0.95);
+        dv -= Math.min(8, unresolvedTotal * 0.52);
+      }
+      const guessesLeft = Number(vision?.guessesRemaining);
+      if (Number.isFinite(guessesLeft)) {
+        if (guessesLeft <= 1) da += 4;
+        else da += Math.min(7, guessesLeft * 0.9);
+      }
+    }
+
+    let secs = Number(vision?.secondsRemaining);
+    if (!Number.isFinite(secs)) secs = _remainingSecondsFromGameTimer(game);
+    if (Number.isFinite(secs)) {
+      if (secs <= 7) { da += 15; dv -= 4; }
+      else if (secs <= 20) { da += 8; dv -= 2; }
+      else if (secs <= 45) { da += 3; }
+    }
+
+    const eventKind = String(opts.eventKind || '').toLowerCase();
+    if (eventKind) {
+      if (/guess_assassin/.test(eventKind)) { dv -= 45; da += 28; }
+      else if (/guess_wrong|guess_neutral/.test(eventKind)) { dv -= 15; da += 12; }
+      else if (/guess_correct/.test(eventKind)) { dv += 11; da += 6; }
+      else if (/time_pressure/.test(eventKind)) { da += 8; }
+      else if (/quick_guess_no_consensus/.test(eventKind)) { dv -= 7; da += 10; }
+    }
+
+    if (String(game?.winner || '').toLowerCase() === me) { dv += 32; da -= 6; }
+    else if (String(game?.winner || '').toLowerCase() === opp) { dv -= 34; da += 7; }
+
+    const curVal = Number(core.emotion.valence || 0);
+    const curAro = Number(core.emotion.arousal || 35);
+    const baseVal = _emotionBaseValence(core);
+    const baseAro = _emotionBaseArousal(core);
+    dv += (baseVal - curVal) * (force ? 0.22 : 0.09);
+    da += (baseAro - curAro) * (force ? 0.24 : 0.11);
+
+    bumpEmotion(ai, dv, da);
+    core.lastEmotionDriftAt = now;
   } catch (_) {}
 }
 
@@ -463,6 +608,7 @@ function _scoreNebiusModelForRole(model, role) {
   } else if (r === AI_BRAIN_ROLES.dialogue) {
     if (/(hermes|chat|assistant|roleplay)/.test(text)) score += 28;
     if (/(instruct)/.test(text)) score += 14;
+    if (/(r1|reasoning|reasoner|deepseek\-r1|qwq|o1)/.test(text)) score -= 8;
     if (sizeB !== null && sizeB >= 30) score += 6;
   } else if (r === AI_BRAIN_ROLES.reaction) {
     if (/(chat|assistant|instruct)/.test(text)) score += 16;
@@ -585,7 +731,11 @@ function primeNebiusModelCatalog() {
 function _pickModelDeterministically(candidates, aiId, role) {
   const list = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
   if (!list.length) return '';
-  const topN = Math.max(1, Math.min(4, list.length));
+  const r = _normalizeBrainRole(role, AI_BRAIN_ROLES.dialogue);
+  if (r === AI_BRAIN_ROLES.reasoning || r === AI_BRAIN_ROLES.instruction || r === AI_BRAIN_ROLES.mind) {
+    return String(list[0]?.id || '');
+  }
+  const topN = Math.max(1, Math.min((r === AI_BRAIN_ROLES.dialogue ? 4 : 3), list.length));
   const idx = _stableHash(`${String(aiId || 'anon')}|${String(role || '')}`) % topN;
   const chosen = list[idx];
   return String(chosen?.id || '');
@@ -932,10 +1082,9 @@ Core objective:
 Teamwork & communication:
 - Talk to your teammates. Share hypotheses, doubts, and “why not” eliminations before committing.
 - Use quick, concrete messages: “I like 7=CAR because wheel→car; I dislike 12=RING because it’s too generic.”
-- Use markings to coordinate:
-  - YES = strong candidate for the current clue
-  - MAYBE = plausible but needs caution / could be later
-  - NO = dangerous pull (likely wrong / likely assassin/opponent/neutral or too “hubby”)
+- Use considering initials to coordinate:
+  - Put your initials on likely candidates so teammates can see overlap quickly.
+  - Move initials when your read changes; visible shifts are useful team signals.
 - Don’t spam: mark 1–3 key cards and write short chat messages that help the group converge.
 - Strongly prefer real conversation before actions:
   - React to teammate suggestions (agree/disagree + why).
@@ -965,6 +1114,10 @@ How to choose a clue:
 5) Using 0 can be useful:
    - A 0-clue is a defensive tool: it can warn operatives away from a dangerous association (“WATER 0” to signal “don’t touch OCEAN if it feels assassin-ish”).
    - Use it sparingly and only when it meaningfully reduces risk.
+6) Clue-choice signal matters:
+   - Operatives infer intent from what clue you DID choose and what you DIDN’T choose.
+   - If an obvious ultra-specific clue existed (franchise/title/proper-noun) and you avoided it, they may assume your intended words are broader or in a different sense.
+   - Favor clues whose intended sense is the first reasonable read on this board.
 
 Operative fundamentals:
 - Interpret the clue and guess unrevealed words that belong to your team.
@@ -972,6 +1125,12 @@ Operative fundamentals:
 - Use elimination:
   - If a word matches the clue but also matches a very plausible assassin/opponent pull, be cautious.
   - Avoid generic “semantic hubs” unless the clue is very specific.
+- Read clue intent, not just word overlap:
+  - Ask “what clue would the spymaster have said if they meant those obvious words?”
+  - If a cleaner, more specific clue existed but wasn’t used, down-rank that interpretation.
+- Use opponent clue history as context:
+  - Opponent clue choices can reveal themes they are steering toward.
+  - Use that as soft negative evidence for your own clue interpretation when a candidate looks like an opponent lane.
 - Maintain clue-sense consistency:
   - For clue N≥2, your guesses should usually share the same sense of the clue (don’t mix meanings).
 - Respect the guess budget:
@@ -1773,6 +1932,51 @@ function _getAICadence(ai) {
   return core?.cadence || _buildAICadenceProfile(core?.personality, ai?.id || ai?.odId || ai?.name || '');
 }
 
+function _effectiveCadenceForGame(ai, game = null) {
+  const base = _getAICadence(ai);
+  const g = game || currentGame || null;
+  if (!g || !ai) return base;
+
+  const team = String(ai?.team || '').toLowerCase();
+  const role = String(ai?.seatRole || '').toLowerCase();
+  const phase = String(g?.currentPhase || '').toLowerCase();
+  const isMyTurn = team && String(g?.currentTeam || '').toLowerCase() === team;
+  let secs = _remainingSecondsFromGameTimer(g);
+  if (!Number.isFinite(secs)) secs = null;
+
+  let urgencyScale = 1;
+  if (Number.isFinite(secs)) {
+    if (secs <= 10) urgencyScale = 0.62;
+    else if (secs <= 20) urgencyScale = 0.78;
+    else if (secs <= 40) urgencyScale = 0.9;
+  }
+
+  let turnScale = 1;
+  if (phase === 'operatives') turnScale = isMyTurn ? 0.76 : 1.26;
+  else if (phase === 'spymaster') turnScale = (isMyTurn && role === 'spymaster') ? 0.74 : 1.18;
+  else if (phase === 'role-selection') turnScale = 1.25;
+
+  const visionMinMs = Math.round(_clamp(Number(base.visionMinMs || 900) * turnScale * urgencyScale, 320, 2600));
+  const mindTickMinMs = Math.round(_clamp(Number(base.mindTickMinMs || 1300) * (isMyTurn ? 0.9 : 1.16) * urgencyScale, 620, 4200));
+  const chatReplyMinMs = Math.round(_clamp(Number(base.chatReplyMinMs || 3500) * (isMyTurn ? 0.84 : 1.14) * (urgencyScale < 0.8 ? 0.86 : 1), 1200, 12000));
+  const markerReactionMinMs = Math.round(_clamp(Number(base.markerReactionMinMs || 4500) * (phase === 'operatives' ? 0.92 : 1.12), 1600, 12000));
+  const offTurnScoutMinMs = Math.round(_clamp(Number(base.offTurnScoutMinMs || 12000) * ((phase === 'operatives' && !isMyTurn) ? 0.92 : 1.16), 5000, 26000));
+
+  const replyVsHuman = _clamp(Number(base.chatReplyChanceVsHuman || 0.7) * (isMyTurn ? 1.1 : 0.95), 0.16, 0.95);
+  const replyVsAI = _clamp(Number(base.chatReplyChanceVsAI || 0.55) * (isMyTurn ? 1.08 : 0.92), 0.10, 0.86);
+
+  return {
+    ...base,
+    visionMinMs,
+    mindTickMinMs,
+    chatReplyMinMs,
+    markerReactionMinMs,
+    offTurnScoutMinMs,
+    chatReplyChanceVsHuman: replyVsHuman,
+    chatReplyChanceVsAI: replyVsAI,
+  };
+}
+
 function ensureAICore(ai) {
   if (!ai || !ai.id) return null;
   if (!aiCore[ai.id]) {
@@ -2444,7 +2648,7 @@ function updateAIVisionFromGame(game) {
     for (const ai of (aiPlayers || [])) {
       const core = ensureAICore(ai);
       if (!core) continue;
-      const cadence = core.cadence || _buildAICadenceProfile(core.personality, ai?.id || ai?.odId || ai?.name || '');
+      const cadence = _effectiveCadenceForGame(ai, game);
       const elapsed = now - Number(core.lastVisionUpdateAt || 0);
       const due = elapsed >= Number(cadence.visionMinMs || 900);
       if (!globalChanged && !due) continue;
@@ -2490,6 +2694,7 @@ function updateAIVisionFromGame(game) {
             }
           }
           core._lastEmotionGameSig = emoSig;
+          applyEmotionDriftFromState(ai, game, vision);
         } catch (_) {}
 
         // Mind always writes when vision changes.
@@ -2499,6 +2704,7 @@ function updateAIVisionFromGame(game) {
         // Optional additional inner-monologue tick (LLM-written) without blocking.
         maybeMindTick(ai, game, { vision });
       } else if (due) {
+        applyEmotionDriftFromState(ai, game, vision);
         // Slow periodic mind refresh, even when state signature is unchanged.
         if ((now - Number(core.lastMindTickAt || 0)) > Number(cadence.mindTickMinMs || 1200) * 1.45 && Math.random() < 0.24) {
           maybeMindTick(ai, game, { vision });
@@ -3034,6 +3240,143 @@ function shouldMinimizeOperativeDiscussion(proposals, councilSize) {
   return snap.votes >= voteFloor && snap.voteRatio >= 0.66 && snap.avg >= 8;
 }
 
+function _buildOperativeGuessVoteRows(proposalsByAi) {
+  const byIndex = new Map();
+  const rows = Array.from((proposalsByAi || new Map()).values()).filter(Boolean);
+  for (const p of rows) {
+    if (String(p?.action || '') !== 'guess') continue;
+    const idx = Number(p?.index);
+    if (!Number.isFinite(idx)) continue;
+    const conf = normalizeConfidence10(p?.confidence, 6);
+    const aiId = String(p?.ai?.id || '');
+    const cur = byIndex.get(idx) || { index: idx, votes: 0, aiIds: [], bestAiId: '', bestConf: 0 };
+    cur.votes += 1;
+    if (aiId && !cur.aiIds.includes(aiId)) cur.aiIds.push(aiId);
+    if (!cur.bestAiId || conf > cur.bestConf) {
+      cur.bestAiId = aiId;
+      cur.bestConf = conf;
+    }
+    byIndex.set(idx, cur);
+  }
+  return Array.from(byIndex.values())
+    .sort((a, b) => (b.votes - a.votes) || (b.bestConf - a.bestConf) || (a.index - b.index));
+}
+
+function deriveOperativeCouncilPhase(game, team, ops, proposalsByAi, chatDocs = [], round = 0) {
+  const opCount = Math.max(1, Array.isArray(ops) ? ops.length : 1);
+  const docs = (Array.isArray(chatDocs) ? chatDocs : []).slice(-10);
+  const greetings = docs.filter(d => isGreetingLike(d?.text || '')).length;
+  const greetingHeavy = docs.length > 0 && (greetings / docs.length) >= 0.55;
+  const voteRows = _buildOperativeGuessVoteRows(proposalsByAi);
+  const top = voteRows[0] || null;
+  const second = voteRows[1] || null;
+  const contested = !!(top && second && top.votes >= 1 && second.votes >= 1 && Math.abs(top.votes - second.votes) <= 1);
+  const converged = !!(top && (!second || top.votes >= Math.max(2, Math.ceil(opCount * 0.66))));
+  const secsLeft = _remainingSecondsFromGameTimer(game);
+
+  let key = 'discussion';
+  if ((round <= 0 && (!docs.length || greetingHeavy)) || (round <= 1 && docs.length <= 1 && greetings >= 1)) {
+    key = 'greeting';
+  } else if (Number.isFinite(secsLeft) && secsLeft <= 16) {
+    key = 'reasoning';
+  } else if (contested && opCount >= 2) {
+    key = 'debate';
+  } else if (!converged && round <= 1) {
+    key = 'search';
+  } else if (converged && round >= 1) {
+    key = 'reasoning';
+  }
+
+  const phaseMap = {
+    greeting: {
+      label: 'Greeting',
+      styleHint: 'quick warm-up banter, then pivot to clue work',
+      socialCue: '1-2 people can open; others may watch and only jump in with a useful point',
+      minSpeakers: 1,
+      maxSpeakers: Math.min(2, opCount),
+      preferDebaters: false,
+    },
+    search: {
+      label: 'Search',
+      styleHint: 'explore options and eliminations; float alternatives without overcommitting',
+      socialCue: 'broader participation is okay, but avoid duplicate takes',
+      minSpeakers: Math.min(2, opCount),
+      maxSpeakers: Math.min(3, opCount),
+      preferDebaters: false,
+    },
+    debate: {
+      label: 'Debate',
+      styleHint: 'two competing lines; challenge directly with concrete evidence',
+      socialCue: 'let 1-2 primary voices argue; others can sit out unless they add decisive info',
+      minSpeakers: Math.min(2, opCount),
+      maxSpeakers: Math.min(3, opCount),
+      preferDebaters: true,
+    },
+    discussion: {
+      label: 'Discussion',
+      styleHint: 'balanced collaborative discussion with short reasoning',
+      socialCue: 'keep turn-taking natural and avoid piling on',
+      minSpeakers: Math.min(2, opCount),
+      maxSpeakers: Math.min(3, opCount),
+      preferDebaters: false,
+    },
+    reasoning: {
+      label: 'Reasoning',
+      styleHint: 'close the loop, sanity-check risk, and align on the final action',
+      socialCue: 'only 1-2 concise messages; everyone else can observe',
+      minSpeakers: 1,
+      maxSpeakers: Math.min(2, opCount),
+      preferDebaters: false,
+    },
+  };
+
+  const picked = phaseMap[key] || phaseMap.discussion;
+  return {
+    key,
+    round,
+    contested,
+    converged,
+    voteRows,
+    ...picked,
+  };
+}
+
+function selectOperativeCouncilSpeakers(ops, phaseInfo, proposalsByAi, seedKey = '') {
+  const list = Array.isArray(ops) ? ops.filter(Boolean) : [];
+  if (!list.length) return new Set();
+  if (list.length === 1) return new Set([String(list[0].id || '')]);
+
+  const minSpeakers = Math.max(1, Math.min(list.length, Number(phaseInfo?.minSpeakers || 1)));
+  const maxSpeakers = Math.max(minSpeakers, Math.min(list.length, Number(phaseInfo?.maxSpeakers || list.length)));
+  const span = maxSpeakers - minSpeakers;
+  const target = minSpeakers + (span > 0 ? (_stableHash(`${seedKey}|${phaseInfo?.key || 'discussion'}|target`) % (span + 1)) : 0);
+
+  const selected = new Set();
+  if (phaseInfo?.preferDebaters) {
+    const rows = _buildOperativeGuessVoteRows(proposalsByAi).slice(0, 2);
+    for (const row of rows) {
+      const lead = String(row?.bestAiId || row?.aiIds?.[0] || '').trim();
+      if (!lead) continue;
+      selected.add(lead);
+      if (selected.size >= target) break;
+    }
+  }
+
+  const ordered = [...list].sort((a, b) => {
+    const ah = _stableHash(`${seedKey}|${String(a?.id || '')}`);
+    const bh = _stableHash(`${seedKey}|${String(b?.id || '')}`);
+    return ah - bh;
+  });
+  for (const ai of ordered) {
+    if (selected.size >= target) break;
+    const id = String(ai?.id || '').trim();
+    if (!id) continue;
+    selected.add(id);
+  }
+
+  return selected;
+}
+
 function buildSpymasterConsensusSnapshot(proposals, councilSize) {
   const ps = (proposals || []).filter(p => p && p.clue);
   if (!ps.length) return null;
@@ -3317,6 +3660,13 @@ async function aiOperativePropose(ai, game, opts = {}) {
   const vision = buildAIVision(game, ai);
   const persona = core.personality;
   const requireMarks = (opts.requireMarks === undefined) ? true : !!opts.requireMarks;
+  const phaseInfo = (opts.conversationPhase && typeof opts.conversationPhase === 'object')
+    ? opts.conversationPhase
+    : null;
+  const socialPhaseLabel = String(phaseInfo?.label || 'Discussion');
+  const socialPhaseCue = String(phaseInfo?.socialCue || 'balanced collaboration; avoid repeating points');
+  const socialPhaseStyle = String(phaseInfo?.styleHint || 'short direct strategy discussion');
+  const shouldSpeak = opts.shouldSpeak !== false;
 
 
   if (!vision.clue || !vision.clue.word) return null;
@@ -3344,6 +3694,10 @@ async function aiOperativePropose(ai, game, opts = {}) {
     AI_TIPS_MANUAL,
     ``,
     `THINK before you speak. Write your inner "mind" monologue first, THEN your chat.`,
+    `CURRENT TEAM CHAT PHASE: ${socialPhaseLabel}.`,
+    `PHASE STYLE: ${socialPhaseStyle}.`,
+    `SOCIAL CUE: ${socialPhaseCue}.`,
+    !shouldSpeak ? `- You are mostly observing right now. Set chat="" unless you have a decisive new point.` : '',
     ``,
     `HOW TO TALK (critical — read carefully):`,
     `You're texting with friends during a board game. Be casual, short, and real.`,
@@ -3403,6 +3757,8 @@ async function aiOperativePropose(ai, game, opts = {}) {
     ``,
     `TEAM CHAT (latest messages — read these and respond naturally):\n${teamChat || '(no messages yet — you speak first)'}`,
     ``,
+    `SPEAKING ROLE THIS PASS: ${shouldSpeak ? 'active speaker' : 'observer'}`,
+    ``,
     `RECENT MIND:\n${mindContext}`
   ].filter(Boolean).join('\n');
 
@@ -3446,6 +3802,7 @@ async function aiOperativePropose(ai, game, opts = {}) {
 
   let chat = String(parsed.chat || '').trim();
   chat = sanitizeChatText(chat, vision, 240);
+  if (!shouldSpeak) chat = '';
   chat = chat.slice(0, 240);
 
   if (action === 'end_turn') {
@@ -3612,6 +3969,13 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     const vision = buildAIVision(game, ai);
     const persona = core.personality;
     const team = ai.team;
+    const phaseInfo = (opts.conversationPhase && typeof opts.conversationPhase === 'object')
+      ? opts.conversationPhase
+      : null;
+    const socialPhaseLabel = String(phaseInfo?.label || 'Discussion');
+    const socialPhaseCue = String(phaseInfo?.socialCue || 'balanced collaboration; no repeated takes');
+    const socialPhaseStyle = String(phaseInfo?.styleHint || 'short strategic back-and-forth');
+    const shouldSpeak = opts.shouldSpeak !== false;
 
     const chatDocs = Array.isArray(opts.chatDocs) ? opts.chatDocs : [];
     const teamChat = chatDocs.slice(-12).map(m => `${m.senderName}: ${m.text}`).join('\n');
@@ -3647,6 +4011,10 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       AI_TIPS_MANUAL,
       '',
       `This is a FOLLOW-UP in an ongoing team conversation. Think first (mind), then decide if you have anything worth saying.`,
+      `CURRENT TEAM CHAT PHASE: ${socialPhaseLabel}.`,
+      `PHASE STYLE: ${socialPhaseStyle}.`,
+      `SOCIAL CUE: ${socialPhaseCue}.`,
+      !shouldSpeak ? `You are mostly observing this phase. Default to chat="" unless you have a decisive correction.` : '',
       ``,
       `CRITICAL — ONLY SPEAK IF:`,
       `1. You have a genuinely NEW idea, connection, or word suggestion nobody mentioned yet`,
@@ -3706,6 +4074,8 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       '',
       `UNREVEALED WORDS:\n${unrevealed.join(', ')}`,
       '',
+      `SPEAKING ROLE THIS PASS: ${shouldSpeak ? 'active speaker' : 'observer'}`,
+      '',
       `RECENT MIND:\n${mindContext}`,
     ].join('\n');
 
@@ -3724,6 +4094,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
 
     let chat = String(parsed.chat || '').trim();
     chat = sanitizeChatText(chat, vision, 240);
+    if (!shouldSpeak) chat = '';
 
     const action = String(parsed.action || 'no_change').toLowerCase().trim();
     const idx = Number(parsed.index);
@@ -3733,7 +4104,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     let focusClue = String(parsed.focusClue || '').trim().toUpperCase();
     if (focusClue && !priorityWords.has(focusClue) && focusClue !== currentClueWord) focusClue = '';
     if (!focusClue && currentClueWord) focusClue = currentClueWord;
-    const cont = (parsed.continue === true);
+    const cont = shouldSpeak ? (parsed.continue === true) : false;
 
     const marksIn = Array.isArray(parsed.marks) ? parsed.marks : [];
     const marks = [];
@@ -3778,6 +4149,10 @@ async function runOperativeCouncil(game, team) {
   // read what others said and adjust.
   let working = game;
   const proposalsByAi = new Map();
+  let openingChatState = { docs: [], sig: '' };
+  try { openingChatState = await getTeamChatState(game.id, team, 14); } catch (_) {}
+  const openingPhase = deriveOperativeCouncilPhase(working, team, ops, proposalsByAi, openingChatState.docs, 0);
+  const openingSpeakers = selectOperativeCouncilSpeakers(ops, openingPhase, proposalsByAi, `${key}|opening`);
 
   for (const ai of ops) {
     const core = ensureAICore(ai);
@@ -3795,13 +4170,17 @@ async function runOperativeCouncil(game, team) {
     if (String(working.currentTeam || '') !== String(team || '')) return;
 
     const chatBefore = await getTeamChatState(game.id, team, 14);
+    applyEmotionDriftFromState(ai, working, buildAIVision(working, ai));
 
     aiThinkingState[ai.id] = true;
     try {
+      const shouldSpeak = openingSpeakers.has(String(ai.id || ''));
       const prop = await aiOperativePropose(ai, working, {
         requireMarks: true,
         councilSize: ops.length,
-        chatDocs: chatBefore.docs
+        chatDocs: chatBefore.docs,
+        conversationPhase: openingPhase,
+        shouldSpeak
       });
       if (!prop) {
         core.lastSuggestionKey = key;
@@ -3842,8 +4221,18 @@ async function runOperativeCouncil(game, team) {
     let rounds = 0;
     while (rounds < 3) {
       rounds += 1;
+      let phaseState = null;
+      let roundSpeakers = new Set();
+      try {
+        const roundChatState = await getTeamChatState(game.id, team, 16);
+        phaseState = deriveOperativeCouncilPhase(working, team, ops, proposalsByAi, roundChatState.docs, rounds);
+      } catch (_) {
+        phaseState = deriveOperativeCouncilPhase(working, team, ops, proposalsByAi, [], rounds);
+      }
+      roundSpeakers = selectOperativeCouncilSpeakers(ops, phaseState, proposalsByAi, `${key}|round:${rounds}`);
       let anySpoke = false;
       for (const ai of ops) {
+        if (!roundSpeakers.has(String(ai.id || ''))) continue;
         if (aiThinkingState[ai.id]) continue;
         // Refresh snapshot + chat so replies can incorporate the newest updates.
         try {
@@ -3854,10 +4243,15 @@ async function runOperativeCouncil(game, team) {
         if (String(working.currentPhase || '') !== 'operatives') return;
         if (String(working.currentTeam || '') !== String(team || '')) return;
         const chatBefore = await getTeamChatState(game.id, team, 16);
+        applyEmotionDriftFromState(ai, working, buildAIVision(working, ai));
 
         aiThinkingState[ai.id] = true;
         try {
-          const follow = await aiOperativeFollowup(ai, working, proposalsByAi, { chatDocs: chatBefore.docs });
+          const follow = await aiOperativeFollowup(ai, working, proposalsByAi, {
+            chatDocs: chatBefore.docs,
+            conversationPhase: phaseState,
+            shouldSpeak: true
+          });
           if (!follow) continue;
 
           // If chat changed while drafting, rewrite the message to reflect it.
@@ -5304,6 +5698,54 @@ function _pickAddressedTeammateName(chatDocs, aiName, preferred = '') {
   }
 }
 
+function deriveSocialChatPhase(game, vision, contextKey, chatDocs = [], lastMessage = '') {
+  const docs = (Array.isArray(chatDocs) ? chatDocs : []).slice(-10);
+  const texts = docs.map(d => String(d?.text || '').trim()).filter(Boolean);
+  const greetingCount = texts.filter(t => isGreetingLike(t)).length;
+  const disagreementCount = texts.filter(t => /\b(no|nah|idk about|not sold|disagree|risky|force|bad pick|don't like)\b/i.test(t)).length;
+  const questionCount = texts.filter(t => /\?/.test(t)).length;
+  const unresolved = (Array.isArray(vision?.clueStack) ? vision.clueStack : [])
+    .filter(c => Number(c?.remainingTargets || 0) > 0)
+    .length;
+  let secsLeft = Number(vision?.secondsRemaining);
+  if (!Number.isFinite(secsLeft)) secsLeft = _remainingSecondsFromGameTimer(game);
+
+  let key = 'discussion';
+  if (contextKey === 'start' || (!texts.length && !String(lastMessage || '').trim())) key = 'greeting';
+  else if (contextKey === 'end_turn_deliberation' || (Number.isFinite(secsLeft) && secsLeft <= 18)) key = 'reasoning';
+  else if (disagreementCount >= 2 || (questionCount >= 2 && disagreementCount >= 1)) key = 'debate';
+  else if (unresolved >= 2) key = 'search';
+
+  const defs = {
+    greeting: {
+      label: 'Greeting',
+      styleHint: 'friendly opener, then quickly move into strategy',
+      socialCue: 'light social energy; not everyone has to talk',
+    },
+    search: {
+      label: 'Search',
+      styleHint: 'scan possibilities and eliminate risky pulls',
+      socialCue: 'conversation can be relaxed, but each message should add a new angle',
+    },
+    debate: {
+      label: 'Debate',
+      styleHint: 'direct disagreement with concrete evidence',
+      socialCue: 'a couple voices can lead while others observe',
+    },
+    discussion: {
+      label: 'Discussion',
+      styleHint: 'balanced back-and-forth with practical reasoning',
+      socialCue: 'engage naturally and avoid pile-on agreement',
+    },
+    reasoning: {
+      label: 'Reasoning',
+      styleHint: 'decision-focused, concise, risk-aware',
+      socialCue: 'speak only if it moves the decision forward',
+    },
+  };
+  return { key, ...(defs[key] || defs.discussion) };
+}
+
 async function generateAIChatMessage(ai, game, context, opts = {}) {
   try {
     // Optional snapshot refresh for call sites that want it.
@@ -5334,16 +5776,24 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const forceResponse = !!opts.forceResponse;
     const contextKey = String(context || '').toLowerCase();
     const isReplyContext = contextKey === 'reply';
+    const socialPhase = deriveSocialChatPhase(game, vision, contextKey, chatDocs, lastMessage);
     const chatMaxLen = isReplyContext ? 260 : (contextKey === 'end_turn_deliberation' ? 230 : 240);
     const addressee = _pickAddressedTeammateName(chatDocs, ai?.name, opts?.lastSenderName || '');
-    const shouldAddressName = !!addressee && (isReplyContext ? Math.random() < 0.52 : Math.random() < 0.26);
+    const addressChance = (socialPhase.key === 'debate')
+      ? (isReplyContext ? 0.62 : 0.35)
+      : (socialPhase.key === 'greeting' ? (isReplyContext ? 0.58 : 0.30) : (isReplyContext ? 0.52 : 0.24));
+    const shouldAddressName = !!addressee && (Math.random() < addressChance);
 
     const persona = core.personality;
+    applyEmotionDriftFromState(ai, game, vision);
     const emo = describeEmotion(core);
     const systemPrompt = [
       `You are ${ai.name}, chatting with teammates during a Codenames game.`,
       buildPersonalityBlockBrief(persona),
-      `CURRENT EMOTION: mood=${emo.mood}, energy=${emo.energy}, intensity=${emo.intensity}/100.`,
+      `CHAT PHASE: ${socialPhase.label} (${socialPhase.key}).`,
+      `PHASE STYLE: ${socialPhase.styleHint}.`,
+      `SOCIAL CUE: ${socialPhase.socialCue}.`,
+      `CURRENT EMOTION: mood=${emo.mood}, energy=${emo.energy}, social=${emo.socialTone}, intensity=${emo.intensity}/100.`,
       ``,
       `You're texting friends during a board game. Be casual and real.`,
       `- Respond to what the last person actually said. Don't ignore them.`,
@@ -5371,6 +5821,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const mindContext = core.mindLog.slice(-6).join('\n');
     const userPrompt = [
       `CONTEXT: ${String(context || 'general')}`,
+      `CHAT PHASE CONTEXT: ${socialPhase.key}`,
       lastMessage ? `LAST TEAM MESSAGE: ${lastMessage}` : '',
       shouldAddressName ? `NATURAL NAME TARGET: ${addressee}` : '',
       teamChat ? `RECENT TEAM CHAT:\n${teamChat}` : '',
@@ -5557,7 +6008,9 @@ async function generateAIActionReactionMessage(ai, game, event, opts = {}) {
     const core = ensureAICore(ai);
     if (!core) return '';
     const vision = buildAIVision(game, ai);
+    applyEmotionDriftFromState(ai, game, vision, { eventKind: String(event?.kind || ''), force: true });
     const persona = core.personality;
+    const emo = describeEmotion(core);
     const unresolved = (Array.isArray(vision?.clueStack) ? vision.clueStack : [])
       .filter(c => Number(c?.remainingTargets || 0) > 0)
       .slice(0, 4)
@@ -5568,6 +6021,7 @@ async function generateAIActionReactionMessage(ai, game, event, opts = {}) {
     const systemPrompt = [
       `You are ${ai.name}, OPERATIVE on ${String(ai.team || '').toUpperCase()} team in Codenames.`,
       buildPersonalityBlockBrief(persona),
+      `CURRENT EMOTION: mood=${emo.mood}, social=${emo.socialTone}, intensity=${emo.intensity}/100.`,
       `React in team chat to a recent game event.`,
       `- Keep it 1 short sentence (max 130 chars).`,
       `- Sound natural and specific to this event.`,
@@ -5647,11 +6101,37 @@ async function queueAIReactionsFromLogEntries(newEntries, game) {
       }
 
       for (const ai of candidates.filter(Boolean)) {
-        const cadence = _getAICadence(ai);
+        const cadence = _effectiveCadenceForGame(ai, game);
         const now = Date.now();
         const minGap = Math.max(1800, Math.round(Number(cadence.chatReplyMinMs || 3500) * 0.82));
         if ((now - Number(aiLastActionReactionMs[ai.id] || 0)) < minGap) continue;
         if ((now - Number(aiLastChatReplyMs[ai.id] || 0)) < Math.max(1400, Math.round(minGap * 0.7))) continue;
+
+        const kind = String(event.kind || '').toLowerCase();
+        const aiTeam = String(ai.team || '').toLowerCase();
+        const sameTeam = aiTeam === team;
+        if (/guess_assassin/.test(kind)) {
+          if (sameTeam) bumpEmotion(ai, -55, +30);
+          else bumpEmotion(ai, +22, +16);
+        } else if (/guess_wrong|guess_neutral/.test(kind)) {
+          if (sameTeam) bumpEmotion(ai, -16, +14);
+          else bumpEmotion(ai, +11, +9);
+        } else if (/guess_correct/.test(kind)) {
+          if (sameTeam) bumpEmotion(ai, +16, +9);
+          else bumpEmotion(ai, -7, +7);
+        } else if (/turn_end/.test(kind)) {
+          bumpEmotion(ai, sameTeam ? -3 : +2, +3);
+        }
+        if (quickGuessNoConsensus && sameTeam) bumpEmotion(ai, -9, +11);
+        applyEmotionDriftFromState(
+          ai,
+          game,
+          buildAIVision(game, ai),
+          {
+            eventKind: quickGuessNoConsensus ? `${kind}_quick_guess_no_consensus` : kind,
+            force: true
+          }
+        );
 
         let msg = await generateAIActionReactionMessage(ai, game, event, { quickGuessNoConsensus });
         if (!msg && quickGuessNoConsensus) {
@@ -5698,7 +6178,7 @@ async function maybeAIReactToTimePressure(game) {
       .sort((a, b) => Number(aiLastActionReactionMs[a.id] || 0) - Number(aiLastActionReactionMs[b.id] || 0));
     if (!pool.length) return false;
     const ai = pool[0];
-    const cadence = _getAICadence(ai);
+    const cadence = _effectiveCadenceForGame(ai, game);
     const now = Date.now();
     if ((now - Number(aiLastActionReactionMs[ai.id] || 0)) < Math.max(1600, Math.round(Number(cadence.chatReplyMinMs || 3500) * 0.75))) return false;
 
@@ -5707,6 +6187,8 @@ async function maybeAIReactToTimePressure(game) {
       team,
       text: `${team.toUpperCase()} operatives have ${secondsLeft}s left.`,
     };
+    bumpEmotion(ai, secondsLeft <= 7 ? -3 : 0, secondsLeft <= 7 ? +16 : +10);
+    applyEmotionDriftFromState(ai, game, buildAIVision(game, ai), { eventKind: 'time_pressure', force: true });
     let msg = await generateAIActionReactionMessage(ai, game, event, {});
     if (!msg) {
       msg = (secondsLeft <= 7)
@@ -6120,7 +6602,7 @@ async function maybeAIRespondToTeamChat(ai, game) {
 
     const core = ensureAICore(ai);
     if (!core) return false;
-    const cadence = _getAICadence(ai);
+    const cadence = _effectiveCadenceForGame(ai, game);
     const now = Date.now();
     const lastReply = Number(aiLastChatReplyMs[ai.id] || 0);
     if (now - lastReply < Number(cadence.chatReplyMinMs || 3500)) return false;
@@ -6154,6 +6636,11 @@ async function maybeAIRespondToTeamChat(ai, game) {
     const directHit = nameHit || /\b(ai|bot)\b/.test(lower);
     const question = /\?/.test(text) || /\b(thoughts|what do you think|agree|should we)\b/.test(lower);
     const greeting = isGreetingLike(text);
+    const quickVision = buildAIVision(game, ai);
+    const socialPhase = deriveSocialChatPhase(game, quickVision, 'reply', msgs, `${senderName}: ${text}`);
+    if (directHit || question) bumpEmotion(ai, 1, 4);
+    else if (greeting) bumpEmotion(ai, 2, 2);
+    applyEmotionDriftFromState(ai, game, quickVision, { eventKind: 'team_chat' });
 
     let shouldReply = false;
     if (directHit || question || greeting) shouldReply = true;
@@ -6161,9 +6648,10 @@ async function maybeAIRespondToTeamChat(ai, game) {
       const baseChance = senderIsAI
         ? Number(cadence.chatReplyChanceVsAI || 0.55)
         : Number(cadence.chatReplyChanceVsHuman || 0.72);
+      const phaseBoost = socialPhase.key === 'debate' ? 0.08 : (socialPhase.key === 'reasoning' ? -0.06 : (socialPhase.key === 'greeting' ? 0.04 : 0));
       const recencyPenalty = Math.min(0.22, Math.max(0, fresh.length - 1) * 0.05);
       const lengthBoost = Math.min(0.10, (text.length / 500));
-      const chance = _clamp(baseChance - recencyPenalty + lengthBoost, 0.08, 0.95);
+      const chance = _clamp(baseChance + phaseBoost - recencyPenalty + lengthBoost, 0.08, 0.95);
       shouldReply = Math.random() < chance;
     }
 
@@ -6269,7 +6757,7 @@ async function maybeAIReactToTeamMarkers(ai, game) {
 
     const now = Date.now();
     const lastAt = Number(core.lastMarkerReactionAt || 0);
-    const cadence = _getAICadence(ai);
+    const cadence = _effectiveCadenceForGame(ai, game);
     if (now - lastAt < Number(cadence.markerReactionMinMs || 4500)) return false;
 
     const msg = buildConsideringReactionMessage(ai, otherConsideringRows, selfOwner);
@@ -6312,7 +6800,7 @@ async function aiOffTurnScout(ai, game) {
     const last = Number(aiLastOffTurnScoutMs[ai.id] || 0);
     const core = ensureAICore(ai);
     if (!core) return false;
-    const cadence = _getAICadence(ai);
+    const cadence = _effectiveCadenceForGame(ai, game);
     if (now - last < Number(cadence.offTurnScoutMinMs || 12000)) return false;
 
     const key = offTurnScoutKey(game, ai);
@@ -6494,7 +6982,17 @@ function startAIGameLoop() {
         .filter(a => a && a.mode === 'autonomous' && String(a.seatRole || '') === 'operative')
         .sort((a, b) => Number(aiLastChatReplyMs[a.id] || 0) - Number(aiLastChatReplyMs[b.id] || 0));
       if (chatCandidates.length) {
-        const checksThisTick = Math.max(1, Math.min(2, chatCandidates.length));
+        const secsLeft = _remainingSecondsFromGameTimer(game);
+        const isOperativePhase = String(game.currentPhase || '') === 'operatives';
+        const guessPressure = Number.isFinite(+game?.guessesRemaining) ? +game.guessesRemaining : 0;
+        let checksThisTick = 1;
+        if (isOperativePhase) {
+          if (Number.isFinite(secsLeft) && secsLeft <= 14) checksThisTick = 1;
+          else if (guessPressure > 1) checksThisTick = Math.min(3, chatCandidates.length);
+          else checksThisTick = Math.min(2, chatCandidates.length);
+        } else {
+          checksThisTick = Math.min(1, chatCandidates.length);
+        }
         const start = aiChatScanCursor % chatCandidates.length;
         const ordered = [];
         for (let i = 0; i < chatCandidates.length; i += 1) {
