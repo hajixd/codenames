@@ -46,7 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 10000;
+const CARD_CONFIRM_ANIM_MS = 1220;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
@@ -99,14 +99,11 @@ function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   }
 }
 
-function applyConfirmAnimationClasses(cardEl, confirmBackType, opts = {}) {
+function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   if (!cardEl) return;
-  const type = normalizeConfirmBackType(confirmBackType);
   const idx = Number(opts.cardIndex);
 
   clearConfirmAnimationClasses(cardEl, idx);
-  cardEl.classList.add(`confirm-back-${type}`);
-  cardEl.setAttribute('data-confirm-back-label', getConfirmBackLabel(type));
   void cardEl.offsetWidth;
   cardEl.classList.add('reveal-flip-animate');
   pulseCardAnimationOverlay();
@@ -6403,7 +6400,6 @@ function renderBoard(isSpymaster) {
     // animation explicitly flips the card.)
     const backFace = `
           <div class="card-face card-back">
-            <span class="card-liquid-fill" aria-hidden="true"></span>
             <span class="card-word"><span class="word-text">${word}</span></span>
           </div>
         `;
@@ -6411,7 +6407,6 @@ function renderBoard(isSpymaster) {
       <div class="${classes.join(' ')}" data-index="${i}">
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
-        <span class="card-recolor-sweep" aria-hidden="true"></span>
         <div class="card-inner">
           <div class="card-face card-front">
             <span class="card-word"><span class="word-text">${word}</span></span>
