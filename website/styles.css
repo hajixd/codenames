@@ -20822,6 +20822,194 @@ body.og-mode .practice-step{
   min-width: 220px;
 }
 
+/* Animation Studio page */
+.panel-animations .panel-inner{
+  max-width: min(1180px, 100%);
+}
+
+.animations-page-shell{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.animations-page-topbar{
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.animations-page-titlewrap{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.animations-page-titlewrap .subtitle.small{
+  margin: 0;
+}
+
+.animations-page-actions{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.animations-studio-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.animations-studio-card{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+  background:
+    radial-gradient(500px 140px at 8% 0%, rgba(255,255,255,0.10), rgba(255,255,255,0) 65%),
+    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-sm);
+  min-height: 0;
+}
+
+body.light-mode .animations-studio-card{
+  background:
+    radial-gradient(520px 160px at 10% 0%, rgba(255,255,255,0.90), rgba(255,255,255,0.36) 58%, rgba(255,255,255,0.20) 100%),
+    linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48));
+  border-color: rgba(20, 50, 80, 0.14);
+}
+
+.animations-studio-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.animations-studio-head h3{
+  font-size: 14px;
+  letter-spacing: 0.2px;
+}
+
+.animations-preview-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.animations-preview-grid .anim-test-card{
+  min-height: 104px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.animations-clue-actions{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.animations-peek-preview-wrap{
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.anim-peek-preview-card{
+  width: min(190px, 100%);
+  min-height: 118px;
+  cursor: pointer;
+}
+
+.anim-choice-list{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.anim-choice-item{
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+}
+
+body.light-mode .anim-choice-item{
+  background: rgba(255,255,255,0.72);
+  border-color: rgba(20, 50, 80, 0.14);
+}
+
+.anim-choice-item input[type="radio"]{
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.anim-choice-copy{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.anim-choice-copy strong{
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.anim-choice-copy span{
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-dim);
+}
+
+.anim-choice-item:has(input[type="radio"]:checked){
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent) 14%, rgba(255,255,255,0.03));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.animations-page-hint{
+  min-height: 18px;
+  font-size: 12px;
+}
+
+@media (max-width: 1080px){
+  .animations-studio-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px){
+  .animations-studio-grid{
+    grid-template-columns: 1fr;
+  }
+  .animations-studio-card{
+    border-radius: 14px;
+    padding: 10px;
+  }
+  .animations-preview-grid{
+    gap: 8px;
+  }
+  .animations-preview-grid .anim-test-card{
+    min-height: 96px;
+  }
+  .animations-page-actions{
+    width: 100%;
+  }
+}
+
 @media (max-width: 720px){
   .practice-choice-row{ grid-template-columns: 1fr; }
   .practice-vibe-row{ flex-direction: column; align-items: stretch; }
@@ -21889,6 +22077,92 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   }
 }
 
+@keyframes cardConfirmWholeCardSnap {
+  0% { transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1); }
+  22% { transform: translate3d(0, -12px, 20px) rotateX(8deg) rotateZ(-0.55deg) scale(1.038); }
+  48% { transform: translate3d(0, -22px, 30px) rotateX(12deg) rotateZ(0.1deg) scale(1.052); }
+  78% { transform: translate3d(0, -6px, 8px) rotateX(5deg) rotateZ(0deg) scale(1.012); }
+  100% { transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1); }
+}
+
+@keyframes cardConfirmInnerFlipSnap {
+  0% { transform: rotateY(0deg); }
+  28% { transform: rotateY(0deg); }
+  58% { transform: rotateY(200deg); }
+  72% { transform: rotateY(184deg); }
+  100% { transform: rotateY(180deg); }
+}
+
+@keyframes cardConfirmWholeCardFloat {
+  0% { transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1); }
+  18% { transform: translate3d(0, -4px, 8px) rotateX(4deg) rotateZ(-0.25deg) scale(1.018); }
+  42% { transform: translate3d(0, -20px, 36px) rotateX(11deg) rotateZ(-0.15deg) scale(1.045); }
+  62% { transform: translate3d(0, -26px, 40px) rotateX(12deg) rotateZ(0.15deg) scale(1.052); }
+  84% { transform: translate3d(0, -8px, 12px) rotateX(5deg) rotateZ(0deg) scale(1.016); }
+  100% { transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1); }
+}
+
+@keyframes cardConfirmInnerFlipFloat {
+  0% { transform: rotateY(0deg); }
+  38% { transform: rotateY(0deg); }
+  68% { transform: rotateY(208deg); }
+  82% { transform: rotateY(184deg); }
+  100% { transform: rotateY(180deg); }
+}
+
+body.anim-card-style-classic {
+  --card-confirm-duration: 4200ms;
+  --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
+}
+
+body.anim-card-style-snap {
+  --card-confirm-duration: 2600ms;
+  --card-confirm-ease: cubic-bezier(0.2, 0.92, 0.25, 1);
+}
+
+body.anim-card-style-float {
+  --card-confirm-duration: 3400ms;
+  --card-confirm-ease: cubic-bezier(0.2, 0.86, 0.24, 1);
+}
+
+body.anim-card-style-snap:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed),
+body.anim-card-style-snap:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate,
+body.anim-card-style-snap:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed),
+body.anim-card-style-snap:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
+  animation-name: cardConfirmWholeCardSnap !important;
+}
+
+body.anim-card-style-snap .game-card.confirm-animate:not(.revealed) .card-inner,
+body.anim-card-style-snap .game-card.reveal-flip-animate .card-inner {
+  animation-name: cardConfirmInnerFlipSnap !important;
+}
+
+body.anim-card-style-snap.og-mode .game-card.confirm-animate:not(.revealed)::before,
+body.anim-card-style-snap.og-mode .game-card.confirm-animate:not(.revealed)::after,
+body.anim-card-style-snap.og-mode .game-card.reveal-flip-animate::before,
+body.anim-card-style-snap.og-mode .game-card.reveal-flip-animate::after {
+  animation-name: cardConfirmInnerFlipSnap !important;
+}
+
+body.anim-card-style-float:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed),
+body.anim-card-style-float:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate,
+body.anim-card-style-float:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed),
+body.anim-card-style-float:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
+  animation-name: cardConfirmWholeCardFloat !important;
+}
+
+body.anim-card-style-float .game-card.confirm-animate:not(.revealed) .card-inner,
+body.anim-card-style-float .game-card.reveal-flip-animate .card-inner {
+  animation-name: cardConfirmInnerFlipFloat !important;
+}
+
+body.anim-card-style-float.og-mode .game-card.confirm-animate:not(.revealed)::before,
+body.anim-card-style-float.og-mode .game-card.confirm-animate:not(.revealed)::after,
+body.anim-card-style-float.og-mode .game-card.reveal-flip-animate::before,
+body.anim-card-style-float.og-mode .game-card.reveal-flip-animate::after {
+  animation-name: cardConfirmInnerFlipFloat !important;
+}
+
 /*
   Word-ghosting fallback for non-OG/non-cozy styles.
   We normally hide the back face in these modes, but we MUST allow it
@@ -22555,6 +22829,35 @@ body:not(.og-mode) .game-card.revealed.revealed-peek .og-peek-label {
   pointer-events: none;
   z-index: 3;
   white-space: nowrap;
+}
+
+body.anim-peek-style-zoom.og-mode .game-card.revealed.revealed-peek {
+  transform: translateY(-16px) scale(1.08);
+  box-shadow: 0 -28px 64px rgba(0, 0, 0, 0.56);
+}
+
+body.anim-peek-style-zoom.og-mode .game-card.revealed.revealed-peek .card-back {
+  transform: rotateY(180deg) rotateX(68deg) translateZ(20px);
+}
+
+body.anim-peek-style-zoom:not(.og-mode) .game-card.revealed.revealed-peek {
+  transform: translateY(-10px) scale(1.06);
+}
+
+body.anim-peek-style-flip.og-mode .game-card.revealed.revealed-peek {
+  transform: translateY(-14px) scale(1.05) rotate(-0.4deg);
+}
+
+body.anim-peek-style-flip.og-mode .game-card.revealed.revealed-peek .card-inner {
+  transform: rotateY(180deg) translateY(-4px) rotateZ(-0.8deg);
+}
+
+body.anim-peek-style-flip.og-mode .game-card.revealed.revealed-peek .card-back {
+  transform: rotateY(180deg) rotateX(82deg) translateZ(19px);
+}
+
+body.anim-peek-style-flip:not(.og-mode) .game-card.revealed.revealed-peek {
+  transform: translateY(-8px) scale(1.04) rotate(-0.8deg);
 }
 
 /* Remove the large panel shell on core tournament tabs. */

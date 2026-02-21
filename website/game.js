@@ -139,7 +139,7 @@ function clearRevealAnimationSuppressions() {
 }
 
 function initAnimationTestingPanel() {
-  const panels = Array.from(document.querySelectorAll('#launch-animation-tests'));
+  const panels = Array.from(document.querySelectorAll('[data-anim-test-grid]'));
   if (!panels.length) return;
 
   let seq = 1200;
@@ -168,14 +168,19 @@ function initAnimationTestingPanel() {
       });
     });
 
-    const replayAllBtn = panel.closest('.launch-animation-page')?.querySelector('[data-anim-replay-all]');
-    replayAllBtn?.addEventListener('click', () => {
-      cards.forEach((cardEl, idx) => {
-        window.setTimeout(() => runTestCardAnimation(cardEl), idx * 180);
+    const replayRoot = panel.closest('[data-anim-preview-root]') || panel.closest('.launch-animation-page');
+    const replayAllBtn = replayRoot?.querySelector('[data-anim-replay-all]');
+    if (replayAllBtn && replayAllBtn.dataset.animBound !== '1') {
+      replayAllBtn.dataset.animBound = '1';
+      replayAllBtn.addEventListener('click', () => {
+        cards.forEach((cardEl, idx) => {
+          window.setTimeout(() => runTestCardAnimation(cardEl), idx * 180);
+        });
       });
-    });
+    }
   });
 }
+window.initAnimationTestingPanel = initAnimationTestingPanel;
 
 function collectNewlyRevealedCardIndices(prevCards, nextCards) {
   if (!Array.isArray(prevCards) || !Array.isArray(nextCards)) return [];
@@ -12013,32 +12018,85 @@ function renderPlayersPopup() {
 /* =========================
    Clue Announcement Animation
 ========================= */
-function showClueAnimation(word, number, teamColor) {
+function normalizeClueRevealVariant(raw) {
+  const key = String(raw || '').trim().toLowerCase();
+  return ['dark', 'light', 'cozy', 'og'].includes(key) ? key : 'dark';
+}
+
+function showClueAnimation(word, number, teamColor, opts = {}) {
   // Remove any existing overlay
   const existing = document.querySelector('.clue-announcement-overlay');
   if (existing) existing.remove();
 
   const isRed = teamColor === 'red';
   const teamClass = isRed ? 'team-red' : 'team-blue';
+  const preferredVariant = String(opts?.variant || '').trim().toLowerCase();
+  const profileVariant = String(window.getAnimationPreferences?.()?.clueReveal || '').trim().toLowerCase();
+  const clueVariant = normalizeClueRevealVariant(preferredVariant || profileVariant || 'dark');
 
   const overlay = document.createElement('div');
-  overlay.className = `clue-announcement-overlay ${teamClass} clue-variant-dark`;
+  overlay.className = `clue-announcement-overlay ${teamClass} clue-variant-${clueVariant}`;
 
   const safeWord = escapeHtml(String(word));
   const safeNum = escapeHtml(String(number != null ? number : '0'));
-  overlay.innerHTML = `
-    <div class="clue-announcement-backdrop"></div>
-    <div class="clue-announcement-card ${teamClass}">
-      <div class="clue-announcement-glow ${teamClass}"></div>
-      <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
-      <div class="clue-announcement-word">${safeWord}</div>
-      <div class="clue-announcement-divider ${teamClass}"></div>
-      <div class="clue-announcement-number-row">
-        <span class="clue-announcement-for">for</span>
-        <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
+  if (clueVariant === 'light') {
+    overlay.innerHTML = `
+      <div class="clue-announcement-backdrop"></div>
+      <div class="clue-light-container">
+        <div class="clue-light-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+        <div class="clue-light-word">${safeWord}</div>
+        <div class="clue-light-row">
+          <span class="clue-light-for">for</span>
+          <span class="clue-light-num">${safeNum}</span>
+        </div>
+        <div class="clue-light-underline"></div>
       </div>
-    </div>
-  `;
+    `;
+  } else if (clueVariant === 'cozy') {
+    overlay.innerHTML = `
+      <div class="clue-announcement-backdrop"></div>
+      <div class="clue-cozy-container">
+        <div class="clue-cozy-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+        <div class="clue-cozy-word">${safeWord}</div>
+        <div class="clue-cozy-pill">
+          <span class="clue-cozy-for">for</span>
+          <span class="clue-cozy-num">${safeNum}</span>
+        </div>
+        <svg class="clue-cozy-scribble" viewBox="0 0 280 280" aria-hidden="true">
+          <path class="clue-cozy-path" d="M26 132C40 62 109 24 178 38C241 51 265 118 247 183C229 248 165 272 102 258C37 243 10 193 26 132Z"></path>
+          <path class="clue-cozy-path2" d="M48 144C58 84 116 50 172 61C224 71 246 121 232 173C217 227 162 248 109 238C54 227 36 185 48 144Z"></path>
+        </svg>
+      </div>
+    `;
+  } else if (clueVariant === 'og') {
+    overlay.innerHTML = `
+      <div class="clue-announcement-backdrop clue-og-backdrop"></div>
+      <div class="clue-og-container">
+        <div class="clue-og-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+        <div class="clue-og-word" data-text="${safeWord}">${safeWord}</div>
+        <div class="clue-og-meta">
+          <span class="clue-og-for">for</span>
+          <span class="clue-og-num">${safeNum}</span>
+          <span class="clue-og-emblem" aria-hidden="true"></span>
+        </div>
+        <div class="clue-og-scan" aria-hidden="true"></div>
+      </div>
+    `;
+  } else {
+    overlay.innerHTML = `
+      <div class="clue-announcement-backdrop"></div>
+      <div class="clue-announcement-card ${teamClass}">
+        <div class="clue-announcement-glow ${teamClass}"></div>
+        <div class="clue-announcement-label">${isRed ? 'Red' : 'Blue'} Spymaster</div>
+        <div class="clue-announcement-word">${safeWord}</div>
+        <div class="clue-announcement-divider ${teamClass}"></div>
+        <div class="clue-announcement-number-row">
+          <span class="clue-announcement-for">for</span>
+          <span class="clue-announcement-number ${teamClass}">${safeNum}</span>
+        </div>
+      </div>
+    `;
+  }
 
   document.body.appendChild(overlay);
 
@@ -12048,8 +12106,10 @@ function showClueAnimation(word, number, teamColor) {
     setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 650);
   });
 
-  // Online mode uses the OG reveal timing.
-  const autoDismissMs = 5500;
+  const isPreview = !!opts?.preview;
+  const autoDismissMs = isPreview
+    ? 3600
+    : (clueVariant === 'dark' ? 5500 : 4300);
 
   setTimeout(() => {
     if (overlay.parentNode) {
@@ -12058,6 +12118,7 @@ function showClueAnimation(word, number, teamColor) {
     }
   }, autoDismissMs);
 }
+window.showClueAnimation = showClueAnimation;
 
 
 /* =========================

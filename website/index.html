@@ -182,14 +182,14 @@
             </button>
           </div>
 
-          <div class="launch-animation-page" id="launch-animation-page" style="display:none;">
+          <div class="launch-animation-page" id="launch-animation-page" style="display:none;" data-anim-preview-root>
             <div class="launch-animation-toolbar">
               <button class="btn" id="launch-animation-back" type="button">Back</button>
               <div class="launch-animation-title">Testing Animations</div>
               <button class="btn small" data-anim-replay-all type="button">Replay All</button>
             </div>
             <p class="subtitle small launch-animation-subtitle">Tap a card to replay the reveal sequence.</p>
-            <div class="launch-animation-grid" id="launch-animation-tests">
+            <div class="launch-animation-grid" id="launch-animation-tests" data-anim-test-grid>
               <div class="game-card anim-test-card" data-anim-type="red" role="button" tabindex="0" aria-label="Test red reveal">
                 <div class="card-inner">
                   <div class="card-face card-front">
@@ -595,6 +595,235 @@
             </div>
           </div>
         </div>
+
+        <!-- Animations Page -->
+        <section class="panel panel-animations" id="panel-animations">
+          <div class="panel-inner animations-page-shell">
+            <div class="page-topbar animations-page-topbar">
+              <div class="animations-page-titlewrap">
+                <h2 class="page-title">Animation Studio</h2>
+                <p class="subtitle small">Pick a style for each animation and preview it live.</p>
+              </div>
+              <div class="animations-page-actions">
+                <button class="btn small" id="animations-page-back" type="button">Back</button>
+                <button class="btn small" id="animations-page-reset" type="button">Reset Defaults</button>
+              </div>
+            </div>
+
+            <div class="animations-studio-grid">
+              <article class="animations-studio-card" data-anim-preview-root>
+                <div class="animations-studio-head">
+                  <h3>Card Revelation</h3>
+                  <button class="btn small" data-anim-replay-all type="button">Replay</button>
+                </div>
+                <p class="subtitle small">How a guess reveal flips and lands on the board.</p>
+                <div class="animations-preview-grid" data-anim-test-grid id="animations-card-preview-grid">
+                  <div class="game-card anim-test-card" data-anim-type="red" role="button" tabindex="0" aria-label="Preview red reveal">
+                    <div class="card-inner">
+                      <div class="card-face card-front">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">RUBY</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">RUBY</span></span>
+                        </div>
+                      </div>
+                      <div class="card-face card-back">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">RUBY</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">RUBY</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="game-card anim-test-card" data-anim-type="blue" role="button" tabindex="0" aria-label="Preview blue reveal">
+                    <div class="card-inner">
+                      <div class="card-face card-front">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">AZURE</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">AZURE</span></span>
+                        </div>
+                      </div>
+                      <div class="card-face card-back">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">AZURE</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">AZURE</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="game-card anim-test-card" data-anim-type="neutral" role="button" tabindex="0" aria-label="Preview neutral reveal">
+                    <div class="card-inner">
+                      <div class="card-face card-front">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">SMOKE</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">SMOKE</span></span>
+                        </div>
+                      </div>
+                      <div class="card-face card-back">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">SMOKE</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">SMOKE</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="game-card anim-test-card" data-anim-type="assassin" role="button" tabindex="0" aria-label="Preview assassin reveal">
+                    <div class="card-inner">
+                      <div class="card-face card-front">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">ONYX</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">ONYX</span></span>
+                        </div>
+                      </div>
+                      <div class="card-face card-back">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">ONYX</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">ONYX</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="anim-choice-list" id="anim-card-options">
+                  <label class="anim-choice-item" for="anim-card-classic">
+                    <input type="radio" id="anim-card-classic" name="anim-card-style" value="classic" />
+                    <span class="anim-choice-copy">
+                      <strong>Classic</strong>
+                      <span>Current cinematic flip.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-card-snap">
+                    <input type="radio" id="anim-card-snap" name="anim-card-style" value="snap" />
+                    <span class="anim-choice-copy">
+                      <strong>Snap</strong>
+                      <span>Shorter and punchier reveal.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-card-float">
+                    <input type="radio" id="anim-card-float" name="anim-card-style" value="float" />
+                    <span class="anim-choice-copy">
+                      <strong>Float</strong>
+                      <span>Smooth arc with softer landing.</span>
+                    </span>
+                  </label>
+                </div>
+              </article>
+
+              <article class="animations-studio-card">
+                <div class="animations-studio-head">
+                  <h3>Clue Revelation</h3>
+                  <div class="animations-clue-actions">
+                    <button class="btn small" id="anim-preview-clue-red" type="button">Preview Red</button>
+                    <button class="btn small" id="anim-preview-clue-blue" type="button">Preview Blue</button>
+                  </div>
+                </div>
+                <p class="subtitle small">How the clue popup enters and exits.</p>
+                <div class="anim-choice-list" id="anim-clue-options">
+                  <label class="anim-choice-item" for="anim-clue-dark">
+                    <input type="radio" id="anim-clue-dark" name="anim-clue-style" value="dark" />
+                    <span class="anim-choice-copy">
+                      <strong>Classic</strong>
+                      <span>Current dramatic clue reveal.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-clue-light">
+                    <input type="radio" id="anim-clue-light" name="anim-clue-style" value="light" />
+                    <span class="anim-choice-copy">
+                      <strong>Light</strong>
+                      <span>Clean typography with underline accent.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-clue-cozy">
+                    <input type="radio" id="anim-clue-cozy" name="anim-clue-style" value="cozy" />
+                    <span class="anim-choice-copy">
+                      <strong>Cozy</strong>
+                      <span>Hand-drawn motion with warm bounce.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-clue-og">
+                    <input type="radio" id="anim-clue-og" name="anim-clue-style" value="og" />
+                    <span class="anim-choice-copy">
+                      <strong>Tech</strong>
+                      <span>Scanline + glitch inspired reveal.</span>
+                    </span>
+                  </label>
+                </div>
+              </article>
+
+              <article class="animations-studio-card">
+                <div class="animations-studio-head">
+                  <h3>Peeking</h3>
+                  <button class="btn small" id="anim-preview-peek-replay" type="button">Replay</button>
+                </div>
+                <p class="subtitle small">How revealed cards rise when you tap to peek.</p>
+                <div class="animations-peek-preview-wrap">
+                  <div class="game-card revealed card-red anim-peek-preview-card" id="anim-peek-preview-card" role="button" tabindex="0" aria-label="Replay peek animation">
+                    <div class="card-inner">
+                      <div class="card-face card-front">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">PHOENIX</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">PHOENIX</span></span>
+                        </div>
+                      </div>
+                      <div class="card-face card-back">
+                        <div class="card-face-state card-face-pre">
+                          <span class="card-word"><span class="word-text">PHOENIX</span></span>
+                        </div>
+                        <div class="card-face-state card-face-post" aria-hidden="true">
+                          <span class="card-word"><span class="word-text">PHOENIX</span></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="og-peek-label" aria-hidden="true">PHOENIX</div>
+                  </div>
+                </div>
+                <div class="anim-choice-list" id="anim-peek-options">
+                  <label class="anim-choice-item" for="anim-peek-lift">
+                    <input type="radio" id="anim-peek-lift" name="anim-peek-style" value="lift" />
+                    <span class="anim-choice-copy">
+                      <strong>Classic</strong>
+                      <span>Current lift + flap peek.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-peek-zoom">
+                    <input type="radio" id="anim-peek-zoom" name="anim-peek-style" value="zoom" />
+                    <span class="anim-choice-copy">
+                      <strong>Zoom</strong>
+                      <span>Higher rise and stronger magnify.</span>
+                    </span>
+                  </label>
+                  <label class="anim-choice-item" for="anim-peek-flip">
+                    <input type="radio" id="anim-peek-flip" name="anim-peek-style" value="flip" />
+                    <span class="anim-choice-copy">
+                      <strong>Flip</strong>
+                      <span>Sharper card back flip angle.</span>
+                    </span>
+                  </label>
+                </div>
+              </article>
+            </div>
+
+            <div class="hint animations-page-hint" id="animations-page-hint"></div>
+          </div>
+        </section>
 
         <!-- Players Page -->
         <section class="panel panel-players" id="panel-players">
@@ -1715,6 +1944,10 @@
                   <span class="toggle-slider"></span>
                 </div>
               </label>
+              <button class="settings-row settings-row-action" id="settings-open-animations-btn" type="button">
+                <span class="settings-row-label">Animation Studio</span>
+                <span class="settings-row-meta">Open</span>
+              </button>
 <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>
                 <input type="range" id="settings-volume-slider" class="settings-volume-slider" min="0" max="100" value="70" />
@@ -1740,7 +1973,6 @@
                   <button class="btn" id="admin-backup-now-btn" type="button">Backup</button>
                   <button class="btn" id="admin-logs-btn" type="button">Logs</button>
                   <button class="btn" id="admin-judges-btn" type="button" style="display:none;">Judges</button>
-                  <button class="btn" id="admin-animations-btn" type="button" style="display:none;">Animations</button>
                   <button class="btn" id="admin-restore-5min-btn" type="button">Restore 15m</button>
                 </div>
                 <div class="hint" id="admin-restore-hint" aria-live="polite"></div>
@@ -1756,6 +1988,7 @@
             </div>
           </div>
         </div>
+
       </div>
 
       <!-- Admin: Judges Manager Modal -->

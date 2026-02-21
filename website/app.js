@@ -46,6 +46,9 @@ const LS_SETTINGS_THEME = 'ct_theme_v1';
 const LS_SETTINGS_OG_MODE = 'ct_og_mode_v1';
 const LS_SETTINGS_STYLE_MODE = 'ct_style_mode_v1';
 const LS_SETTINGS_STACKING = 'ct_stacking_v1';
+const LS_SETTINGS_ANIM_CARD_STYLE = 'ct_anim_card_style_v1';
+const LS_SETTINGS_ANIM_CLUE_STYLE = 'ct_anim_clue_style_v1';
+const LS_SETTINGS_ANIM_PEEK_STYLE = 'ct_anim_peek_style_v1';
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -1232,6 +1235,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTeamModal();
   initBracketsUI();
   initPracticePage();
+  initAnimationsPage();
   initCreateTeamModal();
   initMyTeamControls();
   initRequestsModal();
@@ -1357,14 +1361,13 @@ function setLaunchAnimationLabOpen(open) {
   const modeRow = modeScreen.querySelector('.launch-mode-row');
   const labPage = document.getElementById('launch-animation-page');
   if (!modeRow || !labPage) return;
-  const allowOpen = !!isAdminUser();
-  const nextOpen = !!open && allowOpen;
+  const nextOpen = !!open;
   modeRow.style.display = nextOpen ? 'none' : '';
   labPage.style.display = nextOpen ? 'block' : 'none';
   modeScreen.classList.toggle('launch-animation-open', nextOpen);
 }
 
-function openLaunchAnimationLab() {
+function openAnimationsPage() {
   const u = auth.currentUser;
   const name = getUserName();
   const hint = document.getElementById('launch-name-hint');
@@ -1373,15 +1376,28 @@ function openLaunchAnimationLab() {
     if (hint) hint.textContent = 'Sign in to continue.';
     return false;
   }
-  if (!isAdminUser()) {
-    if (hint) hint.textContent = 'Animations tab is admin-only.';
-    return false;
-  }
   if (hint) hint.textContent = '';
-  try { showLaunchScreen(); } catch (_) {}
-  setLaunchAnimationLabOpen(true);
+
+  // If we're still on the launch screen, enter tournament shell first so panel navigation is available.
+  if (document.body.classList.contains('launch')) {
+    try { enterAppFromLaunch('tournament', { panel: 'panel-animations' }); } catch (_) {}
+    return true;
+  }
+
+  const panelId = String(getPresenceActivePanelId() || activePanelId || '').trim();
+  if (panelId && panelId !== 'panel-animations') animationsPanelReturnId = panelId;
+  if (!animationsPanelReturnId) {
+    animationsPanelReturnId = document.body.classList.contains('quickplay') ? 'panel-game' : 'panel-home';
+  }
+  try { switchToPanel('panel-animations'); } catch (_) { activatePanel('panel-animations'); }
+  try { window.refreshAnimationsPageUI?.(); } catch (_) {}
   return true;
 }
+
+function openLaunchAnimationLab() {
+  return openAnimationsPage();
+}
+window.openAnimationsPage = openAnimationsPage;
 
 function showAuthScreen() {
   const authScreen = document.getElementById('auth-screen');
@@ -2256,7 +2272,7 @@ function switchToPanel(panelId) {
 
   // Brackets + Practice are immersive pages; hide primary tabs while viewing them.
   try {
-    const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
+    const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice' || targetId === 'panel-animations');
     document.body.classList.toggle('no-primary-tabs', !!noTabs);
     document.body.classList.toggle('brackets-mobile-no-tabs', !!noTabs);
   } catch (_) {}
@@ -2298,6 +2314,9 @@ function switchToPanel(panelId) {
 
   if (targetId === 'panel-brackets') {
     try { renderBrackets(teamsCache); } catch (_) {}
+  }
+  if (targetId === 'panel-animations') {
+    try { window.refreshAnimationsPageUI?.(); } catch (_) {}
   }
 
   // Keep header icons in sync with current view
@@ -2904,8 +2923,6 @@ function refreshNameUI() {
   const launchPractice = document.getElementById('launch-practice');
   if (launchBrackets) launchBrackets.disabled = !canEnter;
   if (launchPractice) launchPractice.disabled = !canEnter;
-  if (!isAdminUser()) setLaunchAnimationLabOpen(false);
-
   // Hide account-only header controls until signed in.
   // Re-query headerNamePill to avoid variable shadowing.
   const headerNamePill2 = document.getElementById('header-name-pill');
@@ -7760,7 +7777,7 @@ function activatePanel(panelId) {
   activePanelId = targetId;
 
   try {
-    const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice');
+    const noTabs = (targetId === 'panel-brackets' || targetId === 'panel-practice' || targetId === 'panel-animations');
     document.body.classList.toggle('no-primary-tabs', !!noTabs);
     document.body.classList.toggle('brackets-mobile-no-tabs', !!noTabs);
   } catch (_) {}
@@ -7826,6 +7843,81 @@ let settingsSounds = true;
 let settingsVolume = 70;
 let settingsStyleMode = 'online'; // only supported style
 let settingsStacking = true;
+let settingsCardAnimStyle = 'classic';
+let settingsClueAnimStyle = 'dark';
+let settingsPeekAnimStyle = 'lift';
+let animationsPanelReturnId = '';
+
+const CARD_ANIM_STYLES = ['classic', 'snap', 'float'];
+const CLUE_ANIM_STYLES = ['dark', 'light', 'cozy', 'og'];
+const PEEK_ANIM_STYLES = ['lift', 'zoom', 'flip'];
+
+function normalizeCardAnimStyle(raw) {
+  const key = String(raw || '').trim().toLowerCase();
+  return CARD_ANIM_STYLES.includes(key) ? key : 'classic';
+}
+
+function normalizeClueAnimStyle(raw) {
+  const key = String(raw || '').trim().toLowerCase();
+  return CLUE_ANIM_STYLES.includes(key) ? key : 'dark';
+}
+
+function normalizePeekAnimStyle(raw) {
+  const key = String(raw || '').trim().toLowerCase();
+  return PEEK_ANIM_STYLES.includes(key) ? key : 'lift';
+}
+
+function getAnimationPreferences() {
+  return {
+    cardReveal: normalizeCardAnimStyle(settingsCardAnimStyle),
+    clueReveal: normalizeClueAnimStyle(settingsClueAnimStyle),
+    peekReveal: normalizePeekAnimStyle(settingsPeekAnimStyle),
+  };
+}
+
+function saveAnimationPreferences() {
+  safeLSSet(LS_SETTINGS_ANIM_CARD_STYLE, normalizeCardAnimStyle(settingsCardAnimStyle));
+  safeLSSet(LS_SETTINGS_ANIM_CLUE_STYLE, normalizeClueAnimStyle(settingsClueAnimStyle));
+  safeLSSet(LS_SETTINGS_ANIM_PEEK_STYLE, normalizePeekAnimStyle(settingsPeekAnimStyle));
+  try {
+    window.dispatchEvent(new CustomEvent('codenames:animation-profile-changed', {
+      detail: getAnimationPreferences(),
+    }));
+  } catch (_) {}
+}
+
+function applyAnimationPreferences() {
+  const prefs = getAnimationPreferences();
+  const body = document.body;
+  body.classList.remove(
+    'anim-card-style-classic',
+    'anim-card-style-snap',
+    'anim-card-style-float',
+    'anim-clue-style-dark',
+    'anim-clue-style-light',
+    'anim-clue-style-cozy',
+    'anim-clue-style-og',
+    'anim-peek-style-lift',
+    'anim-peek-style-zoom',
+    'anim-peek-style-flip'
+  );
+  body.classList.add(
+    `anim-card-style-${prefs.cardReveal}`,
+    `anim-clue-style-${prefs.clueReveal}`,
+    `anim-peek-style-${prefs.peekReveal}`
+  );
+}
+
+function setAnimationPreferences(next = {}, opts = {}) {
+  const cfg = (next && typeof next === 'object') ? next : {};
+  settingsCardAnimStyle = normalizeCardAnimStyle(cfg.cardReveal ?? settingsCardAnimStyle);
+  settingsClueAnimStyle = normalizeClueAnimStyle(cfg.clueReveal ?? settingsClueAnimStyle);
+  settingsPeekAnimStyle = normalizePeekAnimStyle(cfg.peekReveal ?? settingsPeekAnimStyle);
+  applyAnimationPreferences();
+  if (opts.persist !== false) saveAnimationPreferences();
+}
+
+window.getAnimationPreferences = getAnimationPreferences;
 
 const LS_AI_JUDGE_CATALOG = 'codenames_ai_judge_catalog_v1';
 let judgesAdminDraft = [];
@@ -8437,11 +8529,17 @@ function initSettings() {
   const savedVolume = safeLSGet(LS_SETTINGS_VOLUME);
   const savedStyleMode = safeLSGet(LS_SETTINGS_STYLE_MODE);
   const savedStacking = safeLSGet(LS_SETTINGS_STACKING);
+  const savedCardAnimStyle = safeLSGet(LS_SETTINGS_ANIM_CARD_STYLE);
+  const savedClueAnimStyle = safeLSGet(LS_SETTINGS_ANIM_CLUE_STYLE);
+  const savedPeekAnimStyle = safeLSGet(LS_SETTINGS_ANIM_PEEK_STYLE);
 
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
   settingsVolume = savedVolume ? parseInt(savedVolume, 10) : 70;
   settingsStacking = savedStacking !== 'false';
+  settingsCardAnimStyle = normalizeCardAnimStyle(savedCardAnimStyle);
+  settingsClueAnimStyle = normalizeClueAnimStyle(savedClueAnimStyle);
+  settingsPeekAnimStyle = normalizePeekAnimStyle(savedPeekAnimStyle);
   if (savedStacking == null) safeLSSet(LS_SETTINGS_STACKING, 'true');
 
   // Only Codenames Online style is supported.
@@ -8458,6 +8556,7 @@ function initSettings() {
   // Apply initial state
   applyStyleModeSetting();
   applyAnimationsSetting();
+  applyAnimationPreferences();
 
   // Get UI elements
   const gearBtn = document.getElementById('settings-gear-btn');
@@ -8475,6 +8574,7 @@ function initSettings() {
   const volumeSlider = document.getElementById('settings-volume-slider');
   const volumeValue = document.getElementById('settings-volume-value');
   const testSoundBtn = document.getElementById('settings-test-sound');
+  const openAnimationsBtn = document.getElementById('settings-open-animations-btn');
 
   if (!gearBtn || !modal) return;
 
@@ -8523,7 +8623,6 @@ function initSettings() {
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminLogsBtn = document.getElementById('admin-logs-btn');
   const adminJudgesBtn = document.getElementById('admin-judges-btn');
-  const adminAnimationsBtn = document.getElementById('admin-animations-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
   // Account danger action: delete the current user (frees username).
@@ -8548,12 +8647,6 @@ function initSettings() {
       adminJudgesBtn.disabled = !isAdmin;
       adminJudgesBtn.classList.toggle('is-disabled', !isAdmin);
     }
-    if (adminAnimationsBtn) {
-      adminAnimationsBtn.style.display = isAdmin ? '' : 'none';
-      adminAnimationsBtn.disabled = !isAdmin;
-      adminAnimationsBtn.classList.toggle('is-disabled', !isAdmin);
-    }
-
     if (isAdmin) {
       try { adminEnsureAutoBackupsRunning(); } catch (_) {}
     }
@@ -8606,11 +8699,10 @@ function initSettings() {
     try { openJudgesAdminModal(); } catch (_) {}
   });
 
-  adminAnimationsBtn?.addEventListener('click', () => {
-    if (!isAdminUser()) return;
+  openAnimationsBtn?.addEventListener('click', () => {
     playSound('click');
     try { closeSettingsModal(); } catch (_) {}
-    try { openLaunchAnimationLab(); } catch (_) {}
+    try { openAnimationsPage(); } catch (_) {}
   });
 
   adminRestoreBtn?.addEventListener('click', async () => {
@@ -10191,6 +10283,7 @@ function normalizePresenceWhereKey(rawWhereKey, presenceLike = null) {
       return 'menus';
     case 'setting':
     case 'settings':
+    case 'animations':
       return 'settings';
     case 'tournament':
     case 'team':
@@ -10222,6 +10315,7 @@ function derivePresenceWhereKeyFromLegacyPanel(presence) {
   const panelId = String(presence?.activePanelId || '').trim();
   if (!panelId) return '';
   if (panelId === 'panel-brackets') return 'brackets';
+  if (panelId === 'panel-animations') return 'settings';
   if (panelId === 'panel-practice') return 'singleplayer_lobby';
   if (PRESENCE_TEAM_PANEL_IDS.has(panelId)) return 'teams';
   if (panelId !== 'panel-game') return '';
@@ -10244,6 +10338,7 @@ function computeLocalPresenceWhereKey() {
 
   const panelId = getPresenceActivePanelId();
   if (panelId === 'panel-brackets') return 'brackets';
+  if (panelId === 'panel-animations') return 'settings';
   if (PRESENCE_TEAM_PANEL_IDS.has(panelId)) return 'teams';
   if (panelId === 'panel-practice') return 'singleplayer_lobby';
 
@@ -13262,6 +13357,168 @@ function initPracticePage() {
   startBtn?.addEventListener('click', start);
 
   refresh();
+}
+
+/* =========================
+   Animation Studio page
+========================= */
+function initAnimationsPage() {
+  const panel = document.getElementById('panel-animations');
+  if (!panel) return;
+
+  const backBtn = document.getElementById('animations-page-back');
+  const resetBtn = document.getElementById('animations-page-reset');
+  const hintEl = document.getElementById('animations-page-hint');
+  const clueRedBtn = document.getElementById('anim-preview-clue-red');
+  const clueBlueBtn = document.getElementById('anim-preview-clue-blue');
+  const peekReplayBtn = document.getElementById('anim-preview-peek-replay');
+  const peekCard = document.getElementById('anim-peek-preview-card');
+
+  if (!backBtn || !resetBtn || !hintEl) return;
+
+  const getSelectedRadio = (name, fallback = '') => {
+    const el = panel.querySelector(`input[type="radio"][name="${name}"]:checked`);
+    const raw = String(el?.value || '').trim().toLowerCase();
+    if (name === 'anim-card-style') return normalizeCardAnimStyle(raw || fallback);
+    if (name === 'anim-clue-style') return normalizeClueAnimStyle(raw || fallback);
+    if (name === 'anim-peek-style') return normalizePeekAnimStyle(raw || fallback);
+    return String(fallback || '').trim().toLowerCase();
+  };
+
+  const setHint = (msg = '') => {
+    hintEl.textContent = String(msg || '');
+  };
+
+  const syncFormFromSettings = () => {
+    const prefs = getAnimationPreferences();
+    const cardRadio = panel.querySelector(`input[type="radio"][name="anim-card-style"][value="${prefs.cardReveal}"]`);
+    const clueRadio = panel.querySelector(`input[type="radio"][name="anim-clue-style"][value="${prefs.clueReveal}"]`);
+    const peekRadio = panel.querySelector(`input[type="radio"][name="anim-peek-style"][value="${prefs.peekReveal}"]`);
+    if (cardRadio) cardRadio.checked = true;
+    if (clueRadio) clueRadio.checked = true;
+    if (peekRadio) peekRadio.checked = true;
+  };
+
+  const replayCardPreview = () => {
+    try { window.initAnimationTestingPanel?.(); } catch (_) {}
+    const replayBtn = panel.querySelector('[data-anim-replay-all]');
+    replayBtn?.click?.();
+  };
+
+  const replayPeekPreview = () => {
+    if (!peekCard) return;
+    if (peekCard.__peekReplayTimer) {
+      clearTimeout(peekCard.__peekReplayTimer);
+      peekCard.__peekReplayTimer = null;
+    }
+    peekCard.classList.remove('revealed-peek');
+    void peekCard.offsetWidth;
+    peekCard.classList.add('revealed-peek');
+    peekCard.__peekReplayTimer = setTimeout(() => {
+      peekCard.classList.remove('revealed-peek');
+      peekCard.__peekReplayTimer = null;
+    }, 1700);
+  };
+
+  const previewClue = (team = 'red', preferredVariant = '') => {
+    const variant = normalizeClueAnimStyle(preferredVariant || getSelectedRadio('anim-clue-style', settingsClueAnimStyle));
+    const wordsByVariant = {
+      dark: 'signal',
+      light: 'beacon',
+      cozy: 'harbor',
+      og: 'cipher',
+    };
+    const sampleWord = wordsByVariant[variant] || 'signal';
+    try {
+      if (typeof window.showClueAnimation === 'function') {
+        window.showClueAnimation(sampleWord, 3, team, { variant, preview: true });
+      }
+    } catch (_) {}
+  };
+
+  const applyFromForm = (opts = {}) => {
+    const next = {
+      cardReveal: getSelectedRadio('anim-card-style', settingsCardAnimStyle),
+      clueReveal: getSelectedRadio('anim-clue-style', settingsClueAnimStyle),
+      peekReveal: getSelectedRadio('anim-peek-style', settingsPeekAnimStyle),
+    };
+    setAnimationPreferences(next, { persist: true });
+    if (opts.hint !== false) setHint('Saved.');
+  };
+
+  const closePage = () => {
+    const fallback = document.body.classList.contains('quickplay') ? 'panel-game' : 'panel-home';
+    const nextPanel = (animationsPanelReturnId && animationsPanelReturnId !== 'panel-animations')
+      ? animationsPanelReturnId
+      : fallback;
+    animationsPanelReturnId = '';
+    try { switchToPanel(nextPanel); } catch (_) { activatePanel(nextPanel); }
+  };
+
+  backBtn.addEventListener('click', () => {
+    playSound('click');
+    closePage();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    playSound('click');
+    setAnimationPreferences({ cardReveal: 'classic', clueReveal: 'dark', peekReveal: 'lift' }, { persist: true });
+    syncFormFromSettings();
+    replayCardPreview();
+    replayPeekPreview();
+    previewClue('red', 'dark');
+    setHint('Reset to defaults.');
+  });
+
+  panel.querySelectorAll('input[type="radio"][name="anim-card-style"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      applyFromForm();
+      replayCardPreview();
+    });
+  });
+
+  panel.querySelectorAll('input[type="radio"][name="anim-clue-style"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      applyFromForm();
+      previewClue('red', String(el.value || '').trim().toLowerCase());
+    });
+  });
+
+  panel.querySelectorAll('input[type="radio"][name="anim-peek-style"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      applyFromForm();
+      replayPeekPreview();
+    });
+  });
+
+  clueRedBtn?.addEventListener('click', () => {
+    playSound('click');
+    previewClue('red');
+  });
+
+  clueBlueBtn?.addEventListener('click', () => {
+    playSound('click');
+    previewClue('blue');
+  });
+
+  peekReplayBtn?.addEventListener('click', () => {
+    playSound('click');
+    replayPeekPreview();
+  });
+
+  peekCard?.addEventListener('click', replayPeekPreview);
+  peekCard?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    replayPeekPreview();
+  });
+
+  window.refreshAnimationsPageUI = () => {
+    syncFormFromSettings();
+    setHint('');
+  };
+
+  syncFormFromSettings();
 }
 
 /* =========================
