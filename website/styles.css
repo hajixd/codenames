@@ -5718,28 +5718,6 @@ button.player-tag.pill-action:disabled{
   transform: translateX(calc(var(--card-thickness) * 0.5)) rotateY(-90deg);
 }
 
-.game-card .card-shell-post {
-  position: absolute;
-  inset: 0;
-  border-radius: 9px;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 2;
-  transform: translateZ(0);
-  clip-path: polygon(0 0, 0 0, 0 0, 0 0);
-  -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
-  will-change: opacity, clip-path, -webkit-clip-path;
-  background: transparent;
-  border: 1px solid transparent;
-}
-
-.game-card .card-shell-post::before,
-.game-card .card-shell-post::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-}
-
 .game-card .card-face {
   position: absolute;
   inset: 0;
@@ -5916,77 +5894,9 @@ body:is(.og-mode, .cozy-mode) .game-card.pending-select:not(.revealed) .card-bac
   box-shadow: 0 0 0 1px rgba(0,0,0,0.20) inset;
 }
 
-/* OG (Codenames Online) revealed face (front side after the flip) */
-.og-reveal-face{
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-}
-
 /* Keep word visible on revealed cards (two-tone design stays) */
 body.og-mode .game-card.revealed .card-front .card-checkmark{
   opacity: 0;
-}
-
-body.og-mode .game-card.revealed .og-reveal-face{ opacity: 0; }
-
-body.og-mode .game-card.revealed .og-reveal-face{
-  border-radius: 9px;
-  overflow: hidden;
-}
-
-body.og-mode .game-card.revealed.card-red .og-reveal-face{
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.18) 78%),
-              linear-gradient(135deg, rgba(239, 68, 68, 0.92), rgba(185, 28, 28, 0.92));
-}
-body.og-mode .game-card.revealed.card-blue .og-reveal-face{
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.18) 78%),
-              linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(37, 99, 235, 0.92));
-}
-body.og-mode .game-card.revealed.card-neutral .og-reveal-face{
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.18) 78%),
-              linear-gradient(135deg, rgba(192, 167, 125, 0.92), rgba(139, 115, 79, 0.92));
-}
-body.og-mode .game-card.revealed.card-assassin .og-reveal-face{
-  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.12), rgba(255,255,255,0.03) 45%, rgba(0,0,0,0.25) 80%),
-              linear-gradient(135deg, rgba(35, 35, 35, 0.96), rgba(10, 10, 10, 0.96));
-}
-
-body.og-mode .game-card.revealed .og-reveal-face::after{
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    135deg,
-    rgba(255,255,255,0.10) 0px,
-    rgba(255,255,255,0.10) 10px,
-    rgba(0,0,0,0.06) 10px,
-    rgba(0,0,0,0.06) 20px
-  );
-  mix-blend-mode: overlay;
-  opacity: 0.25;
-}
-
-body.og-mode .og-reveal-icon{
-  width: 52%;
-  aspect-ratio: 1 / 1;
-  border-radius: 999px;
-  position: relative;
-  z-index: 1;
-  background: rgba(255,255,255,0.18);
-  box-shadow: 0 10px 28px rgba(0,0,0,0.35), 0 0 0 2px rgba(255,255,255,0.18) inset;
-}
-body.og-mode .og-reveal-icon::before{
-  content: "";
-  position: absolute;
-  inset: 18%;
-  border-radius: 999px;
-  background: rgba(0,0,0,0.22);
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.10) inset;
 }
 
 
@@ -26569,11 +26479,6 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final reveal flip pass: rise -> hold -> diagonal pre-rendered replacement -> hold -> flip -> descend. */
 body .game-card.reveal-flip-animate {
-  --sweep-pre-shell-border: var(--neutral-cardBorder, #7e8792);
-  --sweep-pre-shell-bg: var(--neutral-cardBg, #6f7a88);
-  --sweep-pre-shell-inner-border: var(--neutral-innerBorder, #c8cfd6);
-  --sweep-pre-shell-inner-bg: var(--neutral-innerBg, #d7dee4);
-  --sweep-pre-shell-divider: var(--neutral-innerBorder, #c8cfd6);
   --sweep-pre-word-bg: var(--neutral-darkWordBg, #7a6650);
   --sweep-pre-word-color: #ffffff;
   --sweep-pre-back-bg:
@@ -26581,11 +26486,6 @@ body .game-card.reveal-flip-animate {
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #2f3d53 0%, #1d2738 48%, #121a26 100%);
 
-  --sweep-post-shell-border: var(--sweep-pre-shell-border);
-  --sweep-post-shell-bg: var(--sweep-pre-shell-bg);
-  --sweep-post-shell-inner-border: var(--sweep-pre-shell-inner-border);
-  --sweep-post-shell-inner-bg: var(--sweep-pre-shell-inner-bg);
-  --sweep-post-shell-divider: var(--sweep-pre-shell-divider);
   --sweep-post-word-bg: var(--sweep-pre-word-bg);
   --sweep-post-word-color: var(--sweep-pre-word-color);
   --sweep-post-front-bg: var(--surface, #d7dee4);
@@ -26597,11 +26497,6 @@ body .game-card.reveal-flip-animate {
 }
 
 body .game-card.reveal-flip-animate.confirm-back-red {
-  --sweep-post-shell-border: var(--red-cardBorder, #c24c3a);
-  --sweep-post-shell-bg: var(--red-cardBg, #d36756);
-  --sweep-post-shell-inner-border: var(--red-innerBorder, #f1c2b0);
-  --sweep-post-shell-inner-bg: var(--red-innerBg, #ecab97);
-  --sweep-post-shell-divider: var(--red-innerBorder, #f1c2b0);
   --sweep-post-word-bg: var(--red-darkWordBg, #8c3a30);
   --sweep-post-word-color: #ffffff;
   --sweep-post-front-bg: linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
@@ -26614,11 +26509,6 @@ body .game-card.reveal-flip-animate.confirm-back-red {
 }
 
 body .game-card.reveal-flip-animate.confirm-back-blue {
-  --sweep-post-shell-border: var(--blue-cardBorder, #3b90c8);
-  --sweep-post-shell-bg: var(--blue-cardBg, #5ca8da);
-  --sweep-post-shell-inner-border: var(--blue-innerBorder, #bfdced);
-  --sweep-post-shell-inner-bg: var(--blue-innerBg, #9fc8e4);
-  --sweep-post-shell-divider: var(--blue-innerBorder, #bfdced);
   --sweep-post-word-bg: var(--blue-darkWordBg, #2b5f86);
   --sweep-post-word-color: #ffffff;
   --sweep-post-front-bg: linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
@@ -26631,11 +26521,6 @@ body .game-card.reveal-flip-animate.confirm-back-blue {
 }
 
 body .game-card.reveal-flip-animate.confirm-back-neutral {
-  --sweep-post-shell-border: var(--neutral-cardBorder, #7e8792);
-  --sweep-post-shell-bg: var(--neutral-cardBg, #6f7a88);
-  --sweep-post-shell-inner-border: var(--neutral-innerBorder, #c8cfd6);
-  --sweep-post-shell-inner-bg: var(--neutral-innerBg, #d7dee4);
-  --sweep-post-shell-divider: var(--neutral-innerBorder, #c8cfd6);
   --sweep-post-word-bg: var(--neutral-darkWordBg, #7a6650);
   --sweep-post-word-color: #ffffff;
   --sweep-post-front-bg: linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
@@ -26648,11 +26533,6 @@ body .game-card.reveal-flip-animate.confirm-back-neutral {
 }
 
 body .game-card.reveal-flip-animate.confirm-back-assassin {
-  --sweep-post-shell-border: var(--black-cardBorder, #3b414a);
-  --sweep-post-shell-bg: var(--black-cardBg, #2b3038);
-  --sweep-post-shell-inner-border: var(--black-innerBorder, #646d78);
-  --sweep-post-shell-inner-bg: var(--black-innerBg, #3b424d);
-  --sweep-post-shell-divider: var(--black-innerBorder, #646d78);
   --sweep-post-word-bg: var(--black-darkWordBg, #161b23);
   --sweep-post-word-color: #ffffff;
   --sweep-post-front-bg: linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
@@ -26681,33 +26561,6 @@ body .game-card.reveal-flip-animate .card-back {
   background: var(--sweep-pre-back-bg) !important;
 }
 
-body .game-card.reveal-flip-animate .card-shell-post {
-  background: var(--sweep-post-shell-bg);
-  border-color: var(--sweep-post-shell-border);
-  animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
-}
-
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-shell-post::before {
-  inset: 6px;
-  border-radius: 6px;
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
-    var(--sweep-post-shell-inner-bg);
-  border: 2px solid var(--sweep-post-shell-inner-border);
-  box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.16),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.10);
-}
-
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-shell-post::after {
-  left: var(--labelDividerInsetX, 16px);
-  right: var(--labelDividerInsetX, 16px);
-  bottom: calc(var(--labelInsetY, 12px) + var(--labelHeight, 38%) + 3px);
-  height: 2px;
-  background: var(--sweep-post-shell-divider);
-  opacity: 0.45;
-}
-
 body .game-card.reveal-flip-animate .card-face-post {
   animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
@@ -26724,11 +26577,6 @@ body .game-card.reveal-flip-animate .card-back .card-face-post {
 body .game-card.reveal-flip-animate .card-face-post .card-word {
   background: var(--sweep-post-word-bg) !important;
   color: var(--sweep-post-word-color) !important;
-}
-
-body .game-card.reveal-flip-animate .card-face-post .og-reveal-face {
-  opacity: 1;
-  background: var(--sweep-post-front-bg);
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after,

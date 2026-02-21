@@ -6444,15 +6444,9 @@ function renderBoard(isSpymaster) {
           <div class="card-face card-front">
             <div class="card-face-state card-face-pre">
               <span class="card-word"><span class="word-text">${word}</span></span>
-              <div class="og-reveal-face" aria-hidden="true">
-                <div class="og-reveal-icon"></div>
-              </div>
             </div>
             <div class="card-face-state card-face-post" aria-hidden="true">
               <span class="card-word"><span class="word-text">${word}</span></span>
-              <div class="og-reveal-face" aria-hidden="true">
-                <div class="og-reveal-icon"></div>
-              </div>
             </div>
           </div>
         `;
@@ -6472,7 +6466,6 @@ function renderBoard(isSpymaster) {
         `;
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
-        <div class="card-shell-post" aria-hidden="true"></div>
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
