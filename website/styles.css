@@ -26111,13 +26111,30 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final pass: bottom docking + mobile turn strip + clue readability + compositor stability */
 @media (min-width: 1025px) {
-  body:is(.og-mode, .cozy-mode).after-clue-given .game-center-area .game-action-bar {
+  /* Keep bottom docking consistent in BOTH stacking on/off and all turn phases. */
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
     margin-top: auto !important;
   }
 
-  body:is(.og-mode, .cozy-mode).after-clue-given .game-sidebar-left,
-  body:is(.og-mode, .cozy-mode).after-clue-given .game-sidebar-right {
+  /* Neutralize short-window rules that un-stretch columns and create bottom gaps. */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-main-layout {
+    align-items: stretch !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-left,
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar-right,
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-center-area {
+    align-self: stretch !important;
+    min-height: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .game-sidebar {
+    justify-content: flex-start !important;
     padding-top: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) #og-chat-section {
+    margin-top: auto !important;
   }
 
   /* Avoid long-session GPU artifacts from extra compositor layers on OG cards. */
