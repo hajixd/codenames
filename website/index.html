@@ -582,11 +582,11 @@
                   <span class="setting-label">Active AI Judges</span>
                   <div class="qp-judge-options">
                     <label class="qp-judge-option" for="practice-page-ai-judge-merry">
-                      <input type="checkbox" id="practice-page-ai-judge-merry" checked />
+                      <input type="checkbox" id="practice-page-ai-judge-merry" data-ai-judge-key="merry" checked />
                       <span>AI Judge Merry</span>
                     </label>
                     <label class="qp-judge-option" for="practice-page-ai-judge-vlaada">
-                      <input type="checkbox" id="practice-page-ai-judge-vlaada" />
+                      <input type="checkbox" id="practice-page-ai-judge-vlaada" data-ai-judge-key="vlaada" />
                       <span>AI Judge Vlaada Chvátil</span>
                     </label>
                   </div>
@@ -870,11 +870,11 @@
                           <span class="setting-label">Active AI Judges</span>
                           <div class="qp-judge-options">
                             <label class="qp-judge-option" for="qp-ai-judge-merry">
-                              <input type="checkbox" id="qp-ai-judge-merry" checked />
+                              <input type="checkbox" id="qp-ai-judge-merry" data-ai-judge-key="merry" checked />
                               <span>AI Judge Merry</span>
                             </label>
                             <label class="qp-judge-option" for="qp-ai-judge-vlaada">
-                              <input type="checkbox" id="qp-ai-judge-vlaada" />
+                              <input type="checkbox" id="qp-ai-judge-vlaada" data-ai-judge-key="vlaada" />
                               <span>AI Judge Vlaada Chvátil</span>
                             </label>
                           </div>
@@ -1744,6 +1744,7 @@
                 <div class="settings-admin-actions">
                   <button class="btn" id="admin-backup-now-btn" type="button">Backup</button>
                   <button class="btn" id="admin-logs-btn" type="button">Logs</button>
+                  <button class="btn" id="admin-judges-btn" type="button" style="display:none;">Judges</button>
                   <button class="btn" id="admin-restore-5min-btn" type="button">Restore 15m</button>
                 </div>
                 <div class="hint" id="admin-restore-hint" aria-live="polite"></div>
@@ -1756,6 +1757,44 @@
                   <button class="btn danger" id="end-game-btn" type="button" disabled>End Game</button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin: Judges Manager Modal -->
+      <div class="modal judges-admin-modal" id="judges-admin-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-card judges-admin-card">
+          <div class="modal-head">
+            <div class="modal-title">Judges Manager</div>
+            <button class="icon-btn" id="judges-admin-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body judges-admin-body">
+            <div class="judges-admin-layout">
+              <div class="judges-admin-list-col">
+                <div class="judges-admin-tools">
+                  <button class="btn small" id="judges-admin-add-judge" type="button">Add Judge</button>
+                  <button class="btn danger small" id="judges-admin-remove-judge" type="button">Remove Judge</button>
+                </div>
+                <div class="judges-admin-list" id="judges-admin-list"></div>
+              </div>
+              <div class="judges-admin-editor">
+                <div class="judges-admin-editor-head">
+                  <div class="team-section-title">Rulebook</div>
+                  <button class="btn small" id="judges-admin-edit-toggle" type="button">Edit</button>
+                </div>
+                <label class="field">
+                  <span class="label">Judge Name</span>
+                  <input type="text" class="input" id="judges-admin-name" maxlength="80" />
+                </label>
+                <div class="judges-admin-rules" id="judges-admin-rules"></div>
+                <button class="btn small" id="judges-admin-add-rule" type="button">Add Rule</button>
+              </div>
+            </div>
+            <div class="form-actions judges-admin-actions">
+              <button class="btn small" id="judges-admin-cancel" type="button">Cancel</button>
+              <button class="btn primary" id="judges-admin-save" type="button">Save</button>
+              <span class="hint" id="judges-admin-hint"></span>
             </div>
           </div>
         </div>

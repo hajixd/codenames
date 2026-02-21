@@ -143,12 +143,16 @@ body.light-mode {
 }
 
 .game-card .card-considering-row{
+  --chip-size: 22px;
+  --chip-font-size: 10px;
+  --chip-border-width: 1.5px;
+  --chip-gap: 3px;
   position: absolute;
   top: 2px;
   left: 2px;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--chip-gap);
   flex-wrap: nowrap;
   pointer-events: none;
   z-index: 60;
@@ -159,22 +163,30 @@ body.light-mode {
 }
 
 .game-card .card-considering-chip{
-  width: 22px;
-  height: 22px;
+  width: var(--chip-size);
+  height: var(--chip-size);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--chip-font-size);
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0.22px;
   color: rgba(245, 248, 255, 0.98);
-  border: 1.5px solid rgba(255, 255, 255, 0.82);
+  border: var(--chip-border-width) solid rgba(255, 255, 255, 0.82);
   background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.28), rgba(255,255,255,0.05) 42%, rgba(0,0,0,0.16) 85%), linear-gradient(180deg, rgba(73, 92, 117, 0.92), rgba(34, 46, 63, 0.92));
   box-shadow: 0 3px 8px rgba(0,0,0,0.42);
   margin-left: 0;
 }
+
+.game-card .card-considering-row.chips-3 { --chip-size: 20px; --chip-font-size: 9px; }
+.game-card .card-considering-row.chips-4 { --chip-size: 18px; --chip-font-size: 8.6px; --chip-gap: 2px; }
+.game-card .card-considering-row.chips-5 { --chip-size: 16px; --chip-font-size: 7.8px; --chip-gap: 2px; }
+.game-card .card-considering-row.chips-6 { --chip-size: 15px; --chip-font-size: 7.2px; --chip-gap: 2px; }
+.game-card .card-considering-row.chips-7 { --chip-size: 14px; --chip-font-size: 6.8px; --chip-gap: 1.5px; }
+.game-card .card-considering-row.chips-8 { --chip-size: 13px; --chip-font-size: 6.4px; --chip-gap: 1.5px; }
+.game-card .card-considering-row.chips-9plus { --chip-size: 12px; --chip-font-size: 6px; --chip-gap: 1px; }
 
 .game-card .card-considering-chip.mine{
   background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.32), rgba(255,255,255,0.06) 44%, rgba(0,0,0,0.14) 85%), linear-gradient(180deg, rgba(66, 145, 220, 0.96), rgba(32, 91, 162, 0.96));
@@ -195,6 +207,25 @@ body.light-mode {
   font-size: 8px;
   background: linear-gradient(180deg, rgba(58, 66, 78, 0.94), rgba(34, 39, 48, 0.94));
   border-color: rgba(255,255,255,0.42);
+}
+
+@media (max-width: 768px){
+  .game-card .card-considering-row{
+    --chip-size: 14px;
+    --chip-font-size: 7px;
+    --chip-border-width: 1px;
+    --chip-gap: 2px;
+    top: 1px;
+    left: 1px;
+    padding: 1px 2px;
+  }
+  .game-card .card-considering-row.chips-3 { --chip-size: 12.5px; --chip-font-size: 6.6px; }
+  .game-card .card-considering-row.chips-4 { --chip-size: 11.5px; --chip-font-size: 6.2px; --chip-gap: 1.5px; }
+  .game-card .card-considering-row.chips-5 { --chip-size: 10.5px; --chip-font-size: 5.8px; --chip-gap: 1.2px; }
+  .game-card .card-considering-row.chips-6 { --chip-size: 9.8px; --chip-font-size: 5.4px; --chip-gap: 1px; }
+  .game-card .card-considering-row.chips-7 { --chip-size: 9.2px; --chip-font-size: 5px; --chip-gap: 0.8px; }
+  .game-card .card-considering-row.chips-8 { --chip-size: 8.6px; --chip-font-size: 4.8px; --chip-gap: 0.8px; }
+  .game-card .card-considering-row.chips-9plus { --chip-size: 8.2px; --chip-font-size: 4.6px; --chip-gap: 0.6px; }
 }
 
 .game-card.pending-select .card-checkmark{
@@ -3440,6 +3471,16 @@ body.light-mode .modal{
   gap: 12px;
 }
 
+.setting-row.qp-setting-judges {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.setting-row.qp-setting-judges .setting-label {
+  align-self: flex-start;
+  text-align: left;
+}
+
 .setting-label {
   font-size: 14px;
   font-weight: 500;
@@ -4256,6 +4297,15 @@ body.light-mode .chat-meta{ color: var(--text); }
 #quick-settings-modal .qp-neg-copy{ margin-top: 8px; }
 #quick-settings-modal .qp-neg-actions{ margin-top: 8px; gap: 8px; }
 #quick-settings-modal .qp-neg-btn{ border-radius: 12px; }
+
+@media (min-width: 821px) {
+  #quick-settings-modal .modal-card {
+    max-height: min(74vh, 620px);
+  }
+  #quick-settings-modal .modal-body {
+    overflow-y: auto;
+  }
+}
 
 .modal-title{ font-weight: 900; letter-spacing: 0.2px; }
 .modal-body{
@@ -12302,6 +12352,129 @@ body.tournament.has-team-color .input:focus {
   height: 10px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.7);
+}
+
+/* =========================
+   Admin: Judges manager modal
+========================= */
+
+.judges-admin-modal .modal-card.judges-admin-card {
+  width: min(980px, calc(100vw - 28px));
+  max-height: min(88vh, 760px);
+}
+
+.judges-admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.judges-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.judges-admin-list-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.judges-admin-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.judges-admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  max-height: 56vh;
+  min-height: 160px;
+  padding-right: 2px;
+}
+
+.judges-admin-list-btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.judges-admin-list-btn.is-active {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface2));
+}
+
+.judges-admin-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.judges-admin-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.judges-admin-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  max-height: 50vh;
+  padding-right: 2px;
+}
+
+.judges-admin-rule-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.judges-admin-rule-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.judges-admin-rule-input {
+  resize: vertical;
+  min-height: 58px;
+}
+
+.judges-admin-rule-remove {
+  align-self: start;
+}
+
+.judges-admin-actions {
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .judges-admin-modal .modal-card.judges-admin-card {
+    width: calc(100vw - 16px);
+    max-height: 92vh;
+  }
+  .judges-admin-layout {
+    grid-template-columns: 1fr;
+  }
+  .judges-admin-list {
+    max-height: 26vh;
+  }
+  .judges-admin-rules {
+    max-height: 36vh;
+  }
 }
 
 @media (max-width: 620px) {
@@ -25332,6 +25505,15 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 
 #practice-page-settings-modal .qp-neg-btn {
   border-radius: 12px;
+}
+
+@media (min-width: 821px) {
+  #practice-page-settings-modal .modal-card {
+    max-height: min(74vh, 620px);
+  }
+  #practice-page-settings-modal .modal-body {
+    overflow-y: auto;
+  }
 }
 
 /* ─── Council Review Modal: complete redesign ─── */

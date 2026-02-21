@@ -1237,6 +1237,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initRequestsModal();
   initInvitesModal();
   initAdminAssignModal();
+  initJudgesAdminModal();
   initChatTab();
   initChatDrawerChrome();
   updateHeaderIconVisibility();
@@ -7826,6 +7827,390 @@ let settingsSounds = true;
 let settingsVolume = 70;
 let settingsStyleMode = 'online'; // only supported style
 let settingsStacking = true;
+
+const LS_AI_JUDGE_CATALOG = 'codenames_ai_judge_catalog_v1';
+let judgesAdminDraft = [];
+let judgesAdminSelectedId = '';
+let judgesAdminEditMode = false;
+let judgesAdminModalOpen = false;
+
+function defaultAIJudgeCatalog() {
+  return [
+    {
+      id: 'merry',
+      name: 'AI Judge Merry',
+      rules: [
+        {
+          text: 'Multi-word clues are allowed only when they form one clear unified concept, name, or idea.',
+          example: 'new york city',
+        },
+        {
+          text: 'Word-form clues are not allowed: no exact board word, part of that word, variation, or shared root.',
+          example: 'magic -> magician',
+        },
+        {
+          text: 'Forced-connection clues are not allowed: do not combine unrelated ideas to hit multiple concepts.',
+          example: 'metal food',
+        },
+        {
+          text: 'If a clue does not clearly break a rule, accept it.',
+          example: 'legal document',
+        },
+      ],
+    },
+    {
+      id: 'vlaada',
+      name: 'AI Judge Vlaada Chvátil',
+      rules: [
+        {
+          text: 'Use standard Codenames clue legality.',
+          example: 'single clear clue',
+        },
+        {
+          text: 'Clue should be one word and must not match a board word.',
+          example: 'planet',
+        },
+        {
+          text: 'Reject word forms, stems, parts, and orthographic tricks pointing at board words.',
+          example: 'history -> historical',
+        },
+      ],
+    },
+  ];
+}
+
+function slugifyAIJudgeId(raw) {
+  const s = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s || 'judge';
+}
+
+function normalizeAIJudgeRule(raw) {
+  const text = String(raw?.text ?? raw?.rule ?? '').trim().slice(0, 320);
+  const example = String(raw?.example ?? '').trim().slice(0, 240);
+  return { text, example };
+}
+
+function normalizeAIJudgeEntry(raw, idx = 0) {
+  const nameRaw = String(raw?.name || '').trim();
+  const name = (nameRaw || `AI Judge ${idx + 1}`).slice(0, 80);
+  const idRaw = String(raw?.id || raw?.key || '').trim().toLowerCase();
+  const id = slugifyAIJudgeId(idRaw || name);
+  const rulesSrc = Array.isArray(raw?.rules) ? raw.rules : [];
+  const rules = rulesSrc
+    .map(normalizeAIJudgeRule)
+    .filter((r) => r.text || r.example);
+  if (!rules.length) rules.push({ text: '', example: '' });
+  return { id, name, rules };
+}
+
+function normalizeAIJudgeCatalog(raw) {
+  const src = Array.isArray(raw) ? raw : [];
+  const base = src.length ? src : defaultAIJudgeCatalog();
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < base.length; i += 1) {
+    const item = normalizeAIJudgeEntry(base[i], i);
+    const baseId = item.id || `judge-${i + 1}`;
+    let id = baseId;
+    let n = 2;
+    while (seen.has(id)) {
+      id = `${baseId}-${n}`;
+      n += 1;
+    }
+    seen.add(id);
+    out.push({
+      id,
+      name: item.name,
+      rules: (item.rules || []).map((r) => ({
+        text: String(r?.text || '').trim().slice(0, 320),
+        example: String(r?.example || '').trim().slice(0, 240),
+      })),
+    });
+  }
+  if (!out.length) return normalizeAIJudgeCatalog(defaultAIJudgeCatalog());
+  return out;
+}
+
+function cloneAIJudgeCatalog(raw) {
+  return normalizeAIJudgeCatalog(raw).map((j) => ({
+    id: j.id,
+    name: j.name,
+    rules: (j.rules || []).map((r) => ({ text: r.text, example: r.example })),
+  }));
+}
+
+function getAIJudgeCatalog() {
+  const raw = safeLSGet(LS_AI_JUDGE_CATALOG);
+  if (!raw) return cloneAIJudgeCatalog(defaultAIJudgeCatalog());
+  try {
+    const parsed = JSON.parse(raw);
+    return cloneAIJudgeCatalog(parsed);
+  } catch (_) {
+    return cloneAIJudgeCatalog(defaultAIJudgeCatalog());
+  }
+}
+
+function saveAIJudgeCatalog(nextCatalog) {
+  const normalized = cloneAIJudgeCatalog(nextCatalog);
+  try {
+    safeLSSet(LS_AI_JUDGE_CATALOG, JSON.stringify(normalized));
+  } catch (_) {}
+  try {
+    window.dispatchEvent(new CustomEvent('codenames:judge-catalog-updated', {
+      detail: { judges: cloneAIJudgeCatalog(normalized) },
+    }));
+  } catch (_) {}
+  return normalized;
+}
+
+function getSelectedJudgeFromDraft() {
+  const list = Array.isArray(judgesAdminDraft) ? judgesAdminDraft : [];
+  return list.find((j) => j.id === judgesAdminSelectedId) || null;
+}
+
+function setJudgesAdminHint(msg = '') {
+  const hintEl = document.getElementById('judges-admin-hint');
+  if (hintEl) hintEl.textContent = String(msg || '');
+}
+
+function renderJudgesAdminModal() {
+  if (!judgesAdminModalOpen) return;
+  const listEl = document.getElementById('judges-admin-list');
+  const nameInput = document.getElementById('judges-admin-name');
+  const rulesEl = document.getElementById('judges-admin-rules');
+  const addRuleBtn = document.getElementById('judges-admin-add-rule');
+  const removeJudgeBtn = document.getElementById('judges-admin-remove-judge');
+  const editBtn = document.getElementById('judges-admin-edit-toggle');
+  if (!listEl || !nameInput || !rulesEl) return;
+
+  if (!judgesAdminSelectedId && judgesAdminDraft.length) {
+    judgesAdminSelectedId = String(judgesAdminDraft[0].id || '').trim();
+  }
+  const selected = getSelectedJudgeFromDraft();
+
+  listEl.innerHTML = judgesAdminDraft.length
+    ? judgesAdminDraft.map((j) => {
+      const active = String(j.id || '') === String(judgesAdminSelectedId || '');
+      return `
+        <button class="btn judges-admin-list-btn ${active ? 'is-active' : ''}" type="button" data-judge-id="${esc(j.id)}">
+          ${esc(j.name || 'AI Judge')}
+        </button>
+      `;
+    }).join('')
+    : '<div class="empty-state">No judges yet.</div>';
+
+  const canEdit = !!selected && judgesAdminEditMode;
+  if (editBtn) {
+    editBtn.disabled = !selected;
+    editBtn.textContent = judgesAdminEditMode ? 'Done' : 'Edit';
+  }
+  if (addRuleBtn) addRuleBtn.disabled = !canEdit;
+  if (removeJudgeBtn) removeJudgeBtn.disabled = !canEdit;
+
+  if (!selected) {
+    nameInput.value = '';
+    nameInput.disabled = true;
+    rulesEl.innerHTML = '<div class="empty-state">Select a judge.</div>';
+    return;
+  }
+
+  nameInput.value = selected.name || '';
+  nameInput.disabled = !canEdit;
+
+  const rules = Array.isArray(selected.rules) ? selected.rules : [];
+  rulesEl.innerHTML = rules.map((rule, idx) => {
+    const dis = canEdit ? '' : 'disabled';
+    return `
+      <div class="judges-admin-rule-row" data-rule-index="${idx}">
+        <div class="judges-admin-rule-grid">
+          <label class="field">
+            <span class="label">Rule ${idx + 1}</span>
+            <textarea class="input judges-admin-rule-input" rows="2" data-rule-text="${idx}" ${dis}>${esc(rule.text || '')}</textarea>
+          </label>
+          <label class="field">
+            <span class="label">Example</span>
+            <input class="input judges-admin-example-input" type="text" data-rule-example="${idx}" value="${esc(rule.example || '')}" ${dis} />
+          </label>
+        </div>
+        <button class="icon-btn danger judges-admin-rule-remove" type="button" data-rule-remove="${idx}" ${canEdit ? '' : 'disabled'} aria-label="Remove rule">×</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function openJudgesAdminModal() {
+  if (!isAdminUser()) return;
+  const modal = document.getElementById('judges-admin-modal');
+  if (!modal) return;
+  judgesAdminDraft = cloneAIJudgeCatalog(getAIJudgeCatalog());
+  judgesAdminSelectedId = judgesAdminDraft[0]?.id || '';
+  judgesAdminEditMode = false;
+  judgesAdminModalOpen = true;
+  setJudgesAdminHint('');
+  renderJudgesAdminModal();
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+}
+
+function closeJudgesAdminModal() {
+  const modal = document.getElementById('judges-admin-modal');
+  judgesAdminModalOpen = false;
+  judgesAdminEditMode = false;
+  if (modal) {
+    modal.classList.remove('modal-open');
+    setTimeout(() => { modal.style.display = 'none'; }, 200);
+  }
+  setJudgesAdminHint('');
+}
+
+function initJudgesAdminModal() {
+  const modal = document.getElementById('judges-admin-modal');
+  const closeBtn = document.getElementById('judges-admin-close');
+  const cancelBtn = document.getElementById('judges-admin-cancel');
+  const saveBtn = document.getElementById('judges-admin-save');
+  const addJudgeBtn = document.getElementById('judges-admin-add-judge');
+  const removeJudgeBtn = document.getElementById('judges-admin-remove-judge');
+  const addRuleBtn = document.getElementById('judges-admin-add-rule');
+  const editBtn = document.getElementById('judges-admin-edit-toggle');
+  const listEl = document.getElementById('judges-admin-list');
+  const nameInput = document.getElementById('judges-admin-name');
+  const rulesEl = document.getElementById('judges-admin-rules');
+  if (!modal) return;
+
+  closeBtn?.addEventListener('click', closeJudgesAdminModal);
+  cancelBtn?.addEventListener('click', closeJudgesAdminModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeJudgesAdminModal();
+  });
+
+  listEl?.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('[data-judge-id]');
+    if (!btn) return;
+    const id = String(btn.getAttribute('data-judge-id') || '').trim();
+    if (!id) return;
+    judgesAdminSelectedId = id;
+    judgesAdminEditMode = false;
+    renderJudgesAdminModal();
+  });
+
+  editBtn?.addEventListener('click', () => {
+    if (!getSelectedJudgeFromDraft()) return;
+    judgesAdminEditMode = !judgesAdminEditMode;
+    setJudgesAdminHint('');
+    renderJudgesAdminModal();
+  });
+
+  addJudgeBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
+    const raw = window.prompt('Judge name');
+    const name = String(raw || '').trim();
+    if (!name) return;
+    const existingIds = new Set(judgesAdminDraft.map((j) => String(j.id || '').trim()));
+    const baseId = slugifyAIJudgeId(name);
+    let id = baseId;
+    let n = 2;
+    while (existingIds.has(id)) {
+      id = `${baseId}-${n}`;
+      n += 1;
+    }
+    judgesAdminDraft.push({
+      id,
+      name: name.slice(0, 80),
+      rules: [{ text: '', example: '' }],
+    });
+    judgesAdminSelectedId = id;
+    judgesAdminEditMode = true;
+    setJudgesAdminHint('');
+    renderJudgesAdminModal();
+  });
+
+  removeJudgeBtn?.addEventListener('click', async () => {
+    if (!isAdminUser()) return;
+    const selected = getSelectedJudgeFromDraft();
+    if (!selected) return;
+    const ok = await showCustomConfirm({
+      title: 'Remove judge?',
+      message: `Remove <b>${esc(selected.name || 'this judge')}</b> from the catalog?`,
+      okText: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
+    judgesAdminDraft = judgesAdminDraft.filter((j) => String(j.id || '') !== String(selected.id || ''));
+    judgesAdminSelectedId = judgesAdminDraft[0]?.id || '';
+    judgesAdminEditMode = false;
+    renderJudgesAdminModal();
+  });
+
+  nameInput?.addEventListener('input', () => {
+    if (!judgesAdminEditMode) return;
+    const selected = getSelectedJudgeFromDraft();
+    if (!selected) return;
+    selected.name = String(nameInput.value || '').trim().slice(0, 80) || selected.name || 'AI Judge';
+    renderJudgesAdminModal();
+  });
+
+  addRuleBtn?.addEventListener('click', () => {
+    if (!judgesAdminEditMode) return;
+    const selected = getSelectedJudgeFromDraft();
+    if (!selected) return;
+    if (!Array.isArray(selected.rules)) selected.rules = [];
+    selected.rules.push({ text: '', example: '' });
+    renderJudgesAdminModal();
+  });
+
+  rulesEl?.addEventListener('input', (e) => {
+    if (!judgesAdminEditMode) return;
+    const target = e.target;
+    const selected = getSelectedJudgeFromDraft();
+    if (!selected) return;
+    const textIdxRaw = target?.getAttribute?.('data-rule-text');
+    const exIdxRaw = target?.getAttribute?.('data-rule-example');
+    const idxRaw = textIdxRaw ?? exIdxRaw;
+    const idx = parseInt(String(idxRaw || ''), 10);
+    if (!Number.isInteger(idx) || idx < 0) return;
+    if (!Array.isArray(selected.rules)) selected.rules = [];
+    if (!selected.rules[idx]) selected.rules[idx] = { text: '', example: '' };
+    if (textIdxRaw != null) {
+      selected.rules[idx].text = String(target.value || '').trim().slice(0, 320);
+    } else if (exIdxRaw != null) {
+      selected.rules[idx].example = String(target.value || '').trim().slice(0, 240);
+    }
+  });
+
+  rulesEl?.addEventListener('click', (e) => {
+    if (!judgesAdminEditMode) return;
+    const btn = e.target?.closest?.('[data-rule-remove]');
+    if (!btn) return;
+    const selected = getSelectedJudgeFromDraft();
+    if (!selected) return;
+    const idx = parseInt(String(btn.getAttribute('data-rule-remove') || ''), 10);
+    if (!Number.isInteger(idx) || idx < 0) return;
+    selected.rules = Array.isArray(selected.rules) ? selected.rules : [];
+    selected.rules.splice(idx, 1);
+    if (!selected.rules.length) selected.rules.push({ text: '', example: '' });
+    renderJudgesAdminModal();
+  });
+
+  saveBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
+    judgesAdminDraft = saveAIJudgeCatalog(judgesAdminDraft);
+    judgesAdminEditMode = false;
+    setJudgesAdminHint('Saved.');
+    renderJudgesAdminModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!judgesAdminModalOpen) return;
+    closeJudgesAdminModal();
+  });
+}
+
+window.getAIJudgeCatalog = getAIJudgeCatalog;
 // Audio context for sound effects
 let audioCtx = null;
 let audioUnlocked = false;
@@ -7946,6 +8331,7 @@ function initSettings() {
   const adminBackupBtn = document.getElementById('admin-backup-now-btn');
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminLogsBtn = document.getElementById('admin-logs-btn');
+  const adminJudgesBtn = document.getElementById('admin-judges-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
   // Account danger action: delete the current user (frees username).
@@ -7964,6 +8350,11 @@ function initSettings() {
         if (!isAdmin) b.classList.add('is-disabled');
         else b.classList.remove('is-disabled');
       } catch (_) {}
+    }
+    if (adminJudgesBtn) {
+      adminJudgesBtn.style.display = isAdmin ? '' : 'none';
+      adminJudgesBtn.disabled = !isAdmin;
+      adminJudgesBtn.classList.toggle('is-disabled', !isAdmin);
     }
 
     if (isAdmin) {
@@ -8009,6 +8400,13 @@ function initSettings() {
     playSound('click');
     try { closeSettingsModal(); } catch (_) {}
     try { openLogsPopup(); } catch (_) {}
+  });
+
+  adminJudgesBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    try { closeSettingsModal(); } catch (_) {}
+    try { openJudgesAdminModal(); } catch (_) {}
   });
 
   adminRestoreBtn?.addEventListener('click', async () => {
@@ -12151,12 +12549,19 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
   const rawJudgeKeys = Array.isArray(opts?.enabledAIJudges) ? opts.enabledAIJudges : [];
+  const judgeCatalog = (typeof getAIJudgeCatalog === 'function') ? getAIJudgeCatalog() : [];
+  const validJudgeKeys = new Set(
+    (Array.isArray(judgeCatalog) ? judgeCatalog : [])
+      .map((j) => String(j?.id || j?.key || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const fallbackJudgeKey = (Array.from(validJudgeKeys)[0] || 'merry');
   const enabledAIJudges = Array.from(new Set(
     rawJudgeKeys
       .map((k) => String(k || '').trim().toLowerCase())
-      .filter((k) => k === 'merry' || k === 'vlaada')
+      .filter((k) => validJudgeKeys.size ? validJudgeKeys.has(k) : true)
   ));
-  if (aiJudgesEnabled && !enabledAIJudges.length) enabledAIJudges.push('merry');
+  if (aiJudgesEnabled && !enabledAIJudges.length && fallbackJudgeKey) enabledAIJudges.push(fallbackJudgeKey);
 
   const gameId = await createFn({
     size,
@@ -12203,8 +12608,7 @@ function initPracticePage() {
   const settingsAiChallengeRowEl = document.getElementById('practice-page-ai-challenge-row');
   const settingsAiChallengeToggleEl = document.getElementById('practice-page-ai-challenge-toggle');
   const settingsAiJudgesPanelEl = document.getElementById('practice-page-ai-judges-panel');
-  const settingsAiJudgeMerryEl = document.getElementById('practice-page-ai-judge-merry');
-  const settingsAiJudgeVlaadaEl = document.getElementById('practice-page-ai-judge-vlaada');
+  const settingsAiJudgeOptionsEl = settingsAiJudgesPanelEl?.querySelector?.('.qp-judge-options') || null;
 
   const state = {
     role: null,
@@ -12218,19 +12622,95 @@ function initPracticePage() {
       stackingEnabled: true,
       aiJudgesEnabled: true,
       aiChallengeEnabled: true,
-      enabledAIJudges: ['merry']
+      enabledAIJudges: []
     }
   };
 
-  const normalizeJudgeKeys = (raw, fallback = ['merry']) => {
+  const escHtml = (raw) => String(raw ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const escAttr = (raw) => String(raw ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const getPracticeJudgeDefs = () => {
+    const list = (typeof getAIJudgeCatalog === 'function') ? getAIJudgeCatalog() : [];
+    const src = Array.isArray(list) ? list : [];
+    const out = [];
+    const seen = new Set();
+    for (let i = 0; i < src.length; i += 1) {
+      const item = src[i] || {};
+      const key = slugifyAIJudgeId(item.id || item.key || item.name || `judge-${i + 1}`);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const name = String(item.name || `AI Judge ${i + 1}`).trim().slice(0, 80) || `AI Judge ${i + 1}`;
+      const shortName = String(name || '').replace(/^ai judge\s+/i, '').trim() || name;
+      out.push({ key, name, shortName });
+    }
+    if (out.length) return out;
+    return [
+      { key: 'merry', name: 'AI Judge Merry', shortName: 'Merry' },
+      { key: 'vlaada', name: 'AI Judge Vlaada Chvátil', shortName: 'Vlaada' },
+    ];
+  };
+
+  const getDefaultJudgeKeys = () => {
+    const defs = getPracticeJudgeDefs();
+    return defs[0]?.key ? [defs[0].key] : ['merry'];
+  };
+
+  const normalizeJudgeKeys = (raw, fallback = null) => {
+    const defs = getPracticeJudgeDefs();
+    const byKey = new Set(defs.map((j) => String(j.key || '').trim().toLowerCase()).filter(Boolean));
     const src = Array.isArray(raw) ? raw : [];
     const out = [];
     for (const item of src) {
       const key = String(item || '').trim().toLowerCase();
-      if ((key === 'merry' || key === 'vlaada') && !out.includes(key)) out.push(key);
+      if (byKey.has(key) && !out.includes(key)) out.push(key);
     }
     if (out.length) return out;
-    return Array.isArray(fallback) ? [...fallback] : ['merry'];
+    const fbSrc = Array.isArray(fallback) ? fallback : getDefaultJudgeKeys();
+    const fb = [];
+    for (const item of fbSrc) {
+      const key = String(item || '').trim().toLowerCase();
+      if (byKey.has(key) && !fb.includes(key)) fb.push(key);
+    }
+    return fb.length ? fb : getDefaultJudgeKeys();
+  };
+
+  const getSelectedJudgeKeysFromModal = () => {
+    if (!settingsAiJudgeOptionsEl) return [];
+    return Array.from(settingsAiJudgeOptionsEl.querySelectorAll('input[type="checkbox"][data-ai-judge-key]:checked'))
+      .map((el) => String(el.getAttribute('data-ai-judge-key') || '').trim().toLowerCase())
+      .filter(Boolean);
+  };
+
+  const renderJudgeOptions = (preferredRaw = null) => {
+    if (!settingsAiJudgeOptionsEl) return [];
+    const defs = getPracticeJudgeDefs();
+    if (!defs.length) {
+      settingsAiJudgeOptionsEl.innerHTML = '<div class="empty-state">No AI judges available.</div>';
+      return [];
+    }
+    const preferred = preferredRaw == null ? getSelectedJudgeKeysFromModal() : preferredRaw;
+    const selected = normalizeJudgeKeys(preferred, getDefaultJudgeKeys());
+    settingsAiJudgeOptionsEl.innerHTML = defs.map((j) => {
+      const id = `practice-page-ai-judge-${j.key}`;
+      const checked = selected.includes(j.key) ? ' checked' : '';
+      return `
+        <label class="qp-judge-option" for="${escAttr(id)}">
+          <input type="checkbox" id="${escAttr(id)}" data-ai-judge-key="${escAttr(j.key)}"${checked} />
+          <span>${escHtml(j.name || 'AI Judge')}</span>
+        </label>
+      `;
+    }).join('');
+    return selected;
   };
 
   const formatJudgeSummary = (settings) => {
@@ -12238,8 +12718,8 @@ function initPracticePage() {
     if (s.aiJudgesEnabled === false) return 'Off';
     const keys = normalizeJudgeKeys(s.enabledAIJudges, []);
     if (!keys.length) return 'Off';
-    const names = keys.map((k) => (k === 'vlaada' ? 'Vlaada' : 'Merry'));
-    return names.join('+');
+    const byKey = new Map(getPracticeJudgeDefs().map((j) => [j.key, j.shortName || j.name || j.key]));
+    return keys.map((k) => byKey.get(k) || k).join('+');
   };
 
   const syncJudgePanelVisibility = () => {
@@ -12257,7 +12737,10 @@ function initPracticePage() {
 
   const enforceAtLeastOneJudge = (changedEl = null) => {
     if (!settingsAiJudgesToggleEl?.checked) return;
-    const all = [settingsAiJudgeMerryEl, settingsAiJudgeVlaadaEl].filter(Boolean);
+    const all = settingsAiJudgeOptionsEl
+      ? Array.from(settingsAiJudgeOptionsEl.querySelectorAll('input[type="checkbox"][data-ai-judge-key]'))
+      : [];
+    if (!all.length) return;
     const checked = all.filter((el) => el.checked);
     if (checked.length) return;
     if (changedEl) changedEl.checked = true;
@@ -12296,9 +12779,10 @@ function initPracticePage() {
     if (settingsStackingToggleEl) settingsStackingToggleEl.checked = state.settings.stackingEnabled !== false;
     if (settingsAiJudgesToggleEl) settingsAiJudgesToggleEl.checked = state.settings.aiJudgesEnabled !== false;
     if (settingsAiChallengeToggleEl) settingsAiChallengeToggleEl.checked = state.settings.aiChallengeEnabled !== false;
-    const judgeKeys = normalizeJudgeKeys(state.settings.enabledAIJudges, ['merry']);
-    if (settingsAiJudgeMerryEl) settingsAiJudgeMerryEl.checked = judgeKeys.includes('merry');
-    if (settingsAiJudgeVlaadaEl) settingsAiJudgeVlaadaEl.checked = judgeKeys.includes('vlaada');
+    const judgeKeys = normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys());
+    const selected = renderJudgeOptions(judgeKeys);
+    state.settings.enabledAIJudges = selected.length ? [...selected] : getDefaultJudgeKeys();
+    if (state.settings.aiJudgesEnabled !== false) enforceAtLeastOneJudge();
     syncJudgePanelVisibility();
   };
 
@@ -12312,12 +12796,8 @@ function initPracticePage() {
     state.settings.aiChallengeEnabled = state.settings.aiJudgesEnabled
       ? !!settingsAiChallengeToggleEl?.checked
       : false;
-    const chosen = [];
-    if (settingsAiJudgeMerryEl?.checked) chosen.push('merry');
-    if (settingsAiJudgeVlaadaEl?.checked) chosen.push('vlaada');
-    state.settings.enabledAIJudges = state.settings.aiJudgesEnabled
-      ? normalizeJudgeKeys(chosen, ['merry'])
-      : normalizeJudgeKeys(chosen, state.settings.enabledAIJudges || ['merry']);
+    const chosen = getSelectedJudgeKeysFromModal();
+    state.settings.enabledAIJudges = normalizeJudgeKeys(chosen, state.settings.enabledAIJudges);
   };
 
   const openSettingsModal = () => {
@@ -12382,6 +12862,7 @@ function initPracticePage() {
   } catch (_) {
     state.settings.stackingEnabled = true;
   }
+  state.settings.enabledAIJudges = normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys());
   syncModalFromState();
 
   const start = async () => {
@@ -12399,7 +12880,7 @@ function initPracticePage() {
         stackingEnabled: state.settings.stackingEnabled !== false,
         aiJudgesEnabled: state.settings.aiJudgesEnabled !== false,
         aiChallengeEnabled: state.settings.aiChallengeEnabled !== false,
-        enabledAIJudges: normalizeJudgeKeys(state.settings.enabledAIJudges, ['merry'])
+        enabledAIJudges: normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys())
       }, hintEl);
     } catch (e) {
       console.error(e);
@@ -12414,8 +12895,16 @@ function initPracticePage() {
     if (settingsAiJudgesToggleEl.checked) enforceAtLeastOneJudge();
     syncJudgePanelVisibility();
   });
-  settingsAiJudgeMerryEl?.addEventListener('change', (e) => enforceAtLeastOneJudge(e.currentTarget));
-  settingsAiJudgeVlaadaEl?.addEventListener('change', (e) => enforceAtLeastOneJudge(e.currentTarget));
+  settingsAiJudgeOptionsEl?.addEventListener('change', (e) => {
+    const target = e.target?.closest?.('input[type="checkbox"][data-ai-judge-key]');
+    if (!target) return;
+    enforceAtLeastOneJudge(target);
+  });
+  window.addEventListener('codenames:judge-catalog-updated', () => {
+    state.settings.enabledAIJudges = normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys());
+    syncModalFromState();
+    refresh();
+  });
   settingsApplyBtn?.addEventListener('click', () => {
     syncStateFromModal();
     refresh();

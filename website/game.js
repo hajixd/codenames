@@ -968,6 +968,91 @@ function localPracticePause(ms) {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
+function getLocalPracticeAIMarkerOwner(ai) {
+  const raw = String(ai?.id || ai?.odId || ai?.aiId || ai?.name || '').trim();
+  if (!raw) return '';
+  return raw.startsWith('ai:') ? raw : `ai:${raw}`;
+}
+
+function getLocalPracticeAIMarkerName(ai) {
+  const raw = String(ai?.name || 'AI').trim() || 'AI';
+  return /^ai\s+/i.test(raw) ? raw : `AI ${raw}`;
+}
+
+function collectLocalPracticeAIMarkerKeys(game, decisionLike) {
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const out = [];
+  const seen = new Set();
+  const addIdx = (raw) => {
+    const idx = Number(raw);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= cards.length) return;
+    if (cards[idx]?.revealed) return;
+    const key = String(idx);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(key);
+  };
+
+  const marks = Array.isArray(decisionLike?.marks) ? decisionLike.marks : [];
+  for (const mark of marks) {
+    const tag = String(mark?.tag || '').trim().toLowerCase();
+    if (tag && tag !== 'yes' && tag !== 'maybe' && tag !== 'no') continue;
+    addIdx(mark?.index);
+    if (out.length >= 8) break;
+  }
+
+  if (!out.length) {
+    const action = String(decisionLike?.action || '').trim().toLowerCase();
+    if (action === 'guess') addIdx(decisionLike?.index);
+  }
+
+  return out;
+}
+
+function syncLocalPracticeAIConsidering(gameId, team, ai, decisionLike = {}, opts = {}) {
+  try {
+    const gid = String(gameId || '').trim();
+    if (!gid) return;
+    const ownerId = getLocalPracticeAIMarkerOwner(ai);
+    if (!ownerId) return;
+    const live = getLocalPracticeGame(gid);
+    const game = live || currentGame;
+    const action = String(decisionLike?.action || '').trim().toLowerCase();
+    const clear = !!opts.clear || !!decisionLike?.clear || action === 'end_turn' || action === 'clear_considering';
+    const cardKeys = clear ? [] : collectLocalPracticeAIMarkerKeys(game, decisionLike);
+    const rawName = String(ai?.name || 'AI').trim() || 'AI';
+    const name = getLocalPracticeAIMarkerName(ai);
+    const initials = getPlayerInitials(rawName);
+    const teamColor = team === 'blue' ? 'blue' : 'red';
+
+    try {
+      if (typeof window.__setAIGlobalConsidering === 'function') {
+        window.__setAIGlobalConsidering({
+          gameId: gid,
+          teamColor,
+          ownerId,
+          initials,
+          name,
+          cardKeys,
+        });
+      }
+    } catch (_) {}
+
+    try {
+      if (typeof window.__setLocalPracticeConsidering === 'function') {
+        window.__setLocalPracticeConsidering({
+          gameId: gid,
+          teamColor,
+          ownerId,
+          initials,
+          name,
+          cardKeys,
+        });
+      }
+    } catch (_) {}
+  } catch (_) {}
+}
+
 async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpy = null) {
   const live = getLocalPracticeGame(gameId);
   if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) return false;
@@ -1246,8 +1331,12 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
 
   const firstActor = pickLocalPracticeRotatingAI(game, team, 'op', aiOps) || aiOps[0];
   const firstActorName = `AI ${String(firstActor?.name || 'Player')}`.trim();
+  const clearAllAiConsidering = () => {
+    aiOps.forEach((ai) => syncLocalPracticeAIConsidering(gameId, team, ai, { action: 'end_turn' }, { clear: true }));
+  };
 
   if (!game.currentClue || !Number.isFinite(+game.guessesRemaining) || +game.guessesRemaining <= 0) {
+    clearAllAiConsidering();
     mutateLocalPracticeGame(gameId, (draft) => {
       if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
       applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
@@ -1259,6 +1348,11 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
   // Fallback if council helpers are unavailable.
   if (!useRealCouncil) {
     const idx = pickLocalPracticeAIGuessIndex(game, team);
+    if (Number.isInteger(idx) && idx >= 0) {
+      syncLocalPracticeAIConsidering(gameId, team, firstActor, { action: 'guess', index: idx });
+    } else {
+      clearAllAiConsidering();
+    }
     mutateLocalPracticeGame(gameId, (draft) => {
       if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
       if (Number.isInteger(idx) && idx >= 0) {
@@ -1289,6 +1383,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
     }
     if (!proposal) continue;
     proposalsByAi.set(ai.id, proposal);
+    syncLocalPracticeAIConsidering(gameId, team, ai, proposal);
     if (proposal.chat && appendLocalPracticeTeamChat(gameId, team, ai, proposal.chat)) {
       await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
     }
@@ -1314,6 +1409,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
           const prev = proposalsByAi.get(ai.id) || { ai };
           proposalsByAi.set(ai.id, { ...prev, ...follow });
         }
+        syncLocalPracticeAIConsidering(gameId, team, ai, follow);
         if (follow.chat && appendLocalPracticeTeamChat(gameId, team, ai, follow.chat)) {
           anySpoke = true;
           await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
@@ -1324,6 +1420,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
   }
 
   if (!proposalsByAi.size) {
+    clearAllAiConsidering();
     mutateLocalPracticeGame(gameId, (draft) => {
       if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
       applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
@@ -1355,6 +1452,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
 
   const executor = pickLocalPracticeRotatingAI(finalState, team, 'op', aiOps) || firstActor;
   const actorName = `AI ${String(executor?.name || 'Player')}`.trim();
+  syncLocalPracticeAIConsidering(gameId, team, executor, decision);
 
   if (executor && proposals.length >= 2 && typeof summarizeCouncil === 'function') {
     try {
@@ -1367,6 +1465,8 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
     } catch (_) {}
   }
 
+  if (decision.action !== 'guess') clearAllAiConsidering();
+
   mutateLocalPracticeGame(gameId, (draft) => {
     if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
     bumpLocalPracticeAISeq(draft, team, 'op');
@@ -1378,6 +1478,10 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
       applyLocalPracticeOperativeEndTurnState(draft, actorName);
     }
   });
+  const after = getLocalPracticeGame(gameId);
+  if (!after || after.winner || after.currentPhase !== 'operatives' || after.currentTeam !== team) {
+    clearAllAiConsidering();
+  }
   return true;
 }
 
@@ -1488,36 +1592,158 @@ const AI_JUDGE_DEFS = Object.freeze([
   { key: 'vlaada', name: 'AI Judge Vlaada Chvátil', shortName: 'Vlaada', initial: 'V' },
 ]);
 const AI_JUDGE_DEFAULT_KEYS = Object.freeze(['merry']);
-const _aiJudgeByKey = Object.freeze(
-  AI_JUDGE_DEFS.reduce((acc, def) => {
+
+function _normalizeAIJudgeDef(raw) {
+  const key = String(raw?.key || raw?.id || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (!key) return null;
+  const name = String(raw?.name || `AI Judge ${key}`).trim() || `AI Judge ${key}`;
+  const baseShort = String(raw?.shortName || '').trim();
+  const shortName = baseShort || name.replace(/^ai judge\s+/i, '').trim() || name;
+  const initial = (String(raw?.initial || '').trim() || shortName.slice(0, 1) || key.slice(0, 1) || '?').toUpperCase();
+  return { key, name, shortName, initial };
+}
+
+function _getRuntimeAIJudgeDefs() {
+  const out = [];
+  const seen = new Set();
+  try {
+    const fn = window.getAIJudgeCatalog;
+    if (typeof fn === 'function') {
+      const catalog = fn();
+      if (Array.isArray(catalog)) {
+        for (const item of catalog) {
+          const normalized = _normalizeAIJudgeDef(item);
+          if (!normalized || seen.has(normalized.key)) continue;
+          seen.add(normalized.key);
+          out.push(normalized);
+        }
+      }
+    }
+  } catch (_) {}
+  if (out.length) return out;
+  for (const def of AI_JUDGE_DEFS) {
+    const normalized = _normalizeAIJudgeDef(def);
+    if (!normalized || seen.has(normalized.key)) continue;
+    seen.add(normalized.key);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function _getAIJudgeMetaMap() {
+  return _getRuntimeAIJudgeDefs().reduce((acc, def) => {
     acc[def.key] = def;
     return acc;
-  }, {})
-);
+  }, {});
+}
 
-function normalizeAIJudgeKeys(raw, fallback = AI_JUDGE_DEFAULT_KEYS) {
+function getAIJudgeDefaultKeys() {
+  const defs = _getRuntimeAIJudgeDefs();
+  if (defs[0]?.key) return [defs[0].key];
+  return [...AI_JUDGE_DEFAULT_KEYS];
+}
+
+function getDefaultAIJudgeMeta() {
+  const key = getAIJudgeDefaultKeys()[0] || '';
+  const fromMap = getAIJudgeMeta(key);
+  if (fromMap) return fromMap;
+  const defs = _getRuntimeAIJudgeDefs();
+  if (defs.length) return defs[0];
+  return _normalizeAIJudgeDef(AI_JUDGE_DEFS[0]) || { key: 'merry', name: 'AI Judge Merry', shortName: 'Merry', initial: 'M' };
+}
+
+function normalizeAIJudgeKeys(raw, fallback = null) {
+  const byKey = _getAIJudgeMetaMap();
   const src = Array.isArray(raw) ? raw : [];
   const out = [];
   for (const item of src) {
     const key = String(item || '').trim().toLowerCase();
-    if (_aiJudgeByKey[key] && !out.includes(key)) out.push(key);
+    if (byKey[key] && !out.includes(key)) out.push(key);
   }
   if (out.length) return out;
-  const fb = Array.isArray(fallback) ? fallback : AI_JUDGE_DEFAULT_KEYS;
-  return fb
+  const fb = Array.isArray(fallback) ? fallback : getAIJudgeDefaultKeys();
+  const normalizedFallback = fb
     .map((k) => String(k || '').trim().toLowerCase())
-    .filter((k, idx, arr) => _aiJudgeByKey[k] && arr.indexOf(k) === idx);
+    .filter((k, idx, arr) => byKey[k] && arr.indexOf(k) === idx);
+  if (normalizedFallback.length) return normalizedFallback;
+  const first = Object.keys(byKey)[0] || '';
+  return first ? [first] : [];
 }
 
 function getAIJudgeMeta(key) {
   const k = String(key || '').trim().toLowerCase();
-  return _aiJudgeByKey[k] || null;
+  const byKey = _getAIJudgeMetaMap();
+  return byKey[k] || null;
+}
+
+function getAIJudgeCatalogEntry(key) {
+  try {
+    const fn = window.getAIJudgeCatalog;
+    if (typeof fn !== 'function') return null;
+    const list = fn();
+    if (!Array.isArray(list)) return null;
+    const k = String(key || '').trim().toLowerCase();
+    return list.find((j) => String(j?.id || '').trim().toLowerCase() === k) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildJudgeRulesetPromptLines(key) {
+  const entry = getAIJudgeCatalogEntry(key);
+  const rules = Array.isArray(entry?.rules) ? entry.rules : [];
+  const lines = [];
+  for (let i = 0; i < rules.length; i += 1) {
+    const text = String(rules[i]?.text || '').trim();
+    const example = String(rules[i]?.example || '').trim();
+    if (!text) continue;
+    lines.push(`- Rule ${i + 1}: ${text}`);
+    if (example) lines.push(`  Example: ${example}`);
+  }
+  return lines;
+}
+
+function getFallbackJudgeRulesetPromptLines(judgeMeta) {
+  const key = String(judgeMeta?.key || '').trim().toLowerCase();
+  if (key === 'vlaada') {
+    return [
+      'Apply standard Codenames legality.',
+      'Clue should be exactly one word (no spaces or hyphens).',
+      'Reject board-word forms/parts/shared roots and spelling/position tricks.',
+    ];
+  }
+  if (key === 'merry') {
+    return [
+      'Multi-word clues are allowed only when they form one clear unified concept.',
+      'Reject word-form clues (board-word parts/variants/shared roots).',
+      'Reject forced-connection clues that combine unrelated ideas.',
+      'If not clearly illegal, allow.',
+    ];
+  }
+  return [
+    'Apply standard Codenames legality.',
+    'Reject board-word forms/parts/shared roots.',
+    'Reject forced-connection clues that combine unrelated ideas.',
+    'If not clearly illegal, allow.',
+  ];
+}
+
+function buildJudgeCouncilRuleLines(judgeMeta) {
+  const name = String(judgeMeta?.name || 'AI Judge').trim() || 'AI Judge';
+  const customRules = buildJudgeRulesetPromptLines(judgeMeta?.key);
+  if (customRules.length) {
+    return customRules
+      .map((line) => String(line || '').trim())
+      .filter(Boolean)
+      .map((line) => `- ${name}: ${line.replace(/^-+\s*/, '')}`);
+  }
+  return getFallbackJudgeRulesetPromptLines(judgeMeta).map((line) => `- ${name}: ${line}`);
 }
 
 function sanitizeAIJudgeSettings(raw = {}) {
   const aiJudgesEnabled = raw?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled && (raw?.aiChallengeEnabled !== false);
-  const enabledAIJudges = normalizeAIJudgeKeys(raw?.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
+  const enabledAIJudges = normalizeAIJudgeKeys(raw?.enabledAIJudges, getAIJudgeDefaultKeys());
   return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges };
 }
 
@@ -1566,20 +1792,71 @@ function getAIJudgeReviewWaitingText(game = currentGame) {
   return 'clue review…';
 }
 
+function _escapeJudgeHtml(raw) {
+  return String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function _escapeJudgeAttr(raw) {
+  return String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function getQuickAIJudgeOptionInputs() {
+  const root = document.querySelector('#qp-ai-judges-panel .qp-judge-options');
+  if (!root) return [];
+  return Array.from(root.querySelectorAll('input[type="checkbox"][data-ai-judge-key]'));
+}
+
+function renderQuickAIJudgeOptions(selectedRaw = null) {
+  const root = document.querySelector('#qp-ai-judges-panel .qp-judge-options');
+  if (!root) return [];
+  const defs = _getRuntimeAIJudgeDefs();
+  if (!defs.length) {
+    root.innerHTML = '<div class="empty-state">No AI judges available.</div>';
+    return [];
+  }
+  const fromDom = getQuickAIJudgeOptionInputs()
+    .filter((el) => el.checked)
+    .map((el) => String(el.getAttribute('data-ai-judge-key') || '').trim().toLowerCase())
+    .filter(Boolean);
+  const selected = normalizeAIJudgeKeys(
+    selectedRaw == null ? fromDom : selectedRaw,
+    getAIJudgeDefaultKeys()
+  );
+  root.innerHTML = defs.map((def) => {
+    const id = `qp-ai-judge-${def.key}`;
+    const checked = selected.includes(def.key) ? ' checked' : '';
+    return `
+      <label class="qp-judge-option" for="${_escapeJudgeAttr(id)}">
+        <input type="checkbox" id="${_escapeJudgeAttr(id)}" data-ai-judge-key="${_escapeJudgeAttr(def.key)}"${checked} />
+        <span>${_escapeJudgeHtml(def.name || 'AI Judge')}</span>
+      </label>
+    `;
+  }).join('');
+  return selected;
+}
+
 function readQuickAIJudgeSettingsFromUI() {
   const enabledToggleEl = document.getElementById('qp-ai-judges-toggle');
   const challengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
-  const merryEl = document.getElementById('qp-ai-judge-merry');
-  const vlaadaEl = document.getElementById('qp-ai-judge-vlaada');
   const aiJudgesEnabled = enabledToggleEl ? !!enabledToggleEl.checked : true;
   const aiChallengeEnabledRaw = challengeToggleEl ? !!challengeToggleEl.checked : true;
   const aiChallengeEnabled = aiJudgesEnabled ? aiChallengeEnabledRaw : false;
-  const selected = [];
-  if (merryEl?.checked) selected.push('merry');
-  if (vlaadaEl?.checked) selected.push('vlaada');
-  const enabledAIJudges = normalizeAIJudgeKeys(selected, AI_JUDGE_DEFAULT_KEYS);
+  const selected = getQuickAIJudgeOptionInputs()
+    .filter((el) => el.checked)
+    .map((el) => String(el.getAttribute('data-ai-judge-key') || '').trim().toLowerCase())
+    .filter(Boolean);
+  const enabledAIJudges = normalizeAIJudgeKeys(selected, getAIJudgeDefaultKeys());
   if (aiJudgesEnabled && !selected.length) {
-    return { aiJudgesEnabled: true, aiChallengeEnabled, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS] };
+    return { aiJudgesEnabled: true, aiChallengeEnabled, enabledAIJudges: getAIJudgeDefaultKeys() };
   }
   return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges };
 }
@@ -1601,10 +1878,8 @@ function setQuickAIJudgePanelState(enabled) {
 function ensureQuickAtLeastOneJudge(changedEl = null) {
   const enabled = !!document.getElementById('qp-ai-judges-toggle')?.checked;
   if (!enabled) return;
-  const all = [
-    document.getElementById('qp-ai-judge-merry'),
-    document.getElementById('qp-ai-judge-vlaada'),
-  ].filter(Boolean);
+  const all = getQuickAIJudgeOptionInputs();
+  if (!all.length) return;
   const checked = all.filter((el) => el.checked);
   if (checked.length) return;
   if (changedEl && typeof changedEl.checked === 'boolean') changedEl.checked = true;
@@ -1670,7 +1945,7 @@ function getQuickSettings(game) {
     stackingEnabled: true,
     aiJudgesEnabled: true,
     aiChallengeEnabled: true,
-    enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS],
+    enabledAIJudges: getAIJudgeDefaultKeys(),
     deckId: 'standard',
     vibe: '',
   };
@@ -1711,7 +1986,7 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, aiJudgesEnabled: true, aiChallengeEnabled: true, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS], vibe: '' };
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, aiJudgesEnabled: true, aiChallengeEnabled: true, enabledAIJudges: getAIJudgeDefaultKeys(), vibe: '' };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
   const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
   const challengeStr = s.aiJudgesEnabled === false ? 'Off' : (s.aiChallengeEnabled === false ? 'Off' : 'On');
@@ -2379,7 +2654,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const stackingEnabled = opts?.stackingEnabled !== false;
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
-  const enabledAIJudges = normalizeAIJudgeKeys(opts?.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
+  const enabledAIJudges = normalizeAIJudgeKeys(opts?.enabledAIJudges, getAIJudgeDefaultKeys());
   const quickSettings = {
     blackCards,
     clueTimerSeconds,
@@ -2683,11 +2958,16 @@ function initGameUI() {
     if (enabled) ensureQuickAtLeastOneJudge();
     setQuickAIJudgePanelState(enabled);
   });
-  document.getElementById('qp-ai-judge-merry')?.addEventListener('change', (e) => {
-    ensureQuickAtLeastOneJudge(e?.currentTarget || null);
+  document.querySelector('#qp-ai-judges-panel .qp-judge-options')?.addEventListener('change', (e) => {
+    const target = e.target?.closest?.('input[type="checkbox"][data-ai-judge-key]');
+    if (!target) return;
+    ensureQuickAtLeastOneJudge(target);
   });
-  document.getElementById('qp-ai-judge-vlaada')?.addEventListener('change', (e) => {
-    ensureQuickAtLeastOneJudge(e?.currentTarget || null);
+  window.addEventListener('codenames:judge-catalog-updated', () => {
+    const current = readQuickAIJudgeSettingsFromUI();
+    renderQuickAIJudgeOptions(current.enabledAIJudges);
+    ensureQuickAtLeastOneJudge();
+    if (quickLobbyGame) updateQuickRulesUI(quickLobbyGame);
   });
 
   // Role selection
@@ -3334,18 +3614,16 @@ function openQuickSettingsModal() {
   const stackingToggleEl = document.getElementById('qp-stacking-toggle');
   const aiJudgesToggleEl = document.getElementById('qp-ai-judges-toggle');
   const aiChallengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
-  const aiJudgeMerryEl = document.getElementById('qp-ai-judge-merry');
-  const aiJudgeVlaadaEl = document.getElementById('qp-ai-judge-vlaada');
 
   if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
   if (clueTimerEl) clueTimerEl.value = String(s.clueTimerSeconds ?? 0);
   if (guessTimerEl) guessTimerEl.value = String(s.guessTimerSeconds ?? 0);
   if (stackingToggleEl) stackingToggleEl.checked = s.stackingEnabled !== false;
-  const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
+  const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, getAIJudgeDefaultKeys());
   if (aiJudgesToggleEl) aiJudgesToggleEl.checked = s.aiJudgesEnabled !== false;
   if (aiChallengeToggleEl) aiChallengeToggleEl.checked = s.aiChallengeEnabled !== false;
-  if (aiJudgeMerryEl) aiJudgeMerryEl.checked = judgeKeys.includes('merry');
-  if (aiJudgeVlaadaEl) aiJudgeVlaadaEl.checked = judgeKeys.includes('vlaada');
+  renderQuickAIJudgeOptions(judgeKeys);
+  if (aiJudgesToggleEl?.checked) ensureQuickAtLeastOneJudge();
   setQuickAIJudgePanelState(!!aiJudgesToggleEl?.checked);
   setQuickDeckSelectionUI(s.deckId || 'standard');
 
@@ -3872,7 +4150,7 @@ async function ensureQuickPlayGameExists() {
         stackingEnabled: true,
         aiJudgesEnabled: true,
         aiChallengeEnabled: true,
-        enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS],
+        enabledAIJudges: getAIJudgeDefaultKeys(),
         deckId: 'standard',
         vibe: '',
       };
@@ -3892,7 +4170,7 @@ async function ensureQuickPlayGameExists() {
         changed = true;
       }
       if (!Array.isArray(next.enabledAIJudges)) {
-        next.enabledAIJudges = [...AI_JUDGE_DEFAULT_KEYS];
+        next.enabledAIJudges = getAIJudgeDefaultKeys();
         changed = true;
       }
       const normalized = sanitizeAIJudgeSettings(next);
@@ -3905,7 +4183,7 @@ async function ensureQuickPlayGameExists() {
         changed = true;
       }
       const normSig = normalized.enabledAIJudges.join('|');
-      const curSig = normalizeAIJudgeKeys(next.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join('|');
+      const curSig = normalizeAIJudgeKeys(next.enabledAIJudges, getAIJudgeDefaultKeys()).join('|');
       if (curSig !== normSig) {
         next.enabledAIJudges = normalized.enabledAIJudges;
         changed = true;
@@ -4201,7 +4479,7 @@ async function maybeAutoStartQuickPlay(game) {
     stackingEnabled: s0.stackingEnabled !== false,
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
     aiChallengeEnabled: s0.aiChallengeEnabled !== false,
-    enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
+    enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -4230,7 +4508,7 @@ async function maybeAutoStartQuickPlay(game) {
         stackingEnabled: s.stackingEnabled !== false,
         aiJudgesEnabled: s.aiJudgesEnabled !== false,
         aiChallengeEnabled: s.aiChallengeEnabled !== false,
-        enabledAIJudges: normalizeAIJudgeKeys(s.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
+        enabledAIJudges: normalizeAIJudgeKeys(s.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
         deckId: String(s.deckId || 'standard'),
         vibe: String(s.vibe || '').trim(),
       });
@@ -4301,7 +4579,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
     stackingEnabled: s0.stackingEnabled !== false,
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
     aiChallengeEnabled: s0.aiChallengeEnabled !== false,
-    enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
+    enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -4331,7 +4609,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
         stackingEnabled: qs.stackingEnabled !== false,
         aiJudgesEnabled: qs.aiJudgesEnabled !== false,
         aiChallengeEnabled: qs.aiChallengeEnabled !== false,
-        enabledAIJudges: normalizeAIJudgeKeys(qs.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
+        enabledAIJudges: normalizeAIJudgeKeys(qs.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
         deckId: String(qs.deckId || 'standard'),
         vibe: String(qs.vibe || '').trim(),
       });
@@ -6560,7 +6838,8 @@ function renderBoard(isSpymaster) {
 
   if (stalePendingSelection) {
     if (hasStoredPendingSelection) {
-      void syncTeamConsidering(null);
+      if (Number.isInteger(pendingIdx)) void syncTeamConsidering({ index: pendingIdx, mode: 'remove' });
+      else void syncTeamConsidering(null);
     }
     pendingCardSelection = null;
     _pendingSelectAnimIndex = null;
@@ -6655,9 +6934,11 @@ function renderBoard(isSpymaster) {
     // Show ALL considering chips (no hard cap). This is the single source of truth
     // for "someone is considering this card".
     const visibleConsidering = consideringVisible;
+    const chipCount = Math.max(0, visibleConsidering.length);
+    const chipCountCls = chipCount >= 9 ? 'chips-9plus' : `chips-${chipCount}`;
     const consideringHtml = visibleConsidering.length
       ? `
-          <div class="card-considering-row" aria-hidden="true">
+          <div class="card-considering-row ${chipCountCls}" data-chip-count="${chipCount}" aria-hidden="true">
             ${visibleConsidering.map(entry => {
               const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
@@ -7298,21 +7579,12 @@ async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
     .filter(Boolean);
   const judgeRoster = (() => {
     const roster = getConfiguredAIJudgeRoster(game);
-    return roster.length ? roster : [getAIJudgeMeta('merry')];
+    if (roster.length) return roster;
+    const fallback = getDefaultAIJudgeMeta();
+    return fallback ? [fallback] : [];
   })();
   const judgeNames = judgeRoster.map((j) => j.name).join(', ') || 'AI judges';
-  const merryRules = [
-    '- AI Judge Merry: multi-word clues allowed only for one clear unified concept.',
-    '- AI Judge Merry: reject word-form clues (board-word parts/variants/shared roots).',
-    '- AI Judge Merry: reject forced-connection clues that combine unrelated ideas.',
-    '- AI Judge Merry: if not clearly illegal, allow.',
-  ];
-  const vlaadaRules = [
-    '- AI Judge Vlaada Chvátil: apply standard Codenames legality.',
-    '- AI Judge Vlaada Chvátil: clue should be a single word (no spaces/hyphens).',
-    '- AI Judge Vlaada Chvátil: reject board-word forms/parts/shared roots and spelling/position tricks.',
-  ];
-  const activeRules = judgeRoster.flatMap((j) => (j.key === 'vlaada' ? vlaadaRules : merryRules));
+  const activeRules = judgeRoster.flatMap((j) => buildJudgeCouncilRuleLines(j));
   const system = [
     'You decide whether to challenge an opponent clue for legality.',
     'Challenge only if the clue clearly breaks a rule. Do not challenge for strategy disagreement.',
@@ -7410,16 +7682,15 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
 
 function buildJudgeSystemPrompt(judgeMeta) {
   const name = String(judgeMeta?.name || 'AI Judge').trim() || 'AI Judge';
-  if (judgeMeta?.key === 'vlaada') {
+  const customRules = buildJudgeRulesetPromptLines(judgeMeta?.key);
+  const fallbackRules = getFallbackJudgeRulesetPromptLines(judgeMeta).map((line) => `- ${line}`);
+  if (customRules.length) {
     return [
       `You are ${name}.`,
       'Judge ONLY legality, not clue quality.',
-      'Apply standard Codenames clue legality rules:',
-      '- clue should be exactly one word (no spaces or hyphens)',
-      '- clue must not match any board word',
-      '- reject word-form clues (board words, parts, close variants, shared roots)',
-      '- reject spelling/letter-position/pronunciation tricks that point at board words',
-      '- clue number must be an integer from 0 to 9',
+      'Apply this judge rulebook:',
+      ...customRules,
+      '- Clue number must be an integer from 0 to 9.',
       'Return JSON only:',
       '{"verdict":"legal|illegal","reason":"short reason"}',
     ].join('\n');
@@ -7427,17 +7698,8 @@ function buildJudgeSystemPrompt(judgeMeta) {
   return [
     `You are ${name}.`,
     'Judge ONLY legality, not clue quality.',
-    'Allowed clue format:',
-    '- Clues may contain more than one word only if they refer to one single clear concept, name, or idea.',
-    '- The clue should point to one unified meaning, not multiple unrelated meanings.',
-    '- Valid examples: legal document, cardiac arrest, insulin resistance, new york city.',
-    'Not allowed clues:',
-    '- Word-form clues are illegal: a clue may not contain an exact board word, any part of it, a variation, or a shared root.',
-    '- Word-form examples: magic -> magician, history -> historical, run -> running.',
-    '- Forced-connection clues are illegal: combining unrelated ideas to target different concepts at the same time.',
-    '- Forced-connection examples: german demon, metal food, fast cold.',
-    'Judging principle:',
-    '- If a clue does not clearly break one of the rules above, it should be accepted.',
+    'Apply this judge rulebook:',
+    ...fallbackRules,
     '- Clue number must be an integer from 0 to 9.',
     'Return JSON only:',
     '{"verdict":"legal|illegal","reason":"short reason"}',
@@ -7445,7 +7707,7 @@ function buildJudgeSystemPrompt(judgeMeta) {
 }
 
 async function judgePendingClueWithAI(game, pending, baseline, judgeMeta) {
-  const judge = judgeMeta || getAIJudgeMeta('merry') || { key: 'merry', name: 'AI Judge Merry' };
+  const judge = judgeMeta || getDefaultAIJudgeMeta() || { key: 'merry', name: 'AI Judge Merry' };
   const judgeName = String(judge.name || 'AI Judge').trim() || 'AI Judge';
   const chatFn = window.aiChatCompletion;
   if (typeof chatFn !== 'function') {
@@ -7519,8 +7781,8 @@ function buildCouncilTribunalHtml(liveState, scope) {
       initial: j.initial,
     }));
     if (fromGame.length) return fromGame;
-    const merry = getAIJudgeMeta('merry');
-    return merry ? [{ key: merry.key, name: merry.name, shortName: merry.shortName, initial: merry.initial }] : [];
+    const fallback = getDefaultAIJudgeMeta();
+    return fallback ? [{ key: fallback.key, name: fallback.name, shortName: fallback.shortName, initial: fallback.initial }] : [];
   })();
   const judgeCount = Math.max(1, roster.length);
   const reviewAria = judgeCount === 1
@@ -7638,8 +7900,8 @@ async function evaluatePendingClueWithCouncil(game, pending) {
   const roster = (() => {
     const active = getConfiguredAIJudgeRoster(game);
     if (active.length) return active;
-    const merry = getAIJudgeMeta('merry');
-    return merry ? [merry] : [];
+    const fallback = getDefaultAIJudgeMeta();
+    return fallback ? [fallback] : [];
   })();
   const judgeRoster = roster.map((j) => ({
     key: j.key,
@@ -7704,8 +7966,8 @@ async function evaluatePendingClueImmediateGate(game, pending) {
   const roster = (() => {
     const active = getConfiguredAIJudgeRoster(game);
     if (active.length) return active;
-    const merry = getAIJudgeMeta('merry');
-    return merry ? [merry] : [];
+    const fallback = getDefaultAIJudgeMeta();
+    return fallback ? [fallback] : [];
   })();
 
   const judges = [];
@@ -8914,7 +9176,8 @@ async function handleCardClick(cardIndex) {
   _processingGuess = true;
   try {
     // Clear pending selection only after we've validated this guess attempt.
-    clearPendingCardSelection();
+    // Remove only the guessed card's considering chip for this player.
+    clearPendingCardSelection({ considering: 'single', cardIndex: idx });
 
     if (isCurrentLocalPracticeGame()) {
       const guessByName = getUserName() || 'Someone';
@@ -9967,27 +10230,36 @@ function getTeamConsideringEntriesForCard(teamConsidering, cardIndex, myOwnerId 
     });
 }
 
-async function syncTeamConsidering(cardIndexOrNull) {
+async function syncTeamConsidering(cardIndexOrOpts = null) {
   try {
     if (!currentGame?.id) return;
+    const cfg = (cardIndexOrOpts && typeof cardIndexOrOpts === 'object')
+      ? cardIndexOrOpts
+      : { index: cardIndexOrOpts };
+    const modeRaw = String(cfg?.mode || '').trim().toLowerCase();
+    const hasIndex =
+      cfg?.index !== null &&
+      cfg?.index !== undefined &&
+      String(cfg.index).trim() !== '' &&
+      Number.isInteger(Number(cfg.index));
+    const nextIdx = hasIndex ? Number(cfg.index) : null;
+    const mode = modeRaw || (nextIdx === null ? 'clear' : 'toggle');
+    const clearAll = mode === 'clear' || mode === 'all';
+    const forceAdd = mode === 'add';
+    const forceRemove = mode === 'remove';
+
     // Practice is local-only: persist the same considering buckets on the local game.
     if (isCurrentLocalPracticeGame()) {
       const ownerId = getCurrentMarkerOwnerId();
       const userName = String((typeof getUserName === 'function') ? (getUserName() || '') : '').trim() || 'You';
       const initials = getPlayerInitials(userName);
-      const hasIndex =
-        cardIndexOrNull !== null &&
-        cardIndexOrNull !== undefined &&
-        String(cardIndexOrNull).trim() !== '' &&
-        Number.isInteger(Number(cardIndexOrNull));
-      const nextIdx = hasIndex ? Number(cardIndexOrNull) : null;
       const team = String(getMyTeamColor?.() || currentGame?.currentTeam || 'red').toLowerCase() === 'blue' ? 'blue' : 'red';
       const field = (team === 'blue') ? 'blueConsidering' : 'redConsidering';
 
       mutateLocalPracticeGame(currentGame.id, (draft) => {
         const considering = { ...(draft?.[field] || {}) };
 
-        if (nextIdx === null) {
+        if (clearAll) {
           for (const key of Object.keys(considering)) {
             const bucket = normalizeTeamConsideringBucket(considering[key]);
             delete bucket[ownerId];
@@ -9997,8 +10269,15 @@ async function syncTeamConsidering(cardIndexOrNull) {
         } else if (nextIdx >= 0) {
           const key = String(nextIdx);
           const bucket = normalizeTeamConsideringBucket(considering[key]);
-          if (bucket[ownerId]) delete bucket[ownerId];
-          else bucket[ownerId] = { initials, name: userName, ts: Date.now() };
+          if (forceRemove) {
+            delete bucket[ownerId];
+          } else if (forceAdd) {
+            bucket[ownerId] = { initials, name: userName, ts: Date.now() };
+          } else if (bucket[ownerId]) {
+            delete bucket[ownerId];
+          } else {
+            bucket[ownerId] = { initials, name: userName, ts: Date.now() };
+          }
           if (Object.keys(bucket).length) considering[key] = bucket;
           else delete considering[key];
         }
@@ -10014,53 +10293,51 @@ async function syncTeamConsidering(cardIndexOrNull) {
     const ownerId = getCurrentMarkerOwnerId();
     const userName = String((typeof getUserName === 'function') ? (getUserName() || '') : '').trim();
     const initials = getPlayerInitials(userName);
-    const hasIndex =
-      cardIndexOrNull !== null &&
-      cardIndexOrNull !== undefined &&
-      String(cardIndexOrNull).trim() !== '' &&
-      Number.isInteger(Number(cardIndexOrNull));
-    const nextIdx = hasIndex ? Number(cardIndexOrNull) : null;
     const field = (myTeam === 'red') ? 'redConsidering' : 'blueConsidering';
     const ref = db.collection('games').doc(currentGame.id);
     const nonce = ++_consideringSyncNonce;
+    const updates = {
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
 
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const game = snap.data() || {};
-      const considering = { ...(game?.[field] || {}) };
-
-      // Multi-consider support:
-      // - Passing null clears ALL of your "considering" marks.
-      // - Passing an index toggles ONLY that card for you (does not clear other cards).
-      if (nextIdx === null) {
-        for (const key of Object.keys(considering)) {
-          const bucket = normalizeTeamConsideringBucket(considering[key]);
-          delete bucket[ownerId];
-          if (Object.keys(bucket).length) considering[key] = bucket;
-          else delete considering[key];
-        }
-      } else if (nextIdx >= 0) {
-        const key = String(nextIdx);
-        const bucket = normalizeTeamConsideringBucket(considering[key]);
-        if (bucket[ownerId]) {
-          delete bucket[ownerId];
+    // Single write path: faster than read+transaction and preserves other owners
+    // by only touching the specific nested owner fields we toggle.
+    if (clearAll) {
+      const considering = (currentGame?.[field] && typeof currentGame[field] === 'object') ? currentGame[field] : {};
+      for (const [idxKey, raw] of Object.entries(considering || {})) {
+        const bucket = normalizeTeamConsideringBucket(raw);
+        if (!bucket[ownerId]) continue;
+        updates[`${field}.${String(idxKey)}.${ownerId}`] = firebase.firestore.FieldValue.delete();
+      }
+      if (Object.keys(updates).length <= 1) return;
+    } else if (nextIdx >= 0) {
+      const key = String(nextIdx);
+      const ownerPath = `${field}.${key}.${ownerId}`;
+      if (forceRemove) {
+        updates[ownerPath] = firebase.firestore.FieldValue.delete();
+      } else if (forceAdd) {
+        updates[ownerPath] = {
+          initials,
+          name: userName || 'Player',
+          ts: Date.now()
+        };
+      } else {
+        const liveBucket = normalizeTeamConsideringBucket(currentGame?.[field]?.[key]);
+        if (liveBucket[ownerId]) {
+          updates[ownerPath] = firebase.firestore.FieldValue.delete();
         } else {
-          bucket[ownerId] = {
+          updates[ownerPath] = {
             initials,
             name: userName || 'Player',
             ts: Date.now()
           };
         }
-        if (Object.keys(bucket).length) considering[key] = bucket;
-        else delete considering[key];
       }
+    } else {
+      return;
+    }
 
-      tx.update(ref, {
-        [field]: considering,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
+    await ref.update(updates);
 
     // Ignore stale race completions.
     if (nonce !== _consideringSyncNonce) return;
@@ -10238,12 +10515,24 @@ function handleRevealedCardPeek(cardIndex) {
   updateRevealedCardPeekUI();
 }
 
-function clearPendingCardSelection() {
+function clearPendingCardSelection(opts = null) {
+  const cfg = (opts && typeof opts === 'object') ? opts : {};
+  const mode = String(cfg.considering || 'all').toLowerCase();
+  const explicitIdx = Number(cfg.cardIndex);
+  const toggleIdx = Number.isInteger(explicitIdx)
+    ? explicitIdx
+    : (Number.isInteger(Number(pendingCardSelection)) ? Number(pendingCardSelection) : null);
   pendingCardSelection = null;
   _pendingSelectAnimIndex = null;
   _pendingSelectionContextKey = null;
   revealedPeekCardIndex = null;
-  void syncTeamConsidering(null);
+  if (mode === 'none') {
+    // Keep considering marks as-is.
+  } else if (mode === 'single' && Number.isInteger(toggleIdx) && toggleIdx >= 0) {
+    void syncTeamConsidering({ index: toggleIdx, mode: 'remove' });
+  } else {
+    void syncTeamConsidering(null);
+  }
   // Clear any OG "peek" state.
   try {
     document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
@@ -10259,7 +10548,7 @@ function setPendingCardSelection(cardIndex) {
   _pendingSelectAnimIndex = idx;
   _pendingSelectionContextKey = getPendingSelectionContextKey(currentGame);
   revealedPeekCardIndex = null;
-  void syncTeamConsidering(idx);
+  void syncTeamConsidering({ index: idx, mode: 'add' });
   // Ensure only one card can be in "peek" mode.
   try {
     document.querySelectorAll('.game-card.og-peek').forEach(el => el.classList.remove('og-peek'));
@@ -11771,7 +12060,7 @@ function handleCardSelect(cardIndex) {
   // In local singleplayer practice, tapping a card should still toggle your
   // "considering" initials, even if you aren't explicitly seated.
   if (isCurrentLocalPracticeGame()) {
-    if (pendingCardSelection === idx) clearPendingCardSelection();
+    if (pendingCardSelection === idx) clearPendingCardSelection({ considering: 'single', cardIndex: idx });
     else setPendingCardSelection(idx);
     return;
   }
@@ -11779,7 +12068,7 @@ function handleCardSelect(cardIndex) {
   if (!canCurrentUserGuess()) return;
 
   // Toggle selection
-  if (pendingCardSelection === idx) clearPendingCardSelection();
+  if (pendingCardSelection === idx) clearPendingCardSelection({ considering: 'single', cardIndex: idx });
   else setPendingCardSelection(idx);
 }
 
@@ -11804,7 +12093,8 @@ async function handleCardConfirm(evt, cardIndex) {
   }
 
   // Drop pending-selection outline immediately when confirm starts.
-  clearPendingCardSelection();
+  // The actual chip toggle for this card is handled by the guess commit path.
+  clearPendingCardSelection({ considering: 'none' });
   const lockGuard = setTimeout(() => { _processingGuess = false; }, 10000);
 
   try {
