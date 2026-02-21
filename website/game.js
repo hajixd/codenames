@@ -7923,6 +7923,10 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   }
 
   if (currentGame.currentPhase === 'spymaster') {
+    // Keep the clue pill + end-turn row layout stable for non-spymaster viewers
+    // while the active spymaster is typing/submitting.
+    if (actionBarEl && !isSpymaster) actionBarEl.classList.add('row-clue-endturn');
+
     if (pendingBlocking) {
       waitingEl.style.display = 'block';
       if (waitingForEl) {

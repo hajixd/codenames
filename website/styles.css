@@ -26246,20 +26246,33 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   }
 }
 
-/* Mobile final pass (force winner against earlier overlap/spacing rules) */
+/* Mobile final pass: consolidate OG/Cozy spacing and keep layout deterministic. */
 @media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active {
+    /* Disable mobile zoom-down in OG/Cozy to avoid top clipping/gaps. */
+    --mobile-game-scale: 1 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .panel.panel-game,
+  body:is(.og-mode, .cozy-mode) .panel.panel-game.active,
+  body:is(.og-mode, .cozy-mode) .panel.panel-game.game-active,
   body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
-    padding-top: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
+    margin-top: 0 !important;
+    padding-top: 2px !important;
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .og-topbar {
-    margin-top: -6px !important;
-    padding-top: 2px !important;
-    padding-bottom: 2px !important;
+    margin-top: 0 !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip {
-    margin: 0 10px 2px !important;
+    margin: 1px 10px 3px !important;
   }
 
   body:is(.og-mode, .cozy-mode) #og-mobile-panels {
