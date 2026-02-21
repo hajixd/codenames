@@ -46,7 +46,7 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 1220;
+const CARD_CONFIRM_ANIM_MS = 1760;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();

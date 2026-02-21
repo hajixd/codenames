@@ -20857,7 +20857,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
 :root{
   --card-reveal-duration: 920ms;
   --card-select-duration: 280ms;
-  --card-confirm-duration: 1220ms;
+  --card-confirm-duration: 1760ms;
   --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -20867,7 +20867,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   :root{
     --card-reveal-duration: 920ms;
     --card-select-duration: 280ms;
-    --card-confirm-duration: 1220ms;
+    --card-confirm-duration: 1760ms;
     --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   }
 }
@@ -20938,8 +20938,7 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
   animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
 }
 
-/* Pre-flip reveal staging: keep the front neutral for a beat, then bloom target color
-   before the actual Y-flip starts. This avoids an abrupt beige -> team-color snap. */
+/* Pre-flip recolor phase: runs before lift/flip and stays visually separate. */
 body.og-mode .game-card:is(.confirm-animate, .reveal-flip-animate) {
   --cardBorder: var(--neutral-cardBorder);
   --cardBg: var(--neutral-cardBg);
@@ -20954,23 +20953,28 @@ body.cozy-mode .game-card:is(.confirm-animate, .reveal-flip-animate) {
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) {
-  --confirm-preflip-rgb: 190, 161, 123;
+  --confirm-prime-rgb: 190, 161, 123;
+  --confirm-prime-deep-rgb: 141, 115, 82;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-red {
-  --confirm-preflip-rgb: 212, 84, 60;
+  --confirm-prime-rgb: 216, 94, 69;
+  --confirm-prime-deep-rgb: 149, 51, 37;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-blue {
-  --confirm-preflip-rgb: 61, 142, 205;
+  --confirm-prime-rgb: 79, 160, 220;
+  --confirm-prime-deep-rgb: 35, 103, 158;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-neutral {
-  --confirm-preflip-rgb: 190, 161, 123;
+  --confirm-prime-rgb: 190, 161, 123;
+  --confirm-prime-deep-rgb: 141, 115, 82;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-assassin {
-  --confirm-preflip-rgb: 48, 53, 61;
+  --confirm-prime-rgb: 74, 78, 87;
+  --confirm-prime-deep-rgb: 28, 31, 38;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) .card-front::before {
@@ -20982,15 +20986,36 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-anima
   opacity: 0;
   z-index: 1;
   background:
-    radial-gradient(120% 100% at 18% 14%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.03) 42%, rgba(0, 0, 0, 0) 70%),
-    linear-gradient(160deg, rgba(var(--confirm-preflip-rgb), 0.16) 0%, rgba(var(--confirm-preflip-rgb), 0.75) 100%);
-  mix-blend-mode: multiply;
-  animation: ogConfirmPreFlipTint var(--card-confirm-duration) var(--card-confirm-ease) both;
+    radial-gradient(130% 110% at 18% 14%, rgba(255, 255, 255, 0.30) 0%, rgba(255, 255, 255, 0.04) 38%, rgba(0, 0, 0, 0) 72%),
+    linear-gradient(160deg, rgba(var(--confirm-prime-rgb), 0.14) 0%, rgba(var(--confirm-prime-rgb), 0.64) 58%, rgba(var(--confirm-prime-deep-rgb), 0.78) 100%);
+  mix-blend-mode: color;
+  animation: ogConfirmPrimeTint var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) .card-front::after {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0.44) 49%,
+    rgba(255, 255, 255, 0) 64%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-145%) skewX(-16deg);
+  mix-blend-mode: screen;
+  animation: ogConfirmPrimeSweep var(--card-confirm-duration) var(--card-confirm-ease) both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) .card-front .card-word {
   position: relative;
-  z-index: 2;
+  z-index: 3;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner,
@@ -21119,23 +21144,23 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   0% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
-  12% {
-    transform: translate3d(0, -2px, 4px) rotateX(2deg) rotateZ(-0.3deg) scale(1.015);
+  38% {
+    transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
-  30% {
-    transform: translate3d(0, -18px, 22px) rotateX(10deg) rotateZ(-0.75deg) scale(1.045);
+  48% {
+    transform: translate3d(0, -2px, 3px) rotateX(1.5deg) rotateZ(-0.14deg) scale(1.01);
   }
-  44% {
-    transform: translate3d(0, -36px, 48px) rotateX(14deg) rotateZ(-0.25deg) scale(1.065);
+  62% {
+    transform: translate3d(0, -16px, 20px) rotateX(8deg) rotateZ(-0.42deg) scale(1.03);
   }
   76% {
-    transform: translate3d(0, -36px, 48px) rotateX(13deg) rotateZ(0.25deg) scale(1.065);
+    transform: translate3d(0, -31px, 42px) rotateX(12.5deg) rotateZ(0.2deg) scale(1.058);
   }
-  88% {
-    transform: translate3d(0, -10px, 14px) rotateX(7deg) rotateZ(0.16deg) scale(1.028);
+  86% {
+    transform: translate3d(0, -29px, 38px) rotateX(11.8deg) rotateZ(0.14deg) scale(1.052);
   }
-  95% {
-    transform: translate3d(0, 5px, -4px) rotateX(-3deg) rotateZ(-0.14deg) scale(0.985);
+  94% {
+    transform: translate3d(0, -7px, 8px) rotateX(5deg) rotateZ(0.05deg) scale(1.02);
   }
   100% {
     transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
@@ -21146,16 +21171,16 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   0% {
     transform: rotateY(0deg);
   }
-  44% {
+  62% {
     transform: rotateY(0deg);
   }
-  72% {
-    transform: rotateY(206deg);
+  78% {
+    transform: rotateY(196deg);
   }
-  84% {
+  88% {
     transform: rotateY(186deg);
   }
-  94% {
+  95% {
     transform: rotateY(181deg);
   }
   100% {
@@ -21163,30 +21188,65 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   }
 }
 
-@keyframes ogConfirmPreFlipTint {
+@keyframes ogConfirmPrimeTint {
   0% {
     opacity: 0;
     filter: saturate(1) brightness(1);
   }
-  16% {
-    opacity: 0.24;
-    filter: saturate(1.05) brightness(1.01);
+  14% {
+    opacity: 0.10;
+    filter: saturate(1.03) brightness(1.01);
   }
-  34% {
-    opacity: 0.52;
-    filter: saturate(1.12) brightness(1.03);
+  30% {
+    opacity: 0.32;
+    filter: saturate(1.08) brightness(1.02);
   }
-  44% {
-    opacity: 0.72;
-    filter: saturate(1.2) brightness(1.05);
+  46% {
+    opacity: 0.58;
+    filter: saturate(1.18) brightness(1.04);
   }
   58% {
-    opacity: 0.12;
-    filter: saturate(1.04) brightness(1.01);
+    opacity: 0.74;
+    filter: saturate(1.24) brightness(1.05);
+  }
+  70% {
+    opacity: 0.28;
+    filter: saturate(1.08) brightness(1.02);
   }
   100% {
     opacity: 0;
     filter: saturate(1) brightness(1);
+  }
+}
+
+@keyframes ogConfirmPrimeSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-145%) skewX(-16deg);
+  }
+  20% {
+    opacity: 0;
+    transform: translateX(-120%) skewX(-16deg);
+  }
+  34% {
+    opacity: 0.34;
+    transform: translateX(-50%) skewX(-16deg);
+  }
+  46% {
+    opacity: 0.70;
+    transform: translateX(0%) skewX(-16deg);
+  }
+  58% {
+    opacity: 0.38;
+    transform: translateX(62%) skewX(-16deg);
+  }
+  68% {
+    opacity: 0;
+    transform: translateX(130%) skewX(-16deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(130%) skewX(-16deg);
   }
 }
 
@@ -26145,7 +26205,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   body:is(.og-mode, .cozy-mode) {
     /* Slightly taller than before on desktop. */
     --og-desktop-docked-panel-h: clamp(220px, 31vh, 320px);
-    --og-desktop-gamelog-shell-w: calc(var(--col-right, 260px) + 20px);
+    --og-desktop-gamelog-shell-w: var(--col-right, 260px);
   }
 
   /* Left docked Team Chat: match Game Log height (same on-screen size after zoom). */
