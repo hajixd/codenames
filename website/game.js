@@ -50,7 +50,6 @@ const CARD_CONFIRM_ANIM_MS = 4200;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
-const _revealColorShiftByIndex = new Map();
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -88,7 +87,7 @@ function clearCardAnimationOverlayState() {
 
 function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
-  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate', 'reveal-color-shifted');
+  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
   cardEl.removeAttribute('data-confirm-back-type');
@@ -98,9 +97,6 @@ function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
     const oldTid = _revealFlipCleanupByIndex.get(idx);
     if (oldTid) clearTimeout(oldTid);
     _revealFlipCleanupByIndex.delete(idx);
-    const oldColorTid = _revealColorShiftByIndex.get(idx);
-    if (oldColorTid) clearTimeout(oldColorTid);
-    _revealColorShiftByIndex.delete(idx);
   }
 }
 
@@ -117,22 +113,9 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   cardEl.setAttribute('data-confirm-back-type', confirmBackType);
   pulseCardAnimationOverlay();
 
-  const colorShiftDelayMs = Math.max(0, Math.round(CARD_CONFIRM_ANIM_MS * 0.64));
-  const colorTid = window.setTimeout(() => {
-    if (!cardEl.isConnected) return;
-    if (!cardEl.classList.contains('reveal-flip-animate')) return;
-    cardEl.classList.add('reveal-color-shifted');
-  }, colorShiftDelayMs);
-  if (Number.isInteger(idx) && idx >= 0) {
-    _revealColorShiftByIndex.set(idx, colorTid);
-  }
-
   const tid = window.setTimeout(() => {
     if (Number.isInteger(idx) && idx >= 0) {
       _revealFlipCleanupByIndex.delete(idx);
-      const oldColorTid = _revealColorShiftByIndex.get(idx);
-      if (oldColorTid) clearTimeout(oldColorTid);
-      _revealColorShiftByIndex.delete(idx);
     }
     if (!cardEl.isConnected) return;
     clearConfirmAnimationClasses(cardEl);
@@ -147,10 +130,6 @@ function clearRevealAnimationSuppressions() {
     clearTimeout(tid);
   }
   _revealFlipCleanupByIndex.clear();
-  for (const tid of _revealColorShiftByIndex.values()) {
-    clearTimeout(tid);
-  }
-  _revealColorShiftByIndex.clear();
   try {
     document.querySelectorAll('.game-card.reveal-flip-animate, .game-card.confirming-guess, .game-card.confirm-animate, .game-card.confirm-hold')
       .forEach((el) => clearConfirmAnimationClasses(el));
@@ -6461,27 +6440,43 @@ function renderBoard(isSpymaster) {
           </div>
         `
       : '';
+    const frontFace = `
+          <div class="card-face card-front">
+            <div class="card-face-state card-face-pre">
+              <span class="card-word"><span class="word-text">${word}</span></span>
+              <div class="og-reveal-face" aria-hidden="true">
+                <div class="og-reveal-icon"></div>
+              </div>
+            </div>
+            <div class="card-face-state card-face-post" aria-hidden="true">
+              <span class="card-word"><span class="word-text">${word}</span></span>
+              <div class="og-reveal-face" aria-hidden="true">
+                <div class="og-reveal-icon"></div>
+              </div>
+            </div>
+          </div>
+        `;
+
     // Always render a back face so the confirm/reveal flip animation can run
     // in every visual mode. (Non-OG modes keep the back hidden unless an
     // animation explicitly flips the card.)
     const backFace = `
           <div class="card-face card-back">
-            <span class="card-recolor-sweep" aria-hidden="true"></span>
-            <span class="card-word"><span class="word-text">${word}</span></span>
+            <div class="card-face-state card-face-pre">
+              <span class="card-word"><span class="word-text">${word}</span></span>
+            </div>
+            <div class="card-face-state card-face-post" aria-hidden="true">
+              <span class="card-word"><span class="word-text">${word}</span></span>
+            </div>
           </div>
         `;
     return `
       <div class="${classes.join(' ')}" data-index="${i}">
+        <div class="card-shell-post" aria-hidden="true"></div>
         ${stackOrderHtml}
         <div class="og-peek-label" aria-hidden="true">${word}</div>
         <div class="card-inner">
-          <div class="card-face card-front">
-            <span class="card-recolor-sweep" aria-hidden="true"></span>
-            <span class="card-word"><span class="word-text">${word}</span></span>
-            <div class="og-reveal-face" aria-hidden="true">
-              <div class="og-reveal-icon"></div>
-            </div>
-          </div>
+          ${frontFace}
           ${backFace}
         </div>
         <button type="button" class="card-checkmark" data-card-index="${i}" aria-label="${confirmLabel}" title="${confirmLabel}">✓</button>
