@@ -483,7 +483,7 @@
               <div class="practice-step" id="practice-step-vibe">
                 <div class="practice-step-title">3) Match settings</div>
                 <div class="practice-settings-row">
-                  <div class="practice-settings-summary" id="practice-page-rules-text">Rules: Assassin: 1 · Clue: ∞ · Guess: ∞ · Stacking: On · Judges: Merry</div>
+                  <div class="practice-settings-summary" id="practice-page-rules-text">Rules: Assassin: 1 · Clue: ∞ · Guess: ∞ · Stacking: On · Challenge: On · Judges: Merry</div>
                   <button class="btn small" id="practice-page-settings-btn" type="button">Settings</button>
                   <button class="btn primary" id="practice-page-start" type="button" disabled>Start Singleplayer</button>
                 </div>
@@ -568,6 +568,13 @@
                   <span class="setting-label">Enable AI Judges</span>
                   <div class="toggle-switch">
                     <input type="checkbox" id="practice-page-ai-judges-toggle" checked />
+                    <span class="toggle-slider"></span>
+                  </div>
+                </label>
+                <label class="setting-row qp-setting qp-setting-toggle" data-accent="judges" id="practice-page-ai-challenge-row">
+                  <span class="setting-label">Enable Challenge</span>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="practice-page-ai-challenge-toggle" checked />
                     <span class="toggle-slider"></span>
                   </div>
                 </label>
@@ -849,6 +856,13 @@
                           <span class="setting-label">Enable AI Judges</span>
                           <div class="toggle-switch">
                             <input type="checkbox" id="qp-ai-judges-toggle" checked />
+                            <span class="toggle-slider"></span>
+                          </div>
+                        </label>
+                        <label class="setting-row qp-setting qp-setting-toggle" data-accent="judges" id="qp-ai-challenge-row">
+                          <span class="setting-label">Enable Challenge</span>
+                          <div class="toggle-switch">
+                            <input type="checkbox" id="qp-ai-challenge-toggle" checked />
                             <span class="toggle-slider"></span>
                           </div>
                         </label>
@@ -1207,7 +1221,7 @@
                     <div class="clue-stack-panel" id="clue-stack-panel" style="display:none;">
                       <div class="clue-stack-panel-header">
                         <span class="clue-stack-badge">STACKING</span>
-                        <span class="clue-stack-summary" id="clue-stack-summary">Tap your team's cards to mark clue targets</span>
+                        <span class="clue-stack-summary" id="clue-stack-summary"></span>
                         <button type="button" class="btn small clue-stack-clear-btn" id="clue-stack-clear-btn">Clear</button>
                       </div>
                       <!-- Clue input is inserted here when stacking is active -->

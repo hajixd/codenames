@@ -1516,8 +1516,9 @@ function getAIJudgeMeta(key) {
 
 function sanitizeAIJudgeSettings(raw = {}) {
   const aiJudgesEnabled = raw?.aiJudgesEnabled !== false;
+  const aiChallengeEnabled = aiJudgesEnabled && (raw?.aiChallengeEnabled !== false);
   const enabledAIJudges = normalizeAIJudgeKeys(raw?.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
-  return { aiJudgesEnabled, enabledAIJudges };
+  return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges };
 }
 
 function getConfiguredAIJudgeKeysFromSettings(settings) {
@@ -1534,6 +1535,16 @@ function getConfiguredAIJudgeRoster(game = currentGame) {
 
 function isAIJudgingEnabledForGame(game = currentGame) {
   return getConfiguredAIJudgeRoster(game).length > 0;
+}
+
+function isAIChallengeEnabledForGame(game = currentGame) {
+  if (!isAIJudgingEnabledForGame(game)) return false;
+  const settings = getQuickSettings(game);
+  return settings.aiChallengeEnabled !== false;
+}
+
+function shouldUseImmediateAIJudgeGate(game = currentGame) {
+  return isAIJudgingEnabledForGame(game) && !isAIChallengeEnabledForGame(game);
 }
 
 function formatAIJudgeSettingsSummary(settings) {
@@ -1557,20 +1568,30 @@ function getAIJudgeReviewWaitingText(game = currentGame) {
 
 function readQuickAIJudgeSettingsFromUI() {
   const enabledToggleEl = document.getElementById('qp-ai-judges-toggle');
+  const challengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
   const merryEl = document.getElementById('qp-ai-judge-merry');
   const vlaadaEl = document.getElementById('qp-ai-judge-vlaada');
   const aiJudgesEnabled = enabledToggleEl ? !!enabledToggleEl.checked : true;
+  const aiChallengeEnabledRaw = challengeToggleEl ? !!challengeToggleEl.checked : true;
+  const aiChallengeEnabled = aiJudgesEnabled ? aiChallengeEnabledRaw : false;
   const selected = [];
   if (merryEl?.checked) selected.push('merry');
   if (vlaadaEl?.checked) selected.push('vlaada');
   const enabledAIJudges = normalizeAIJudgeKeys(selected, AI_JUDGE_DEFAULT_KEYS);
   if (aiJudgesEnabled && !selected.length) {
-    return { aiJudgesEnabled: true, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS] };
+    return { aiJudgesEnabled: true, aiChallengeEnabled, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS] };
   }
-  return { aiJudgesEnabled, enabledAIJudges };
+  return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges };
 }
 
 function setQuickAIJudgePanelState(enabled) {
+  const challengeRow = document.getElementById('qp-ai-challenge-row');
+  const challengeToggle = document.getElementById('qp-ai-challenge-toggle');
+  if (challengeRow) {
+    challengeRow.style.display = enabled ? 'flex' : 'none';
+    challengeRow.classList.toggle('is-disabled', !enabled);
+  }
+  if (challengeToggle) challengeToggle.disabled = !enabled;
   const panel = document.getElementById('qp-ai-judges-panel');
   if (!panel) return;
   panel.style.display = enabled ? 'flex' : 'none';
@@ -1604,6 +1625,7 @@ function readQuickSettingsFromUI() {
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
     stackingEnabled,
     aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+    aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
     enabledAIJudges: judgeSettings.enabledAIJudges,
     deckId: "standard",// AI-driven words; fallback uses standard bank,
     vibe: vibe || '',
@@ -1620,6 +1642,7 @@ function getQuickSettings(game) {
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
       stackingEnabled: base.stackingEnabled !== false,
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+      aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
       enabledAIJudges: judgeSettings.enabledAIJudges,
       deckId: normalizeDeckId(base.deckId || 'standard'),
       vibe: String(base.vibe || ''),
@@ -1634,6 +1657,7 @@ function getQuickSettings(game) {
       guessTimerSeconds: Number.isFinite(+practice.guessTimerSeconds) ? +practice.guessTimerSeconds : 0,
       stackingEnabled: practice.stackingEnabled !== false,
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+      aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
       enabledAIJudges: judgeSettings.enabledAIJudges,
       deckId: normalizeDeckId(game?.deckId || practice.deckId || 'standard'),
       vibe: String(game?.vibe || practice.vibe || ''),
@@ -1645,6 +1669,7 @@ function getQuickSettings(game) {
     guessTimerSeconds: 0,
     stackingEnabled: true,
     aiJudgesEnabled: true,
+    aiChallengeEnabled: true,
     enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS],
     deckId: 'standard',
     vibe: '',
@@ -1686,11 +1711,12 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, aiJudgesEnabled: true, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS], vibe: '' };
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, aiJudgesEnabled: true, aiChallengeEnabled: true, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS], vibe: '' };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
   const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
+  const challengeStr = s.aiJudgesEnabled === false ? 'Off' : (s.aiChallengeEnabled === false ? 'Off' : 'On');
   const judgesStr = formatAIJudgeSettingsSummary(s);
-  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr} · Judges: ${judgesStr}${vibeStr}`;
+  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
 }
 
 
@@ -2352,6 +2378,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
+  const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
   const enabledAIJudges = normalizeAIJudgeKeys(opts?.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
   const quickSettings = {
     blackCards,
@@ -2359,6 +2386,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     guessTimerSeconds,
     stackingEnabled,
     aiJudgesEnabled,
+    aiChallengeEnabled,
     enabledAIJudges,
     deckId,
     vibe,
@@ -2458,6 +2486,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
       guessTimerSeconds,
       stackingEnabled,
       aiJudgesEnabled,
+      aiChallengeEnabled,
       enabledAIJudges,
       deckId,
       vibe,
@@ -3304,6 +3333,7 @@ function openQuickSettingsModal() {
   const guessTimerEl = document.getElementById('qp-guess-timer');
   const stackingToggleEl = document.getElementById('qp-stacking-toggle');
   const aiJudgesToggleEl = document.getElementById('qp-ai-judges-toggle');
+  const aiChallengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
   const aiJudgeMerryEl = document.getElementById('qp-ai-judge-merry');
   const aiJudgeVlaadaEl = document.getElementById('qp-ai-judge-vlaada');
 
@@ -3313,6 +3343,7 @@ function openQuickSettingsModal() {
   if (stackingToggleEl) stackingToggleEl.checked = s.stackingEnabled !== false;
   const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
   if (aiJudgesToggleEl) aiJudgesToggleEl.checked = s.aiJudgesEnabled !== false;
+  if (aiChallengeToggleEl) aiChallengeToggleEl.checked = s.aiChallengeEnabled !== false;
   if (aiJudgeMerryEl) aiJudgeMerryEl.checked = judgeKeys.includes('merry');
   if (aiJudgeVlaadaEl) aiJudgeVlaadaEl.checked = judgeKeys.includes('vlaada');
   setQuickAIJudgePanelState(!!aiJudgesToggleEl?.checked);
@@ -3799,6 +3830,7 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
       guessTimerSeconds: settings.guessTimerSeconds,
       stackingEnabled: settings.stackingEnabled !== false,
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+      aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
       enabledAIJudges: judgeSettings.enabledAIJudges,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
       vibe: settings.vibe || '',
@@ -3839,6 +3871,7 @@ async function ensureQuickPlayGameExists() {
         guessTimerSeconds: 0,
         stackingEnabled: true,
         aiJudgesEnabled: true,
+        aiChallengeEnabled: true,
         enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS],
         deckId: 'standard',
         vibe: '',
@@ -3854,6 +3887,10 @@ async function ensureQuickPlayGameExists() {
         next.aiJudgesEnabled = true;
         changed = true;
       }
+      if (typeof next.aiChallengeEnabled === 'undefined') {
+        next.aiChallengeEnabled = true;
+        changed = true;
+      }
       if (!Array.isArray(next.enabledAIJudges)) {
         next.enabledAIJudges = [...AI_JUDGE_DEFAULT_KEYS];
         changed = true;
@@ -3861,6 +3898,10 @@ async function ensureQuickPlayGameExists() {
       const normalized = sanitizeAIJudgeSettings(next);
       if (next.aiJudgesEnabled !== normalized.aiJudgesEnabled) {
         next.aiJudgesEnabled = normalized.aiJudgesEnabled;
+        changed = true;
+      }
+      if (next.aiChallengeEnabled !== normalized.aiChallengeEnabled) {
+        next.aiChallengeEnabled = normalized.aiChallengeEnabled;
         changed = true;
       }
       const normSig = normalized.enabledAIJudges.join('|');
@@ -4159,6 +4200,7 @@ async function maybeAutoStartQuickPlay(game) {
     blackCards: Number(s0.blackCards || 1),
     stackingEnabled: s0.stackingEnabled !== false,
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
+    aiChallengeEnabled: s0.aiChallengeEnabled !== false,
     enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
@@ -4187,6 +4229,7 @@ async function maybeAutoStartQuickPlay(game) {
         blackCards: Number(s.blackCards || 1),
         stackingEnabled: s.stackingEnabled !== false,
         aiJudgesEnabled: s.aiJudgesEnabled !== false,
+        aiChallengeEnabled: s.aiChallengeEnabled !== false,
         enabledAIJudges: normalizeAIJudgeKeys(s.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
         deckId: String(s.deckId || 'standard'),
         vibe: String(s.vibe || '').trim(),
@@ -4257,6 +4300,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
     blackCards: Number(s0.blackCards || 1),
     stackingEnabled: s0.stackingEnabled !== false,
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
+    aiChallengeEnabled: s0.aiChallengeEnabled !== false,
     enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
@@ -4286,6 +4330,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
         blackCards: Number(qs.blackCards || 1),
         stackingEnabled: qs.stackingEnabled !== false,
         aiJudgesEnabled: qs.aiJudgesEnabled !== false,
+        aiChallengeEnabled: qs.aiChallengeEnabled !== false,
         enabledAIJudges: normalizeAIJudgeKeys(qs.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
         deckId: String(qs.deckId || 'standard'),
         vibe: String(qs.vibe || '').trim(),
@@ -6923,7 +6968,7 @@ function renderClueStackingPanel() {
       ? `${selected.length} card${selected.length === 1 ? '' : 's'} selected · avoid mode (0)`
       : `${selected.length} target${selected.length === 1 ? '' : 's'} selected`;
   } else {
-    summaryEl.textContent = 'Tap unrevealed cards to mark targets (off-team cards force clue 0)';
+    summaryEl.textContent = '';
   }
 
   const words = getClueTargetWords(selected, currentGame);
@@ -7003,7 +7048,7 @@ function hasOpposingSpymaster(game, team) {
 }
 
 function shouldOfferChallengeForPendingClue(game, team) {
-  if (!isAIJudgingEnabledForGame(game)) return false;
+  if (!isAIChallengeEnabledForGame(game)) return false;
   const isPractice = String(game?.type || '') === 'practice';
   if (isPractice) return hasOpposingSpymaster(game, team);
   return hasHumanOpposingSpymaster(game, team);
@@ -7208,7 +7253,7 @@ function isUserSpymasterForTeamInGame(game, team, userId = '', userName = '') {
 
 function canCurrentUserChallengePendingClue(pending, game = currentGame) {
   if (!pending || !game) return false;
-  if (!isAIJudgingEnabledForGame(game)) return false;
+  if (!isAIChallengeEnabledForGame(game)) return false;
   if (pending.state !== 'awaiting') return false;
   if (isSpectating()) return false;
   const myTeam = getMyTeamColor();
@@ -7645,6 +7690,48 @@ async function evaluatePendingClueWithCouncil(game, pending) {
   };
 }
 
+async function evaluatePendingClueImmediateGate(game, pending) {
+  const baseline = basicClueLegalityCheck(pending, game);
+  if (!baseline.legal) {
+    return {
+      legal: false,
+      reason: baseline.reason,
+      baseline,
+      judges: [],
+    };
+  }
+
+  const roster = (() => {
+    const active = getConfiguredAIJudgeRoster(game);
+    if (active.length) return active;
+    const merry = getAIJudgeMeta('merry');
+    return merry ? [merry] : [];
+  })();
+
+  const judges = [];
+  for (const judge of roster) {
+    const verdict = await judgePendingClueWithAI(game, pending, baseline, judge);
+    judges.push(verdict);
+    if (verdict.verdict === 'illegal') {
+      const reason = String(verdict.reason || '').trim() || 'Clear rule violation.';
+      const judgeName = String(verdict.judge || judge?.name || 'AI Judge').trim() || 'AI Judge';
+      return {
+        legal: false,
+        reason: `${judgeName}: ${reason}`,
+        baseline,
+        judges,
+      };
+    }
+  }
+
+  return {
+    legal: true,
+    reason: 'Accepted by active AI judges.',
+    baseline,
+    judges,
+  };
+}
+
 async function runCouncilReviewForPendingClue(gameId, pendingId) {
   const gid = String(gameId || '').trim();
   const pid = String(pendingId || '').trim();
@@ -7867,6 +7954,19 @@ async function submitClueForReviewFlow(opts = {}) {
   };
 
   const shouldOfferChallenge = shouldOfferChallengeForPendingClue(game, team);
+  const shouldRunImmediateGate = shouldUseImmediateAIJudgeGate(game);
+  let immediateGateResult = null;
+  if (shouldRunImmediateGate) {
+    immediateGateResult = await evaluatePendingClueImmediateGate(game, pending);
+    if (!immediateGateResult.legal) {
+      return {
+        accepted: false,
+        pending: false,
+        rejected: true,
+        reason: immediateGateResult.reason,
+      };
+    }
+  }
 
   if (isLocalPracticeGameId(game.id)) {
     if (!shouldOfferChallenge) {
@@ -7887,7 +7987,7 @@ async function submitClueForReviewFlow(opts = {}) {
   }
 
   const ref = db.collection('games').doc(game.id);
-  let result = { accepted: false, pending: false, rejected: false };
+  let result = { accepted: false, pending: false, rejected: false, retry: false, reason: '' };
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return;
@@ -7898,6 +7998,7 @@ async function submitClueForReviewFlow(opts = {}) {
     if (hasBlockingPendingClue(current)) return;
 
     const offerChallenge = shouldOfferChallengeForPendingClue(current, team);
+    const immediateGateNow = shouldUseImmediateAIJudgeGate(current);
     if (offerChallenge) {
       tx.update(ref, {
         pendingClue: pending,
@@ -7906,6 +8007,17 @@ async function submitClueForReviewFlow(opts = {}) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
       result = { accepted: false, pending: true, rejected: false };
+      return;
+    }
+
+    if (immediateGateNow && !immediateGateResult) {
+      result = {
+        accepted: false,
+        pending: false,
+        rejected: false,
+        retry: true,
+        reason: 'Rules changed while reviewing. Submit the clue again.',
+      };
       return;
     }
 
@@ -8752,6 +8864,16 @@ async function handleClueSubmit(e) {
       byId: String(getUserId?.() || '').trim(),
       byName: String(getUserName?.() || '').trim() || 'Spymaster',
     });
+
+    if (result?.rejected) {
+      alert(result.reason || 'Clue rejected by AI judge rules. Try another clue.');
+      return;
+    }
+    if (result?.retry) {
+      alert(result.reason || 'Rules changed while reviewing. Submit the clue again.');
+      return;
+    }
+    if (!(result?.accepted || result?.pending)) return;
 
     void clearLiveClueDraftOwnership({ silent: true });
     clearClueTargetSelection({ skipPanelSync: true });

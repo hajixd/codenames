@@ -3417,6 +3417,18 @@ body.light-mode .modal{
   .qp-setting{ flex-direction: column; align-items: stretch; }
   .qp-setting .setting-select{ width: 100%; min-width: 0; }
   .qp-setting .setting-label{ padding-left: 0; padding-top: 10px; }
+  .qp-setting.qp-setting-toggle{
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .qp-setting.qp-setting-toggle .setting-label{
+    padding-top: 0;
+  }
+  .qp-setting.qp-setting-toggle .toggle-switch{
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
   .qp-setting-judges .setting-label{ padding-left: 0; }
   .qp-judge-options{ padding-left: 0; }
 }
