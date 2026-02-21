@@ -49,6 +49,7 @@ const LS_SETTINGS_STACKING = 'ct_stacking_v1';
 const LS_SETTINGS_ANIM_CARD_STYLE = 'ct_anim_card_style_v1';
 const LS_SETTINGS_ANIM_CLUE_STYLE = 'ct_anim_clue_style_v1';
 const LS_SETTINGS_ANIM_PEEK_STYLE = 'ct_anim_peek_style_v1';
+const LS_SETTINGS_ANIM_LOADING_STYLE = 'ct_anim_loading_style_v1';
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -7846,14 +7847,18 @@ let settingsStacking = true;
 let settingsCardAnimStyle = 'classic';
 let settingsClueAnimStyle = 'dark';
 let settingsPeekAnimStyle = 'lift';
+let settingsLoadingAnimStyle = 'deal';
 let animationsPanelReturnId = '';
 
-const CARD_ANIM_STYLES = ['classic', 'snap', 'float'];
+const CARD_ANIM_STYLES = ['classic', 'pulse', 'sweep'];
 const CLUE_ANIM_STYLES = ['dark', 'light', 'cozy', 'og'];
-const PEEK_ANIM_STYLES = ['lift', 'zoom', 'flip'];
+const PEEK_ANIM_STYLES = ['lift', 'focus', 'halo'];
+const LOADING_ANIM_STYLES = ['deal', 'pulse', 'orbit'];
 
 function normalizeCardAnimStyle(raw) {
   const key = String(raw || '').trim().toLowerCase();
+  if (key === 'snap') return 'pulse';
+  if (key === 'float') return 'sweep';
   return CARD_ANIM_STYLES.includes(key) ? key : 'classic';
 }
 
@@ -7864,7 +7869,14 @@ function normalizeClueAnimStyle(raw) {
 
 function normalizePeekAnimStyle(raw) {
   const key = String(raw || '').trim().toLowerCase();
+  if (key === 'zoom') return 'focus';
+  if (key === 'flip') return 'halo';
   return PEEK_ANIM_STYLES.includes(key) ? key : 'lift';
+}
+
+function normalizeLoadingAnimStyle(raw) {
+  const key = String(raw || '').trim().toLowerCase();
+  return LOADING_ANIM_STYLES.includes(key) ? key : 'deal';
 }
 
 function getAnimationPreferences() {
@@ -7872,6 +7884,7 @@ function getAnimationPreferences() {
     cardReveal: normalizeCardAnimStyle(settingsCardAnimStyle),
     clueReveal: normalizeClueAnimStyle(settingsClueAnimStyle),
     peekReveal: normalizePeekAnimStyle(settingsPeekAnimStyle),
+    loadingScreen: normalizeLoadingAnimStyle(settingsLoadingAnimStyle),
   };
 }
 
@@ -7879,6 +7892,7 @@ function saveAnimationPreferences() {
   safeLSSet(LS_SETTINGS_ANIM_CARD_STYLE, normalizeCardAnimStyle(settingsCardAnimStyle));
   safeLSSet(LS_SETTINGS_ANIM_CLUE_STYLE, normalizeClueAnimStyle(settingsClueAnimStyle));
   safeLSSet(LS_SETTINGS_ANIM_PEEK_STYLE, normalizePeekAnimStyle(settingsPeekAnimStyle));
+  safeLSSet(LS_SETTINGS_ANIM_LOADING_STYLE, normalizeLoadingAnimStyle(settingsLoadingAnimStyle));
   try {
     window.dispatchEvent(new CustomEvent('codenames:animation-profile-changed', {
       detail: getAnimationPreferences(),
@@ -7893,18 +7907,26 @@ function applyAnimationPreferences() {
     'anim-card-style-classic',
     'anim-card-style-snap',
     'anim-card-style-float',
+    'anim-card-style-pulse',
+    'anim-card-style-sweep',
     'anim-clue-style-dark',
     'anim-clue-style-light',
     'anim-clue-style-cozy',
     'anim-clue-style-og',
     'anim-peek-style-lift',
     'anim-peek-style-zoom',
-    'anim-peek-style-flip'
+    'anim-peek-style-flip',
+    'anim-peek-style-focus',
+    'anim-peek-style-halo',
+    'anim-loading-style-deal',
+    'anim-loading-style-pulse',
+    'anim-loading-style-orbit'
   );
   body.classList.add(
     `anim-card-style-${prefs.cardReveal}`,
     `anim-clue-style-${prefs.clueReveal}`,
-    `anim-peek-style-${prefs.peekReveal}`
+    `anim-peek-style-${prefs.peekReveal}`,
+    `anim-loading-style-${prefs.loadingScreen}`
   );
 }
 
@@ -7913,6 +7935,7 @@ function setAnimationPreferences(next = {}, opts = {}) {
   settingsCardAnimStyle = normalizeCardAnimStyle(cfg.cardReveal ?? settingsCardAnimStyle);
   settingsClueAnimStyle = normalizeClueAnimStyle(cfg.clueReveal ?? settingsClueAnimStyle);
   settingsPeekAnimStyle = normalizePeekAnimStyle(cfg.peekReveal ?? settingsPeekAnimStyle);
+  settingsLoadingAnimStyle = normalizeLoadingAnimStyle(cfg.loadingScreen ?? settingsLoadingAnimStyle);
   applyAnimationPreferences();
   if (opts.persist !== false) saveAnimationPreferences();
 }
@@ -8532,6 +8555,7 @@ function initSettings() {
   const savedCardAnimStyle = safeLSGet(LS_SETTINGS_ANIM_CARD_STYLE);
   const savedClueAnimStyle = safeLSGet(LS_SETTINGS_ANIM_CLUE_STYLE);
   const savedPeekAnimStyle = safeLSGet(LS_SETTINGS_ANIM_PEEK_STYLE);
+  const savedLoadingAnimStyle = safeLSGet(LS_SETTINGS_ANIM_LOADING_STYLE);
 
   settingsAnimations = savedAnimations !== 'false';
   settingsSounds = savedSounds !== 'false';
@@ -8540,6 +8564,7 @@ function initSettings() {
   settingsCardAnimStyle = normalizeCardAnimStyle(savedCardAnimStyle);
   settingsClueAnimStyle = normalizeClueAnimStyle(savedClueAnimStyle);
   settingsPeekAnimStyle = normalizePeekAnimStyle(savedPeekAnimStyle);
+  settingsLoadingAnimStyle = normalizeLoadingAnimStyle(savedLoadingAnimStyle);
   if (savedStacking == null) safeLSSet(LS_SETTINGS_STACKING, 'true');
 
   // Only Codenames Online style is supported.
@@ -13373,6 +13398,10 @@ function initAnimationsPage() {
   const clueBlueBtn = document.getElementById('anim-preview-clue-blue');
   const peekReplayBtn = document.getElementById('anim-preview-peek-replay');
   const peekCard = document.getElementById('anim-peek-preview-card');
+  const tabButtons = Array.from(panel.querySelectorAll('[data-anim-tab-btn]'));
+  const tabPanels = Array.from(panel.querySelectorAll('[data-anim-tab-panel]'));
+  let loadingPreviewEl = document.getElementById('anim-loading-preview');
+  let activeTabKey = String(tabButtons[0]?.dataset?.animTabBtn || 'card').trim().toLowerCase();
 
   if (!backBtn || !resetBtn || !hintEl) return;
 
@@ -13382,6 +13411,7 @@ function initAnimationsPage() {
     if (name === 'anim-card-style') return normalizeCardAnimStyle(raw || fallback);
     if (name === 'anim-clue-style') return normalizeClueAnimStyle(raw || fallback);
     if (name === 'anim-peek-style') return normalizePeekAnimStyle(raw || fallback);
+    if (name === 'anim-loading-style') return normalizeLoadingAnimStyle(raw || fallback);
     return String(fallback || '').trim().toLowerCase();
   };
 
@@ -13389,14 +13419,34 @@ function initAnimationsPage() {
     hintEl.textContent = String(msg || '');
   };
 
+  const activateTab = (tabKey, opts = {}) => {
+    const key = String(tabKey || '').trim().toLowerCase();
+    const next = key || String(tabButtons[0]?.dataset?.animTabBtn || 'card').trim().toLowerCase();
+    activeTabKey = next;
+    tabButtons.forEach((btn) => {
+      const isActive = String(btn?.dataset?.animTabBtn || '').trim().toLowerCase() === next;
+      btn.classList.toggle('is-active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      btn.setAttribute('tabindex', isActive ? '0' : '-1');
+      if (isActive && opts.focus) btn.focus();
+    });
+    tabPanels.forEach((panelEl) => {
+      const isActive = String(panelEl?.dataset?.animTabPanel || '').trim().toLowerCase() === next;
+      panelEl.classList.toggle('is-active', isActive);
+      panelEl.hidden = !isActive;
+    });
+  };
+
   const syncFormFromSettings = () => {
     const prefs = getAnimationPreferences();
     const cardRadio = panel.querySelector(`input[type="radio"][name="anim-card-style"][value="${prefs.cardReveal}"]`);
     const clueRadio = panel.querySelector(`input[type="radio"][name="anim-clue-style"][value="${prefs.clueReveal}"]`);
     const peekRadio = panel.querySelector(`input[type="radio"][name="anim-peek-style"][value="${prefs.peekReveal}"]`);
+    const loadingRadio = panel.querySelector(`input[type="radio"][name="anim-loading-style"][value="${prefs.loadingScreen}"]`);
     if (cardRadio) cardRadio.checked = true;
     if (clueRadio) clueRadio.checked = true;
     if (peekRadio) peekRadio.checked = true;
+    if (loadingRadio) loadingRadio.checked = true;
   };
 
   const replayCardPreview = () => {
@@ -13420,6 +13470,13 @@ function initAnimationsPage() {
     }, 1700);
   };
 
+  const replayLoadingPreview = () => {
+    if (!loadingPreviewEl || !loadingPreviewEl.parentNode) return;
+    const clone = loadingPreviewEl.cloneNode(true);
+    loadingPreviewEl.parentNode.replaceChild(clone, loadingPreviewEl);
+    loadingPreviewEl = clone;
+  };
+
   const previewClue = (team = 'red', preferredVariant = '') => {
     const variant = normalizeClueAnimStyle(preferredVariant || getSelectedRadio('anim-clue-style', settingsClueAnimStyle));
     const wordsByVariant = {
@@ -13441,6 +13498,7 @@ function initAnimationsPage() {
       cardReveal: getSelectedRadio('anim-card-style', settingsCardAnimStyle),
       clueReveal: getSelectedRadio('anim-clue-style', settingsClueAnimStyle),
       peekReveal: getSelectedRadio('anim-peek-style', settingsPeekAnimStyle),
+      loadingScreen: getSelectedRadio('anim-loading-style', settingsLoadingAnimStyle),
     };
     setAnimationPreferences(next, { persist: true });
     if (opts.hint !== false) setHint('Saved.');
@@ -13462,10 +13520,11 @@ function initAnimationsPage() {
 
   resetBtn.addEventListener('click', () => {
     playSound('click');
-    setAnimationPreferences({ cardReveal: 'classic', clueReveal: 'dark', peekReveal: 'lift' }, { persist: true });
+    setAnimationPreferences({ cardReveal: 'classic', clueReveal: 'dark', peekReveal: 'lift', loadingScreen: 'deal' }, { persist: true });
     syncFormFromSettings();
     replayCardPreview();
     replayPeekPreview();
+    replayLoadingPreview();
     previewClue('red', 'dark');
     setHint('Reset to defaults.');
   });
@@ -13488,6 +13547,20 @@ function initAnimationsPage() {
     el.addEventListener('change', () => {
       applyFromForm();
       replayPeekPreview();
+    });
+  });
+
+  panel.querySelectorAll('input[type="radio"][name="anim-loading-style"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      applyFromForm();
+      replayLoadingPreview();
+    });
+  });
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      playSound('click');
+      activateTab(btn.dataset.animTabBtn, { focus: false });
     });
   });
 
@@ -13516,9 +13589,11 @@ function initAnimationsPage() {
   window.refreshAnimationsPageUI = () => {
     syncFormFromSettings();
     setHint('');
+    activateTab(activeTabKey || 'card');
   };
 
   syncFormFromSettings();
+  activateTab(activeTabKey || 'card');
 }
 
 /* =========================

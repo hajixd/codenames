@@ -48,6 +48,7 @@ let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 const CARD_CONFIRM_ANIM_MS = 4200;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
+const _REVEAL_ANIMATION_CLASSES = ['reveal-flip-animate', 'reveal-no-flip-pulse', 'reveal-no-flip-sweep'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
 // Expose current game phase for presence (app.js)
@@ -64,6 +65,14 @@ function getConfirmBackLabel(confirmBackType) {
   if (type === 'blue') return 'BLUE';
   if (type === 'assassin') return 'ASSASSIN';
   return 'NEUTRAL';
+}
+
+function getActiveCardRevealStyle() {
+  const raw = String(window.getAnimationPreferences?.()?.cardReveal || '').trim().toLowerCase();
+  if (raw === 'snap') return 'pulse';
+  if (raw === 'float') return 'sweep';
+  if (raw === 'pulse' || raw === 'sweep' || raw === 'classic') return raw;
+  return 'classic';
 }
 
 function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
@@ -87,7 +96,7 @@ function clearCardAnimationOverlayState() {
 
 function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
-  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
+  cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', ..._REVEAL_ANIMATION_CLASSES);
   cardEl.classList.remove(..._CONFIRM_BACK_TYPES.map((t) => `confirm-back-${t}`));
   cardEl.removeAttribute('data-confirm-back-label');
   cardEl.removeAttribute('data-confirm-back-type');
@@ -105,15 +114,22 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   const idx = Number(opts.cardIndex);
   const confirmBackType = normalizeConfirmBackType(_confirmBackType);
   const confirmBackLabel = getConfirmBackLabel(confirmBackType);
+  const revealStyle = getActiveCardRevealStyle();
+  const revealClass = (revealStyle === 'pulse')
+    ? 'reveal-no-flip-pulse'
+    : (revealStyle === 'sweep' ? 'reveal-no-flip-sweep' : 'reveal-flip-animate');
+  const revealDurationMs = (revealClass === 'reveal-flip-animate')
+    ? CARD_CONFIRM_ANIM_MS
+    : (revealClass === 'reveal-no-flip-pulse' ? 980 : 1250);
 
   clearConfirmAnimationClasses(cardEl, idx);
   cardEl.classList.add(`confirm-back-${confirmBackType}`);
   cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
   cardEl.setAttribute('data-confirm-back-type', confirmBackType);
-  // Apply target team color first, then start the lift/flip motion.
+  // Apply target team color first, then start the chosen reveal motion.
   void cardEl.offsetWidth;
-  cardEl.classList.add('reveal-flip-animate');
-  pulseCardAnimationOverlay();
+  cardEl.classList.add(revealClass);
+  pulseCardAnimationOverlay(revealDurationMs + 220);
 
   const tid = window.setTimeout(() => {
     if (Number.isInteger(idx) && idx >= 0) {
@@ -121,7 +137,7 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
     }
     if (!cardEl.isConnected) return;
     clearConfirmAnimationClasses(cardEl);
-  }, CARD_CONFIRM_ANIM_MS + 80);
+  }, revealDurationMs + 80);
   if (Number.isInteger(idx) && idx >= 0) {
     _revealFlipCleanupByIndex.set(idx, tid);
   }
@@ -133,7 +149,7 @@ function clearRevealAnimationSuppressions() {
   }
   _revealFlipCleanupByIndex.clear();
   try {
-    document.querySelectorAll('.game-card.reveal-flip-animate, .game-card.confirming-guess, .game-card.confirm-animate, .game-card.confirm-hold')
+    document.querySelectorAll('.game-card.reveal-flip-animate, .game-card.reveal-no-flip-pulse, .game-card.reveal-no-flip-sweep, .game-card.confirming-guess, .game-card.confirm-animate, .game-card.confirm-hold')
       .forEach((el) => clearConfirmAnimationClasses(el));
   } catch (_) {}
 }
