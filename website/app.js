@@ -1364,6 +1364,25 @@ function setLaunchAnimationLabOpen(open) {
   modeScreen.classList.toggle('launch-animation-open', nextOpen);
 }
 
+function openLaunchAnimationLab() {
+  const u = auth.currentUser;
+  const name = getUserName();
+  const hint = document.getElementById('launch-name-hint');
+  if (!u || !name) {
+    try { showAuthScreen(); } catch (_) {}
+    if (hint) hint.textContent = 'Sign in to continue.';
+    return false;
+  }
+  if (!isAdminUser()) {
+    if (hint) hint.textContent = 'Animations tab is admin-only.';
+    return false;
+  }
+  if (hint) hint.textContent = '';
+  try { showLaunchScreen(); } catch (_) {}
+  setLaunchAnimationLabOpen(true);
+  return true;
+}
+
 function showAuthScreen() {
   const authScreen = document.getElementById('auth-screen');
   const modeScreen = document.getElementById('launch-screen');
@@ -1625,7 +1644,6 @@ function initLaunchScreen() {
   const tournBtn = document.getElementById('launch-tournament');
   const bracketsBtn = document.getElementById('launch-brackets');
   const practiceBtn = document.getElementById('launch-practice');
-  const animBtn = document.getElementById('launch-animations');
   const animBackBtn = document.getElementById('launch-animation-back');
 
   const hint = document.getElementById('launch-name-hint');
@@ -1671,21 +1689,6 @@ function initLaunchScreen() {
   tournBtn?.addEventListener('click', () => requireAuthThen('tournament'));
   bracketsBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-brackets' }));
   practiceBtn?.addEventListener('click', () => requireAuthThen('tournament', { panel: 'panel-practice' }));
-  animBtn?.addEventListener('click', () => {
-    const u = auth.currentUser;
-    const name = getUserName();
-    if (!u || !name) {
-      try { showAuthScreen(); } catch (_) {}
-      if (hint) hint.textContent = 'Sign in to continue.';
-      return;
-    }
-    if (!isAdminUser()) {
-      if (hint) hint.textContent = 'Animations tab is admin-only.';
-      return;
-    }
-    if (hint) hint.textContent = '';
-    setLaunchAnimationLabOpen(true);
-  });
   animBackBtn?.addEventListener('click', () => setLaunchAnimationLabOpen(false));
 
   // Auth UI on launch (username + password)
@@ -2899,14 +2902,8 @@ function refreshNameUI() {
   if (launchTourn) launchTourn.disabled = !canEnter;
   const launchBrackets = document.getElementById('launch-brackets');
   const launchPractice = document.getElementById('launch-practice');
-  const launchAnimations = document.getElementById('launch-animations');
-  const canUseAnimationLab = canEnter && !!isAdminUser();
   if (launchBrackets) launchBrackets.disabled = !canEnter;
   if (launchPractice) launchPractice.disabled = !canEnter;
-  if (launchAnimations) {
-    launchAnimations.disabled = !canUseAnimationLab;
-    launchAnimations.style.display = isAdminUser() ? '' : 'none';
-  }
   if (!isAdminUser()) setLaunchAnimationLabOpen(false);
 
   // Hide account-only header controls until signed in.
@@ -8524,6 +8521,7 @@ function initSettings() {
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminLogsBtn = document.getElementById('admin-logs-btn');
   const adminJudgesBtn = document.getElementById('admin-judges-btn');
+  const adminAnimationsBtn = document.getElementById('admin-animations-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
   // Account danger action: delete the current user (frees username).
@@ -8547,6 +8545,11 @@ function initSettings() {
       adminJudgesBtn.style.display = isAdmin ? '' : 'none';
       adminJudgesBtn.disabled = !isAdmin;
       adminJudgesBtn.classList.toggle('is-disabled', !isAdmin);
+    }
+    if (adminAnimationsBtn) {
+      adminAnimationsBtn.style.display = isAdmin ? '' : 'none';
+      adminAnimationsBtn.disabled = !isAdmin;
+      adminAnimationsBtn.classList.toggle('is-disabled', !isAdmin);
     }
 
     if (isAdmin) {
@@ -8599,6 +8602,13 @@ function initSettings() {
     playSound('click');
     try { closeSettingsModal(); } catch (_) {}
     try { openJudgesAdminModal(); } catch (_) {}
+  });
+
+  adminAnimationsBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
+    playSound('click');
+    try { closeSettingsModal(); } catch (_) {}
+    try { openLaunchAnimationLab(); } catch (_) {}
   });
 
   adminRestoreBtn?.addEventListener('click', async () => {
