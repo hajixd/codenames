@@ -68,19 +68,11 @@ function getConfirmBackLabel(confirmBackType) {
   return 'NEUTRAL';
 }
 
-function buildDiagonalSweepClipPath(linePercentRaw) {
-  const linePercent = Number(linePercentRaw);
-  if (!Number.isFinite(linePercent) || linePercent <= 0) {
-    return 'polygon(0% 0%, 0% 0%, 0% 0%, 0% 0%)';
-  }
-  if (linePercent >= 200) {
-    return 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)';
-  }
-  if (linePercent < 100) {
-    return `polygon(0% 0%, ${linePercent.toFixed(3)}% 0%, 0% ${linePercent.toFixed(3)}%)`;
-  }
-  const edge = (linePercent - 100).toFixed(3);
-  return `polygon(0% 0%, 100% 0%, 100% ${edge}%, ${edge}% 100%, 0% 100%)`;
+function buildDiagonalSweepMask(leadPercentRaw) {
+  const lead = Math.max(0, Math.min(100, Number(leadPercentRaw) || 0));
+  const feather = 1.2;
+  const edge = Math.min(100, lead + feather);
+  return `linear-gradient(to bottom right, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) ${lead.toFixed(3)}%, rgba(0, 0, 0, 0) ${edge.toFixed(3)}%, rgba(0, 0, 0, 0) 100%)`;
 }
 
 function clearFrontSweepAnimation(cardEl, cardIndex = null) {
@@ -112,6 +104,14 @@ function clearFrontSweepAnimation(cardEl, cardIndex = null) {
     frontPost.style.removeProperty('opacity');
     frontPost.style.removeProperty('clip-path');
     frontPost.style.removeProperty('-webkit-clip-path');
+    frontPost.style.removeProperty('mask-image');
+    frontPost.style.removeProperty('-webkit-mask-image');
+    frontPost.style.removeProperty('mask-size');
+    frontPost.style.removeProperty('-webkit-mask-size');
+    frontPost.style.removeProperty('mask-repeat');
+    frontPost.style.removeProperty('-webkit-mask-repeat');
+    frontPost.style.removeProperty('mask-position');
+    frontPost.style.removeProperty('-webkit-mask-position');
     frontPost.style.removeProperty('will-change');
   }
 }
@@ -128,13 +128,21 @@ function startFrontSweepAnimation(cardEl, cardIndex = null) {
   const sweepStartMs = totalMs * 0.48;
   const sweepEndMs = totalMs * 0.66;
   const startedAt = performance.now();
-  const hiddenClip = 'polygon(0% 0%, 0% 0%, 0% 0%, 0% 0%)';
   const fullClip = 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)';
+  const hiddenMask = 'linear-gradient(to bottom right, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 100%)';
 
   frontPost.style.opacity = '0';
-  frontPost.style.clipPath = hiddenClip;
-  frontPost.style.webkitClipPath = hiddenClip;
-  frontPost.style.willChange = 'opacity, clip-path, -webkit-clip-path';
+  frontPost.style.clipPath = fullClip;
+  frontPost.style.webkitClipPath = fullClip;
+  frontPost.style.maskImage = hiddenMask;
+  frontPost.style.webkitMaskImage = hiddenMask;
+  frontPost.style.maskSize = '100% 100%';
+  frontPost.style.webkitMaskSize = '100% 100%';
+  frontPost.style.maskRepeat = 'no-repeat';
+  frontPost.style.webkitMaskRepeat = 'no-repeat';
+  frontPost.style.maskPosition = '0 0';
+  frontPost.style.webkitMaskPosition = '0 0';
+  frontPost.style.willChange = 'opacity, mask-image, -webkit-mask-image';
 
   const record = { rafId: 0, idx, cardEl };
   _frontSweepByCard.set(cardEl, record);
@@ -151,19 +159,26 @@ function startFrontSweepAnimation(cardEl, cardIndex = null) {
     const elapsedMs = now - startedAt;
     if (elapsedMs < sweepStartMs) {
       frontPost.style.opacity = '0';
-      frontPost.style.clipPath = hiddenClip;
-      frontPost.style.webkitClipPath = hiddenClip;
+      frontPost.style.maskImage = hiddenMask;
+      frontPost.style.webkitMaskImage = hiddenMask;
     } else if (elapsedMs < sweepEndMs) {
       const phase = (elapsedMs - sweepStartMs) / Math.max(1, (sweepEndMs - sweepStartMs));
-      const linePercent = -2 + (phase * 206);
-      const clip = buildDiagonalSweepClipPath(linePercent);
+      const mask = buildDiagonalSweepMask(phase * 100);
       frontPost.style.opacity = '1';
-      frontPost.style.clipPath = clip;
-      frontPost.style.webkitClipPath = clip;
+      frontPost.style.maskImage = mask;
+      frontPost.style.webkitMaskImage = mask;
     } else {
       frontPost.style.opacity = '1';
       frontPost.style.clipPath = fullClip;
       frontPost.style.webkitClipPath = fullClip;
+      frontPost.style.removeProperty('mask-image');
+      frontPost.style.removeProperty('-webkit-mask-image');
+      frontPost.style.removeProperty('mask-size');
+      frontPost.style.removeProperty('-webkit-mask-size');
+      frontPost.style.removeProperty('mask-repeat');
+      frontPost.style.removeProperty('-webkit-mask-repeat');
+      frontPost.style.removeProperty('mask-position');
+      frontPost.style.removeProperty('-webkit-mask-position');
       frontPost.style.removeProperty('will-change');
     }
 
