@@ -5651,6 +5651,9 @@ function renderGame() {
 
   // Render advanced features
   renderAdvancedFeatures();
+
+  // Mobile safety: never let the board overlap the top mobile role boxes.
+  requestAnimationFrame(() => syncOgMobileBoardOverlapGuard());
 }
 
 window.refreshStyleSensitiveGameUI = function refreshStyleSensitiveGameUI() {
@@ -6049,6 +6052,30 @@ function bindOgMobileBoxExpanders() {
       openRosterExpandPopupForBox(box);
     });
   }
+}
+
+function syncOgMobileBoardOverlapGuard() {
+  const host = document.getElementById('game-board-container');
+  if (!host) return;
+
+  const shouldRun = isOnlineStyleActive() && isMobileLayoutLike() && !!currentGame;
+  if (!shouldRun) {
+    host.style.removeProperty('--og-mobile-overlap-extra');
+    return;
+  }
+
+  const panels = document.getElementById('og-mobile-panels');
+  const boardWrapper = document.querySelector('.game-center-area .game-board-wrapper');
+  if (!panels || !boardWrapper) {
+    host.style.removeProperty('--og-mobile-overlap-extra');
+    return;
+  }
+
+  const panelsRect = panels.getBoundingClientRect();
+  const boardRect = boardWrapper.getBoundingClientRect();
+  const neededGap = 10; // keep cards visibly below the mobile role boxes
+  const overlapPx = Math.ceil((panelsRect.bottom + neededGap) - boardRect.top);
+  host.style.setProperty('--og-mobile-overlap-extra', `${Math.max(0, overlapPx)}px`);
 }
 
 function renderOgPanels() {
@@ -9224,6 +9251,7 @@ function initAdvancedFeatures() {
     _processingGuess = false;
     clearCardAnimationOverlayState();
     clearRevealAnimationSuppressions();
+    syncOgMobileBoardOverlapGuard();
     if (!currentGame) return;
     const now = Date.now();
     if ((now - lastResumeRenderAt) < 250) return;
@@ -9240,7 +9268,13 @@ function initAdvancedFeatures() {
 
   if (!window.__ogChatUnreadResizeBound) {
     window.__ogChatUnreadResizeBound = true;
-    window.addEventListener('resize', updateOgChatUnreadBadge);
+    window.addEventListener('resize', () => {
+      updateOgChatUnreadBadge();
+      syncOgMobileBoardOverlapGuard();
+    });
+    window.addEventListener('orientationchange', () => {
+      requestAnimationFrame(() => syncOgMobileBoardOverlapGuard());
+    });
   }
 }
 
@@ -10319,10 +10353,13 @@ function updateOgMobileTurnStrip(timerText, phaseOverride) {
     || String(document.getElementById('og-topbar-timer-text')?.textContent || '').trim()
     || String(document.getElementById('timer-text')?.textContent || '').trim()
     || fallbackTimer;
+  const activeTeam = currentGame.currentTeam === 'blue' ? 'blue' : 'red';
 
   stripTextEl.textContent = safeTimer;
   stripEl.classList.toggle('phase-spymaster', phase === 'spymaster');
   stripEl.classList.toggle('phase-operatives', phase === 'operatives');
+  stripEl.classList.toggle('turn-red', activeTeam === 'red');
+  stripEl.classList.toggle('turn-blue', activeTeam === 'blue');
   stripEl.style.display = 'flex';
 }
 
