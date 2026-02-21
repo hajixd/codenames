@@ -16967,6 +16967,7 @@ body.og-mode .game-card{
   /* Slightly wider centered word strip (still safely inside the inner plate) */
   --labelInsetX: 14px;     /* left/right inset for the word strip */
   --labelInsetY: 12px;     /* bottom inset for the word strip */
+  --labelDividerInsetX: calc(var(--labelInsetX) + 2px); /* divider sits slightly inside the strip edges */
   /* Slightly taller word strip so the divider sits a bit higher */
   --labelHeight: 38%;      /* height of the bottom word strip */
 
@@ -17022,8 +17023,8 @@ body.og-mode .game-card::after{
   content:"";
   position:absolute;
   /* Leave a small gap at each end (line shouldn't span the full inner plate) */
-  left: 16px;
-  right: 16px;
+  left: var(--labelDividerInsetX);
+  right: var(--labelDividerInsetX);
   /* Divider line sits exactly at the top edge of the bottom word strip */
   bottom: calc(var(--labelInsetY) + var(--labelHeight) + 3px);
   height: 2px;
@@ -18035,6 +18036,7 @@ body.cozy-mode .og-game-log .game-log-entry {
   body.og-mode .game-card{
     --labelInsetX: 6px;
     --labelInsetY: 6px;
+    --labelDividerInsetX: calc(var(--labelInsetX) + 2px);
     --labelHeight: 39%;
     aspect-ratio: 1.25;
   }
@@ -18043,11 +18045,6 @@ body.cozy-mode .og-game-log .game-log-entry {
     inset: 3px;
     border-radius: 4px;
     border-width: 1px;
-  }
-
-  body.og-mode .game-card::after {
-    left: 3px;
-    right: 3px;
   }
 
   body.og-mode .game-card .card-word {
@@ -20941,6 +20938,61 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
   animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
 }
 
+/* Pre-flip reveal staging: keep the front neutral for a beat, then bloom target color
+   before the actual Y-flip starts. This avoids an abrupt beige -> team-color snap. */
+body.og-mode .game-card:is(.confirm-animate, .reveal-flip-animate) {
+  --cardBorder: var(--neutral-cardBorder);
+  --cardBg: var(--neutral-cardBg);
+  --innerBorder: var(--neutral-innerBorder);
+  --innerBg: var(--neutral-innerBg);
+  --wordBg: var(--neutral-darkWordBg);
+}
+
+body.cozy-mode .game-card:is(.confirm-animate, .reveal-flip-animate) {
+  background: #D4C5A9;
+  border-color: #c4b494;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) {
+  --confirm-preflip-rgb: 190, 161, 123;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-red {
+  --confirm-preflip-rgb: 212, 84, 60;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-blue {
+  --confirm-preflip-rgb: 61, 142, 205;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-neutral {
+  --confirm-preflip-rgb: 190, 161, 123;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate).confirm-back-assassin {
+  --confirm-preflip-rgb: 48, 53, 61;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) .card-front::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 1;
+  background:
+    radial-gradient(120% 100% at 18% 14%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.03) 42%, rgba(0, 0, 0, 0) 70%),
+    linear-gradient(160deg, rgba(var(--confirm-preflip-rgb), 0.16) 0%, rgba(var(--confirm-preflip-rgb), 0.75) 100%);
+  mix-blend-mode: multiply;
+  animation: ogConfirmPreFlipTint var(--card-confirm-duration) var(--card-confirm-ease) both;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .reveal-flip-animate) .card-front .card-word {
+  position: relative;
+  z-index: 2;
+}
+
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner,
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
   transform-origin: 50% 50%;
@@ -21108,6 +21160,33 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
   }
   100% {
     transform: rotateY(180deg);
+  }
+}
+
+@keyframes ogConfirmPreFlipTint {
+  0% {
+    opacity: 0;
+    filter: saturate(1) brightness(1);
+  }
+  16% {
+    opacity: 0.24;
+    filter: saturate(1.05) brightness(1.01);
+  }
+  34% {
+    opacity: 0.52;
+    filter: saturate(1.12) brightness(1.03);
+  }
+  44% {
+    opacity: 0.72;
+    filter: saturate(1.2) brightness(1.05);
+  }
+  58% {
+    opacity: 0.12;
+    filter: saturate(1.04) brightness(1.01);
+  }
+  100% {
+    opacity: 0;
+    filter: saturate(1) brightness(1);
   }
 }
 
