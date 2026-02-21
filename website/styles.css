@@ -23647,7 +23647,7 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
 
   body:is(.og-mode, .cozy-mode) .game-center-area {
     overflow: visible !important;
-    gap: 8px;
+    gap: 0;
     min-height: 0;
   }
 
@@ -23655,8 +23655,8 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
     flex: 0 0 auto;
     overflow: visible !important;
     margin-top: calc(clamp(22px, 4.6vh, 56px) + var(--og-mobile-overlap-extra, 0px)) !important;
-    margin-bottom: 0 !important;
-    padding: 0 0 max(14px, env(safe-area-inset-bottom, 0px));
+    margin-bottom: calc(clamp(22px, 4.6vh, 56px) + var(--og-mobile-overlap-extra, 0px)) !important;
+    padding: 0 0 max(0px, env(safe-area-inset-bottom, 0px));
   }
 
   body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
