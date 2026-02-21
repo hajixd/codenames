@@ -26479,138 +26479,122 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final reveal flip pass: rise -> hold -> diagonal pre-rendered replacement -> hold -> flip -> descend. */
 body .game-card.reveal-flip-animate {
-  --sweep-pre-card-border: var(--neutral-cardBorder, #7e8792);
-  --sweep-pre-card-bg: var(--neutral-cardBg, #6f7a88);
-  --sweep-pre-inner-border: var(--neutral-innerBorder, #c8cfd6);
-  --sweep-pre-inner-bg: var(--neutral-innerBg, #d7dee4);
-  --sweep-pre-divider: var(--neutral-innerBorder, #c8cfd6);
-  --sweep-pre-word-bg: var(--neutral-darkWordBg, #7a6650);
-  --sweep-pre-word-color: #ffffff;
-  --sweep-pre-back-bg:
+  --anim-pre-card-border: var(--neutral-cardBorder, #7e8792);
+  --anim-pre-card-bg: var(--neutral-cardBg, #6f7a88);
+  --anim-pre-inner-border: var(--neutral-innerBorder, #c8cfd6);
+  --anim-pre-inner-bg: var(--neutral-innerBg, #d7dee4);
+  --anim-pre-divider: var(--neutral-innerBorder, #c8cfd6);
+  --anim-pre-word-bg: var(--neutral-darkWordBg, #7a6650);
+  --anim-pre-word-color: #ffffff;
+  --anim-pre-back-bg:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #2f3d53 0%, #1d2738 48%, #121a26 100%);
 
-  --sweep-post-card-border: var(--sweep-pre-card-border);
-  --sweep-post-card-bg: var(--sweep-pre-card-bg);
-  --sweep-post-inner-border: var(--sweep-pre-inner-border);
-  --sweep-post-inner-bg: var(--sweep-pre-inner-bg);
-  --sweep-post-divider: var(--sweep-pre-divider);
-  --sweep-post-word-bg: var(--sweep-pre-word-bg);
-  --sweep-post-word-color: var(--sweep-pre-word-color);
-  --sweep-post-front-bg: var(--surface, #d7dee4);
-  --sweep-post-front-border: var(--border, #7e8792);
-  --sweep-post-back-bg: var(--sweep-pre-back-bg);
-  --sweep-post-label-color: rgba(226, 233, 243, 0.9);
-  --sweep-post-label-text: "NEUTRAL";
+  --anim-post-card-border: var(--anim-pre-card-border);
+  --anim-post-card-bg: var(--anim-pre-card-bg);
+  --anim-post-inner-border: var(--anim-pre-inner-border);
+  --anim-post-inner-bg: var(--anim-pre-inner-bg);
+  --anim-post-divider: var(--anim-pre-divider);
+  --anim-post-word-bg: var(--anim-pre-word-bg);
+  --anim-post-word-color: var(--anim-pre-word-color);
+  --anim-post-back-bg: var(--anim-pre-back-bg);
+  --anim-post-back-label: "NEUTRAL";
+  --anim-post-back-label-color: #5b4a39;
 
   animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both !important;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-red {
-  --sweep-post-card-border: var(--red-cardBorder, #c24c3a);
-  --sweep-post-card-bg: var(--red-cardBg, #d36756);
-  --sweep-post-inner-border: var(--red-innerBorder, #f1c2b0);
-  --sweep-post-inner-bg: var(--red-innerBg, #ecab97);
-  --sweep-post-divider: var(--red-innerBorder, #f1c2b0);
-  --sweep-post-word-bg: var(--red-darkWordBg, #8c3a30);
-  --sweep-post-word-color: #ffffff;
-  --sweep-post-front-bg: linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
-  --sweep-post-front-border: #c24c3a;
-  --sweep-post-back-bg:
+  --anim-post-card-border: var(--red-cardBorder, #c24c3a);
+  --anim-post-card-bg: var(--red-cardBg, #d36756);
+  --anim-post-inner-border: var(--red-innerBorder, #f1c2b0);
+  --anim-post-inner-bg: var(--red-innerBg, #ecab97);
+  --anim-post-divider: var(--red-innerBorder, #f1c2b0);
+  --anim-post-word-bg: var(--red-darkWordBg, #8c3a30);
+  --anim-post-word-color: #ffffff;
+  --anim-post-back-bg:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
-  --sweep-post-label-color: #6f2a22;
-  --sweep-post-label-text: "RED";
+  --anim-post-back-label: "RED";
+  --anim-post-back-label-color: #6f2a22;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-blue {
-  --sweep-post-card-border: var(--blue-cardBorder, #3b90c8);
-  --sweep-post-card-bg: var(--blue-cardBg, #5ca8da);
-  --sweep-post-inner-border: var(--blue-innerBorder, #bfdced);
-  --sweep-post-inner-bg: var(--blue-innerBg, #9fc8e4);
-  --sweep-post-divider: var(--blue-innerBorder, #bfdced);
-  --sweep-post-word-bg: var(--blue-darkWordBg, #2b5f86);
-  --sweep-post-word-color: #ffffff;
-  --sweep-post-front-bg: linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
-  --sweep-post-front-border: #3b90c8;
-  --sweep-post-back-bg:
+  --anim-post-card-border: var(--blue-cardBorder, #3b90c8);
+  --anim-post-card-bg: var(--blue-cardBg, #5ca8da);
+  --anim-post-inner-border: var(--blue-innerBorder, #bfdced);
+  --anim-post-inner-bg: var(--blue-innerBg, #9fc8e4);
+  --anim-post-divider: var(--blue-innerBorder, #bfdced);
+  --anim-post-word-bg: var(--blue-darkWordBg, #2b5f86);
+  --anim-post-word-color: #ffffff;
+  --anim-post-back-bg:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
-  --sweep-post-label-color: #24486a;
-  --sweep-post-label-text: "BLUE";
+  --anim-post-back-label: "BLUE";
+  --anim-post-back-label-color: #24486a;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-neutral {
-  --sweep-post-card-border: var(--neutral-cardBorder, #7e8792);
-  --sweep-post-card-bg: var(--neutral-cardBg, #6f7a88);
-  --sweep-post-inner-border: var(--neutral-innerBorder, #c8cfd6);
-  --sweep-post-inner-bg: var(--neutral-innerBg, #d7dee4);
-  --sweep-post-divider: var(--neutral-innerBorder, #c8cfd6);
-  --sweep-post-word-bg: var(--neutral-darkWordBg, #7a6650);
-  --sweep-post-word-color: #ffffff;
-  --sweep-post-front-bg: linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
-  --sweep-post-front-border: #b59a75;
-  --sweep-post-back-bg:
+  --anim-post-card-border: var(--neutral-cardBorder, #7e8792);
+  --anim-post-card-bg: var(--neutral-cardBg, #6f7a88);
+  --anim-post-inner-border: var(--neutral-innerBorder, #c8cfd6);
+  --anim-post-inner-bg: var(--neutral-innerBg, #d7dee4);
+  --anim-post-divider: var(--neutral-innerBorder, #c8cfd6);
+  --anim-post-word-bg: var(--neutral-darkWordBg, #7a6650);
+  --anim-post-word-color: #ffffff;
+  --anim-post-back-bg:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
     linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
-  --sweep-post-label-color: #5b4a39;
+  --anim-post-back-label: "NEUTRAL";
+  --anim-post-back-label-color: #5b4a39;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-assassin {
-  --sweep-post-card-border: var(--black-cardBorder, #3b414a);
-  --sweep-post-card-bg: var(--black-cardBg, #2b3038);
-  --sweep-post-inner-border: var(--black-innerBorder, #646d78);
-  --sweep-post-inner-bg: var(--black-innerBg, #3b424d);
-  --sweep-post-divider: var(--black-innerBorder, #646d78);
-  --sweep-post-word-bg: var(--black-darkWordBg, #161b23);
-  --sweep-post-word-color: #ffffff;
-  --sweep-post-front-bg: linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
-  --sweep-post-front-border: #ef4444;
-  --sweep-post-back-bg:
+  --anim-post-card-border: var(--black-cardBorder, #3b414a);
+  --anim-post-card-bg: var(--black-cardBg, #2b3038);
+  --anim-post-inner-border: var(--black-innerBorder, #646d78);
+  --anim-post-inner-bg: var(--black-innerBg, #3b424d);
+  --anim-post-divider: var(--black-innerBorder, #646d78);
+  --anim-post-word-bg: var(--black-darkWordBg, #161b23);
+  --anim-post-word-color: #ffffff;
+  --anim-post-back-bg:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0px, rgba(255, 255, 255, 0.07) 9px, rgba(0, 0, 0, 0.18) 9px, rgba(0, 0, 0, 0.18) 18px),
     linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
-  --sweep-post-label-color: #d3dae7;
-  --sweep-post-label-text: "ASSASSIN";
+  --anim-post-back-label: "ASSASSIN";
+  --anim-post-back-label-color: #d3dae7;
 }
 
 body .game-card.reveal-flip-animate,
 body .game-card.reveal-flip-animate .card-inner,
-body .game-card.reveal-flip-animate .card-face {
+body .game-card.reveal-flip-animate .card-face,
+body .game-card.reveal-flip-animate .card-face-state {
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
 }
 
-body .game-card.reveal-flip-animate .card-face {
+body .game-card.reveal-flip-animate .card-face,
+body .game-card.reveal-flip-animate .card-face-state {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
-  --cardBorder: var(--sweep-pre-card-border) !important;
-  --cardBg: var(--sweep-pre-card-bg) !important;
-  --innerBorder: var(--sweep-pre-inner-border) !important;
-  --innerBg: var(--sweep-pre-inner-bg) !important;
-  --wordBg: var(--sweep-pre-word-bg) !important;
-  --wordColor: var(--sweep-pre-word-color) !important;
-  background: var(--cardBg) !important;
-  border-color: var(--cardBorder) !important;
-}
-
-/* Hide legacy back pseudo label/frame while using full pre/post face renders. */
+/* Hide legacy root shells/labels while using explicit pre/post full-card renders. */
+body .game-card.reveal-flip-animate::before,
+body .game-card.reveal-flip-animate::after,
 body .game-card.reveal-flip-animate .card-back::before,
 body .game-card.reveal-flip-animate .card-back::after {
-  opacity: 0 !important;
+  content: none !important;
   animation: none !important;
 }
 
-/* Full-card front pre-render. */
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-pre,
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-post {
+/* FRONT FACE: full operative pre-render and full spymaster post-render. */
+body .game-card.reveal-flip-animate .card-front .card-face-pre,
+body .game-card.reveal-flip-animate .card-front .card-face-post {
   position: relative;
   border-radius: 10px;
   overflow: hidden;
@@ -26618,19 +26602,19 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-f
   background: transparent;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-pre {
-  border-color: var(--sweep-pre-card-border);
-  background: var(--sweep-pre-card-bg);
+body .game-card.reveal-flip-animate .card-front .card-face-pre {
+  border-color: var(--anim-pre-card-border);
+  background: var(--anim-pre-card-bg);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-post {
-  border-color: var(--sweep-post-card-border);
-  background: var(--sweep-post-card-bg);
+body .game-card.reveal-flip-animate .card-front .card-face-post {
+  border-color: var(--anim-post-card-border);
+  background: var(--anim-post-card-bg);
   animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-pre::before,
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-post::before {
+body .game-card.reveal-flip-animate .card-front .card-face-pre::before,
+body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   content: "";
   position: absolute;
   inset: 6px;
@@ -26641,22 +26625,22 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-f
     inset 0 -2px 0 rgba(0, 0, 0, 0.10);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-pre::before {
+body .game-card.reveal-flip-animate .card-front .card-face-pre::before {
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
-    var(--sweep-pre-inner-bg);
-  border: 2px solid var(--sweep-pre-inner-border);
+    var(--anim-pre-inner-bg);
+  border: 2px solid var(--anim-pre-inner-border);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-post::before {
+body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
-    var(--sweep-post-inner-bg);
-  border: 2px solid var(--sweep-post-inner-border);
+    var(--anim-post-inner-bg);
+  border: 2px solid var(--anim-post-inner-border);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-pre::after,
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-post::after {
+body .game-card.reveal-flip-animate .card-front .card-face-pre::after,
+body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   content: "";
   position: absolute;
   left: var(--labelDividerInsetX, 16px);
@@ -26667,15 +26651,30 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-f
   opacity: 0.45;
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-pre::after {
-  background: var(--sweep-pre-divider);
+body .game-card.reveal-flip-animate .card-front .card-face-pre::after {
+  background: var(--anim-pre-divider);
 }
 
-body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front .card-face-post::after {
-  background: var(--sweep-post-divider);
+body .game-card.reveal-flip-animate .card-front .card-face-post::after {
+  background: var(--anim-post-divider);
 }
 
-/* Full-card back pre/post renders. */
+body .game-card.reveal-flip-animate .card-front .card-face-pre .card-word,
+body .game-card.reveal-flip-animate .card-front .card-face-post .card-word {
+  z-index: 4;
+}
+
+body .game-card.reveal-flip-animate .card-front .card-face-pre .card-word {
+  background: var(--anim-pre-word-bg) !important;
+  color: var(--anim-pre-word-color) !important;
+}
+
+body .game-card.reveal-flip-animate .card-front .card-face-post .card-word {
+  background: var(--anim-post-word-bg) !important;
+  color: var(--anim-post-word-color) !important;
+}
+
+/* BACK FACE: full pre/post back renders; post already has label before flip starts. */
 body .game-card.reveal-flip-animate .card-back .card-face-pre,
 body .game-card.reveal-flip-animate .card-back .card-face-post {
   position: relative;
@@ -26684,11 +26683,11 @@ body .game-card.reveal-flip-animate .card-back .card-face-post {
 }
 
 body .game-card.reveal-flip-animate .card-back .card-face-pre {
-  background: var(--sweep-pre-back-bg);
+  background: var(--anim-pre-back-bg);
 }
 
 body .game-card.reveal-flip-animate .card-back .card-face-post {
-  background: var(--sweep-post-back-bg);
+  background: var(--anim-post-back-bg);
   animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
@@ -26703,16 +26702,13 @@ body .game-card.reveal-flip-animate .card-back .card-face-post::before {
   pointer-events: none;
 }
 
-body .game-card.reveal-flip-animate .card-back .card-face-pre .card-word {
-  opacity: 0 !important;
-}
-
+body .game-card.reveal-flip-animate .card-back .card-face-pre .card-word,
 body .game-card.reveal-flip-animate .card-back .card-face-post .card-word {
   opacity: 0 !important;
 }
 
 body .game-card.reveal-flip-animate .card-back .card-face-post::after {
-  content: var(--sweep-post-label-text, "NEUTRAL");
+  content: var(--anim-post-back-label, "NEUTRAL");
   position: absolute;
   left: 50%;
   top: 50%;
@@ -26722,16 +26718,10 @@ body .game-card.reveal-flip-animate .card-back .card-face-post::after {
   font-family: 'Russo One', 'Space Grotesk', system-ui, sans-serif;
   letter-spacing: 2.2px;
   text-transform: uppercase;
-  color: var(--sweep-post-label-color, rgba(226, 233, 243, 0.9));
+  color: var(--anim-post-back-label-color, rgba(226, 233, 243, 0.9));
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   white-space: nowrap;
   pointer-events: none;
-  opacity: 1;
-}
-
-body .game-card.reveal-flip-animate .card-face-post .card-word {
-  background: var(--sweep-post-word-bg) !important;
-  color: var(--sweep-post-word-color) !important;
 }
 
 @keyframes cardPreRenderedSweep {
