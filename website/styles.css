@@ -12369,10 +12369,12 @@ body.tournament.has-team-color .input:focus {
 ========================= */
 
 .judges-admin-modal .modal-card.judges-admin-card {
-  width: min(980px, calc(100vw - 28px));
-  max-height: min(88vh, 760px);
+  width: min(1120px, calc(100vw - 22px));
+  max-height: min(90vh, 820px);
   background: #121a25 !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  display: flex;
+  flex-direction: column;
 }
 
 .judges-admin-modal {
@@ -12391,14 +12393,17 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
 .judges-admin-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .judges-admin-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  gap: 14px;
   min-height: 0;
+  flex: 1 1 auto;
 }
 
 .judges-admin-list-col {
@@ -12419,7 +12424,8 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
   flex-direction: column;
   gap: 8px;
   overflow: auto;
-  max-height: 56vh;
+  flex: 1 1 auto;
+  max-height: none;
   min-height: 160px;
   padding-right: 2px;
 }
@@ -12453,24 +12459,27 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
   flex-direction: column;
   gap: 10px;
   overflow: auto;
-  max-height: 50vh;
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
   padding-right: 2px;
 }
 
 .judges-admin-rule-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   gap: 8px;
-  padding: 10px;
+  padding: 11px 44px 11px 11px;
   border-radius: 12px;
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
+  position: relative;
 }
 
 .judges-admin-rule-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 8px;
+  gap: 10px;
 }
 
 .judges-admin-examples-group {
@@ -12484,6 +12493,7 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .judges-admin-examples-list {
@@ -12501,6 +12511,7 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
 
 .judges-admin-example-add {
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .judges-admin-example-input {
@@ -12521,26 +12532,54 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
 }
 
 .judges-admin-rule-remove {
-  align-self: start;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  align-self: auto;
 }
 
 .judges-admin-actions {
   margin-top: 2px;
 }
 
+@media (min-width: 980px) {
+  .judges-admin-rule-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "rule rule"
+      "follow break";
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 10px;
+  }
+  .judges-admin-rule-grid > label.field {
+    grid-area: rule;
+  }
+  .judges-admin-examples-group[data-example-kind="follow"] {
+    grid-area: follow;
+  }
+  .judges-admin-examples-group[data-example-kind="break"] {
+    grid-area: break;
+  }
+}
+
 @media (max-width: 760px) {
   .judges-admin-modal .modal-card.judges-admin-card {
-    width: calc(100vw - 16px);
-    max-height: min(78vh, 620px);
+    width: calc(100vw - 12px);
+    max-height: min(82vh, 680px);
   }
   .judges-admin-layout {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
   .judges-admin-list {
-    max-height: 26vh;
+    min-height: 128px;
   }
   .judges-admin-rules {
-    max-height: 36vh;
+    min-height: 0;
+  }
+  .judges-admin-rule-row {
+    padding: 10px 40px 10px 10px;
   }
 }
 
