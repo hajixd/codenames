@@ -23654,7 +23654,7 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
     flex: 0 0 auto;
     overflow: visible !important;
-    margin-top: clamp(56px, 9vh, 88px) !important;
+    margin-top: clamp(12px, 2.6vh, 24px) !important;
     margin-bottom: 0 !important;
     padding: 0 0 max(14px, env(safe-area-inset-bottom, 0px));
   }
@@ -24713,12 +24713,12 @@ body:is(.og-mode, .cozy-mode) .clue-display-expanded {
    row and the side panels slightly so they don't crowd the board.
 */
 body.after-clue-given .game-center-area .game-action-bar {
-  margin-top: 14px;
+  margin-top: auto;
 }
 
 body.after-clue-given .game-sidebar-left,
 body.after-clue-given .game-sidebar-right {
-  padding-top: 14px;
+  padding-top: 0;
 }
 
 /* Let the game log scroll "lower" by giving the scroll container more
@@ -26106,5 +26106,115 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     overflow-y: auto !important;
     overscroll-behavior: contain;
     min-height: 0;
+  }
+}
+
+/* Final pass: bottom docking + mobile turn strip + clue readability + compositor stability */
+@media (min-width: 1025px) {
+  body:is(.og-mode, .cozy-mode).after-clue-given .game-center-area .game-action-bar {
+    margin-top: auto !important;
+  }
+
+  body:is(.og-mode, .cozy-mode).after-clue-given .game-sidebar-left,
+  body:is(.og-mode, .cozy-mode).after-clue-given .game-sidebar-right {
+    padding-top: 0 !important;
+  }
+
+  /* Avoid long-session GPU artifacts from extra compositor layers on OG cards. */
+  body.og-mode .game-card {
+    transform: none;
+  }
+
+  body.og-mode .game-card .card-word {
+    clip-path: none;
+  }
+}
+
+.og-mobile-turn-strip {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    margin: 4px 10px 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    background: linear-gradient(180deg, rgba(86, 90, 98, 0.92), rgba(52, 56, 63, 0.92));
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.33);
+    color: #ffffff;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.35px;
+    text-transform: uppercase;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip span {
+    color: #ffffff;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #game-board-container.turn-red .og-mobile-turn-strip {
+    background: linear-gradient(180deg, rgba(201, 83, 62, 0.95), rgba(152, 48, 35, 0.92));
+    border-color: rgba(255, 197, 184, 0.55);
+  }
+
+  #game-board-container.turn-blue .og-mobile-turn-strip {
+    background: linear-gradient(180deg, rgba(65, 132, 219, 0.95), rgba(33, 89, 163, 0.92));
+    border-color: rgba(184, 221, 255, 0.55);
+  }
+
+  /* Lower mobile team boxes slightly while keeping cards close below them. */
+  body:is(.og-mode, .cozy-mode) #og-mobile-panels {
+    margin-top: 6px;
+  }
+
+  /* Keep clue word visible on mobile (not just clue number). */
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn {
+    width: 100% !important;
+    max-width: 100%;
+    margin-inline: 0;
+    justify-content: space-between !important;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 999px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .clue-display-expanded {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 4px 40px 4px 12px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .clue-word-expanded {
+    width: calc(100% - 72px);
+    font-size: clamp(13px, 4vw, 17px);
+    letter-spacing: 0.3px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .clue-number-expanded {
+    right: 10px;
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .operative-actions-expanded {
+    flex: 0 0 auto;
+    margin-left: 0;
+  }
+}
+
+@media (min-width: 1025px) {
+  .og-mobile-turn-strip {
+    display: none !important;
   }
 }

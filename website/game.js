@@ -77,6 +77,14 @@ function pulseCardAnimationOverlay(holdMs = CARD_CONFIRM_ANIM_MS + 260) {
   }, Math.max(260, Number(holdMs) || 0));
 }
 
+function clearCardAnimationOverlayState() {
+  if (_cardAnimOverlayTimer) {
+    clearTimeout(_cardAnimOverlayTimer);
+    _cardAnimOverlayTimer = null;
+  }
+  document.getElementById('game-board-container')?.classList.remove('card-anim-overlay');
+}
+
 function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
   if (!cardEl) return;
   cardEl.classList.remove('confirming-guess', 'confirm-animate', 'confirm-hold', 'reveal-flip-animate');
@@ -7603,6 +7611,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
   const teamClass = activeTeam === 'blue' ? 'clue-team-blue' : 'clue-team-red';
   currentClueEl.classList.add(teamClass);
   operativeActionsEl.classList.add(teamClass);
+  updateOgMobileTurnStrip(null, currentGame?.currentPhase);
 
   clueFormEl.style.display = 'none';
   waitingEl.style.display = 'none';
@@ -9209,13 +9218,25 @@ function initAdvancedFeatures() {
     }
   });
 
-  // If the tab was backgrounded during an in-flight guess, avoid a stuck local lock.
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) _processingGuess = false;
-  });
-  window.addEventListener('focus', () => {
+  // If the tab was backgrounded during an in-flight guess, avoid stale transient UI state.
+  let lastResumeRenderAt = 0;
+  const recoverAfterResume = () => {
     _processingGuess = false;
+    clearCardAnimationOverlayState();
+    clearRevealAnimationSuppressions();
+    if (!currentGame) return;
+    const now = Date.now();
+    if ((now - lastResumeRenderAt) < 250) return;
+    lastResumeRenderAt = now;
+    requestAnimationFrame(() => {
+      try { renderGame(); } catch (_) {}
+    });
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) recoverAfterResume();
   });
+  window.addEventListener('focus', recoverAfterResume);
+  window.addEventListener('pageshow', recoverAfterResume);
 
   if (!window.__ogChatUnreadResizeBound) {
     window.__ogChatUnreadResizeBound = true;
@@ -10275,6 +10296,36 @@ function formatPhaseTimerText(remainingMs, phase) {
   return `${getRoleLabelForPhase(phase)}: ${time}`;
 }
 
+function updateOgMobileTurnStrip(timerText, phaseOverride) {
+  const stripEl = document.getElementById('og-mobile-turn-strip');
+  const stripTextEl = document.getElementById('og-mobile-turn-strip-text');
+  if (!stripEl || !stripTextEl) return;
+
+  const isOgMode = isOnlineStyleActive();
+  const isMobile = isMobileLayoutLike();
+  if (!isOgMode || !isMobile || !currentGame || currentGame.winner) {
+    stripEl.style.display = 'none';
+    return;
+  }
+
+  const phase = String(phaseOverride || currentGame.currentPhase || '');
+  if (phase !== 'spymaster' && phase !== 'operatives') {
+    stripEl.style.display = 'none';
+    return;
+  }
+
+  const fallbackTimer = `${getRoleLabelForPhase(phase)}: ∞`;
+  const safeTimer = String(timerText || '').trim()
+    || String(document.getElementById('og-topbar-timer-text')?.textContent || '').trim()
+    || String(document.getElementById('timer-text')?.textContent || '').trim()
+    || fallbackTimer;
+
+  stripTextEl.textContent = safeTimer;
+  stripEl.classList.toggle('phase-spymaster', phase === 'spymaster');
+  stripEl.classList.toggle('phase-operatives', phase === 'operatives');
+  stripEl.style.display = 'flex';
+}
+
 // When playing in OG / Cozy mode, the center banner above the board shows a short instruction.
 // For the Operatives phase on desktop, we swap that instruction for the live turn timer.
 function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
@@ -10351,6 +10402,7 @@ function startGameTimer(endTime, phase) {
     const timerText = formatPhaseTimerText(remaining, phase);
     textEl.textContent = timerText;
     if (ogTimerTextEl) ogTimerTextEl.textContent = timerText;
+    updateOgMobileTurnStrip(timerText, phase);
 
     // Keep the OG phase banner (top-center) in sync when it's showing a turn timer.
     try {
@@ -10409,6 +10461,7 @@ function showStaticGameTimer(phase) {
     ogTimerEl.classList.remove('warning', 'danger');
   }
   if (ogTimerTextEl) ogTimerTextEl.textContent = `${getRoleLabelForPhase(phase)}: ∞`;
+  updateOgMobileTurnStrip(`${getRoleLabelForPhase(phase)}: ∞`, phase);
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = phase === 'spymaster' ? 'CLUE' : (phase === 'operatives' ? 'GUESS' : 'TIMER');
   }
@@ -10435,6 +10488,7 @@ function stopGameTimer() {
     ogTimerEl.style.display = 'none';
     ogTimerEl.classList.remove('warning', 'danger');
   }
+  updateOgMobileTurnStrip(null, currentGame?.currentPhase);
 }
 
 /* =========================
