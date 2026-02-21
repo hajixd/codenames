@@ -1693,12 +1693,37 @@ function buildJudgeRulesetPromptLines(key) {
   const entry = getAIJudgeCatalogEntry(key);
   const rules = Array.isArray(entry?.rules) ? entry.rules : [];
   const lines = [];
+  const normalizeExamples = (raw) => {
+    const src = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const item of src) {
+      const text = String(item || '').trim().slice(0, 240);
+      if (!text || out.includes(text)) continue;
+      out.push(text);
+    }
+    return out;
+  };
   for (let i = 0; i < rules.length; i += 1) {
     const text = String(rules[i]?.text || '').trim();
-    const example = String(rules[i]?.example || '').trim();
     if (!text) continue;
+    const follows = normalizeExamples(
+      rules[i]?.examplesFollow ?? rules[i]?.followExamples ?? rules[i]?.examplesAllowed ?? rules[i]?.goodExamples
+    );
+    const breaks = normalizeExamples(
+      rules[i]?.examplesBreak ?? rules[i]?.breakExamples ?? rules[i]?.examplesDisallowed ?? rules[i]?.badExamples
+    );
+    const legacyExample = String(rules[i]?.example || '').trim().slice(0, 240);
+    if (legacyExample && !follows.includes(legacyExample) && !breaks.includes(legacyExample)) {
+      if (/(not allowed|reject|illegal|invalid|must not|cannot|can't|disallow|forbidden|no\s+)/i.test(text)) {
+        breaks.push(legacyExample);
+      } else {
+        follows.push(legacyExample);
+      }
+    }
+
     lines.push(`- Rule ${i + 1}: ${text}`);
-    if (example) lines.push(`  Example: ${example}`);
+    if (follows.length) lines.push(`  Examples that follow this rule: ${follows.join(' | ')}`);
+    if (breaks.length) lines.push(`  Examples that break this rule: ${breaks.join(' | ')}`);
   }
   return lines;
 }

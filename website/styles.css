@@ -7798,7 +7798,9 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 }
 
 .settings-row-volume .settings-volume-slider {
-  flex: 1;
+  flex: 0 1 132px;
+  width: 132px;
+  max-width: 40vw;
 }
 
 .settings-row-volume .settings-volume-value {
@@ -12361,6 +12363,21 @@ body.tournament.has-team-color .input:focus {
 .judges-admin-modal .modal-card.judges-admin-card {
   width: min(980px, calc(100vw - 28px));
   max-height: min(88vh, 760px);
+  background: #121a25;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.judges-admin-modal {
+  background: rgba(3, 10, 18, 0.84);
+}
+
+body.light-mode .judges-admin-modal {
+  background: rgba(36, 52, 70, 0.5);
+}
+
+body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
+  background: #f6f9fd;
+  border-color: rgba(40, 70, 100, 0.24);
 }
 
 .judges-admin-body {
@@ -12446,6 +12463,48 @@ body.tournament.has-team-color .input:focus {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
+}
+
+.judges-admin-examples-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.judges-admin-examples-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.judges-admin-examples-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.judges-admin-example-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.judges-admin-example-add {
+  flex-shrink: 0;
+}
+
+.judges-admin-example-input {
+  min-width: 0;
+}
+
+.judges-admin-example-remove {
+  align-self: center;
+}
+
+.judges-admin-example-empty {
+  margin: 0;
 }
 
 .judges-admin-rule-input {

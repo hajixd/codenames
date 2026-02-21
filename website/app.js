@@ -7842,19 +7842,23 @@ function defaultAIJudgeCatalog() {
       rules: [
         {
           text: 'Multi-word clues are allowed only when they form one clear unified concept, name, or idea.',
-          example: 'new york city',
+          examplesFollow: ['new york city', 'cardiac arrest'],
+          examplesBreak: [],
         },
         {
           text: 'Word-form clues are not allowed: no exact board word, part of that word, variation, or shared root.',
-          example: 'magic -> magician',
+          examplesFollow: [],
+          examplesBreak: ['magic -> magician', 'history -> historical', 'run -> running'],
         },
         {
           text: 'Forced-connection clues are not allowed: do not combine unrelated ideas to hit multiple concepts.',
-          example: 'metal food',
+          examplesFollow: [],
+          examplesBreak: ['german demon', 'metal food', 'fast cold'],
         },
         {
           text: 'If a clue does not clearly break a rule, accept it.',
-          example: 'legal document',
+          examplesFollow: ['legal document', 'insulin resistance'],
+          examplesBreak: [],
         },
       ],
     },
@@ -7864,15 +7868,18 @@ function defaultAIJudgeCatalog() {
       rules: [
         {
           text: 'Use standard Codenames clue legality.',
-          example: 'single clear clue',
+          examplesFollow: ['planet'],
+          examplesBreak: [],
         },
         {
           text: 'Clue should be one word and must not match a board word.',
-          example: 'planet',
+          examplesFollow: ['planet'],
+          examplesBreak: ['new york city'],
         },
         {
           text: 'Reject word forms, stems, parts, and orthographic tricks pointing at board words.',
-          example: 'history -> historical',
+          examplesFollow: [],
+          examplesBreak: ['history -> historical'],
         },
       ],
     },
@@ -7888,10 +7895,41 @@ function slugifyAIJudgeId(raw) {
   return s || 'judge';
 }
 
+function normalizeAIJudgeExampleList(raw, limit = 200) {
+  const src = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const item of src) {
+    const val = String(item || '').trim().slice(0, 240);
+    if (!val || out.includes(val)) continue;
+    out.push(val);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function inferLegacyJudgeExampleKind(ruleText = '') {
+  const t = String(ruleText || '').trim().toLowerCase();
+  if (!t) return 'follow';
+  if (/(not allowed|reject|illegal|invalid|must not|cannot|can't|disallow|forbidden|no\s+)/.test(t)) return 'break';
+  return 'follow';
+}
+
 function normalizeAIJudgeRule(raw) {
   const text = String(raw?.text ?? raw?.rule ?? '').trim().slice(0, 320);
-  const example = String(raw?.example ?? '').trim().slice(0, 240);
-  return { text, example };
+  const examplesFollow = normalizeAIJudgeExampleList(
+    raw?.examplesFollow ?? raw?.followExamples ?? raw?.examplesAllowed ?? raw?.goodExamples
+  );
+  const examplesBreak = normalizeAIJudgeExampleList(
+    raw?.examplesBreak ?? raw?.breakExamples ?? raw?.examplesDisallowed ?? raw?.badExamples
+  );
+  const legacyExample = String(raw?.example ?? '').trim().slice(0, 240);
+
+  if (legacyExample && !examplesFollow.includes(legacyExample) && !examplesBreak.includes(legacyExample)) {
+    if (inferLegacyJudgeExampleKind(text) === 'break') examplesBreak.push(legacyExample);
+    else examplesFollow.push(legacyExample);
+  }
+
+  return { text, examplesFollow, examplesBreak };
 }
 
 function normalizeAIJudgeEntry(raw, idx = 0) {
@@ -7902,8 +7940,8 @@ function normalizeAIJudgeEntry(raw, idx = 0) {
   const rulesSrc = Array.isArray(raw?.rules) ? raw.rules : [];
   const rules = rulesSrc
     .map(normalizeAIJudgeRule)
-    .filter((r) => r.text || r.example);
-  if (!rules.length) rules.push({ text: '', example: '' });
+    .filter((r) => r.text || r.examplesFollow.length || r.examplesBreak.length);
+  if (!rules.length) rules.push({ text: '', examplesFollow: [], examplesBreak: [] });
   return { id, name, rules };
 }
 
@@ -7927,7 +7965,12 @@ function normalizeAIJudgeCatalog(raw) {
       name: item.name,
       rules: (item.rules || []).map((r) => ({
         text: String(r?.text || '').trim().slice(0, 320),
-        example: String(r?.example || '').trim().slice(0, 240),
+        examplesFollow: normalizeAIJudgeExampleList(
+          r?.examplesFollow ?? r?.followExamples ?? r?.examplesAllowed ?? r?.goodExamples
+        ),
+        examplesBreak: normalizeAIJudgeExampleList(
+          r?.examplesBreak ?? r?.breakExamples ?? r?.examplesDisallowed ?? r?.badExamples
+        ),
       })),
     });
   }
@@ -7939,7 +7982,11 @@ function cloneAIJudgeCatalog(raw) {
   return normalizeAIJudgeCatalog(raw).map((j) => ({
     id: j.id,
     name: j.name,
-    rules: (j.rules || []).map((r) => ({ text: r.text, example: r.example })),
+    rules: (j.rules || []).map((r) => ({
+      text: r.text,
+      examplesFollow: normalizeAIJudgeExampleList(r.examplesFollow),
+      examplesBreak: normalizeAIJudgeExampleList(r.examplesBreak),
+    })),
   }));
 }
 
@@ -8024,6 +8071,56 @@ function renderJudgesAdminModal() {
   const rules = Array.isArray(selected.rules) ? selected.rules : [];
   rulesEl.innerHTML = rules.map((rule, idx) => {
     const dis = canEdit ? '' : 'disabled';
+    const rawFollows = Array.isArray(rule?.examplesFollow) ? rule.examplesFollow : [];
+    const rawBreaks = Array.isArray(rule?.examplesBreak) ? rule.examplesBreak : [];
+    const follows = canEdit
+      ? rawFollows.map((ex) => String(ex ?? '').slice(0, 240))
+      : normalizeAIJudgeExampleList(rawFollows);
+    const breaks = canEdit
+      ? rawBreaks.map((ex) => String(ex ?? '').slice(0, 240))
+      : normalizeAIJudgeExampleList(rawBreaks);
+    const renderExamples = (kind, items, title) => {
+      const rows = items.map((ex, exIdx) => `
+        <div class="judges-admin-example-row">
+          <input
+            class="input judges-admin-example-input"
+            type="text"
+            data-rule-example-rule="${idx}"
+            data-rule-example-kind="${kind}"
+            data-rule-example-index="${exIdx}"
+            value="${esc(ex || '')}"
+            maxlength="240"
+            ${dis}
+          />
+          <button
+            class="icon-btn danger judges-admin-example-remove"
+            type="button"
+            data-rule-remove-example="${idx}"
+            data-rule-example-kind="${kind}"
+            data-rule-example-index="${exIdx}"
+            ${canEdit ? '' : 'disabled'}
+            aria-label="Remove example"
+          >×</button>
+        </div>
+      `).join('');
+      return `
+        <div class="judges-admin-examples-group" data-example-kind="${kind}">
+          <div class="judges-admin-examples-head">
+            <span class="label">${title}</span>
+            <button
+              class="btn small judges-admin-example-add"
+              type="button"
+              data-rule-add-example="${idx}"
+              data-rule-example-kind="${kind}"
+              ${canEdit ? '' : 'disabled'}
+            >Add Example</button>
+          </div>
+          <div class="judges-admin-examples-list">
+            ${rows || '<div class="hint judges-admin-example-empty">No examples yet.</div>'}
+          </div>
+        </div>
+      `;
+    };
     return `
       <div class="judges-admin-rule-row" data-rule-index="${idx}">
         <div class="judges-admin-rule-grid">
@@ -8031,10 +8128,8 @@ function renderJudgesAdminModal() {
             <span class="label">Rule ${idx + 1}</span>
             <textarea class="input judges-admin-rule-input" rows="2" data-rule-text="${idx}" ${dis}>${esc(rule.text || '')}</textarea>
           </label>
-          <label class="field">
-            <span class="label">Example</span>
-            <input class="input judges-admin-example-input" type="text" data-rule-example="${idx}" value="${esc(rule.example || '')}" ${dis} />
-          </label>
+          ${renderExamples('follow', follows, 'Examples Following Rule')}
+          ${renderExamples('break', breaks, 'Examples Breaking Rule')}
         </div>
         <button class="icon-btn danger judges-admin-rule-remove" type="button" data-rule-remove="${idx}" ${canEdit ? '' : 'disabled'} aria-label="Remove rule">×</button>
       </div>
@@ -8120,7 +8215,7 @@ function initJudgesAdminModal() {
     judgesAdminDraft.push({
       id,
       name: name.slice(0, 80),
-      rules: [{ text: '', example: '' }],
+      rules: [{ text: '', examplesFollow: [], examplesBreak: [] }],
     });
     judgesAdminSelectedId = id;
     judgesAdminEditMode = true;
@@ -8158,7 +8253,7 @@ function initJudgesAdminModal() {
     const selected = getSelectedJudgeFromDraft();
     if (!selected) return;
     if (!Array.isArray(selected.rules)) selected.rules = [];
-    selected.rules.push({ text: '', example: '' });
+    selected.rules.push({ text: '', examplesFollow: [], examplesBreak: [] });
     renderJudgesAdminModal();
   });
 
@@ -8168,30 +8263,73 @@ function initJudgesAdminModal() {
     const selected = getSelectedJudgeFromDraft();
     if (!selected) return;
     const textIdxRaw = target?.getAttribute?.('data-rule-text');
-    const exIdxRaw = target?.getAttribute?.('data-rule-example');
-    const idxRaw = textIdxRaw ?? exIdxRaw;
-    const idx = parseInt(String(idxRaw || ''), 10);
+    const exRuleIdxRaw = target?.getAttribute?.('data-rule-example-rule');
+    const exKindRaw = String(target?.getAttribute?.('data-rule-example-kind') || '').trim().toLowerCase();
+    const exIdxRaw = target?.getAttribute?.('data-rule-example-index');
+    const ruleIdxRaw = textIdxRaw ?? exRuleIdxRaw;
+    const idx = parseInt(String(ruleIdxRaw || ''), 10);
     if (!Number.isInteger(idx) || idx < 0) return;
     if (!Array.isArray(selected.rules)) selected.rules = [];
-    if (!selected.rules[idx]) selected.rules[idx] = { text: '', example: '' };
+    if (!selected.rules[idx]) selected.rules[idx] = { text: '', examplesFollow: [], examplesBreak: [] };
     if (textIdxRaw != null) {
       selected.rules[idx].text = String(target.value || '').trim().slice(0, 320);
-    } else if (exIdxRaw != null) {
-      selected.rules[idx].example = String(target.value || '').trim().slice(0, 240);
+      return;
+    }
+
+    if (exRuleIdxRaw != null) {
+      const listKey = exKindRaw === 'break' ? 'examplesBreak' : 'examplesFollow';
+      const exIdx = parseInt(String(exIdxRaw || ''), 10);
+      if (!Number.isInteger(exIdx) || exIdx < 0) return;
+      if (!Array.isArray(selected.rules[idx][listKey])) selected.rules[idx][listKey] = [];
+      selected.rules[idx][listKey][exIdx] = String(target.value || '').trim().slice(0, 240);
     }
   });
 
   rulesEl?.addEventListener('click', (e) => {
     if (!judgesAdminEditMode) return;
-    const btn = e.target?.closest?.('[data-rule-remove]');
+    const btn = e.target?.closest?.('[data-rule-remove],[data-rule-add-example],[data-rule-remove-example]');
     if (!btn) return;
     const selected = getSelectedJudgeFromDraft();
     if (!selected) return;
+
+    const addExampleRuleIdxRaw = btn.getAttribute('data-rule-add-example');
+    if (addExampleRuleIdxRaw != null) {
+      const idx = parseInt(String(addExampleRuleIdxRaw || ''), 10);
+      if (!Number.isInteger(idx) || idx < 0) return;
+      selected.rules = Array.isArray(selected.rules) ? selected.rules : [];
+      if (!selected.rules[idx]) selected.rules[idx] = { text: '', examplesFollow: [], examplesBreak: [] };
+      const kind = String(btn.getAttribute('data-rule-example-kind') || '').trim().toLowerCase() === 'break'
+        ? 'examplesBreak'
+        : 'examplesFollow';
+      selected.rules[idx][kind] = Array.isArray(selected.rules[idx][kind]) ? selected.rules[idx][kind] : [];
+      selected.rules[idx][kind].push('');
+      renderJudgesAdminModal();
+      return;
+    }
+
+    const removeExampleRuleIdxRaw = btn.getAttribute('data-rule-remove-example');
+    if (removeExampleRuleIdxRaw != null) {
+      const idx = parseInt(String(removeExampleRuleIdxRaw || ''), 10);
+      if (!Number.isInteger(idx) || idx < 0) return;
+      selected.rules = Array.isArray(selected.rules) ? selected.rules : [];
+      if (!selected.rules[idx]) selected.rules[idx] = { text: '', examplesFollow: [], examplesBreak: [] };
+      const kind = String(btn.getAttribute('data-rule-example-kind') || '').trim().toLowerCase() === 'break'
+        ? 'examplesBreak'
+        : 'examplesFollow';
+      const exIdx = parseInt(String(btn.getAttribute('data-rule-example-index') || ''), 10);
+      if (!Number.isInteger(exIdx) || exIdx < 0) return;
+      const list = Array.isArray(selected.rules[idx][kind]) ? selected.rules[idx][kind] : [];
+      list.splice(exIdx, 1);
+      selected.rules[idx][kind] = list;
+      renderJudgesAdminModal();
+      return;
+    }
+
     const idx = parseInt(String(btn.getAttribute('data-rule-remove') || ''), 10);
     if (!Number.isInteger(idx) || idx < 0) return;
     selected.rules = Array.isArray(selected.rules) ? selected.rules : [];
     selected.rules.splice(idx, 1);
-    if (!selected.rules.length) selected.rules.push({ text: '', example: '' });
+    if (!selected.rules.length) selected.rules.push({ text: '', examplesFollow: [], examplesBreak: [] });
     renderJudgesAdminModal();
   });
 
