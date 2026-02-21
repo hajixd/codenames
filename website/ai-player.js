@@ -4628,14 +4628,15 @@ function _getAISpyDraftTypingProfile(ai) {
   const c = _clamp(Number.isFinite(confidence) ? confidence : 55, 1, 100);
   const d = _clamp(Number.isFinite(depth) ? depth : 62, 1, 100);
 
-  const typeMinMs = Math.round(_clamp(262 - (t * 0.92), 146, 350));
-  const typeMaxMs = Math.round(_clamp(typeMinMs + 178 + ((100 - t) * 1.9) + (d * 0.85), 310, 860));
-  const deleteMinMs = Math.round(_clamp(typeMinMs * 0.9, 112, 330));
-  const deleteMaxMs = Math.round(_clamp(typeMaxMs * 1.04, 210, 740));
-  const typoChance = _clamp(0.045 + ((100 - c) / 780), 0.02, 0.20);
-  const hesitationChance = _clamp(0.10 + (d / 620), 0.12, 0.32);
-  const burstChance = _clamp(0.16 + (t / 700), 0.12, 0.35);
-  const minSendGapMs = Math.round(_clamp(310 + ((100 - t) * 2.3), 250, 720));
+  // Faster baseline with noticeably more human mistakes/revisions.
+  const typeMinMs = Math.round(_clamp(176 - (t * 0.78), 64, 210));
+  const typeMaxMs = Math.round(_clamp(typeMinMs + 96 + ((100 - t) * 1.15) + (d * 0.62), 150, 520));
+  const deleteMinMs = Math.round(_clamp(typeMinMs * 0.75, 48, 180));
+  const deleteMaxMs = Math.round(_clamp(typeMaxMs * 0.86, 96, 420));
+  const typoChance = _clamp(0.12 + ((100 - c) / 320), 0.09, 0.44);
+  const hesitationChance = _clamp(0.06 + (d / 800), 0.06, 0.24);
+  const burstChance = _clamp(0.24 + (t / 440), 0.20, 0.52);
+  const minSendGapMs = Math.round(_clamp(140 + ((100 - t) * 1.35), 110, 360));
 
   return {
     typeMinMs,
@@ -4646,12 +4647,12 @@ function _getAISpyDraftTypingProfile(ai) {
     hesitationChance,
     burstChance,
     minSendGapMs,
-    thinkMinMs: Math.round(1900 + (d * 14.5)),
-    thinkMaxMs: Math.round(4300 + (d * 26.5) + ((100 - c) * 15.5)),
-    sureMinMs: Math.round(1400 + ((100 - c) * 12.5)),
-    sureMaxMs: Math.round(3600 + (d * 16.4) + ((100 - c) * 19.4)),
-    rethinkMinMs: Math.round(2300 + ((100 - c) * 11.6)),
-    rethinkMaxMs: Math.round(5800 + (d * 19.5) + ((100 - c) * 25.2)),
+    thinkMinMs: Math.round(620 + (d * 6.8)),
+    thinkMaxMs: Math.round(1680 + (d * 12.2) + ((100 - c) * 8.8)),
+    sureMinMs: Math.round(320 + ((100 - c) * 3.4)),
+    sureMaxMs: Math.round(940 + (d * 6.8) + ((100 - c) * 8.2)),
+    rethinkMinMs: Math.round(760 + ((100 - c) * 4.2)),
+    rethinkMaxMs: Math.round(1980 + (d * 8.7) + ((100 - c) * 10.1)),
   };
 }
 
@@ -4816,9 +4817,9 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
     if (!clue) return;
 
     let draft = '';
-    const maxTypos = (clue.length >= 5 && Math.random() < 0.75)
-      ? (Math.random() < 0.3 ? 2 : 1)
-      : (Math.random() < 0.2 ? 1 : 0);
+    const maxTypos = (clue.length >= 5 && Math.random() < 0.88)
+      ? (Math.random() < 0.18 ? 3 : (Math.random() < 0.55 ? 2 : 1))
+      : (Math.random() < 0.34 ? 1 : 0);
     let typoCount = 0;
 
     for (let i = 0; i < clue.length; i += 1) {
@@ -4828,7 +4829,7 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
       if (canTypo && Math.random() < profile.typoChance) {
         draft += _randUpperAlpha();
         await _setAILiveClueDraft(game, team, ai, draft, null, { minGapMs: profile.minSendGapMs });
-        await sleep(_randMs(profile.typeMinMs * 1.02, profile.typeMaxMs * 1.22));
+        await sleep(_randMs(profile.typeMinMs * 1.05, profile.typeMaxMs * 1.15));
 
         draft = draft.slice(0, -1);
         await _setAILiveClueDraft(game, team, ai, draft || null, null, { minGapMs: profile.minSendGapMs });
@@ -4845,9 +4846,9 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
       });
 
       let delay = _randMs(profile.typeMinMs, profile.typeMaxMs);
-      if (Math.random() < profile.burstChance) delay = Math.max(130, Math.round(delay * 0.84));
+      if (Math.random() < profile.burstChance) delay = Math.max(72, Math.round(delay * 0.78));
       if (Math.random() < profile.hesitationChance && i >= 1) {
-        delay += _randMs(620, 2200);
+        delay += _randMs(220, 960);
       }
       await sleep(delay);
     }
@@ -4863,8 +4864,8 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
         minGapMs: profile.minSendGapMs,
       });
       let delay = _randMs(profile.deleteMinMs, profile.deleteMaxMs);
-      if (Math.random() < 0.25) delay += _randMs(420, 1380);
-      await sleep(Math.max(110, delay));
+      if (Math.random() < 0.22) delay += _randMs(170, 580);
+      await sleep(Math.max(60, delay));
     }
   };
 
@@ -4888,12 +4889,12 @@ async function simulateAISpymasterThinking(ai, game, finalClue, finalNumber, opt
     await sleep(_randMs(profile.sureMinMs, profile.sureMaxMs));
 
     if (attempt.isFinal) {
-      await sleep(_randMs(1500, 4200));
+      await sleep(_randMs(520, 1450));
       return; // Keep the final draft visible; submit happens immediately after.
     }
 
     await deleteDraftWord(candidateWord);
-    await sleep(_randMs(420, 1400));
+    await sleep(_randMs(140, 520));
   }
 }
 
@@ -6325,10 +6326,10 @@ function _getAIChatTypingProfile(aiLike) {
   const c = Number.isFinite(confidence) ? Math.max(1, Math.min(100, confidence)) : 60;
   const d = Number.isFinite(reasoningDepth) ? Math.max(1, Math.min(100, reasoningDepth)) : 58;
 
-  // Broad range so a single message can swing from quick bursts to hesitant pauses.
-  const baseMinMs = Math.round(_clamp(190 + ((100 - t) * 1.65), 170, 520));
-  const baseMaxMs = Math.round(_clamp(520 + ((100 - t) * 3.9) + (d * 2.1), 500, 1650));
-  const jitterMs = Math.round(_clamp(190 + ((100 - c) * 2.2) + (d * 1.25), 160, 760));
+  // Faster baseline cadence with intentional messy human-like revisions.
+  const baseMinMs = Math.round(_clamp(88 + ((100 - t) * 0.95), 70, 240));
+  const baseMaxMs = Math.round(_clamp(235 + ((100 - t) * 2.05) + (d * 1.35), 210, 980));
+  const jitterMs = Math.round(_clamp(110 + ((100 - c) * 1.35) + (d * 0.9), 100, 520));
 
   const burstChance = _clamp(0.14 + (t / 420), 0.14, 0.44);
   const slowStretchChance = _clamp(0.08 + ((100 - t) / 560) + (d / 760), 0.08, 0.34);
@@ -6337,16 +6338,16 @@ function _getAIChatTypingProfile(aiLike) {
   const rhythmSwapChance = _clamp(0.19 + (d / 620), 0.16, 0.42);
 
   // Mistakes are now substantially more frequent and varied.
-  const typoChance = _clamp(0.075 + ((100 - c) / 360), 0.06, 0.30);
-  const typoBurstChance = _clamp(0.055 + ((100 - c) / 450), 0.04, 0.24);
-  const wordRevisionChance = _clamp(0.14 + ((100 - c) / 290) + (d / 800), 0.12, 0.48);
-  const halfDeleteChance = _clamp(0.12 + ((100 - c) / 300) + (d / 880), 0.10, 0.46);
-  const fullWordRestartChance = _clamp(0.025 + ((100 - c) / 1700), 0.02, 0.10);
+  const typoChance = _clamp(0.13 + ((100 - c) / 260), 0.10, 0.44);
+  const typoBurstChance = _clamp(0.09 + ((100 - c) / 360), 0.06, 0.30);
+  const wordRevisionChance = _clamp(0.20 + ((100 - c) / 240) + (d / 700), 0.16, 0.56);
+  const halfDeleteChance = _clamp(0.18 + ((100 - c) / 250) + (d / 820), 0.14, 0.50);
+  const fullWordRestartChance = _clamp(0.04 + ((100 - c) / 1100), 0.03, 0.16);
 
-  const preThinkMinMs = Math.round(_clamp(980 + (d * 7.6), 940, 2700));
-  const preThinkMaxMs = Math.round(_clamp(preThinkMinMs + 1450 + ((100 - t) * 14.8) + (d * 13.4), 2200, 9800));
-  const submitPauseMinMs = Math.round(_clamp(650 + ((100 - c) * 3.4), 600, 1600));
-  const submitPauseMaxMs = Math.round(_clamp(submitPauseMinMs + 920 + (d * 9.5), 1250, 5200));
+  const preThinkMinMs = Math.round(_clamp(300 + (d * 4.8), 280, 1100));
+  const preThinkMaxMs = Math.round(_clamp(preThinkMinMs + 640 + ((100 - t) * 8.8) + (d * 7.4), 900, 4200));
+  const submitPauseMinMs = Math.round(_clamp(220 + ((100 - c) * 2.2), 180, 760));
+  const submitPauseMaxMs = Math.round(_clamp(submitPauseMinMs + 420 + (d * 6.4), 540, 2600));
 
   const out = {
     baseMinMs,
@@ -6406,7 +6407,7 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
   const dotsEl = typingEl.querySelector('.chat-typing-indicator');
 
   // Variable "thinking before typing" delay.
-  const preThink = _randMs(profile.preThinkMinMs, profile.preThinkMaxMs) + Math.min(7600, Math.round(String(text || '').length * (20.5 + Math.random() * 31.2)));
+  const preThink = _randMs(profile.preThinkMinMs, profile.preThinkMaxMs) + Math.min(2800, Math.round(String(text || '').length * (8.6 + Math.random() * 13.8)));
   await new Promise(r => setTimeout(r, preThink));
 
   // Start revealing characters (with rhythm shifts, bursts, pauses, typo bursts,
@@ -6465,13 +6466,13 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
 
     if (Math.random() < profile.burstChance) d *= (0.62 + Math.random() * 0.33);
     if (Math.random() < profile.slowStretchChance) d *= (1.2 + Math.random() * 0.95);
-    if (allowRevisions && Math.random() < profile.pauseChance && idx > 3) d += _randMs(230, 980);
-    if (Math.random() < profile.microPauseChance && idx > 1) d += _randMs(70, 280);
+    if (allowRevisions && Math.random() < profile.pauseChance && idx > 3) d += _randMs(110, 420);
+    if (Math.random() < profile.microPauseChance && idx > 1) d += _randMs(30, 140);
 
-    if ('.!?,;:'.includes(ch)) d += _randMs(190, 920);
+    if ('.!?,;:'.includes(ch)) d += _randMs(90, 320);
     if (ch === ' ') d *= (0.52 + Math.random() * 0.34);
 
-    return Math.max(95, d);
+    return Math.max(42, d);
   };
 
   const backspaceMany = async (count, minMs = 54, maxMs = 210) => {
@@ -6480,7 +6481,7 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
       revealed = revealed.slice(0, -1);
       setText();
       remaining -= 1;
-      await sleepMs(_randMs(Math.max(82, minMs), Math.max(320, maxMs)));
+      await sleepMs(_randMs(Math.max(38, minMs), Math.max(150, maxMs)));
     }
   };
 
@@ -6491,9 +6492,9 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
       for (let t = 0; t < typoBurst; t += 1) {
         revealed += _randChar();
         setText();
-        await sleepMs(_randMs(120, 420));
+        await sleepMs(_randMs(55, 180));
       }
-      await backspaceMany(typoBurst, 88, 320);
+      await backspaceMany(typoBurst, 40, 150);
     }
 
     revealed += targetChar;
@@ -6509,9 +6510,9 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
       await typeCharWithPossibleTypo(ch, i);
       if (Math.random() < profile.rhythmSwapChance) rhythm = pickRhythm(Math.random() < 0.56);
     }
-    await sleepMs(_randMs(760, 2600));
+    await sleepMs(_randMs(240, 820));
     const del = Math.max(3, Math.min(16, Math.floor(cut * (0.34 + Math.random() * 0.42))));
-    await backspaceMany(del, 90, 320);
+    await backspaceMany(del, 44, 170);
   }
 
   for (let i = revealed.length; i < text.length; i += 1) {
@@ -6535,9 +6536,9 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
         const suffixStart = (meta.end - deleteCount) + 1;
         const suffix = text.slice(suffixStart, meta.end + 1);
 
-        await sleepMs(_randMs(420, 1650));
-        await backspaceMany(deleteCount, 92, 340);
-        await sleepMs(_randMs(320, 1200));
+        await sleepMs(_randMs(140, 620));
+        await backspaceMany(deleteCount, 46, 180);
+        await sleepMs(_randMs(100, 420));
 
         for (let s = 0; s < suffix.length; s += 1) {
           const srcIdx = suffixStart + s;

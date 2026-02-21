@@ -3388,6 +3388,9 @@ body.light-mode .modal{
 .qp-setting-time{
   align-items: center;
 }
+.qp-setting-strictness{
+  align-items: center;
+}
 .qp-timer-mode{
   margin-left: auto;
 }
@@ -3429,6 +3432,28 @@ body.light-mode .modal{
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
+}
+.qp-setting-strictness.is-disabled{
+  opacity: 0.56;
+}
+.qp-strictness-wrap{
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 188px;
+}
+.qp-strictness-slider{
+  width: 148px;
+  accent-color: color-mix(in srgb, var(--qp-accent, var(--accent)) 88%, #fff 12%);
+}
+.qp-strictness-value{
+  min-width: 40px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--text);
 }
 .qp-setting-judges .setting-label{
   padding-left: 12px;
@@ -3607,6 +3632,26 @@ body.light-mode .modal{
   .qp-setting.qp-setting-toggle .toggle-switch{
     margin-left: auto;
     flex: 0 0 auto;
+  }
+  .qp-setting.qp-setting-strictness{
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .qp-setting.qp-setting-strictness .setting-label{
+    padding-top: 0;
+    padding-left: 0;
+  }
+  .qp-strictness-wrap{
+    min-width: 136px;
+    gap: 8px;
+  }
+  .qp-strictness-slider{
+    width: 104px;
+  }
+  .qp-strictness-value{
+    min-width: 34px;
+    font-size: 11px;
   }
   .qp-setting-judges .setting-label{ padding-left: 0; }
   .qp-judge-options{ padding-left: 0; }
@@ -4426,6 +4471,7 @@ body.light-mode .chat-meta{ color: var(--text); }
 #quick-settings-modal .qp-setting-judges{ gap: 6px; }
 #quick-settings-modal .qp-judge-options{ padding-left: 0; gap: 6px; }
 #quick-settings-modal .qp-judge-option{ min-height: 32px; padding: 7px 9px; }
+#quick-settings-modal .qp-strictness-slider{ width: 118px; }
 
 /* Deck picker: use a compact grid instead of a tall column list */
 #quick-settings-modal .qp-setting-deck{ gap: 8px; }
@@ -13975,6 +14021,120 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
   }
 }
 
+/* Custom AI judge rejection dialog */
+#system-dialog[data-variant="judge-feedback"] .confirm-dialog-card {
+  max-width: 520px;
+  padding: 24px 24px 18px;
+  text-align: left;
+  border-radius: 18px;
+  border: 1px solid rgba(251, 146, 60, 0.34);
+  background: linear-gradient(180deg, rgba(18, 21, 28, 0.98) 0%, rgba(12, 14, 20, 0.99) 100%);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(251, 146, 60, 0.14);
+}
+
+#system-dialog[data-variant="judge-feedback"] .confirm-dialog-icon {
+  margin: 0 0 14px;
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.22), rgba(239, 68, 68, 0.2));
+  border: 1px solid rgba(251, 146, 60, 0.35);
+  color: #ffcc99;
+}
+
+#system-dialog[data-variant="judge-feedback"] .confirm-dialog-title {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+#system-dialog[data-variant="judge-feedback"] .confirm-dialog-message {
+  margin: 0 0 16px;
+}
+
+#system-dialog[data-variant="judge-feedback"] .confirm-dialog-actions {
+  justify-content: flex-end;
+}
+
+#system-dialog[data-variant="judge-feedback"] .confirm-dialog-actions .btn {
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+
+.judge-feedback-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.judge-feedback-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #ffd8b0;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  background: rgba(251, 146, 60, 0.14);
+}
+
+.judge-feedback-copy {
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(236, 242, 249, 0.96);
+}
+
+.judge-feedback-note {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.94);
+}
+
+@media (max-width: 640px) {
+  #system-dialog[data-variant="judge-feedback"] .confirm-dialog-card {
+    max-width: min(94vw, 420px);
+    padding: 16px 14px 12px;
+    border-radius: 14px;
+  }
+  #system-dialog[data-variant="judge-feedback"] .confirm-dialog-icon {
+    width: 38px;
+    height: 38px;
+    margin-bottom: 10px;
+  }
+  #system-dialog[data-variant="judge-feedback"] .confirm-dialog-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  #system-dialog[data-variant="judge-feedback"] .confirm-dialog-title {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+  #system-dialog[data-variant="judge-feedback"] .confirm-dialog-message {
+    margin-bottom: 12px;
+  }
+  .judge-feedback-chip {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+  .judge-feedback-copy {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .judge-feedback-note {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  #system-dialog[data-variant="judge-feedback"] .confirm-dialog-actions .btn {
+    min-width: 110px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
 /* =========================
    Quick Play gate (live game chooser)
 ========================= */
@@ -23048,6 +23208,15 @@ body.cozy-mode .clue-form-expanded .btn.primary.clue-submit-check:hover {
   transform: scale(1.04);
 }
 
+body.og-mode .clue-form-expanded .btn.primary.clue-submit-check.clue-submit-loading,
+body.cozy-mode .clue-form-expanded .btn.primary.clue-submit-check.clue-submit-loading {
+  background: linear-gradient(180deg, #4b5563 0%, #334155 100%) !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
+  cursor: wait !important;
+  transform: none !important;
+  filter: none !important;
+}
+
 body.og-mode .clue-form-expanded .btn.primary.clue-submit-check::after,
 body.cozy-mode .clue-form-expanded .btn.primary.clue-submit-check::after {
   content: none !important;
@@ -23061,6 +23230,25 @@ body.cozy-mode .clue-form-expanded .btn.primary.clue-submit-check::after {
   font-weight: 900;
   line-height: 1;
   color: #ffffff;
+}
+
+.clue-submit-check-icon.is-loading {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.4px solid rgba(255, 255, 255, 0.36);
+  border-top-color: #ffffff;
+  border-right-color: #ffffff;
+  animation: clue-submit-spin 0.74s linear infinite;
+}
+
+#clue-form .btn.primary.clue-submit-loading {
+  cursor: wait;
+}
+
+@keyframes clue-submit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Override old mobile rule that stretches clue buttons full width. */
@@ -26543,6 +26731,9 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 #practice-page-settings-modal .qp-judge-option {
   min-height: 32px;
   padding: 7px 9px;
+}
+#practice-page-settings-modal .qp-strictness-slider {
+  width: 118px;
 }
 
 #practice-page-settings-modal .qp-neg-actions {

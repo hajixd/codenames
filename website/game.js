@@ -1181,8 +1181,9 @@ async function simulateLocalPracticeAISpymasterTyping(gameId, game, team, ai, fi
   const finalWord = _sanitizeOneWordTyping(finalClue);
   if (!finalWord) return;
   const finalNum = Number.isFinite(+finalNumber) ? Math.max(0, Math.min(9, parseInt(finalNumber, 10) || 0)) : 1;
-  const typeSpeed = () => 65 + Math.floor(Math.random() * 60);
-  const deleteSpeed = () => 45 + Math.floor(Math.random() * 50);
+  const typeSpeed = () => 34 + Math.floor(Math.random() * 52);
+  const deleteSpeed = () => 24 + Math.floor(Math.random() * 42);
+  const randUpper = () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
   const setDraft = (word, number) => {
     const w = word ? String(word).toUpperCase().slice(0, 40) : '';
     const payload = w ? {
@@ -1201,11 +1202,24 @@ async function simulateLocalPracticeAISpymasterTyping(gameId, game, team, ai, fi
     }, { skipAnimation: true });
     try { if (typeof renderClueArea === 'function') renderClueArea(); } catch (_) {}
   };
-  for (let i = 1; i <= finalWord.length; i++) {
-    setDraft(finalWord.slice(0, i), (i === finalWord.length) ? finalNum : null);
+  let draftWord = '';
+  for (let i = 0; i < finalWord.length; i += 1) {
+    const ch = finalWord[i];
+    const canTypo = i > 0 && i < (finalWord.length - 1);
+    if (canTypo && Math.random() < 0.22) {
+      draftWord += randUpper();
+      setDraft(draftWord, null);
+      await localPracticePause(typeSpeed());
+      draftWord = draftWord.slice(0, -1);
+      setDraft(draftWord || '', null);
+      await localPracticePause(deleteSpeed());
+    }
+    draftWord += ch;
+    const isLast = i === finalWord.length - 1;
+    setDraft(draftWord, isLast ? finalNum : null);
     await localPracticePause(typeSpeed());
   }
-  await localPracticePause(350);
+  await localPracticePause(180 + Math.floor(Math.random() * 180));
   setDraft('', null);
 }
 
@@ -1813,11 +1827,24 @@ function buildJudgeCouncilRuleLines(judgeMeta) {
   return getFallbackJudgeRulesetPromptLines(judgeMeta).map((line) => `- ${name}: ${line}`);
 }
 
+function normalizeAIJudgeStrictness(raw, fallback = 55) {
+  const parsed = Number(raw);
+  const base = Number.isFinite(parsed) ? parsed : Number(fallback);
+  if (!Number.isFinite(base)) return 55;
+  return Math.max(0, Math.min(100, Math.round(base)));
+}
+
 function sanitizeAIJudgeSettings(raw = {}) {
   const aiJudgesEnabled = raw?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled && (raw?.aiChallengeEnabled !== false);
   const enabledAIJudges = normalizeAIJudgeKeys(raw?.enabledAIJudges, getAIJudgeDefaultKeys());
-  return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges };
+  const aiJudgeStrictness = normalizeAIJudgeStrictness(raw?.aiJudgeStrictness, 55);
+  return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges, aiJudgeStrictness };
+}
+
+function getAIJudgeStrictness(game = currentGame) {
+  const settings = getQuickSettings(game);
+  return normalizeAIJudgeStrictness(settings?.aiJudgeStrictness, 55);
 }
 
 function getConfiguredAIJudgeKeysFromSettings(settings) {
@@ -1920,28 +1947,51 @@ function renderQuickAIJudgeOptions(selectedRaw = null) {
 function readQuickAIJudgeSettingsFromUI() {
   const enabledToggleEl = document.getElementById('qp-ai-judges-toggle');
   const challengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
+  const strictnessEl = document.getElementById('qp-ai-strictness');
   const aiJudgesEnabled = enabledToggleEl ? !!enabledToggleEl.checked : true;
   const aiChallengeEnabledRaw = challengeToggleEl ? !!challengeToggleEl.checked : true;
   const aiChallengeEnabled = aiJudgesEnabled ? aiChallengeEnabledRaw : false;
+  const aiJudgeStrictness = normalizeAIJudgeStrictness(strictnessEl?.value, 55);
   const selected = getQuickAIJudgeOptionInputs()
     .filter((el) => el.checked)
     .map((el) => String(el.getAttribute('data-ai-judge-key') || '').trim().toLowerCase())
     .filter(Boolean);
   const enabledAIJudges = normalizeAIJudgeKeys(selected, getAIJudgeDefaultKeys());
   if (aiJudgesEnabled && !selected.length) {
-    return { aiJudgesEnabled: true, aiChallengeEnabled, enabledAIJudges: getAIJudgeDefaultKeys() };
+    return {
+      aiJudgesEnabled: true,
+      aiChallengeEnabled,
+      enabledAIJudges: getAIJudgeDefaultKeys(),
+      aiJudgeStrictness,
+    };
   }
-  return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges };
+  return { aiJudgesEnabled, aiChallengeEnabled, enabledAIJudges, aiJudgeStrictness };
+}
+
+function updateQuickAIJudgeStrictnessLabel(raw) {
+  const val = normalizeAIJudgeStrictness(raw, 55);
+  const labelEl = document.getElementById('qp-ai-strictness-value');
+  if (labelEl) labelEl.textContent = `${val}%`;
+  const sliderEl = document.getElementById('qp-ai-strictness');
+  if (sliderEl) sliderEl.value = String(val);
+  return val;
 }
 
 function setQuickAIJudgePanelState(enabled) {
   const challengeRow = document.getElementById('qp-ai-challenge-row');
   const challengeToggle = document.getElementById('qp-ai-challenge-toggle');
+  const strictnessRow = document.getElementById('qp-ai-strictness-row');
+  const strictnessSlider = document.getElementById('qp-ai-strictness');
   if (challengeRow) {
     challengeRow.style.display = enabled ? 'flex' : 'none';
     challengeRow.classList.toggle('is-disabled', !enabled);
   }
   if (challengeToggle) challengeToggle.disabled = !enabled;
+  if (strictnessRow) {
+    strictnessRow.style.display = enabled ? 'flex' : 'none';
+    strictnessRow.classList.toggle('is-disabled', !enabled);
+  }
+  if (strictnessSlider) strictnessSlider.disabled = !enabled;
   const panel = document.getElementById('qp-ai-judges-panel');
   if (!panel) return;
   panel.style.display = enabled ? 'flex' : 'none';
@@ -2044,6 +2094,7 @@ function readQuickSettingsFromUI() {
     aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
     aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
     enabledAIJudges: judgeSettings.enabledAIJudges,
+    aiJudgeStrictness: judgeSettings.aiJudgeStrictness,
     deckId: "standard",// AI-driven words; fallback uses standard bank,
     vibe: vibe || '',
   };
@@ -2063,6 +2114,7 @@ function getQuickSettings(game) {
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
       aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
       enabledAIJudges: judgeSettings.enabledAIJudges,
+      aiJudgeStrictness: judgeSettings.aiJudgeStrictness,
       deckId: normalizeDeckId(base.deckId || 'standard'),
       vibe: String(base.vibe || ''),
     };
@@ -2080,6 +2132,7 @@ function getQuickSettings(game) {
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
       aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
       enabledAIJudges: judgeSettings.enabledAIJudges,
+      aiJudgeStrictness: judgeSettings.aiJudgeStrictness,
       deckId: normalizeDeckId(game?.deckId || practice.deckId || 'standard'),
       vibe: String(game?.vibe || practice.vibe || ''),
     };
@@ -2094,6 +2147,7 @@ function getQuickSettings(game) {
     aiJudgesEnabled: true,
     aiChallengeEnabled: true,
     enabledAIJudges: getAIJudgeDefaultKeys(),
+    aiJudgeStrictness: 55,
     deckId: 'standard',
     vibe: '',
   };
@@ -2250,17 +2304,19 @@ function formatQuickRules(settings) {
     aiJudgesEnabled: true,
     aiChallengeEnabled: true,
     enabledAIJudges: getAIJudgeDefaultKeys(),
+    aiJudgeStrictness: 55,
     vibe: ''
   };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
   const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
   const challengeStr = s.aiJudgesEnabled === false ? 'Off' : (s.aiChallengeEnabled === false ? 'Off' : 'On');
   const judgesStr = formatAIJudgeSettingsSummary(s);
+  const strictnessStr = s.aiJudgesEnabled === false ? 'Off' : `${normalizeAIJudgeStrictness(s.aiJudgeStrictness, 55)}%`;
   const timerMode = normalizeQuickTimerMode(s.timerMode);
   const timerStr = timerMode === 'team'
     ? `Team ${formatSeconds(s.teamTimerSeconds)}`
     : `Clue ${formatSeconds(s.clueTimerSeconds)} · Guess ${formatSeconds(s.guessTimerSeconds)}`;
-  return `Assassin: ${s.blackCards} · Timer: ${timerStr} (${timerMode === 'team' ? 'Per Team' : 'Per Turn'}) · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
+  return `Assassin: ${s.blackCards} · Timer: ${timerStr} (${timerMode === 'team' ? 'Per Team' : 'Per Turn'}) · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr} · Strictness: ${strictnessStr}${vibeStr}`;
 }
 
 
@@ -2927,6 +2983,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
   const enabledAIJudges = normalizeAIJudgeKeys(opts?.enabledAIJudges, getAIJudgeDefaultKeys());
+  const aiJudgeStrictness = normalizeAIJudgeStrictness(opts?.aiJudgeStrictness, 55);
   const quickSettings = {
     blackCards,
     clueTimerSeconds,
@@ -2937,6 +2994,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     aiJudgesEnabled,
     aiChallengeEnabled,
     enabledAIJudges,
+    aiJudgeStrictness,
     deckId,
     vibe,
   };
@@ -3041,6 +3099,7 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
       aiJudgesEnabled,
       aiChallengeEnabled,
       enabledAIJudges,
+      aiJudgeStrictness,
       deckId,
       vibe,
       openedAtMs: Date.now(),
@@ -3250,6 +3309,9 @@ function initGameUI() {
     const enabled = !!e?.currentTarget?.checked;
     if (enabled) ensureQuickAtLeastOneJudge();
     setQuickAIJudgePanelState(enabled);
+  });
+  document.getElementById('qp-ai-strictness')?.addEventListener('input', (e) => {
+    updateQuickAIJudgeStrictnessLabel(e?.currentTarget?.value);
   });
   document.querySelector('#qp-ai-judges-panel .qp-judge-options')?.addEventListener('change', (e) => {
     const target = e.target?.closest?.('input[type="checkbox"][data-ai-judge-key]');
@@ -3906,6 +3968,7 @@ function openQuickSettingsModal() {
   const stackingToggleEl = document.getElementById('qp-stacking-toggle');
   const aiJudgesToggleEl = document.getElementById('qp-ai-judges-toggle');
   const aiChallengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
+  const aiStrictnessEl = document.getElementById('qp-ai-strictness');
 
   if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
   setQuickTimerModeUI(s.timerMode || 'turn');
@@ -3916,6 +3979,8 @@ function openQuickSettingsModal() {
   const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, getAIJudgeDefaultKeys());
   if (aiJudgesToggleEl) aiJudgesToggleEl.checked = s.aiJudgesEnabled !== false;
   if (aiChallengeToggleEl) aiChallengeToggleEl.checked = s.aiChallengeEnabled !== false;
+  if (aiStrictnessEl) aiStrictnessEl.value = String(normalizeAIJudgeStrictness(s.aiJudgeStrictness, 55));
+  updateQuickAIJudgeStrictnessLabel(s.aiJudgeStrictness);
   renderQuickAIJudgeOptions(judgeKeys);
   if (aiJudgesToggleEl?.checked) ensureQuickAtLeastOneJudge();
   setQuickAIJudgePanelState(!!aiJudgesToggleEl?.checked);
@@ -4409,6 +4474,7 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
       aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
       aiChallengeEnabled: judgeSettings.aiChallengeEnabled,
       enabledAIJudges: judgeSettings.enabledAIJudges,
+      aiJudgeStrictness: judgeSettings.aiJudgeStrictness,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
       vibe: settings.vibe || '',
     },
@@ -4452,6 +4518,7 @@ async function ensureQuickPlayGameExists() {
         aiJudgesEnabled: true,
         aiChallengeEnabled: true,
         enabledAIJudges: getAIJudgeDefaultKeys(),
+        aiJudgeStrictness: 55,
         deckId: 'standard',
         vibe: '',
       };
@@ -4501,6 +4568,10 @@ async function ensureQuickPlayGameExists() {
       }
       if (next.aiChallengeEnabled !== normalized.aiChallengeEnabled) {
         next.aiChallengeEnabled = normalized.aiChallengeEnabled;
+        changed = true;
+      }
+      if (next.aiJudgeStrictness !== normalized.aiJudgeStrictness) {
+        next.aiJudgeStrictness = normalized.aiJudgeStrictness;
         changed = true;
       }
       const normSig = normalized.enabledAIJudges.join('|');
@@ -4805,6 +4876,7 @@ async function maybeAutoStartQuickPlay(game) {
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
     aiChallengeEnabled: s0.aiChallengeEnabled !== false,
     enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
+    aiJudgeStrictness: normalizeAIJudgeStrictness(s0.aiJudgeStrictness, 55),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -4838,6 +4910,7 @@ async function maybeAutoStartQuickPlay(game) {
         aiJudgesEnabled: s.aiJudgesEnabled !== false,
         aiChallengeEnabled: s.aiChallengeEnabled !== false,
         enabledAIJudges: normalizeAIJudgeKeys(s.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
+        aiJudgeStrictness: normalizeAIJudgeStrictness(s.aiJudgeStrictness, 55),
         deckId: String(s.deckId || 'standard'),
         vibe: String(s.vibe || '').trim(),
       });
@@ -4918,6 +4991,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
     aiJudgesEnabled: s0.aiJudgesEnabled !== false,
     aiChallengeEnabled: s0.aiChallengeEnabled !== false,
     enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
+    aiJudgeStrictness: normalizeAIJudgeStrictness(s0.aiJudgeStrictness, 55),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -4952,6 +5026,7 @@ window.startQuickGame = async function startQuickGame(gameId) {
         aiJudgesEnabled: qs.aiJudgesEnabled !== false,
         aiChallengeEnabled: qs.aiChallengeEnabled !== false,
         enabledAIJudges: normalizeAIJudgeKeys(qs.enabledAIJudges, getAIJudgeDefaultKeys()).join(','),
+        aiJudgeStrictness: normalizeAIJudgeStrictness(qs.aiJudgeStrictness, 55),
         deckId: String(qs.deckId || 'standard'),
         vibe: String(qs.vibe || '').trim(),
       });
@@ -6364,6 +6439,43 @@ function isMobileLayoutLike() {
   }
 }
 
+function applyClueSubmitLoadingState(submitBtn, loading) {
+  if (!submitBtn) return;
+  const isLoading = !!loading;
+  const isIconMode = submitBtn.dataset.iconMode === '1' || submitBtn.classList.contains('clue-submit-check');
+  submitBtn.classList.toggle('clue-submit-loading', isLoading);
+  if (isLoading) submitBtn.setAttribute('aria-busy', 'true');
+  else submitBtn.removeAttribute('aria-busy');
+
+  if (isIconMode) {
+    let icon = submitBtn.querySelector('.clue-submit-check-icon');
+    if (!icon) {
+      icon = document.createElement('span');
+      icon.className = 'clue-submit-check-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      submitBtn.appendChild(icon);
+    }
+    icon.classList.toggle('is-loading', isLoading);
+    icon.textContent = isLoading ? '' : '✓';
+    return;
+  }
+
+  if (isLoading) {
+    if (!submitBtn.dataset.defaultLabel) submitBtn.dataset.defaultLabel = submitBtn.textContent || 'Give Clue';
+    submitBtn.textContent = 'Checking…';
+    return;
+  }
+
+  const defaultLabel = submitBtn.dataset.defaultLabel || 'Give Clue';
+  submitBtn.textContent = defaultLabel;
+}
+
+function setClueSubmitLoadingState(loading) {
+  _clueSubmitLoadingUi = !!loading;
+  const submitBtn = document.querySelector('#clue-form button[type="submit"]');
+  applyClueSubmitLoadingState(submitBtn, _clueSubmitLoadingUi);
+}
+
 function syncClueSubmitButtonAppearance() {
   const form = document.getElementById('clue-form');
   const submitBtn = form?.querySelector('button[type="submit"]');
@@ -6383,6 +6495,7 @@ function syncClueSubmitButtonAppearance() {
       submitBtn.appendChild(icon);
       submitBtn.dataset.iconMode = '1';
     }
+    applyClueSubmitLoadingState(submitBtn, _clueSubmitLoadingUi);
     return;
   }
 
@@ -6390,9 +6503,9 @@ function syncClueSubmitButtonAppearance() {
   submitBtn.removeAttribute('title');
   submitBtn.removeAttribute('aria-label');
   if (submitBtn.dataset.iconMode === '1') {
-    submitBtn.textContent = 'Give Clue';
     submitBtn.dataset.iconMode = '0';
   }
+  applyClueSubmitLoadingState(submitBtn, _clueSubmitLoadingUi);
 }
 
 // Settings modal: show/hide in-game actions when a user is inside a game.
@@ -8043,14 +8156,27 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
   return true;
 }
 
-function buildJudgeSystemPrompt(judgeMeta) {
+function getJudgeStrictnessPromptLine(strictnessRaw) {
+  const strictness = normalizeAIJudgeStrictness(strictnessRaw, 55);
+  if (strictness >= 75) {
+    return `Strictness: ${strictness}/100 (high). If legality is uncertain, prefer ILLEGAL.`;
+  }
+  if (strictness <= 30) {
+    return `Strictness: ${strictness}/100 (low). If legality is uncertain, prefer LEGAL unless the violation is clear.`;
+  }
+  return `Strictness: ${strictness}/100 (balanced). Reject clear violations; allow when not clearly illegal.`;
+}
+
+function buildJudgeSystemPrompt(judgeMeta, strictnessRaw = 55) {
   const name = String(judgeMeta?.name || 'Judge').trim() || 'Judge';
+  const strictnessLine = getJudgeStrictnessPromptLine(strictnessRaw);
   const customRules = buildJudgeRulesetPromptLines(judgeMeta?.key);
   const fallbackRules = getFallbackJudgeRulesetPromptLines(judgeMeta).map((line) => `- ${line}`);
   if (customRules.length) {
     return [
       `You are ${name}.`,
       'Judge ONLY legality, not clue quality.',
+      strictnessLine,
       'Apply this judge rulebook:',
       ...customRules,
       '- Clue number must be an integer from 0 to 9.',
@@ -8061,6 +8187,7 @@ function buildJudgeSystemPrompt(judgeMeta) {
   return [
     `You are ${name}.`,
     'Judge ONLY legality, not clue quality.',
+    strictnessLine,
     'Apply this judge rulebook:',
     ...fallbackRules,
     '- Clue number must be an integer from 0 to 9.',
@@ -8072,6 +8199,7 @@ function buildJudgeSystemPrompt(judgeMeta) {
 async function judgePendingClueWithAI(game, pending, baseline, judgeMeta) {
   const judge = judgeMeta || getDefaultAIJudgeMeta() || { key: 'merry', name: 'Judge Merry' };
   const judgeName = String(judge.name || 'Judge').trim() || 'Judge';
+  const strictness = getAIJudgeStrictness(game);
   const chatFn = window.aiChatCompletion;
   if (typeof chatFn !== 'function') {
     return {
@@ -8085,7 +8213,7 @@ async function judgePendingClueWithAI(game, pending, baseline, judgeMeta) {
   const boardWords = (game?.cards || [])
     .map((c) => String(c?.word || '').trim().toUpperCase())
     .filter(Boolean);
-  const system = buildJudgeSystemPrompt(judge);
+  const system = buildJudgeSystemPrompt(judge, strictness);
 
   const user = [
     `CLUE: "${pending.word}"`,
@@ -9441,6 +9569,46 @@ async function selectRole(role) {
 /* =========================
    Clue Giving
 ========================= */
+function splitJudgeReason(reasonRaw = '') {
+  const text = String(reasonRaw || '').trim();
+  if (!text) return { judge: '', reason: 'This clue breaks an active judge rule.' };
+  const parts = text.split(':');
+  if (parts.length >= 2) {
+    const first = String(parts.shift() || '').trim();
+    const rest = String(parts.join(':') || '').trim();
+    const looksLikeJudge = /judge|council|merry|vlaada/i.test(first);
+    if (looksLikeJudge && first && rest) return { judge: first, reason: rest };
+  }
+  return { judge: '', reason: text };
+}
+
+async function showJudgeFeedbackDialog(reasonRaw = '', opts = {}) {
+  const parsed = splitJudgeReason(reasonRaw);
+  const title = String(opts.title || 'Clue Rejected').trim() || 'Clue Rejected';
+  const okText = String(opts.okText || 'Try Again').trim() || 'Try Again';
+  const judgeName = parsed.judge || 'Judge Council';
+  const reason = parsed.reason || 'This clue breaks an active judge rule.';
+  const html = `
+    <div class="judge-feedback-dialog">
+      <div class="judge-feedback-chip">${_escapeJudgeHtml(judgeName)}</div>
+      <div class="judge-feedback-copy">${_escapeJudgeHtml(reason)}</div>
+      <p class="judge-feedback-note">Submit a new clue that avoids this rule conflict.</p>
+    </div>
+  `;
+
+  if (typeof showSystemDialog === 'function') {
+    await showSystemDialog({
+      title,
+      messageHtml: html,
+      okText,
+      variant: 'judge-feedback',
+    });
+    return;
+  }
+
+  console.warn('System dialog unavailable for judge feedback.');
+}
+
 async function handleClueSubmit(e) {
   e.preventDefault();
 
@@ -9487,6 +9655,8 @@ async function handleClueSubmit(e) {
   // Prevent double-submission (rapid double-click / double Enter)
   if (_processingClue) return;
   _processingClue = true;
+  const immediateJudgeGate = shouldUseImmediateAIJudgeGate(currentGame);
+  setClueSubmitLoadingState(immediateJudgeGate);
   if (submitBtn) submitBtn.disabled = true;
   try {
     const result = await submitClueForReviewFlow({
@@ -9500,11 +9670,20 @@ async function handleClueSubmit(e) {
     });
 
     if (result?.rejected) {
-      alert(result.reason || 'Clue rejected by AI judge rules. Try another clue.');
+      await showJudgeFeedbackDialog(result.reason || 'Clue rejected by judge rules.', {
+        title: 'Judge Ruling',
+        okText: 'Try Again',
+      });
       return;
     }
     if (result?.retry) {
-      alert(result.reason || 'Rules changed while reviewing. Submit the clue again.');
+      if (typeof showSystemDialog === 'function') {
+        await showSystemDialog({
+          title: 'Review Updated',
+          message: result.reason || 'Rules changed while reviewing. Submit the clue again.',
+          okText: 'OK',
+        });
+      }
       return;
     }
     if (!(result?.accepted || result?.pending)) return;
@@ -9520,6 +9699,7 @@ async function handleClueSubmit(e) {
   } catch (e) {
     console.error('Failed to give clue:', e);
   } finally {
+    setClueSubmitLoadingState(false);
     if (submitBtn) submitBtn.disabled = false;
     _processingClue = false;
   }
@@ -10245,6 +10425,7 @@ let revealedPeekCardIndex = null; // one revealed card can be "stood up" at a ti
 let activeTagMode = null; // retired marker mode
 let _processingGuess = false; // Guard against concurrent handleCardClick calls
 let _processingClue = false; // Guard against concurrent giveClue calls
+let _clueSubmitLoadingUi = false;
 let _clueDraftSyncTimer = null;
 let _clueDraftSyncInFlight = false;
 let _lastSentClueDraftSig = '';

@@ -11655,7 +11655,9 @@ function showSystemDialog(options = {}) {
   const {
     title = 'Notice',
     message = '',
+    messageHtml = '',
     okText = 'OK',
+    variant = '',
   } = options;
 
   return new Promise((resolve) => {
@@ -11665,10 +11667,23 @@ function showSystemDialog(options = {}) {
     const titleEl = document.getElementById('system-dialog-title');
     const messageEl = document.getElementById('system-dialog-message');
     const okBtn = document.getElementById('system-dialog-ok');
+    const iconEl = dialog?.querySelector?.('.confirm-dialog-icon') || null;
+    const variantKey = String(variant || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
 
     if (titleEl) titleEl.textContent = title;
-    if (messageEl) messageEl.textContent = message;
+    if (messageEl) {
+      if (String(messageHtml || '').trim()) messageEl.innerHTML = String(messageHtml);
+      else messageEl.textContent = message;
+    }
     if (okBtn) okBtn.textContent = okText;
+    if (dialog) {
+      if (variantKey) dialog.setAttribute('data-variant', variantKey);
+      else dialog.removeAttribute('data-variant');
+    }
+    if (iconEl) {
+      if (variantKey) iconEl.setAttribute('data-variant', variantKey);
+      else iconEl.removeAttribute('data-variant');
+    }
 
     backdrop?.classList.remove('hidden');
     dialog?.classList.remove('hidden');
@@ -11679,8 +11694,11 @@ function showSystemDialog(options = {}) {
 function hideSystemDialog() {
   const backdrop = document.getElementById('system-dialog-backdrop');
   const dialog = document.getElementById('system-dialog');
+  const iconEl = dialog?.querySelector?.('.confirm-dialog-icon') || null;
   backdrop?.classList.add('hidden');
   dialog?.classList.add('hidden');
+  dialog?.removeAttribute('data-variant');
+  iconEl?.removeAttribute('data-variant');
   if (systemDialogResolve) {
     systemDialogResolve(true);
     systemDialogResolve = null;
@@ -13010,6 +13028,10 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const stackingEnabled = opts?.stackingEnabled !== false;
   const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
   const aiChallengeEnabled = aiJudgesEnabled ? (opts?.aiChallengeEnabled !== false) : false;
+  const aiJudgeStrictnessRaw = parseInt(opts?.aiJudgeStrictness, 10);
+  const aiJudgeStrictness = Number.isFinite(aiJudgeStrictnessRaw)
+    ? Math.max(0, Math.min(100, aiJudgeStrictnessRaw))
+    : 55;
   const rawJudgeKeys = Array.isArray(opts?.enabledAIJudges) ? opts.enabledAIJudges : [];
   const judgeCatalog = (typeof getAIJudgeCatalog === 'function') ? getAIJudgeCatalog() : [];
   const validJudgeKeys = new Set(
@@ -13038,7 +13060,8 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
     stackingEnabled,
     aiJudgesEnabled,
     aiChallengeEnabled,
-    enabledAIJudges
+    enabledAIJudges,
+    aiJudgeStrictness,
   });
   openPracticeGameInApp(gameId);
   return gameId;
@@ -13080,6 +13103,9 @@ function initPracticePage() {
   const settingsAiJudgesToggleEl = document.getElementById('practice-page-ai-judges-toggle');
   const settingsAiChallengeRowEl = document.getElementById('practice-page-ai-challenge-row');
   const settingsAiChallengeToggleEl = document.getElementById('practice-page-ai-challenge-toggle');
+  const settingsAiStrictnessRowEl = document.getElementById('practice-page-ai-strictness-row');
+  const settingsAiStrictnessEl = document.getElementById('practice-page-ai-strictness');
+  const settingsAiStrictnessValueEl = document.getElementById('practice-page-ai-strictness-value');
   const settingsAiJudgesPanelEl = document.getElementById('practice-page-ai-judges-panel');
   const settingsAiJudgeOptionsEl = settingsAiJudgesPanelEl?.querySelector?.('.qp-judge-options') || null;
 
@@ -13097,7 +13123,8 @@ function initPracticePage() {
       stackingEnabled: true,
       aiJudgesEnabled: true,
       aiChallengeEnabled: true,
-      enabledAIJudges: []
+      enabledAIJudges: [],
+      aiJudgeStrictness: 55,
     }
   };
 
@@ -13204,6 +13231,11 @@ function initPracticePage() {
       settingsAiChallengeRowEl.classList.toggle('is-disabled', !enabled);
     }
     if (settingsAiChallengeToggleEl) settingsAiChallengeToggleEl.disabled = !enabled;
+    if (settingsAiStrictnessRowEl) {
+      settingsAiStrictnessRowEl.style.display = enabled ? 'flex' : 'none';
+      settingsAiStrictnessRowEl.classList.toggle('is-disabled', !enabled);
+    }
+    if (settingsAiStrictnessEl) settingsAiStrictnessEl.disabled = !enabled;
     if (settingsAiJudgesPanelEl) {
       settingsAiJudgesPanelEl.style.display = enabled ? 'flex' : 'none';
       settingsAiJudgesPanelEl.classList.toggle('is-disabled', !enabled);
@@ -13226,6 +13258,17 @@ function initPracticePage() {
     const n = parseInt(value, 10);
     if (!Number.isFinite(n)) return fallback;
     return Math.max(min, Math.min(max, n));
+  };
+  const normalizeStrictness = (value, fallback = 55) => {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(100, n));
+  };
+  const syncStrictnessLabel = (value) => {
+    const normalized = normalizeStrictness(value, 55);
+    if (settingsAiStrictnessEl) settingsAiStrictnessEl.value = String(normalized);
+    if (settingsAiStrictnessValueEl) settingsAiStrictnessValueEl.textContent = `${normalized}%`;
+    return normalized;
   };
 
   const normalizeTimerMode = (raw) => String(raw || '').trim().toLowerCase() === 'team' ? 'team' : 'turn';
@@ -13270,12 +13313,13 @@ function initPracticePage() {
       ? 'Off'
       : (s.aiChallengeEnabled === false ? 'Off' : 'On');
     const judgesStr = formatJudgeSummary(s);
+    const strictnessStr = s.aiJudgesEnabled === false ? 'Off' : `${normalizeStrictness(s.aiJudgeStrictness, 55)}%`;
     const timerMode = normalizeTimerMode(s.timerMode);
     const timerStr = timerMode === 'team'
       ? `Team: ${formatSeconds(s.teamTimerSeconds)}`
       : `Turn: Clue ${formatSeconds(s.clueTimerSeconds)} · Guess ${formatSeconds(s.guessTimerSeconds)}`;
     const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-    return `Rules: Assassin: ${s.blackCards} · Timer: ${timerStr} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr}${vibeStr}`;
+    return `Rules: Assassin: ${s.blackCards} · Timer: ${timerStr} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr} · Strictness: ${strictnessStr}${vibeStr}`;
   };
 
   const setTimerModeUi = (modeRaw) => {
@@ -13305,6 +13349,7 @@ function initPracticePage() {
     if (settingsStackingToggleEl) settingsStackingToggleEl.checked = state.settings.stackingEnabled !== false;
     if (settingsAiJudgesToggleEl) settingsAiJudgesToggleEl.checked = state.settings.aiJudgesEnabled !== false;
     if (settingsAiChallengeToggleEl) settingsAiChallengeToggleEl.checked = state.settings.aiChallengeEnabled !== false;
+    syncStrictnessLabel(state.settings.aiJudgeStrictness);
     const judgeKeys = normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys());
     const selected = renderJudgeOptions(judgeKeys);
     state.settings.enabledAIJudges = selected.length ? [...selected] : getDefaultJudgeKeys();
@@ -13324,6 +13369,8 @@ function initPracticePage() {
     state.settings.aiChallengeEnabled = state.settings.aiJudgesEnabled
       ? !!settingsAiChallengeToggleEl?.checked
       : false;
+    state.settings.aiJudgeStrictness = normalizeStrictness(settingsAiStrictnessEl?.value, state.settings.aiJudgeStrictness || 55);
+    syncStrictnessLabel(state.settings.aiJudgeStrictness);
     const chosen = getSelectedJudgeKeysFromModal();
     state.settings.enabledAIJudges = normalizeJudgeKeys(chosen, state.settings.enabledAIJudges);
   };
@@ -13412,7 +13459,8 @@ function initPracticePage() {
         stackingEnabled: state.settings.stackingEnabled !== false,
         aiJudgesEnabled: state.settings.aiJudgesEnabled !== false,
         aiChallengeEnabled: state.settings.aiChallengeEnabled !== false,
-        enabledAIJudges: normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys())
+        enabledAIJudges: normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys()),
+        aiJudgeStrictness: normalizeStrictness(state.settings.aiJudgeStrictness, 55),
       }, hintEl);
     } catch (e) {
       console.error(e);
@@ -13445,6 +13493,9 @@ function initPracticePage() {
     const target = e.target?.closest?.('input[type="checkbox"][data-ai-judge-key]');
     if (!target) return;
     enforceAtLeastOneJudge(target);
+  });
+  settingsAiStrictnessEl?.addEventListener('input', () => {
+    syncStrictnessLabel(settingsAiStrictnessEl.value);
   });
   window.addEventListener('codenames:judge-catalog-updated', () => {
     state.settings.enabledAIJudges = normalizeJudgeKeys(state.settings.enabledAIJudges, getDefaultJudgeKeys());

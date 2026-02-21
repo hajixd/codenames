@@ -570,6 +570,13 @@
                     <span class="toggle-slider"></span>
                   </div>
                 </label>
+                <label class="setting-row qp-setting qp-setting-strictness" data-accent="judges" id="practice-page-ai-strictness-row">
+                  <span class="setting-label">Judge strictness</span>
+                  <div class="qp-strictness-wrap">
+                    <input class="qp-strictness-slider" id="practice-page-ai-strictness" type="range" min="0" max="100" step="1" value="55" aria-label="Practice judge strictness" />
+                    <span class="qp-strictness-value" id="practice-page-ai-strictness-value">55%</span>
+                  </div>
+                </label>
                 <div class="setting-row qp-setting qp-setting-judges" data-accent="judges" id="practice-page-ai-judges-panel">
                   <span class="setting-label">Active AI Judges</span>
                   <div class="qp-judge-options">
@@ -1128,6 +1135,13 @@
                           <div class="toggle-switch">
                             <input type="checkbox" id="qp-ai-challenge-toggle" checked />
                             <span class="toggle-slider"></span>
+                          </div>
+                        </label>
+                        <label class="setting-row qp-setting qp-setting-strictness" data-accent="judges" id="qp-ai-strictness-row">
+                          <span class="setting-label">Judge strictness</span>
+                          <div class="qp-strictness-wrap">
+                            <input class="qp-strictness-slider" id="qp-ai-strictness" type="range" min="0" max="100" step="1" value="55" aria-label="Judge strictness" />
+                            <span class="qp-strictness-value" id="qp-ai-strictness-value">55%</span>
                           </div>
                         </label>
                         <div class="setting-row qp-setting qp-setting-judges" data-accent="judges" id="qp-ai-judges-panel">
