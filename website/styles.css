@@ -26245,3 +26245,54 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     display: none !important;
   }
 }
+
+/* Mobile final pass (force winner against earlier overlap/spacing rules) */
+@media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
+    padding-top: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-topbar {
+    margin-top: -6px !important;
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip {
+    margin: 0 10px 2px !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) #og-mobile-panels {
+    margin-top: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
+    margin-top: calc(clamp(34px, 6.4vh, 76px) + var(--og-mobile-overlap-extra, 0px)) !important;
+    margin-bottom: clamp(4px, 1vh, 10px) !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    margin-top: -2px !important;
+    padding: 3px 8px !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .clue-display-expanded {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .operative-actions-expanded {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    margin-left: 0 !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
+    white-space: nowrap !important;
+  }
+}
