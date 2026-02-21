@@ -23340,7 +23340,7 @@ body:is(.og-mode, .cozy-mode) .operative-actions-expanded.clue-team-blue .btn {
   }
 
   body:is(.og-mode, .cozy-mode) .panel-game.game-active .panel-inner {
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
 
   body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
@@ -26111,6 +26111,12 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final pass: bottom docking + mobile turn strip + clue readability + compositor stability */
 @media (min-width: 1025px) {
+  /* Critical: anchor the whole game container to the bottom of the panel.
+     Without this, shorter non-stacking states sit higher and leave a gap. */
+  body:is(.og-mode, .cozy-mode) .panel-game.game-active .panel-inner {
+    justify-content: flex-end !important;
+  }
+
   /* Keep bottom docking consistent in BOTH stacking on/off and all turn phases. */
   body:is(.og-mode, .cozy-mode) .game-center-area .game-action-bar {
     margin-top: auto !important;
