@@ -3184,6 +3184,7 @@ body.light-mode .modal{
 .qp-setting[data-accent="guess"]{ --qp-accent: rgba(20,184,166,0.95); }
 .qp-setting[data-accent="deck"]{ --qp-accent: rgba(59,130,246,0.95); }
 .qp-setting[data-accent="vibe"]{ --qp-accent: rgba(236,153,75,0.95); }
+.qp-setting[data-accent="judges"]{ --qp-accent: rgba(245, 158, 11, 0.95); }
 
 .qp-setting .setting-input{
   background: var(--surface2);
@@ -3265,6 +3266,43 @@ body.light-mode .modal{
 }
 .qp-setting .setting-select{
   min-width: 170px;
+}
+.qp-setting-judges{
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.qp-setting-judges .setting-label{
+  padding-left: 12px;
+}
+.qp-setting-judges.is-disabled{
+  opacity: 0.56;
+}
+.qp-judge-options{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding-left: 12px;
+}
+.qp-judge-option{
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+.qp-judge-option input[type="checkbox"]{
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: color-mix(in srgb, var(--qp-accent, var(--accent)) 85%, #fff 15%);
 }
 
 /* Quick Play negotiation (offer / accept) */
@@ -3379,6 +3417,8 @@ body.light-mode .modal{
   .qp-setting{ flex-direction: column; align-items: stretch; }
   .qp-setting .setting-select{ width: 100%; min-width: 0; }
   .qp-setting .setting-label{ padding-left: 0; padding-top: 10px; }
+  .qp-setting-judges .setting-label{ padding-left: 0; }
+  .qp-judge-options{ padding-left: 0; }
 }
 
 .setting-row {
@@ -4182,6 +4222,9 @@ body.light-mode .chat-meta{ color: var(--text); }
 /* Make Quick Play settings less tall (fit more above the fold) */
 #quick-settings-modal .qp-settings-grid{ gap: 6px; }
 #quick-settings-modal .qp-setting{ padding: 10px 10px; border-radius: 14px; }
+#quick-settings-modal .qp-setting-judges{ gap: 6px; }
+#quick-settings-modal .qp-judge-options{ padding-left: 0; gap: 6px; }
+#quick-settings-modal .qp-judge-option{ min-height: 32px; padding: 7px 9px; }
 
 /* Deck picker: use a compact grid instead of a tall column list */
 #quick-settings-modal .qp-setting-deck{ gap: 8px; }
@@ -25258,6 +25301,17 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 #practice-page-settings-modal .qp-setting {
   padding: 10px 10px;
   border-radius: 14px;
+}
+#practice-page-settings-modal .qp-setting-judges {
+  gap: 6px;
+}
+#practice-page-settings-modal .qp-judge-options {
+  padding-left: 0;
+  gap: 6px;
+}
+#practice-page-settings-modal .qp-judge-option {
+  min-height: 32px;
+  padding: 7px 9px;
 }
 
 #practice-page-settings-modal .qp-neg-actions {

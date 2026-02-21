@@ -1483,18 +1483,128 @@ window.hasLocalPracticeGame = function hasLocalPracticeGame(gameId) {
 window.isPracticeGameActive = () => !!(currentGame && currentGame.type === 'practice');
 
 // Quick Play settings / negotiation
+const AI_JUDGE_DEFS = Object.freeze([
+  { key: 'merry', name: 'AI Judge Merry', shortName: 'Merry', initial: 'M' },
+  { key: 'vlaada', name: 'AI Judge Vlaada Chvátil', shortName: 'Vlaada', initial: 'V' },
+]);
+const AI_JUDGE_DEFAULT_KEYS = Object.freeze(['merry']);
+const _aiJudgeByKey = Object.freeze(
+  AI_JUDGE_DEFS.reduce((acc, def) => {
+    acc[def.key] = def;
+    return acc;
+  }, {})
+);
+
+function normalizeAIJudgeKeys(raw, fallback = AI_JUDGE_DEFAULT_KEYS) {
+  const src = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const item of src) {
+    const key = String(item || '').trim().toLowerCase();
+    if (_aiJudgeByKey[key] && !out.includes(key)) out.push(key);
+  }
+  if (out.length) return out;
+  const fb = Array.isArray(fallback) ? fallback : AI_JUDGE_DEFAULT_KEYS;
+  return fb
+    .map((k) => String(k || '').trim().toLowerCase())
+    .filter((k, idx, arr) => _aiJudgeByKey[k] && arr.indexOf(k) === idx);
+}
+
+function getAIJudgeMeta(key) {
+  const k = String(key || '').trim().toLowerCase();
+  return _aiJudgeByKey[k] || null;
+}
+
+function sanitizeAIJudgeSettings(raw = {}) {
+  const aiJudgesEnabled = raw?.aiJudgesEnabled !== false;
+  const enabledAIJudges = normalizeAIJudgeKeys(raw?.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
+  return { aiJudgesEnabled, enabledAIJudges };
+}
+
+function getConfiguredAIJudgeKeysFromSettings(settings) {
+  const normalized = sanitizeAIJudgeSettings(settings || {});
+  if (!normalized.aiJudgesEnabled) return [];
+  return normalizeAIJudgeKeys(normalized.enabledAIJudges, []);
+}
+
+function getConfiguredAIJudgeRoster(game = currentGame) {
+  const settings = getQuickSettings(game);
+  const keys = getConfiguredAIJudgeKeysFromSettings(settings);
+  return keys.map((k) => getAIJudgeMeta(k)).filter(Boolean);
+}
+
+function isAIJudgingEnabledForGame(game = currentGame) {
+  return getConfiguredAIJudgeRoster(game).length > 0;
+}
+
+function formatAIJudgeSettingsSummary(settings) {
+  const keys = getConfiguredAIJudgeKeysFromSettings(settings || {});
+  if (!keys.length) return 'Off';
+  return keys.map((k) => getAIJudgeMeta(k)?.shortName || k).join('+');
+}
+
+function getAIJudgeReviewDisplayName(game = currentGame) {
+  const roster = getConfiguredAIJudgeRoster(game);
+  if (roster.length === 1) return roster[0].name;
+  return 'AI Judges';
+}
+
+function getAIJudgeReviewWaitingText(game = currentGame) {
+  const roster = getConfiguredAIJudgeRoster(game);
+  if (roster.length === 1) return `${roster[0].name} verdict…`;
+  if (roster.length > 1) return 'AI judges verdict…';
+  return 'clue review…';
+}
+
+function readQuickAIJudgeSettingsFromUI() {
+  const enabledToggleEl = document.getElementById('qp-ai-judges-toggle');
+  const merryEl = document.getElementById('qp-ai-judge-merry');
+  const vlaadaEl = document.getElementById('qp-ai-judge-vlaada');
+  const aiJudgesEnabled = enabledToggleEl ? !!enabledToggleEl.checked : true;
+  const selected = [];
+  if (merryEl?.checked) selected.push('merry');
+  if (vlaadaEl?.checked) selected.push('vlaada');
+  const enabledAIJudges = normalizeAIJudgeKeys(selected, AI_JUDGE_DEFAULT_KEYS);
+  if (aiJudgesEnabled && !selected.length) {
+    return { aiJudgesEnabled: true, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS] };
+  }
+  return { aiJudgesEnabled, enabledAIJudges };
+}
+
+function setQuickAIJudgePanelState(enabled) {
+  const panel = document.getElementById('qp-ai-judges-panel');
+  if (!panel) return;
+  panel.style.display = enabled ? 'flex' : 'none';
+  panel.classList.toggle('is-disabled', !enabled);
+}
+
+function ensureQuickAtLeastOneJudge(changedEl = null) {
+  const enabled = !!document.getElementById('qp-ai-judges-toggle')?.checked;
+  if (!enabled) return;
+  const all = [
+    document.getElementById('qp-ai-judge-merry'),
+    document.getElementById('qp-ai-judge-vlaada'),
+  ].filter(Boolean);
+  const checked = all.filter((el) => el.checked);
+  if (checked.length) return;
+  if (changedEl && typeof changedEl.checked === 'boolean') changedEl.checked = true;
+  else if (all[0]) all[0].checked = true;
+}
+
 function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
   const clueTimerSeconds = parseInt(document.getElementById('qp-clue-timer')?.value || '0', 10);
   const guessTimerSeconds = parseInt(document.getElementById('qp-guess-timer')?.value || '0', 10);
   const stackingToggle = document.getElementById('qp-stacking-toggle');
   const stackingEnabled = stackingToggle ? !!stackingToggle.checked : true;
+  const judgeSettings = readQuickAIJudgeSettingsFromUI();
   const vibe = String(document.getElementById('qp-vibe')?.value || '').trim();
   return {
     blackCards: Number.isFinite(blackCards) ? blackCards : 1,
     clueTimerSeconds: Number.isFinite(clueTimerSeconds) ? clueTimerSeconds : 0,
     guessTimerSeconds: Number.isFinite(guessTimerSeconds) ? guessTimerSeconds : 0,
     stackingEnabled,
+    aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+    enabledAIJudges: judgeSettings.enabledAIJudges,
     deckId: "standard",// AI-driven words; fallback uses standard bank,
     vibe: vibe || '',
   };
@@ -1503,22 +1613,28 @@ function readQuickSettingsFromUI() {
 function getQuickSettings(game) {
   const base = game?.quickSettings || null;
   if (base && typeof base === 'object') {
+    const judgeSettings = sanitizeAIJudgeSettings(base);
     return {
       blackCards: Number.isFinite(+base.blackCards) ? +base.blackCards : 1,
       clueTimerSeconds: Number.isFinite(+base.clueTimerSeconds) ? +base.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+base.guessTimerSeconds) ? +base.guessTimerSeconds : 0,
       stackingEnabled: base.stackingEnabled !== false,
+      aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+      enabledAIJudges: judgeSettings.enabledAIJudges,
       deckId: normalizeDeckId(base.deckId || 'standard'),
       vibe: String(base.vibe || ''),
     };
   }
   if (String(game?.type || '') === 'practice') {
     const practice = (game?.practice && typeof game.practice === 'object') ? game.practice : {};
+    const judgeSettings = sanitizeAIJudgeSettings(practice);
     return {
       blackCards: Number.isFinite(+practice.blackCards) ? +practice.blackCards : 1,
       clueTimerSeconds: Number.isFinite(+practice.clueTimerSeconds) ? +practice.clueTimerSeconds : 0,
       guessTimerSeconds: Number.isFinite(+practice.guessTimerSeconds) ? +practice.guessTimerSeconds : 0,
       stackingEnabled: practice.stackingEnabled !== false,
+      aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+      enabledAIJudges: judgeSettings.enabledAIJudges,
       deckId: normalizeDeckId(game?.deckId || practice.deckId || 'standard'),
       vibe: String(game?.vibe || practice.vibe || ''),
     };
@@ -1528,6 +1644,8 @@ function getQuickSettings(game) {
     clueTimerSeconds: 0,
     guessTimerSeconds: 0,
     stackingEnabled: true,
+    aiJudgesEnabled: true,
+    enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS],
     deckId: 'standard',
     vibe: '',
   };
@@ -1568,10 +1686,11 @@ function formatSeconds(sec) {
 }
 
 function formatQuickRules(settings) {
-  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, vibe: '' };
+  const s = settings || { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0, stackingEnabled: true, aiJudgesEnabled: true, enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS], vibe: '' };
   const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
   const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
-  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr}${vibeStr}`;
+  const judgesStr = formatAIJudgeSettingsSummary(s);
+  return `Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr} · Judges: ${judgesStr}${vibeStr}`;
 }
 
 
@@ -2232,11 +2351,15 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
   const guessTimerRaw = parseInt(opts.guessTimerSeconds, 10);
   const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
+  const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
+  const enabledAIJudges = normalizeAIJudgeKeys(opts?.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
   const quickSettings = {
     blackCards,
     clueTimerSeconds,
     guessTimerSeconds,
     stackingEnabled,
+    aiJudgesEnabled,
+    enabledAIJudges,
     deckId,
     vibe,
   };
@@ -2334,6 +2457,8 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
       clueTimerSeconds,
       guessTimerSeconds,
       stackingEnabled,
+      aiJudgesEnabled,
+      enabledAIJudges,
       deckId,
       vibe,
       openedAtMs: Date.now(),
@@ -2524,6 +2649,17 @@ function initGameUI() {
   document.getElementById('quick-settings-close')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-backdrop')?.addEventListener('click', closeQuickSettingsModal);
   document.getElementById('quick-settings-offer')?.addEventListener('click', offerQuickRulesFromModal);
+  document.getElementById('qp-ai-judges-toggle')?.addEventListener('change', (e) => {
+    const enabled = !!e?.currentTarget?.checked;
+    if (enabled) ensureQuickAtLeastOneJudge();
+    setQuickAIJudgePanelState(enabled);
+  });
+  document.getElementById('qp-ai-judge-merry')?.addEventListener('change', (e) => {
+    ensureQuickAtLeastOneJudge(e?.currentTarget || null);
+  });
+  document.getElementById('qp-ai-judge-vlaada')?.addEventListener('change', (e) => {
+    ensureQuickAtLeastOneJudge(e?.currentTarget || null);
+  });
 
   // Role selection
   document.getElementById('role-spymaster')?.addEventListener('click', () => selectRole('spymaster'));
@@ -3167,11 +3303,19 @@ function openQuickSettingsModal() {
   const clueTimerEl = document.getElementById('qp-clue-timer');
   const guessTimerEl = document.getElementById('qp-guess-timer');
   const stackingToggleEl = document.getElementById('qp-stacking-toggle');
+  const aiJudgesToggleEl = document.getElementById('qp-ai-judges-toggle');
+  const aiJudgeMerryEl = document.getElementById('qp-ai-judge-merry');
+  const aiJudgeVlaadaEl = document.getElementById('qp-ai-judge-vlaada');
 
   if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
   if (clueTimerEl) clueTimerEl.value = String(s.clueTimerSeconds ?? 0);
   if (guessTimerEl) guessTimerEl.value = String(s.guessTimerSeconds ?? 0);
   if (stackingToggleEl) stackingToggleEl.checked = s.stackingEnabled !== false;
+  const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS);
+  if (aiJudgesToggleEl) aiJudgesToggleEl.checked = s.aiJudgesEnabled !== false;
+  if (aiJudgeMerryEl) aiJudgeMerryEl.checked = judgeKeys.includes('merry');
+  if (aiJudgeVlaadaEl) aiJudgeVlaadaEl.checked = judgeKeys.includes('vlaada');
+  setQuickAIJudgePanelState(!!aiJudgesToggleEl?.checked);
   setQuickDeckSelectionUI(s.deckId || 'standard');
 
   const vibeEl = document.getElementById('qp-vibe');
@@ -3621,6 +3765,7 @@ async function checkAndEndEmptyQuickPlayGame(game) {
 async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSeconds: 0, guessTimerSeconds: 0 }) {
   const firstTeam = 'red';
   const cards = await buildQuickPlayCardsFromSettings(settings);
+  const judgeSettings = sanitizeAIJudgeSettings(settings);
 
   return {
     type: 'quick',
@@ -3653,6 +3798,8 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
       clueTimerSeconds: settings.clueTimerSeconds,
       guessTimerSeconds: settings.guessTimerSeconds,
       stackingEnabled: settings.stackingEnabled !== false,
+      aiJudgesEnabled: judgeSettings.aiJudgesEnabled,
+      enabledAIJudges: judgeSettings.enabledAIJudges,
       deckId: normalizeDeckId(settings.deckId || 'standard'),
       vibe: settings.vibe || '',
     },
@@ -3691,14 +3838,38 @@ async function ensureQuickPlayGameExists() {
         clueTimerSeconds: 0,
         guessTimerSeconds: 0,
         stackingEnabled: true,
+        aiJudgesEnabled: true,
+        enabledAIJudges: [...AI_JUDGE_DEFAULT_KEYS],
         deckId: 'standard',
         vibe: '',
       };
-    } else if (typeof g.quickSettings.stackingEnabled === 'undefined') {
-      updates.quickSettings = {
-        ...g.quickSettings,
-        stackingEnabled: true
-      };
+    } else {
+      let next = { ...g.quickSettings };
+      let changed = false;
+      if (typeof next.stackingEnabled === 'undefined') {
+        next.stackingEnabled = true;
+        changed = true;
+      }
+      if (typeof next.aiJudgesEnabled === 'undefined') {
+        next.aiJudgesEnabled = true;
+        changed = true;
+      }
+      if (!Array.isArray(next.enabledAIJudges)) {
+        next.enabledAIJudges = [...AI_JUDGE_DEFAULT_KEYS];
+        changed = true;
+      }
+      const normalized = sanitizeAIJudgeSettings(next);
+      if (next.aiJudgesEnabled !== normalized.aiJudgesEnabled) {
+        next.aiJudgesEnabled = normalized.aiJudgesEnabled;
+        changed = true;
+      }
+      const normSig = normalized.enabledAIJudges.join('|');
+      const curSig = normalizeAIJudgeKeys(next.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join('|');
+      if (curSig !== normSig) {
+        next.enabledAIJudges = normalized.enabledAIJudges;
+        changed = true;
+      }
+      if (changed) updates.quickSettings = next;
     }
     // Remove legacy negotiation fields if present.
     if (typeof g.settingsAccepted !== 'undefined') updates.settingsAccepted = firebase.firestore.FieldValue.delete();
@@ -3987,6 +4158,8 @@ async function maybeAutoStartQuickPlay(game) {
   const settingsSig0 = JSON.stringify({
     blackCards: Number(s0.blackCards || 1),
     stackingEnabled: s0.stackingEnabled !== false,
+    aiJudgesEnabled: s0.aiJudgesEnabled !== false,
+    enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -4013,6 +4186,8 @@ async function maybeAutoStartQuickPlay(game) {
       const settingsSig1 = JSON.stringify({
         blackCards: Number(s.blackCards || 1),
         stackingEnabled: s.stackingEnabled !== false,
+        aiJudgesEnabled: s.aiJudgesEnabled !== false,
+        enabledAIJudges: normalizeAIJudgeKeys(s.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
         deckId: String(s.deckId || 'standard'),
         vibe: String(s.vibe || '').trim(),
       });
@@ -4081,6 +4256,8 @@ window.startQuickGame = async function startQuickGame(gameId) {
   const settingsSig0 = JSON.stringify({
     blackCards: Number(s0.blackCards || 1),
     stackingEnabled: s0.stackingEnabled !== false,
+    aiJudgesEnabled: s0.aiJudgesEnabled !== false,
+    enabledAIJudges: normalizeAIJudgeKeys(s0.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
     deckId: String(s0.deckId || 'standard'),
     vibe: String(s0.vibe || '').trim(),
   });
@@ -4108,6 +4285,8 @@ window.startQuickGame = async function startQuickGame(gameId) {
       const settingsSig1 = JSON.stringify({
         blackCards: Number(qs.blackCards || 1),
         stackingEnabled: qs.stackingEnabled !== false,
+        aiJudgesEnabled: qs.aiJudgesEnabled !== false,
+        enabledAIJudges: normalizeAIJudgeKeys(qs.enabledAIJudges, AI_JUDGE_DEFAULT_KEYS).join(','),
         deckId: String(qs.deckId || 'standard'),
         vibe: String(qs.vibe || '').trim(),
       });
@@ -6824,6 +7003,7 @@ function hasOpposingSpymaster(game, team) {
 }
 
 function shouldOfferChallengeForPendingClue(game, team) {
+  if (!isAIJudgingEnabledForGame(game)) return false;
   const isPractice = String(game?.type || '') === 'practice';
   if (isPractice) return hasOpposingSpymaster(game, team);
   return hasHumanOpposingSpymaster(game, team);
@@ -6960,7 +7140,12 @@ function buildCouncilSummaryLine(pending, review) {
   const legalVotes = Number(review?.legalVotes || 0);
   const illegalVotes = Number(review?.illegalVotes || 0);
   const verdict = review?.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
-  return `AI Judge Merry ruled "${pending.word}" for ${pending.number}: ${verdict} (${legalVotes}-${illegalVotes}).`;
+  const roster = Array.isArray(review?.judgeRoster) ? review.judgeRoster : [];
+  const label = roster.length === 1
+    ? String(roster[0]?.name || roster[0]?.judge || 'AI Judge')
+    : 'AI Judges';
+  const tieNote = review?.tieRejected ? ' Precaution clause: tie rejected.' : '';
+  return `${label} ruled "${pending.word}" for ${pending.number}: ${verdict} (${legalVotes}-${illegalVotes}).${tieNote}`;
 }
 
 function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
@@ -7023,6 +7208,7 @@ function isUserSpymasterForTeamInGame(game, team, userId = '', userName = '') {
 
 function canCurrentUserChallengePendingClue(pending, game = currentGame) {
   if (!pending || !game) return false;
+  if (!isAIJudgingEnabledForGame(game)) return false;
   if (pending.state !== 'awaiting') return false;
   if (isSpectating()) return false;
   const myTeam = getMyTeamColor();
@@ -7065,17 +7251,30 @@ async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
   const boardWords = (game?.cards || [])
     .map((c) => String(c?.word || '').trim().toUpperCase())
     .filter(Boolean);
+  const judgeRoster = (() => {
+    const roster = getConfiguredAIJudgeRoster(game);
+    return roster.length ? roster : [getAIJudgeMeta('merry')];
+  })();
+  const judgeNames = judgeRoster.map((j) => j.name).join(', ') || 'AI judges';
+  const merryRules = [
+    '- AI Judge Merry: multi-word clues allowed only for one clear unified concept.',
+    '- AI Judge Merry: reject word-form clues (board-word parts/variants/shared roots).',
+    '- AI Judge Merry: reject forced-connection clues that combine unrelated ideas.',
+    '- AI Judge Merry: if not clearly illegal, allow.',
+  ];
+  const vlaadaRules = [
+    '- AI Judge Vlaada Chvátil: apply standard Codenames legality.',
+    '- AI Judge Vlaada Chvátil: clue should be a single word (no spaces/hyphens).',
+    '- AI Judge Vlaada Chvátil: reject board-word forms/parts/shared roots and spelling/position tricks.',
+  ];
+  const activeRules = judgeRoster.flatMap((j) => (j.key === 'vlaada' ? vlaadaRules : merryRules));
   const system = [
-    'You decide whether to challenge an opponent clue for legality under AI Judge Merry rules.',
+    'You decide whether to challenge an opponent clue for legality.',
     'Challenge only if the clue clearly breaks a rule. Do not challenge for strategy disagreement.',
-    'Rules:',
-    '- Multi-word clues are allowed only if they express one single clear concept, name, or idea.',
-    '- Valid examples: legal document, cardiac arrest, insulin resistance, new york city.',
-    '- Word-form clues are illegal: using a board word, part of it, variation, or shared root.',
-    '- Word-form examples: magic -> magician, history -> historical, run -> running.',
-    '- Forced-connection clues are illegal: combining unrelated ideas to target multiple concepts.',
-    '- Forced-connection examples: german demon, metal food, fast cold.',
-    '- If the clue does not clearly break these rules, allow it.',
+    `Enabled judges: ${judgeNames}.`,
+    'Apply these judge rules:',
+    ...activeRules,
+    '- If likely illegal for any enabled judge, challenge.',
     '- Clue number must be 0-9.',
     'Return JSON only:',
     '{"decision":"allow|challenge","reason":"short reason"}',
@@ -7164,21 +7363,24 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
   return true;
 }
 
-async function judgePendingClueWithAI(game, pending, baseline) {
-  const chatFn = window.aiChatCompletion;
-  if (typeof chatFn !== 'function') {
-    return {
-      judge: 'AI Judge Merry',
-      verdict: baseline.legal ? 'legal' : 'illegal',
-      reason: baseline.reason,
-    };
+function buildJudgeSystemPrompt(judgeMeta) {
+  const name = String(judgeMeta?.name || 'AI Judge').trim() || 'AI Judge';
+  if (judgeMeta?.key === 'vlaada') {
+    return [
+      `You are ${name}.`,
+      'Judge ONLY legality, not clue quality.',
+      'Apply standard Codenames clue legality rules:',
+      '- clue should be exactly one word (no spaces or hyphens)',
+      '- clue must not match any board word',
+      '- reject word-form clues (board words, parts, close variants, shared roots)',
+      '- reject spelling/letter-position/pronunciation tricks that point at board words',
+      '- clue number must be an integer from 0 to 9',
+      'Return JSON only:',
+      '{"verdict":"legal|illegal","reason":"short reason"}',
+    ].join('\n');
   }
-
-  const boardWords = (game?.cards || [])
-    .map((c) => String(c?.word || '').trim().toUpperCase())
-    .filter(Boolean);
-  const system = [
-    'You are AI Judge Merry, the single Codenames clue legality judge.',
+  return [
+    `You are ${name}.`,
     'Judge ONLY legality, not clue quality.',
     'Allowed clue format:',
     '- Clues may contain more than one word only if they refer to one single clear concept, name, or idea.',
@@ -7195,6 +7397,25 @@ async function judgePendingClueWithAI(game, pending, baseline) {
     'Return JSON only:',
     '{"verdict":"legal|illegal","reason":"short reason"}',
   ].join('\n');
+}
+
+async function judgePendingClueWithAI(game, pending, baseline, judgeMeta) {
+  const judge = judgeMeta || getAIJudgeMeta('merry') || { key: 'merry', name: 'AI Judge Merry' };
+  const judgeName = String(judge.name || 'AI Judge').trim() || 'AI Judge';
+  const chatFn = window.aiChatCompletion;
+  if (typeof chatFn !== 'function') {
+    return {
+      judge: judgeName,
+      key: String(judge.key || '').trim().toLowerCase(),
+      verdict: baseline.legal ? 'legal' : 'illegal',
+      reason: baseline.reason,
+    };
+  }
+
+  const boardWords = (game?.cards || [])
+    .map((c) => String(c?.word || '').trim().toUpperCase())
+    .filter(Boolean);
+  const system = buildJudgeSystemPrompt(judge);
 
   const user = [
     `CLUE: "${pending.word}"`,
@@ -7208,7 +7429,7 @@ async function judgePendingClueWithAI(game, pending, baseline) {
     const raw = await chatFn(
       [{ role: 'system', content: system }, { role: 'user', content: user }],
       {
-        temperature: 0.25,
+        temperature: judge?.key === 'vlaada' ? 0.15 : 0.25,
         max_tokens: 180,
         response_format: { type: 'json_object' },
       }
@@ -7216,10 +7437,11 @@ async function judgePendingClueWithAI(game, pending, baseline) {
     const parsed = safeJsonParse(raw);
     const verdict = String(parsed?.verdict || '').trim().toLowerCase() === 'illegal' ? 'illegal' : 'legal';
     const reason = String(parsed?.reason || '').trim().slice(0, 160) || 'No reason provided.';
-    return { judge: 'AI Judge Merry', verdict, reason };
+    return { judge: judgeName, key: String(judge.key || '').trim().toLowerCase(), verdict, reason };
   } catch (e) {
     return {
-      judge: 'AI Judge Merry',
+      judge: judgeName,
+      key: String(judge.key || '').trim().toLowerCase(),
       verdict: baseline.legal ? 'legal' : 'illegal',
       reason: `Fallback: ${baseline.reason}`,
     };
@@ -7236,10 +7458,30 @@ function buildCouncilTribunalHtml(liveState, scope) {
     return `<span class="council-vote-letter">${letter}</span><span class="council-vote-word">${word}</span>`;
   };
 
-  const judgeName = 'AI Judge Merry';
+  const esc = (raw) => String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  const roster = (() => {
+    const fromLive = Array.isArray(liveState?.judgeRoster) ? liveState.judgeRoster : [];
+    if (fromLive.length) return fromLive;
+    const fromGame = getConfiguredAIJudgeRoster(currentGame).map((j) => ({
+      key: j.key,
+      name: j.name,
+      shortName: j.shortName,
+      initial: j.initial,
+    }));
+    if (fromGame.length) return fromGame;
+    const merry = getAIJudgeMeta('merry');
+    return merry ? [{ key: merry.key, name: merry.name, shortName: merry.shortName, initial: merry.initial }] : [];
+  })();
+  const judgeCount = Math.max(1, roster.length);
+  const reviewAria = judgeCount === 1
+    ? `${String(roster[0]?.name || 'AI Judge')} legality review`
+    : 'AI judges legality review';
   const safeScope = scope ? String(scope) : 'panel';
-  const j0cls = liveState?.judges?.[0] ? (liveState.judges[0].verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
-  const j0label = liveState?.judges?.[0] ? voteHtml(liveState.judges[0].verdict) : '';
 
   const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
   const verdictShowCls = liveState?.finalVerdict ? 'verdict-show' : '';
@@ -7251,18 +7493,28 @@ function buildCouncilTribunalHtml(liveState, scope) {
     : '';
 
   const pendingDots = '<span class="council-judge-pending-dots"><span></span><span></span><span></span></span>';
+  const judgeCards = roster.map((judgeInfo, idx) => {
+    const j = liveState?.judges?.[idx];
+    const cls = j ? (j.verdict === 'legal' ? 'judge-legal' : 'judge-illegal') : 'judge-center';
+    const label = j ? voteHtml(j.verdict) : pendingDots;
+    const name = esc(judgeInfo?.name || judgeInfo?.judge || `Judge ${idx + 1}`);
+    const initial = esc((judgeInfo?.initial || String(name || '').slice(0, 1) || '?').toUpperCase());
+    return `
+      <div class="council-judge-card ${cls}" id="judge-avatar-${safeScope}-${idx}" style="--judge-idx:${idx}">
+        <div class="council-judge-avatar">
+          <span class="council-judge-initial">${initial}</span>
+        </div>
+        <div class="council-judge-name">${name}</div>
+        <div class="council-judge-verdict">${label}</div>
+      </div>
+    `;
+  }).join('');
 
   return `
     <div class="council-tribunal ${flashCls} ${verdictShowCls}" id="judge-courtroom-${safeScope}">
       ${stampText ? `<div class="council-verdict-stamp ${stampCls}" id="council-verdict-stamp-${safeScope}">${stampText}</div>` : ''}
-      <div class="council-judges-row" aria-label="AI Judge Merry legality review">
-        <div class="council-judge-card ${j0cls}" id="judge-avatar-${safeScope}-0" style="--judge-idx:0">
-          <div class="council-judge-avatar">
-            <span class="council-judge-initial">M</span>
-          </div>
-          <div class="council-judge-name">${judgeName}</div>
-          <div class="council-judge-verdict">${j0label || pendingDots}</div>
-        </div>
+      <div class="council-judges-row" aria-label="${esc(reviewAria)}" style="grid-template-columns: repeat(${judgeCount}, minmax(0, 1fr));">
+        ${judgeCards}
       </div>
     </div>
   `;
@@ -7299,8 +7551,13 @@ function _updateJudgeCourtUI(pid) {
   };
 
   const scopes = ['panel', 'modal', null]; // null supports any legacy ids
+  const judgeCount = Math.max(
+    Array.isArray(state?.judgeRoster) ? state.judgeRoster.length : 0,
+    Array.isArray(state?.judges) ? state.judges.length : 0,
+    1
+  );
   for (const scope of scopes) {
-    for (let i = 0; i < 1; i++) {
+    for (let i = 0; i < judgeCount; i++) {
       const el = scope ? document.getElementById(`judge-avatar-${scope}-${i}`) : document.getElementById(`judge-avatar-${i}`);
       if (!el) continue;
       const j = state.judges[i];
@@ -7333,23 +7590,41 @@ function _updateJudgeCourtUI(pid) {
 async function evaluatePendingClueWithCouncil(game, pending) {
   const baseline = basicClueLegalityCheck(pending, game);
   const pid = pending?.id || '';
+  const roster = (() => {
+    const active = getConfiguredAIJudgeRoster(game);
+    if (active.length) return active;
+    const merry = getAIJudgeMeta('merry');
+    return merry ? [merry] : [];
+  })();
+  const judgeRoster = roster.map((j) => ({
+    key: j.key,
+    name: j.name,
+    shortName: j.shortName,
+    initial: j.initial,
+  }));
   // Initialize live judge tracking
-  _liveJudgeVerdicts[pid] = { judges: [], finalVerdict: null, flashDone: false };
+  _liveJudgeVerdicts[pid] = { judges: [], judgeRoster, finalVerdict: null, flashDone: false };
 
-  const judgeVerdict = await judgePendingClueWithAI(game, pending, baseline);
-  const judges = [judgeVerdict];
-  _liveJudgeVerdicts[pid].judges = [...judges];
-  _updateJudgeCourtUI(pid);
-  await new Promise(r => setTimeout(r, 700));
-
-  let legalVotes = judgeVerdict.verdict === 'legal' ? 1 : 0;
-  let illegalVotes = judgeVerdict.verdict === 'illegal' ? 1 : 0;
-  let verdict = judgeVerdict.verdict;
-  if (!baseline.legal) {
-    verdict = 'illegal';
-    legalVotes = 0;
-    illegalVotes = 1;
+  const judges = [];
+  for (let idx = 0; idx < roster.length; idx += 1) {
+    const judge = roster[idx];
+    const judgeVerdict = await judgePendingClueWithAI(game, pending, baseline, judge);
+    judges.push(judgeVerdict);
+    _liveJudgeVerdicts[pid].judges = [...judges];
+    _updateJudgeCourtUI(pid);
+    await new Promise((r) => setTimeout(r, 700));
   }
+
+  let legalVotes = judges.filter((j) => j.verdict === 'legal').length;
+  let illegalVotes = judges.filter((j) => j.verdict === 'illegal').length;
+  const tieRejected = baseline.legal && legalVotes === illegalVotes && judges.length > 0;
+  let verdict = 'illegal'; // precaution clause default
+  if (baseline.legal && legalVotes > illegalVotes) {
+    verdict = 'legal';
+  } else {
+    verdict = 'illegal';
+  }
+  if (!baseline.legal) verdict = 'illegal';
   // Set final verdict and trigger flash animation
   _liveJudgeVerdicts[pid].finalVerdict = verdict;
   _updateJudgeCourtUI(pid);
@@ -7364,6 +7639,8 @@ async function evaluatePendingClueWithCouncil(game, pending) {
     illegalVotes,
     baseline,
     judges,
+    judgeRoster,
+    tieRejected,
     reviewedAtMs: Date.now(),
   };
 }
@@ -7780,12 +8057,16 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     let hintHtmlModal = '';
     let metaText = '';
     const canChallenge = canCurrentUserChallengePendingClue(pending, currentGame);
+    const judgeReviewLabel = getAIJudgeReviewDisplayName(currentGame);
+    const multiJudge = getConfiguredAIJudgeRoster(currentGame).length > 1;
 
     if (pending.state === 'awaiting') {
       statusText = 'Awaiting Decision';
       metaText = `Submitted by ${pending.byName || 'Spymaster'}`;
       if (canChallenge) {
-        hintText = 'Challenge sends this clue to AI Judge Merry.';
+        hintText = multiJudge
+          ? 'Challenge sends this clue to the selected AI judges.'
+          : `Challenge sends this clue to ${judgeReviewLabel}.`;
         if (reviewActionsEl) reviewActionsEl.style.display = 'flex';
         if (allowBtn) allowBtn.disabled = _clueChallengeActionBusy;
         if (challengeBtn) challengeBtn.disabled = _clueChallengeActionBusy;
@@ -7795,7 +8076,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         hintText = 'Clue is pending review.';
       }
     } else if (pending.state === 'reviewing') {
-      statusText = 'AI Judge Merry Reviewing';
+      statusText = `${judgeReviewLabel} Reviewing`;
       metaText = pending.challengedByName ? `Challenged by ${pending.challengedByName}` : 'Challenge in progress';
       const liveState = _liveJudgeVerdicts[pending.id];
       hintHtml = buildCouncilTribunalHtml(liveState, 'panel');
@@ -7806,7 +8087,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       const legalVotes = Number(pendingReview?.legalVotes || 0);
       const illegalVotes = Number(pendingReview?.illegalVotes || 0);
       metaText = (pendingReview && (legalVotes || illegalVotes))
-        ? `AI Judge Merry vote: legal ${legalVotes} · illegal ${illegalVotes}`
+        ? `${judgeReviewLabel} vote: legal ${legalVotes} · illegal ${illegalVotes}`
         : 'The clue was judged illegal.';
       hintText = myActiveSpymaster && myTeamColor === pending.team
         ? 'Submit a new clue.'
@@ -7978,7 +8259,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       waitingEl.style.display = 'block';
       if (waitingForEl) {
         if (pending.state === 'reviewing') {
-          waitingForEl.textContent = 'AI Judge Merry verdict…';
+          waitingForEl.textContent = getAIJudgeReviewWaitingText(currentGame);
         } else if (myActiveSpymaster && myTeamColor === pending.team) {
           waitingForEl.textContent = 'opposing spymaster decision…';
         } else if (canCurrentUserChallengePendingClue(pending, currentGame)) {
@@ -9194,7 +9475,7 @@ let _lastSentClueDraftSig = '';
 let _clueChallengeActionBusy = false;
 const _councilReviewRunning = new Set();
 // Live judge verdict tracking for animated UI
-let _liveJudgeVerdicts = {}; // { pendingId: { judges: [{judge,verdict,reason}], finalVerdict: null|'legal'|'illegal', flashDone: false } }
+let _liveJudgeVerdicts = {}; // { pendingId: { judges: [{judge,key,verdict,reason}], judgeRoster: [{key,name,initial}], finalVerdict: null|'legal'|'illegal', flashDone: false } }
 let _lastCardConfirmAt = 0;
 let _lastCardConfirmIndex = -1;
 let operativeChatUnsub = null;

@@ -12148,6 +12148,14 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const guessTimerRaw = parseInt(opts?.guessTimerSeconds, 10);
   const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
+  const aiJudgesEnabled = opts?.aiJudgesEnabled !== false;
+  const rawJudgeKeys = Array.isArray(opts?.enabledAIJudges) ? opts.enabledAIJudges : [];
+  const enabledAIJudges = Array.from(new Set(
+    rawJudgeKeys
+      .map((k) => String(k || '').trim().toLowerCase())
+      .filter((k) => k === 'merry' || k === 'vlaada')
+  ));
+  if (aiJudgesEnabled && !enabledAIJudges.length) enabledAIJudges.push('merry');
 
   const gameId = await createFn({
     size,
@@ -12157,7 +12165,9 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
     blackCards,
     clueTimerSeconds,
     guessTimerSeconds,
-    stackingEnabled
+    stackingEnabled,
+    aiJudgesEnabled,
+    enabledAIJudges
   });
   openPracticeGameInApp(gameId);
   return gameId;
@@ -12187,6 +12197,10 @@ function initPracticePage() {
   const settingsClueTimerEl = document.getElementById('practice-page-clue-timer');
   const settingsGuessTimerEl = document.getElementById('practice-page-guess-timer');
   const settingsStackingToggleEl = document.getElementById('practice-page-stacking-toggle');
+  const settingsAiJudgesToggleEl = document.getElementById('practice-page-ai-judges-toggle');
+  const settingsAiJudgesPanelEl = document.getElementById('practice-page-ai-judges-panel');
+  const settingsAiJudgeMerryEl = document.getElementById('practice-page-ai-judge-merry');
+  const settingsAiJudgeVlaadaEl = document.getElementById('practice-page-ai-judge-vlaada');
 
   const state = {
     role: null,
@@ -12197,8 +12211,46 @@ function initPracticePage() {
       blackCards: 1,
       clueTimerSeconds: 0,
       guessTimerSeconds: 0,
-      stackingEnabled: true
+      stackingEnabled: true,
+      aiJudgesEnabled: true,
+      enabledAIJudges: ['merry']
     }
+  };
+
+  const normalizeJudgeKeys = (raw, fallback = ['merry']) => {
+    const src = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const item of src) {
+      const key = String(item || '').trim().toLowerCase();
+      if ((key === 'merry' || key === 'vlaada') && !out.includes(key)) out.push(key);
+    }
+    if (out.length) return out;
+    return Array.isArray(fallback) ? [...fallback] : ['merry'];
+  };
+
+  const formatJudgeSummary = (settings) => {
+    const s = settings || state.settings;
+    if (s.aiJudgesEnabled === false) return 'Off';
+    const keys = normalizeJudgeKeys(s.enabledAIJudges, []);
+    if (!keys.length) return 'Off';
+    const names = keys.map((k) => (k === 'vlaada' ? 'Vlaada' : 'Merry'));
+    return names.join('+');
+  };
+
+  const syncJudgePanelVisibility = () => {
+    if (!settingsAiJudgesPanelEl) return;
+    const enabled = !!settingsAiJudgesToggleEl?.checked;
+    settingsAiJudgesPanelEl.style.display = enabled ? 'flex' : 'none';
+    settingsAiJudgesPanelEl.classList.toggle('is-disabled', !enabled);
+  };
+
+  const enforceAtLeastOneJudge = (changedEl = null) => {
+    if (!settingsAiJudgesToggleEl?.checked) return;
+    const all = [settingsAiJudgeMerryEl, settingsAiJudgeVlaadaEl].filter(Boolean);
+    const checked = all.filter((el) => el.checked);
+    if (checked.length) return;
+    if (changedEl) changedEl.checked = true;
+    else if (all[0]) all[0].checked = true;
   };
 
   const normalizeInt = (value, fallback, min = 0, max = 600) => {
@@ -12217,8 +12269,9 @@ function initPracticePage() {
   const formatRules = (settings) => {
     const s = settings || state.settings;
     const stackStr = s.stackingEnabled === false ? 'Off' : 'On';
+    const judgesStr = formatJudgeSummary(s);
     const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-    return `Rules: Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr}${vibeStr}`;
+    return `Rules: Assassin: ${s.blackCards} · Clue: ${formatSeconds(s.clueTimerSeconds)} · Guess: ${formatSeconds(s.guessTimerSeconds)} · Stacking: ${stackStr} · Judges: ${judgesStr}${vibeStr}`;
   };
 
   const syncModalFromState = () => {
@@ -12227,6 +12280,11 @@ function initPracticePage() {
     if (settingsClueTimerEl) settingsClueTimerEl.value = String(state.settings.clueTimerSeconds || 0);
     if (settingsGuessTimerEl) settingsGuessTimerEl.value = String(state.settings.guessTimerSeconds || 0);
     if (settingsStackingToggleEl) settingsStackingToggleEl.checked = state.settings.stackingEnabled !== false;
+    if (settingsAiJudgesToggleEl) settingsAiJudgesToggleEl.checked = state.settings.aiJudgesEnabled !== false;
+    const judgeKeys = normalizeJudgeKeys(state.settings.enabledAIJudges, ['merry']);
+    if (settingsAiJudgeMerryEl) settingsAiJudgeMerryEl.checked = judgeKeys.includes('merry');
+    if (settingsAiJudgeVlaadaEl) settingsAiJudgeVlaadaEl.checked = judgeKeys.includes('vlaada');
+    syncJudgePanelVisibility();
   };
 
   const syncStateFromModal = () => {
@@ -12235,6 +12293,13 @@ function initPracticePage() {
     state.settings.clueTimerSeconds = normalizeInt(settingsClueTimerEl?.value, 0, 0, 600);
     state.settings.guessTimerSeconds = normalizeInt(settingsGuessTimerEl?.value, 0, 0, 600);
     state.settings.stackingEnabled = !!settingsStackingToggleEl?.checked;
+    state.settings.aiJudgesEnabled = !!settingsAiJudgesToggleEl?.checked;
+    const chosen = [];
+    if (settingsAiJudgeMerryEl?.checked) chosen.push('merry');
+    if (settingsAiJudgeVlaadaEl?.checked) chosen.push('vlaada');
+    state.settings.enabledAIJudges = state.settings.aiJudgesEnabled
+      ? normalizeJudgeKeys(chosen, ['merry'])
+      : normalizeJudgeKeys(chosen, state.settings.enabledAIJudges || ['merry']);
   };
 
   const openSettingsModal = () => {
@@ -12313,7 +12378,9 @@ function initPracticePage() {
         blackCards: state.settings.blackCards,
         clueTimerSeconds: state.settings.clueTimerSeconds,
         guessTimerSeconds: state.settings.guessTimerSeconds,
-        stackingEnabled: state.settings.stackingEnabled !== false
+        stackingEnabled: state.settings.stackingEnabled !== false,
+        aiJudgesEnabled: state.settings.aiJudgesEnabled !== false,
+        enabledAIJudges: normalizeJudgeKeys(state.settings.enabledAIJudges, ['merry'])
       }, hintEl);
     } catch (e) {
       console.error(e);
@@ -12324,6 +12391,12 @@ function initPracticePage() {
   settingsBtn?.addEventListener('click', openSettingsModal);
   settingsCloseBtn?.addEventListener('click', closeSettingsModal);
   settingsBackdrop?.addEventListener('click', closeSettingsModal);
+  settingsAiJudgesToggleEl?.addEventListener('change', () => {
+    if (settingsAiJudgesToggleEl.checked) enforceAtLeastOneJudge();
+    syncJudgePanelVisibility();
+  });
+  settingsAiJudgeMerryEl?.addEventListener('change', (e) => enforceAtLeastOneJudge(e.currentTarget));
+  settingsAiJudgeVlaadaEl?.addEventListener('change', (e) => enforceAtLeastOneJudge(e.currentTarget));
   settingsApplyBtn?.addEventListener('click', () => {
     syncStateFromModal();
     refresh();

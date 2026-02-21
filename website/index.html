@@ -483,7 +483,7 @@
               <div class="practice-step" id="practice-step-vibe">
                 <div class="practice-step-title">3) Match settings</div>
                 <div class="practice-settings-row">
-                  <div class="practice-settings-summary" id="practice-page-rules-text">Rules: Assassin: 1 · Clue: ∞ · Guess: ∞ · Stacking: On</div>
+                  <div class="practice-settings-summary" id="practice-page-rules-text">Rules: Assassin: 1 · Clue: ∞ · Guess: ∞ · Stacking: On · Judges: Merry</div>
                   <button class="btn small" id="practice-page-settings-btn" type="button">Settings</button>
                   <button class="btn primary" id="practice-page-start" type="button" disabled>Start Singleplayer</button>
                 </div>
@@ -564,6 +564,26 @@
                     <span class="toggle-slider"></span>
                   </div>
                 </label>
+                <label class="setting-row qp-setting qp-setting-toggle" data-accent="judges">
+                  <span class="setting-label">Enable AI Judges</span>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="practice-page-ai-judges-toggle" checked />
+                    <span class="toggle-slider"></span>
+                  </div>
+                </label>
+                <div class="setting-row qp-setting qp-setting-judges" data-accent="judges" id="practice-page-ai-judges-panel">
+                  <span class="setting-label">Active AI Judges</span>
+                  <div class="qp-judge-options">
+                    <label class="qp-judge-option" for="practice-page-ai-judge-merry">
+                      <input type="checkbox" id="practice-page-ai-judge-merry" checked />
+                      <span>AI Judge Merry</span>
+                    </label>
+                    <label class="qp-judge-option" for="practice-page-ai-judge-vlaada">
+                      <input type="checkbox" id="practice-page-ai-judge-vlaada" />
+                      <span>AI Judge Vlaada Chvátil</span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div class="hint" id="practice-page-settings-status"></div>
@@ -825,6 +845,26 @@
                             <span class="toggle-slider"></span>
                           </div>
                         </label>
+                        <label class="setting-row qp-setting qp-setting-toggle" data-accent="judges">
+                          <span class="setting-label">Enable AI Judges</span>
+                          <div class="toggle-switch">
+                            <input type="checkbox" id="qp-ai-judges-toggle" checked />
+                            <span class="toggle-slider"></span>
+                          </div>
+                        </label>
+                        <div class="setting-row qp-setting qp-setting-judges" data-accent="judges" id="qp-ai-judges-panel">
+                          <span class="setting-label">Active AI Judges</span>
+                          <div class="qp-judge-options">
+                            <label class="qp-judge-option" for="qp-ai-judge-merry">
+                              <input type="checkbox" id="qp-ai-judge-merry" checked />
+                              <span>AI Judge Merry</span>
+                            </label>
+                            <label class="qp-judge-option" for="qp-ai-judge-vlaada">
+                              <input type="checkbox" id="qp-ai-judge-vlaada" />
+                              <span>AI Judge Vlaada Chvátil</span>
+                            </label>
+                          </div>
+                        </div>
                       </div>
 
 
