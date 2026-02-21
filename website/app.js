@@ -7833,6 +7833,7 @@ let judgesAdminDraft = [];
 let judgesAdminSelectedId = '';
 let judgesAdminEditMode = false;
 let judgesAdminModalOpen = false;
+let judgesAdminMobilePage = 'list';
 
 function defaultAIJudgeCatalog() {
   return [
@@ -8028,20 +8029,51 @@ function setJudgesAdminHint(msg = '') {
   if (hintEl) hintEl.textContent = String(msg || '');
 }
 
+function isJudgesAdminMobileViewport() {
+  try {
+    if (window.matchMedia) return window.matchMedia('(max-width: 760px)').matches;
+  } catch (_) {}
+  return window.innerWidth <= 760;
+}
+
+function setJudgesAdminMobilePage(page) {
+  judgesAdminMobilePage = page === 'editor' ? 'editor' : 'list';
+}
+
 function renderJudgesAdminModal() {
   if (!judgesAdminModalOpen) return;
+  const modal = document.getElementById('judges-admin-modal');
   const listEl = document.getElementById('judges-admin-list');
   const nameInput = document.getElementById('judges-admin-name');
   const rulesEl = document.getElementById('judges-admin-rules');
   const addRuleBtn = document.getElementById('judges-admin-add-rule');
   const removeJudgeBtn = document.getElementById('judges-admin-remove-judge');
   const editBtn = document.getElementById('judges-admin-edit-toggle');
+  const titleEl = document.getElementById('judges-admin-title');
+  const backBtn = document.getElementById('judges-admin-back');
   if (!listEl || !nameInput || !rulesEl) return;
 
   if (!judgesAdminSelectedId && judgesAdminDraft.length) {
     judgesAdminSelectedId = String(judgesAdminDraft[0].id || '').trim();
   }
   const selected = getSelectedJudgeFromDraft();
+  const isMobile = isJudgesAdminMobileViewport();
+  if (!isMobile) setJudgesAdminMobilePage('editor');
+  if (modal) modal.dataset.mobilePage = isMobile ? judgesAdminMobilePage : 'desktop';
+  if (titleEl) {
+    if (isMobile) {
+      titleEl.textContent = judgesAdminMobilePage === 'editor'
+        ? String(selected?.name || 'Judge Rulebook')
+        : 'Judges';
+    } else {
+      titleEl.textContent = 'Judges Manager';
+    }
+  }
+  if (backBtn) {
+    const showBack = !!(isMobile && judgesAdminMobilePage === 'editor');
+    backBtn.hidden = !showBack;
+    backBtn.disabled = !showBack;
+  }
 
   listEl.innerHTML = judgesAdminDraft.length
     ? judgesAdminDraft.map((j) => {
@@ -8148,6 +8180,7 @@ function openJudgesAdminModal() {
   judgesAdminDraft = cloneAIJudgeCatalog(getAIJudgeCatalog());
   judgesAdminSelectedId = judgesAdminDraft[0]?.id || '';
   judgesAdminEditMode = false;
+  setJudgesAdminMobilePage(isJudgesAdminMobileViewport() ? 'list' : 'editor');
   judgesAdminModalOpen = true;
   setJudgesAdminHint('');
   renderJudgesAdminModal();
@@ -8159,8 +8192,10 @@ function closeJudgesAdminModal() {
   const modal = document.getElementById('judges-admin-modal');
   judgesAdminModalOpen = false;
   judgesAdminEditMode = false;
+  setJudgesAdminMobilePage('list');
   if (modal) {
     modal.classList.remove('modal-open');
+    delete modal.dataset.mobilePage;
     setTimeout(() => { modal.style.display = 'none'; }, 200);
   }
   setJudgesAdminHint('');
@@ -8175,6 +8210,7 @@ function initJudgesAdminModal() {
   const removeJudgeBtn = document.getElementById('judges-admin-remove-judge');
   const addRuleBtn = document.getElementById('judges-admin-add-rule');
   const editBtn = document.getElementById('judges-admin-edit-toggle');
+  const backBtn = document.getElementById('judges-admin-back');
   const listEl = document.getElementById('judges-admin-list');
   const nameInput = document.getElementById('judges-admin-name');
   const rulesEl = document.getElementById('judges-admin-rules');
@@ -8193,6 +8229,13 @@ function initJudgesAdminModal() {
     if (!id) return;
     judgesAdminSelectedId = id;
     judgesAdminEditMode = false;
+    if (isJudgesAdminMobileViewport()) setJudgesAdminMobilePage('editor');
+    renderJudgesAdminModal();
+  });
+
+  backBtn?.addEventListener('click', () => {
+    setJudgesAdminMobilePage('list');
+    setJudgesAdminHint('');
     renderJudgesAdminModal();
   });
 
@@ -8223,6 +8266,7 @@ function initJudgesAdminModal() {
     });
     judgesAdminSelectedId = id;
     judgesAdminEditMode = true;
+    if (isJudgesAdminMobileViewport()) setJudgesAdminMobilePage('editor');
     setJudgesAdminHint('');
     renderJudgesAdminModal();
   });
@@ -8349,6 +8393,12 @@ function initJudgesAdminModal() {
     if (e.key !== 'Escape') return;
     if (!judgesAdminModalOpen) return;
     closeJudgesAdminModal();
+  });
+
+  window.addEventListener('resize', () => {
+    if (!judgesAdminModalOpen) return;
+    if (!isJudgesAdminMobileViewport()) setJudgesAdminMobilePage('editor');
+    renderJudgesAdminModal();
   });
 }
 

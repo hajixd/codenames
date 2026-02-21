@@ -12387,6 +12387,21 @@ body.tournament.has-team-color .input:focus {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
 }
 
+.judges-admin-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#judges-admin-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .judges-admin-modal .modal-title {
   font-size: 17px;
   font-weight: 900;
@@ -12687,97 +12702,126 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
 
 @media (max-width: 760px) {
   .judges-admin-modal {
-    padding: 6px;
-    align-items: stretch;
+    padding: 8px;
+    align-items: center;
+    justify-content: center;
   }
   .judges-admin-modal .modal-card.judges-admin-card {
-    width: calc(100vw - 12px);
-    max-height: min(72vh, 560px);
-    height: min(72vh, 560px);
+    width: min(96vw, 430px);
+    max-width: 430px;
+    max-height: min(86vh, 700px);
+    height: min(86vh, 700px);
     border-radius: 16px;
   }
   .judges-admin-modal .modal-head {
-    padding: 10px 11px;
+    padding: 8px 10px;
+    gap: 8px;
   }
   .judges-admin-modal .modal-title {
-    font-size: 12px;
-  }
-  .judges-admin-modal .modal-head .icon-btn {
-    width: 20px;
-    min-height: 20px;
-    border-radius: 6px;
     font-size: 11px;
+    line-height: 1.1;
+  }
+  .judges-admin-modal .modal-head .icon-btn,
+  .judges-admin-modal #judges-admin-close,
+  .judges-admin-modal #judges-admin-back {
+    width: 18px;
+    min-height: 16px;
+    height: 16px;
+    border-radius: 5px;
+    font-size: 9px;
+    padding: 0;
+  }
+  .judges-admin-modal .modal-body.judges-admin-body {
+    padding: 8px;
+    gap: 8px;
   }
   .judges-admin-modal .btn {
-    min-height: 20px;
-    padding: 2px 5px;
-    font-size: 8.5px;
+    min-height: 18px;
+    padding: 2px 6px;
+    font-size: 8px;
     border-radius: 6px;
   }
   .judges-admin-modal .btn.small {
-    min-height: 18px;
-    padding: 2px 5px;
-    font-size: 8px;
+    min-height: 16px;
+    padding: 1px 6px;
+    font-size: 7.5px;
     border-radius: 6px;
   }
   .judges-admin-modal #judges-admin-edit-toggle,
   .judges-admin-modal #judges-admin-add-rule,
   .judges-admin-modal #judges-admin-add-judge,
   .judges-admin-modal #judges-admin-remove-judge {
-    min-height: 18px;
-    padding: 2px 5px;
-    font-size: 8px;
+    min-height: 16px;
+    padding: 1px 6px;
+    font-size: 7.5px;
   }
   .judges-admin-layout {
     grid-template-columns: 1fr;
     gap: 8px;
+    min-height: 0;
   }
-  .judges-admin-body {
-    gap: 8px;
+  .judges-admin-modal[data-mobile-page="list"] .judges-admin-editor {
+    display: none;
+  }
+  .judges-admin-modal[data-mobile-page="editor"] .judges-admin-list-col {
+    display: none;
+  }
+  .judges-admin-modal[data-mobile-page="list"] .judges-admin-actions {
+    display: none;
+  }
+  .judges-admin-modal[data-mobile-page="editor"] .judges-admin-actions {
+    display: grid;
   }
   .judges-admin-list-col,
   .judges-admin-editor {
     padding: 8px;
-    border-radius: 11px;
+    border-radius: 12px;
     gap: 8px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.13);
   }
   .judges-admin-tools {
     gap: 6px;
   }
-  .judges-admin-tools .btn.small,
-  .judges-admin-actions .btn {
-    min-height: 18px;
-    padding: 2px 5px;
-    font-size: 8px;
-    border-radius: 6px;
-  }
   .judges-admin-list {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
     min-height: 0;
-    padding-bottom: 2px;
+    max-height: none;
+    padding-right: 2px;
     gap: 6px;
     -webkit-overflow-scrolling: touch;
   }
   .judges-admin-list-btn {
-    flex: 0 0 auto;
-    min-width: 84px;
-    max-width: 122px;
-    min-height: 18px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    font-size: 8px;
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 8.5px;
     line-height: 1.1;
+  }
+  .judges-admin-editor-head {
+    gap: 6px;
+  }
+  .judges-admin-editor .team-section-title {
+    font-size: 9px;
+    letter-spacing: 0.26px;
+  }
+  .judges-admin-editor .field .label {
+    font-size: 8px;
+  }
+  .judges-admin-editor .input {
+    font-size: 8.5px;
+    padding: 4px 6px;
+    border-radius: 6px;
   }
   .judges-admin-rules {
     min-height: 0;
     gap: 7px;
+    padding-right: 1px;
   }
   .judges-admin-rule-row {
-    padding: 8px 32px 8px 8px;
+    padding: 7px 24px 7px 7px;
     border-radius: 9px;
     gap: 6px;
   }
@@ -12785,12 +12829,12 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
     gap: 7px;
   }
   .judges-admin-rule-grid .label {
-    font-size: 8.5px;
-    letter-spacing: 0.32px;
+    font-size: 8px;
+    letter-spacing: 0.28px;
   }
   .judges-admin-rule-input {
-    min-height: 34px;
-    font-size: 9px;
+    min-height: 36px;
+    font-size: 8.5px;
     line-height: 1.2;
     padding: 4px 5px;
     border-radius: 6px;
@@ -12799,31 +12843,32 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
     gap: 5px;
   }
   .judges-admin-example-add {
-    min-height: 16px;
-    padding: 1px 4px;
-    font-size: 7.5px;
-    border-radius: 6px;
+    min-height: 14px;
+    padding: 0 4px;
+    font-size: 7px;
+    border-radius: 5px;
   }
   .judges-admin-example-row {
     gap: 4px;
   }
   .judges-admin-example-input {
-    min-height: 22px;
-    padding: 3px 4px;
-    border-radius: 6px;
-    font-size: 8px;
+    min-height: 20px;
+    padding: 2px 4px;
+    border-radius: 5px;
+    font-size: 7.5px;
   }
   .judges-admin-rule-remove,
   .judges-admin-example-remove {
-    width: 14px;
-    min-height: 14px;
-    border-radius: 6px;
+    width: 12px;
+    min-height: 12px;
+    height: 12px;
+    border-radius: 4px;
     padding: 0;
-    font-size: 9px;
+    font-size: 8px;
   }
   .judges-admin-rule-remove {
-    top: 5px;
-    right: 5px;
+    top: 4px;
+    right: 4px;
   }
   .judges-admin-actions {
     margin-top: 0;
@@ -12832,12 +12877,12 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
   }
   .judges-admin-actions #judges-admin-cancel,
   .judges-admin-actions #judges-admin-save {
-    min-height: 20px;
+    min-height: 22px;
     font-size: 8.5px;
-    padding: 2px 5px;
+    padding: 2px 6px;
   }
   .judges-admin-actions .hint {
-    font-size: 9px;
+    font-size: 8px;
   }
 }
 
