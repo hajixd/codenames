@@ -7838,7 +7838,7 @@ function defaultAIJudgeCatalog() {
   return [
     {
       id: 'merry',
-      name: 'AI Judge Merry',
+      name: 'Judge Merry',
       rules: [
         {
           text: 'Multi-word clues are allowed only when they form one clear unified concept, name, or idea.',
@@ -7864,7 +7864,7 @@ function defaultAIJudgeCatalog() {
     },
     {
       id: 'vlaada',
-      name: 'AI Judge Vlaada Chvátil',
+      name: 'Judge Vlaada Chvátil',
       rules: [
         {
           text: 'Use standard Codenames clue legality.',
@@ -7934,7 +7934,11 @@ function normalizeAIJudgeRule(raw) {
 
 function normalizeAIJudgeEntry(raw, idx = 0) {
   const nameRaw = String(raw?.name || '').trim();
-  const name = (nameRaw || `AI Judge ${idx + 1}`).slice(0, 80);
+  const normalizedName = String(nameRaw || '')
+    .replace(/^ai\s+judge\s+/i, 'Judge ')
+    .replace(/^ai\s+/i, '')
+    .trim();
+  const name = (normalizedName || `Judge ${idx + 1}`).slice(0, 80);
   const idRaw = String(raw?.id || raw?.key || '').trim().toLowerCase();
   const id = slugifyAIJudgeId(idRaw || name);
   const rulesSrc = Array.isArray(raw?.rules) ? raw.rules : [];
@@ -8044,7 +8048,7 @@ function renderJudgesAdminModal() {
       const active = String(j.id || '') === String(judgesAdminSelectedId || '');
       return `
         <button class="btn judges-admin-list-btn ${active ? 'is-active' : ''}" type="button" data-judge-id="${esc(j.id)}">
-          ${esc(j.name || 'AI Judge')}
+          ${esc(j.name || 'Judge')}
         </button>
       `;
     }).join('')
@@ -8244,7 +8248,7 @@ function initJudgesAdminModal() {
     if (!judgesAdminEditMode) return;
     const selected = getSelectedJudgeFromDraft();
     if (!selected) return;
-    selected.name = String(nameInput.value || '').trim().slice(0, 80) || selected.name || 'AI Judge';
+    selected.name = String(nameInput.value || '').trim().slice(0, 80) || selected.name || 'Judge';
     renderJudgesAdminModal();
   });
 
@@ -12787,14 +12791,14 @@ function initPracticePage() {
       const key = slugifyAIJudgeId(item.id || item.key || item.name || `judge-${i + 1}`);
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      const name = String(item.name || `AI Judge ${i + 1}`).trim().slice(0, 80) || `AI Judge ${i + 1}`;
-      const shortName = String(name || '').replace(/^ai judge\s+/i, '').trim() || name;
+      const name = String(item.name || `Judge ${i + 1}`).trim().slice(0, 80) || `Judge ${i + 1}`;
+      const shortName = String(name || '').replace(/^judge\s+/i, '').trim() || name;
       out.push({ key, name, shortName });
     }
     if (out.length) return out;
     return [
-      { key: 'merry', name: 'AI Judge Merry', shortName: 'Merry' },
-      { key: 'vlaada', name: 'AI Judge Vlaada Chvátil', shortName: 'Vlaada' },
+      { key: 'merry', name: 'Judge Merry', shortName: 'Merry' },
+      { key: 'vlaada', name: 'Judge Vlaada Chvátil', shortName: 'Vlaada' },
     ];
   };
 
@@ -12833,7 +12837,7 @@ function initPracticePage() {
     if (!settingsAiJudgeOptionsEl) return [];
     const defs = getPracticeJudgeDefs();
     if (!defs.length) {
-      settingsAiJudgeOptionsEl.innerHTML = '<div class="empty-state">No AI judges available.</div>';
+      settingsAiJudgeOptionsEl.innerHTML = '<div class="empty-state">No judges available.</div>';
       return [];
     }
     const preferred = preferredRaw == null ? getSelectedJudgeKeysFromModal() : preferredRaw;
@@ -12844,7 +12848,7 @@ function initPracticePage() {
       return `
         <label class="qp-judge-option" for="${escAttr(id)}">
           <input type="checkbox" id="${escAttr(id)}" data-ai-judge-key="${escAttr(j.key)}"${checked} />
-          <span>${escHtml(j.name || 'AI Judge')}</span>
+          <span>${escHtml(j.name || 'Judge')}</span>
         </label>
       `;
     }).join('');

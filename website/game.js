@@ -1588,15 +1588,19 @@ window.isPracticeGameActive = () => !!(currentGame && currentGame.type === 'prac
 
 // Quick Play settings / negotiation
 const AI_JUDGE_DEFS = Object.freeze([
-  { key: 'merry', name: 'AI Judge Merry', shortName: 'Merry', initial: 'M' },
-  { key: 'vlaada', name: 'AI Judge Vlaada Chvátil', shortName: 'Vlaada', initial: 'V' },
+  { key: 'merry', name: 'Judge Merry', shortName: 'Merry', initial: 'M' },
+  { key: 'vlaada', name: 'Judge Vlaada Chvátil', shortName: 'Vlaada', initial: 'V' },
 ]);
 const AI_JUDGE_DEFAULT_KEYS = Object.freeze(['merry']);
 
 function _normalizeAIJudgeDef(raw) {
   const key = String(raw?.key || raw?.id || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
   if (!key) return null;
-  const name = String(raw?.name || `AI Judge ${key}`).trim() || `AI Judge ${key}`;
+  const normalizedName = String(raw?.name || '')
+    .replace(/^ai\s+judge\s+/i, 'Judge ')
+    .replace(/^ai\s+/i, '')
+    .trim();
+  const name = normalizedName || `Judge ${key}`;
   const baseShort = String(raw?.shortName || '').trim();
   const shortName = baseShort || name.replace(/^ai judge\s+/i, '').trim() || name;
   const initial = (String(raw?.initial || '').trim() || shortName.slice(0, 1) || key.slice(0, 1) || '?').toUpperCase();
@@ -1649,7 +1653,7 @@ function getDefaultAIJudgeMeta() {
   if (fromMap) return fromMap;
   const defs = _getRuntimeAIJudgeDefs();
   if (defs.length) return defs[0];
-  return _normalizeAIJudgeDef(AI_JUDGE_DEFS[0]) || { key: 'merry', name: 'AI Judge Merry', shortName: 'Merry', initial: 'M' };
+  return _normalizeAIJudgeDef(AI_JUDGE_DEFS[0]) || { key: 'merry', name: 'Judge Merry', shortName: 'Merry', initial: 'M' };
 }
 
 function normalizeAIJudgeKeys(raw, fallback = null) {
@@ -1754,7 +1758,7 @@ function getFallbackJudgeRulesetPromptLines(judgeMeta) {
 }
 
 function buildJudgeCouncilRuleLines(judgeMeta) {
-  const name = String(judgeMeta?.name || 'AI Judge').trim() || 'AI Judge';
+  const name = String(judgeMeta?.name || 'Judge').trim() || 'Judge';
   const customRules = buildJudgeRulesetPromptLines(judgeMeta?.key);
   if (customRules.length) {
     return customRules
@@ -1807,13 +1811,13 @@ function formatAIJudgeSettingsSummary(settings) {
 function getAIJudgeReviewDisplayName(game = currentGame) {
   const roster = getConfiguredAIJudgeRoster(game);
   if (roster.length === 1) return roster[0].name;
-  return 'AI Judges';
+  return 'Judges';
 }
 
 function getAIJudgeReviewWaitingText(game = currentGame) {
   const roster = getConfiguredAIJudgeRoster(game);
   if (roster.length === 1) return `${roster[0].name} verdict…`;
-  if (roster.length > 1) return 'AI judges verdict…';
+  if (roster.length > 1) return 'judges verdict…';
   return 'clue review…';
 }
 
@@ -1845,7 +1849,7 @@ function renderQuickAIJudgeOptions(selectedRaw = null) {
   if (!root) return [];
   const defs = _getRuntimeAIJudgeDefs();
   if (!defs.length) {
-    root.innerHTML = '<div class="empty-state">No AI judges available.</div>';
+    root.innerHTML = '<div class="empty-state">No judges available.</div>';
     return [];
   }
   const fromDom = getQuickAIJudgeOptionInputs()
@@ -1862,7 +1866,7 @@ function renderQuickAIJudgeOptions(selectedRaw = null) {
     return `
       <label class="qp-judge-option" for="${_escapeJudgeAttr(id)}">
         <input type="checkbox" id="${_escapeJudgeAttr(id)}" data-ai-judge-key="${_escapeJudgeAttr(def.key)}"${checked} />
-        <span>${_escapeJudgeHtml(def.name || 'AI Judge')}</span>
+        <span>${_escapeJudgeHtml(def.name || 'Judge')}</span>
       </label>
     `;
   }).join('');
@@ -7493,8 +7497,8 @@ function buildCouncilSummaryLine(pending, review) {
   const verdict = review?.verdict === 'legal' ? 'LEGAL' : 'ILLEGAL';
   const roster = Array.isArray(review?.judgeRoster) ? review.judgeRoster : [];
   const label = roster.length === 1
-    ? String(roster[0]?.name || roster[0]?.judge || 'AI Judge')
-    : 'AI Judges';
+    ? String(roster[0]?.name || roster[0]?.judge || 'Judge')
+    : 'Judges';
   const tieNote = review?.tieRejected ? ' Precaution clause: tie rejected.' : '';
   return `${label} ruled "${pending.word}" for ${pending.number}: ${verdict} (${legalVotes}-${illegalVotes}).${tieNote}`;
 }
@@ -7608,7 +7612,7 @@ async function decidePracticeAISpymasterPendingAction(aiSpy, game, pending) {
     const fallback = getDefaultAIJudgeMeta();
     return fallback ? [fallback] : [];
   })();
-  const judgeNames = judgeRoster.map((j) => j.name).join(', ') || 'AI judges';
+  const judgeNames = judgeRoster.map((j) => j.name).join(', ') || 'judges';
   const activeRules = judgeRoster.flatMap((j) => buildJudgeCouncilRuleLines(j));
   const system = [
     'You decide whether to challenge an opponent clue for legality.',
@@ -7706,7 +7710,7 @@ async function maybeResolveLocalPracticePendingClue(gameId, game) {
 }
 
 function buildJudgeSystemPrompt(judgeMeta) {
-  const name = String(judgeMeta?.name || 'AI Judge').trim() || 'AI Judge';
+  const name = String(judgeMeta?.name || 'Judge').trim() || 'Judge';
   const customRules = buildJudgeRulesetPromptLines(judgeMeta?.key);
   const fallbackRules = getFallbackJudgeRulesetPromptLines(judgeMeta).map((line) => `- ${line}`);
   if (customRules.length) {
@@ -7732,8 +7736,8 @@ function buildJudgeSystemPrompt(judgeMeta) {
 }
 
 async function judgePendingClueWithAI(game, pending, baseline, judgeMeta) {
-  const judge = judgeMeta || getDefaultAIJudgeMeta() || { key: 'merry', name: 'AI Judge Merry' };
-  const judgeName = String(judge.name || 'AI Judge').trim() || 'AI Judge';
+  const judge = judgeMeta || getDefaultAIJudgeMeta() || { key: 'merry', name: 'Judge Merry' };
+  const judgeName = String(judge.name || 'Judge').trim() || 'Judge';
   const chatFn = window.aiChatCompletion;
   if (typeof chatFn !== 'function') {
     return {
@@ -7811,8 +7815,8 @@ function buildCouncilTribunalHtml(liveState, scope) {
   })();
   const judgeCount = Math.max(1, roster.length);
   const reviewAria = judgeCount === 1
-    ? `${String(roster[0]?.name || 'AI Judge')} legality review`
-    : 'AI judges legality review';
+    ? `${String(roster[0]?.name || 'Judge')} legality review`
+    : 'judges legality review';
   const safeScope = scope ? String(scope) : 'panel';
 
   const flashCls = liveState?.finalVerdict ? (liveState.finalVerdict === 'legal' ? 'judge-flash-green' : 'judge-flash-red') : '';
@@ -8001,7 +8005,7 @@ async function evaluatePendingClueImmediateGate(game, pending) {
     judges.push(verdict);
     if (verdict.verdict === 'illegal') {
       const reason = String(verdict.reason || '').trim() || 'Clear rule violation.';
-      const judgeName = String(verdict.judge || judge?.name || 'AI Judge').trim() || 'AI Judge';
+      const judgeName = String(verdict.judge || judge?.name || 'Judge').trim() || 'Judge';
       return {
         legal: false,
         reason: `${judgeName}: ${reason}`,
@@ -8013,7 +8017,7 @@ async function evaluatePendingClueImmediateGate(game, pending) {
 
   return {
     legal: true,
-    reason: 'Accepted by active AI judges.',
+    reason: 'Accepted by active judges.',
     baseline,
     judges,
   };
@@ -8464,7 +8468,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
       metaText = `Submitted by ${pending.byName || 'Spymaster'}`;
       if (canChallenge) {
         hintText = multiJudge
-          ? 'Challenge sends this clue to the selected AI judges.'
+          ? 'Challenge sends this clue to the selected judges.'
           : `Challenge sends this clue to ${judgeReviewLabel}.`;
         if (reviewActionsEl) reviewActionsEl.style.display = 'flex';
         if (allowBtn) allowBtn.disabled = _clueChallengeActionBusy;
