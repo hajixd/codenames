@@ -5675,10 +5675,8 @@ button.player-tag.pill-action:disabled{
   clip-path: polygon(0 0, 0 0, 0 0, 0 0);
   -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
   will-change: opacity, clip-path, -webkit-clip-path;
-  background:
-    radial-gradient(130% 120% at 12% 8%, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.05) 36%, rgba(255, 255, 255, 0) 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 28%, rgba(255, 255, 255, 0) 74%),
-    var(--card-liquid-fill-bg, linear-gradient(160deg, #58677f 0%, #3f4d63 52%, #252f3f 100%));
+  background: var(--card-liquid-tint, linear-gradient(160deg, #6b7687 0%, #4f5b6d 52%, #3b4657 100%));
+  mix-blend-mode: color;
 }
 
 .game-card .card-face .card-recolor-sweep::before {
@@ -26525,34 +26523,22 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final reveal flip pass: rise -> hold -> diagonal recolor -> hold -> flip -> descend. */
 body .game-card.reveal-flip-animate.confirm-back-red {
-  --card-liquid-fill-bg:
-    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
-    linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
+  --card-liquid-tint: linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
   --card-sweep-label-color: #6f2a22;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-blue {
-  --card-liquid-fill-bg:
-    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
-    linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
+  --card-liquid-tint: linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
   --card-sweep-label-color: #24486a;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-neutral {
-  --card-liquid-fill-bg:
-    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
-    linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
+  --card-liquid-tint: linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
   --card-sweep-label-color: #5b4a39;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-assassin {
-  --card-liquid-fill-bg:
-    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 36%, rgba(0, 0, 0, 0) 70%),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0px, rgba(255, 255, 255, 0.07) 9px, rgba(0, 0, 0, 0.18) 9px, rgba(0, 0, 0, 0.18) 18px),
-    linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
+  --card-liquid-tint: linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
   --card-sweep-label-color: #d3dae7;
 }
 
@@ -26601,15 +26587,15 @@ body .game-card.reveal-flip-animate .card-face {
 
 body .game-card.reveal-flip-animate .card-face .card-recolor-sweep {
   opacity: 0;
-  animation: cardLiquidDiagonalSweep var(--card-confirm-duration) linear both;
+  animation: cardLiquidDiagonalSweep var(--card-confirm-duration) cubic-bezier(0.22, 0.86, 0.3, 1) both;
 }
 
 body .game-card.reveal-flip-animate .card-face .card-recolor-sweep::before {
-  animation: cardLiquidSpecularSweep var(--card-confirm-duration) linear both;
+  animation: cardLiquidSpecularSweep var(--card-confirm-duration) cubic-bezier(0.18, 0.9, 0.28, 1) both;
 }
 
 body .game-card.reveal-flip-animate .card-face .card-recolor-sweep::after {
-  animation: cardLiquidShadowSweep var(--card-confirm-duration) linear both;
+  animation: cardLiquidShadowSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after,
@@ -26621,24 +26607,24 @@ body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::af
 
 @keyframes cardLiquidDiagonalSweep {
   0%,
-  41% {
+  43% {
     opacity: 0;
     clip-path: polygon(0 0, 0 0, 0 0, 0 0);
     -webkit-clip-path: polygon(0 0, 0 0, 0 0, 0 0);
   }
-  45% {
+  47% {
+    opacity: 0.88;
+    clip-path: polygon(0 0, 26% 0, 0 26%, 0 100%);
+    -webkit-clip-path: polygon(0 0, 26% 0, 0 26%, 0 100%);
+  }
+  58% {
     opacity: 0.94;
-    clip-path: polygon(0 0, 34% 0, 0 34%, 0 100%);
-    -webkit-clip-path: polygon(0 0, 34% 0, 0 34%, 0 100%);
+    clip-path: polygon(0 0, 88% 0, 34% 100%, 0 100%);
+    -webkit-clip-path: polygon(0 0, 88% 0, 34% 100%, 0 100%);
   }
-  56% {
-    opacity: 1;
-    clip-path: polygon(0 0, 100% 0, 58% 100%, 0 100%);
-    -webkit-clip-path: polygon(0 0, 100% 0, 58% 100%, 0 100%);
-  }
-  64%,
+  68%,
   100% {
-    opacity: 1;
+    opacity: 0.96;
     clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
     -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
   }
@@ -26646,39 +26632,39 @@ body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back::af
 
 @keyframes cardLiquidSpecularSweep {
   0%,
-  42% {
+  44% {
     opacity: 0;
     transform: translate3d(-138%, -138%, 0) rotate(36deg) scale(1);
   }
-  50% {
-    opacity: 0.72;
+  53% {
+    opacity: 0.64;
   }
-  64% {
-    opacity: 0.1;
-    transform: translate3d(72%, 72%, 0) rotate(36deg) scale(1.03);
+  68% {
+    opacity: 0.08;
+    transform: translate3d(70%, 70%, 0) rotate(36deg) scale(1.03);
   }
   100% {
     opacity: 0;
-    transform: translate3d(74%, 74%, 0) rotate(36deg) scale(1.03);
+    transform: translate3d(72%, 72%, 0) rotate(36deg) scale(1.03);
   }
 }
 
 @keyframes cardLiquidShadowSweep {
   0%,
-  42% {
+  44% {
     opacity: 0;
     transform: translate3d(-130%, -130%, 0) rotate(36deg);
   }
-  50% {
-    opacity: 0.34;
+  53% {
+    opacity: 0.3;
   }
-  64% {
-    opacity: 0.08;
-    transform: translate3d(66%, 66%, 0) rotate(36deg);
+  68% {
+    opacity: 0.06;
+    transform: translate3d(64%, 64%, 0) rotate(36deg);
   }
   100% {
     opacity: 0;
-    transform: translate3d(68%, 68%, 0) rotate(36deg);
+    transform: translate3d(66%, 66%, 0) rotate(36deg);
   }
 }
 
