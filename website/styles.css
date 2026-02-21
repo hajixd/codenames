@@ -7803,6 +7803,14 @@ body.tournament.has-team-color .settings-gear-btn:hover {
   max-width: 40vw;
 }
 
+@media (max-width: 760px) {
+  .settings-row-volume .settings-volume-slider {
+    flex: 0 0 94px;
+    width: 94px;
+    max-width: 30vw;
+  }
+}
+
 .settings-row-volume .settings-volume-value {
   min-width: 38px;
 }
@@ -12363,8 +12371,8 @@ body.tournament.has-team-color .input:focus {
 .judges-admin-modal .modal-card.judges-admin-card {
   width: min(980px, calc(100vw - 28px));
   max-height: min(88vh, 760px);
-  background: #121a25;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #121a25 !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
 .judges-admin-modal {
@@ -12376,8 +12384,8 @@ body.light-mode .judges-admin-modal {
 }
 
 body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
-  background: #f6f9fd;
-  border-color: rgba(40, 70, 100, 0.24);
+  background: #f6f9fd !important;
+  border-color: rgba(40, 70, 100, 0.24) !important;
 }
 
 .judges-admin-body {
@@ -12523,7 +12531,7 @@ body.light-mode .judges-admin-modal .modal-card.judges-admin-card {
 @media (max-width: 760px) {
   .judges-admin-modal .modal-card.judges-admin-card {
     width: calc(100vw - 16px);
-    max-height: 92vh;
+    max-height: min(78vh, 620px);
   }
   .judges-admin-layout {
     grid-template-columns: 1fr;
