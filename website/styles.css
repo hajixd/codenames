@@ -26479,14 +26479,6 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final reveal flip pass: rise -> hold -> diagonal pre-rendered replacement -> hold -> flip -> descend. */
 body .game-card.reveal-flip-animate {
-  --anim-pre-card-border: var(--cardBorder, var(--neutral-cardBorder, #7e8792));
-  --anim-pre-card-bg: var(--cardBg, var(--neutral-cardBg, #6f7a88));
-  --anim-pre-inner-border: var(--innerBorder, var(--neutral-innerBorder, #c8cfd6));
-  --anim-pre-inner-bg: var(--innerBg, var(--neutral-innerBg, #d7dee4));
-  --anim-pre-divider: var(--innerBorder, var(--neutral-innerBorder, #c8cfd6));
-  --anim-pre-word-bg: var(--wordBg, var(--neutral-darkWordBg, #7a6650));
-  --anim-pre-word-color: var(--wordColor, #ffffff);
-
   --anim-post-card-border: var(--neutral-cardBorder, #7e8792);
   --anim-post-card-bg: var(--neutral-cardBg, #6f7a88);
   --anim-post-inner-border: var(--neutral-innerBorder, #c8cfd6);
@@ -26574,32 +26566,21 @@ body .game-card.reveal-flip-animate .card-face-state {
 /* Keep the operative shell visible while the card rises/holds. */
 body.og-mode .game-card.reveal-flip-animate,
 body.cozy-mode .game-card.reveal-flip-animate {
-  background: var(--anim-pre-card-bg) !important;
-  border-color: var(--anim-pre-card-border) !important;
+  background: var(--cardBg) !important;
+  border-color: var(--cardBorder) !important;
 }
 
-/* FRONT FACE pre/post full-card renders. */
-body .game-card.reveal-flip-animate .card-front .card-face-pre,
+/* FRONT FACE post-only overlay: pre face stays native/live. */
 body .game-card.reveal-flip-animate .card-front .card-face-post {
   position: relative;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid transparent;
-  background: transparent;
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-pre {
-  border-color: var(--anim-pre-card-border);
-  background: var(--anim-pre-card-bg);
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-post {
+  border: 1px solid var(--anim-post-card-border);
   border-color: var(--anim-post-card-border);
   background: var(--anim-post-card-bg);
   animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::before,
 body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   content: "";
   position: absolute;
@@ -26611,13 +26592,6 @@ body .game-card.reveal-flip-animate .card-front .card-face-post::before {
     inset 0 -2px 0 rgba(0, 0, 0, 0.10);
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::before {
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
-    var(--anim-pre-inner-bg);
-  border: 2px solid var(--anim-pre-inner-border);
-}
-
 body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
@@ -26625,7 +26599,6 @@ body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   border: 2px solid var(--anim-post-inner-border);
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::after,
 body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   content: "";
   position: absolute;
@@ -26637,22 +26610,12 @@ body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   opacity: 0.45;
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::after {
-  background: var(--anim-pre-divider);
-}
-
 body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   background: var(--anim-post-divider);
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre .card-word,
 body .game-card.reveal-flip-animate .card-front .card-face-post .card-word {
   z-index: 4;
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-pre .card-word {
-  background: var(--anim-pre-word-bg) !important;
-  color: var(--anim-pre-word-color) !important;
 }
 
 body .game-card.reveal-flip-animate .card-front .card-face-post .card-word {
