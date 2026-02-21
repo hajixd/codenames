@@ -26118,12 +26118,13 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     justify-content: flex-end !important;
   }
 
-  /* Desktop clue pill: slightly wider + thicker. */
+  /* Desktop clue pill: fixed size (no responsive resizing) + much wider. */
   body:is(.og-mode, .cozy-mode) .clue-display-expanded,
   body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .clue-display-expanded {
-    width: min(100%, 520px) !important;
-    max-width: min(100%, 520px) !important;
-    min-width: min(100%, 520px) !important;
+    flex: 0 0 620px !important;
+    width: 620px !important;
+    max-width: 620px !important;
+    min-width: 620px !important;
     min-height: clamp(40px, 3.8vw, 46px) !important;
     padding: 6px 60px 6px 20px !important;
   }
