@@ -26479,26 +26479,17 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
 /* Final reveal flip pass: rise -> hold -> diagonal pre-rendered replacement -> hold -> flip -> descend. */
 body .game-card.reveal-flip-animate {
-  --anim-pre-card-border: var(--neutral-cardBorder, #7e8792);
-  --anim-pre-card-bg: var(--neutral-cardBg, #6f7a88);
-  --anim-pre-inner-border: var(--neutral-innerBorder, #c8cfd6);
-  --anim-pre-inner-bg: var(--neutral-innerBg, #d7dee4);
-  --anim-pre-divider: var(--neutral-innerBorder, #c8cfd6);
-  --anim-pre-word-bg: var(--neutral-darkWordBg, #7a6650);
-  --anim-pre-word-color: #ffffff;
-  --anim-pre-back-bg:
+  --anim-post-card-border: var(--neutral-cardBorder, #7e8792);
+  --anim-post-card-bg: var(--neutral-cardBg, #6f7a88);
+  --anim-post-inner-border: var(--neutral-innerBorder, #c8cfd6);
+  --anim-post-inner-bg: var(--neutral-innerBg, #d7dee4);
+  --anim-post-divider: var(--neutral-innerBorder, #c8cfd6);
+  --anim-post-word-bg: var(--neutral-darkWordBg, #7a6650);
+  --anim-post-word-color: #ffffff;
+  --anim-post-back-bg:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
-    linear-gradient(160deg, #2f3d53 0%, #1d2738 48%, #121a26 100%);
-
-  --anim-post-card-border: var(--anim-pre-card-border);
-  --anim-post-card-bg: var(--anim-pre-card-bg);
-  --anim-post-inner-border: var(--anim-pre-inner-border);
-  --anim-post-inner-bg: var(--anim-pre-inner-bg);
-  --anim-post-divider: var(--anim-pre-divider);
-  --anim-post-word-bg: var(--anim-pre-word-bg);
-  --anim-post-word-color: var(--anim-pre-word-color);
-  --anim-post-back-bg: var(--anim-pre-back-bg);
+    linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
   --anim-post-back-label: "NEUTRAL";
   --anim-post-back-label-color: #5b4a39;
 
@@ -26538,19 +26529,7 @@ body .game-card.reveal-flip-animate.confirm-back-blue {
 }
 
 body .game-card.reveal-flip-animate.confirm-back-neutral {
-  --anim-post-card-border: var(--neutral-cardBorder, #7e8792);
-  --anim-post-card-bg: var(--neutral-cardBg, #6f7a88);
-  --anim-post-inner-border: var(--neutral-innerBorder, #c8cfd6);
-  --anim-post-inner-bg: var(--neutral-innerBg, #d7dee4);
-  --anim-post-divider: var(--neutral-innerBorder, #c8cfd6);
-  --anim-post-word-bg: var(--neutral-darkWordBg, #7a6650);
-  --anim-post-word-color: #ffffff;
-  --anim-post-back-bg:
-    radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0px, rgba(255, 255, 255, 0.08) 9px, rgba(0, 0, 0, 0.12) 9px, rgba(0, 0, 0, 0.12) 18px),
-    linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
   --anim-post-back-label: "NEUTRAL";
-  --anim-post-back-label-color: #5b4a39;
 }
 
 body .game-card.reveal-flip-animate.confirm-back-assassin {
@@ -26583,37 +26562,23 @@ body .game-card.reveal-flip-animate .card-face-state {
   backface-visibility: hidden;
 }
 
-/* Hide legacy root shells/labels while using explicit pre/post full-card renders. */
-body .game-card.reveal-flip-animate::before,
-body .game-card.reveal-flip-animate::after,
-body .game-card.reveal-flip-animate .card-back::before,
-body .game-card.reveal-flip-animate .card-back::after {
-  content: none !important;
-  animation: none !important;
+/* Keep the operative shell visible while the card rises/holds. */
+body.og-mode .game-card.reveal-flip-animate,
+body.cozy-mode .game-card.reveal-flip-animate {
+  background: var(--cardBg) !important;
+  border-color: var(--cardBorder) !important;
 }
 
-/* FRONT FACE: full operative pre-render and full spymaster post-render. */
-body .game-card.reveal-flip-animate .card-front .card-face-pre,
+/* FRONT FACE post-layer: full spymaster-colored card. Pre face remains the live operative render. */
 body .game-card.reveal-flip-animate .card-front .card-face-post {
   position: relative;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid transparent;
-  background: transparent;
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-pre {
-  border-color: var(--anim-pre-card-border);
-  background: var(--anim-pre-card-bg);
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-post {
   border-color: var(--anim-post-card-border);
   background: var(--anim-post-card-bg);
   animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::before,
 body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   content: "";
   position: absolute;
@@ -26625,13 +26590,6 @@ body .game-card.reveal-flip-animate .card-front .card-face-post::before {
     inset 0 -2px 0 rgba(0, 0, 0, 0.10);
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::before {
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
-    var(--anim-pre-inner-bg);
-  border: 2px solid var(--anim-pre-inner-border);
-}
-
 body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.00) 30%),
@@ -26639,7 +26597,6 @@ body .game-card.reveal-flip-animate .card-front .card-face-post::before {
   border: 2px solid var(--anim-post-inner-border);
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre::after,
 body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   content: "";
   position: absolute;
@@ -26649,41 +26606,20 @@ body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   height: 2px;
   z-index: 2;
   opacity: 0.45;
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-pre::after {
-  background: var(--anim-pre-divider);
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-post::after {
   background: var(--anim-post-divider);
 }
 
-body .game-card.reveal-flip-animate .card-front .card-face-pre .card-word,
 body .game-card.reveal-flip-animate .card-front .card-face-post .card-word {
   z-index: 4;
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-pre .card-word {
-  background: var(--anim-pre-word-bg) !important;
-  color: var(--anim-pre-word-color) !important;
-}
-
-body .game-card.reveal-flip-animate .card-front .card-face-post .card-word {
   background: var(--anim-post-word-bg) !important;
   color: var(--anim-post-word-color) !important;
 }
 
 /* BACK FACE: full pre/post back renders; post already has label before flip starts. */
-body .game-card.reveal-flip-animate .card-back .card-face-pre,
 body .game-card.reveal-flip-animate .card-back .card-face-post {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-}
-
-body .game-card.reveal-flip-animate .card-back .card-face-pre {
-  background: var(--anim-pre-back-bg);
 }
 
 body .game-card.reveal-flip-animate .card-back .card-face-post {
@@ -26691,7 +26627,6 @@ body .game-card.reveal-flip-animate .card-back .card-face-post {
   animation: cardPreRenderedSweep var(--card-confirm-duration) cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
-body .game-card.reveal-flip-animate .card-back .card-face-pre::before,
 body .game-card.reveal-flip-animate .card-back .card-face-post::before {
   content: "";
   position: absolute;
@@ -26702,8 +26637,13 @@ body .game-card.reveal-flip-animate .card-back .card-face-post::before {
   pointer-events: none;
 }
 
-body .game-card.reveal-flip-animate .card-back .card-face-pre .card-word,
 body .game-card.reveal-flip-animate .card-back .card-face-post .card-word {
+  opacity: 0 !important;
+}
+
+/* Disable legacy back pseudo label during reveal; post layer owns label now. */
+body .game-card.reveal-flip-animate .card-back::after {
+  content: "" !important;
   opacity: 0 !important;
 }
 
