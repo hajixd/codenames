@@ -21122,6 +21122,45 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back::after {
   opacity: 1;
 }
 
+/* Pre-apply reveal palette to the full card shell so color is correct before lift starts. */
+body .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-red {
+  --cardBorder: var(--red-cardBorder);
+  --cardBg: var(--red-cardBg);
+  --innerBorder: var(--red-innerBorder);
+  --innerBg: var(--red-innerBg);
+  --wordBg: var(--red-darkWordBg);
+}
+
+body .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-blue {
+  --cardBorder: var(--blue-cardBorder);
+  --cardBg: var(--blue-cardBg);
+  --innerBorder: var(--blue-innerBorder);
+  --innerBg: var(--blue-innerBg);
+  --wordBg: var(--blue-darkWordBg);
+}
+
+body .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-neutral {
+  --cardBorder: var(--neutral-cardBorder);
+  --cardBg: var(--neutral-cardBg);
+  --innerBorder: var(--neutral-innerBorder);
+  --innerBg: var(--neutral-innerBg);
+  --wordBg: var(--neutral-darkWordBg);
+}
+
+body .game-card:is(.confirm-animate, .confirm-hold, .reveal-flip-animate).confirm-back-assassin {
+  --cardBorder: var(--black-cardBorder);
+  --cardBg: var(--black-cardBg);
+  --innerBorder: var(--black-innerBorder);
+  --innerBg: var(--black-innerBg);
+  --wordBg: var(--black-darkWordBg);
+}
+
+/* Keep shell visible during reveal flip (the older transparent rule made cards look blank). */
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
+  background: var(--cardBg) !important;
+  border-color: var(--cardBorder) !important;
+}
+
 body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold).confirm-back-red .card-back {
   background:
     radial-gradient(120% 100% at 12% 10%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.04) 36%, rgba(0, 0, 0, 0) 70%),

@@ -107,10 +107,12 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
   const confirmBackLabel = getConfirmBackLabel(confirmBackType);
 
   clearConfirmAnimationClasses(cardEl, idx);
-  void cardEl.offsetWidth;
-  cardEl.classList.add('reveal-flip-animate', `confirm-back-${confirmBackType}`);
+  cardEl.classList.add(`confirm-back-${confirmBackType}`);
   cardEl.setAttribute('data-confirm-back-label', confirmBackLabel);
   cardEl.setAttribute('data-confirm-back-type', confirmBackType);
+  // Apply target team color first, then start the lift/flip motion.
+  void cardEl.offsetWidth;
+  cardEl.classList.add('reveal-flip-animate');
   pulseCardAnimationOverlay();
 
   const tid = window.setTimeout(() => {
