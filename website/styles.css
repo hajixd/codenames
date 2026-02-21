@@ -5592,6 +5592,11 @@ button.player-tag.pill-action:disabled{
 }
 
 .game-card {
+  --card-thickness: 10px;
+  --card-edge-color: #445063;
+  --card-edge-dark: #1a2230;
+  --card-edge-highlight: rgba(255, 255, 255, 0.42);
+  --card-edge-opacity: 0.9;
   aspect-ratio: 1.25;
   display: flex;
   align-items: center;
@@ -5610,7 +5615,53 @@ button.player-tag.pill-action:disabled{
 .game-card .card-inner {
   position: absolute;
   inset: 0;
+  -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
+}
+
+.game-card .card-inner::before,
+.game-card .card-inner::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--card-thickness);
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      var(--card-edge-highlight) 0%,
+      rgba(255, 255, 255, 0.08) 32%,
+      rgba(0, 0, 0, 0.18) 68%,
+      rgba(0, 0, 0, 0.38) 100%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--card-edge-color) 88%, #ffffff 12%) 0%,
+      var(--card-edge-color) 56%,
+      var(--card-edge-dark) 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.28);
+  opacity: var(--card-edge-opacity);
+  z-index: 1;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
+}
+
+.game-card .card-inner::before {
+  left: 0;
+  transform-origin: left center;
+  transform: translateX(calc(var(--card-thickness) * -0.5)) rotateY(90deg);
+}
+
+.game-card .card-inner::after {
+  right: 0;
+  transform-origin: right center;
+  transform: translateX(calc(var(--card-thickness) * 0.5)) rotateY(-90deg);
 }
 
 .game-card .card-face {
@@ -5620,6 +5671,7 @@ button.player-tag.pill-action:disabled{
   align-items: center;
   justify-content: center;
   padding: 6px;
+  z-index: 2;
   backface-visibility: hidden;
 }
 
@@ -5905,6 +5957,30 @@ body.og-mode .og-reveal-icon::before{
 
 .game-card.revealed .card-word {
   color: #fff;
+}
+
+.game-card.spymaster-view.card-red,
+.game-card.revealed.card-red {
+  --card-edge-color: #c24c3a;
+  --card-edge-dark: #6f261b;
+}
+
+.game-card.spymaster-view.card-blue,
+.game-card.revealed.card-blue {
+  --card-edge-color: #3b90c8;
+  --card-edge-dark: #1d4f78;
+}
+
+.game-card.spymaster-view.card-neutral,
+.game-card.revealed.card-neutral {
+  --card-edge-color: #b59a75;
+  --card-edge-dark: #6f5b43;
+}
+
+.game-card.spymaster-view.card-assassin,
+.game-card.revealed.card-assassin {
+  --card-edge-color: #3a3e48;
+  --card-edge-dark: #12151b;
 }
 
 /* Clue Area */
@@ -20938,6 +21014,13 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate {
   animation: ogConfirmWholeCard var(--card-confirm-duration) var(--card-confirm-ease) both;
 }
 
+body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed),
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate,
+body:not(.og-mode):not(.cozy-mode) .game-card.confirm-animate:not(.revealed),
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
+  overflow: visible;
+}
+
 body:is(.og-mode, .cozy-mode) .game-card.confirm-animate:not(.revealed) .card-inner,
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-inner {
   transform-origin: 50% 50%;
@@ -21001,24 +21084,32 @@ body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate.confirm-back-red,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate.confirm-back-red {
   --card-liquid-fill-bg: linear-gradient(160deg, #ea725f 0%, #d45138 52%, #a43724 100%);
   --card-liquid-crest-bg: linear-gradient(160deg, #f38a78 0%, #db5d45 55%, #ad402d 100%);
+  --card-edge-color: #c24c3a;
+  --card-edge-dark: #6f261b;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate.confirm-back-blue,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate.confirm-back-blue {
   --card-liquid-fill-bg: linear-gradient(160deg, #67b5ec 0%, #3c90cb 52%, #1f6797 100%);
   --card-liquid-crest-bg: linear-gradient(160deg, #81c4f0 0%, #4ca0d8 55%, #2875a9 100%);
+  --card-edge-color: #3b90c8;
+  --card-edge-dark: #1d4f78;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate.confirm-back-neutral,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate.confirm-back-neutral {
   --card-liquid-fill-bg: linear-gradient(160deg, #d9c09d 0%, #bea17b 52%, #987d5a 100%);
   --card-liquid-crest-bg: linear-gradient(160deg, #e5cfb0 0%, #caaf8b 55%, #a78a67 100%);
+  --card-edge-color: #b59a75;
+  --card-edge-dark: #6f5b43;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate.confirm-back-assassin,
 body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate.confirm-back-assassin {
   --card-liquid-fill-bg: linear-gradient(160deg, #3f434d 0%, #232832 52%, #0d1015 100%);
   --card-liquid-crest-bg: linear-gradient(160deg, #626774 0%, #3b414e 55%, #171c25 100%);
+  --card-edge-color: #3a3e48;
+  --card-edge-dark: #12151b;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back,
@@ -21026,9 +21117,34 @@ body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-back {
   background: var(--card-back-pre-reveal) !important;
 }
 
-body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate {
+.game-card.reveal-flip-animate {
   background: var(--surface) !important;
   border-color: var(--border) !important;
+}
+
+body.cozy-mode .game-card.reveal-flip-animate {
+  background: #D4C5A9 !important;
+  border-color: #c4b494 !important;
+}
+
+body.og-mode .game-card.reveal-flip-animate {
+  background: var(--neutral-cardBg) !important;
+  border-color: var(--neutral-cardBorder) !important;
+  --cardBorder: var(--neutral-cardBorder);
+  --cardBg: var(--neutral-cardBg);
+  --innerBorder: var(--neutral-innerBorder);
+  --innerBg: var(--neutral-innerBg);
+  --wordBg: var(--neutral-darkWordBg);
+}
+
+body.og-mode .game-card.reveal-flip-animate::before,
+body.og-mode .game-card.reveal-flip-animate::after {
+  opacity: 1 !important;
+}
+
+body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-front,
+body:not(.og-mode):not(.cozy-mode) .game-card.reveal-flip-animate .card-front {
+  background: transparent !important;
 }
 
 body:is(.og-mode, .cozy-mode) .game-card.reveal-flip-animate .card-back .card-liquid-fill,
