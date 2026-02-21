@@ -8113,7 +8113,7 @@ function renderJudgesAdminModal() {
               data-rule-add-example="${idx}"
               data-rule-example-kind="${kind}"
               ${canEdit ? '' : 'disabled'}
-            >Add Example</button>
+            >Add</button>
           </div>
           <div class="judges-admin-examples-list">
             ${rows || '<div class="hint judges-admin-example-empty">No examples yet.</div>'}
@@ -8128,8 +8128,8 @@ function renderJudgesAdminModal() {
             <span class="label">Rule ${idx + 1}</span>
             <textarea class="input judges-admin-rule-input" rows="2" data-rule-text="${idx}" ${dis}>${esc(rule.text || '')}</textarea>
           </label>
-          ${renderExamples('follow', follows, 'Examples Following Rule')}
-          ${renderExamples('break', breaks, 'Examples Breaking Rule')}
+          ${renderExamples('follow', follows, 'Follows Rule')}
+          ${renderExamples('break', breaks, 'Breaks Rule')}
         </div>
         <button class="icon-btn danger judges-admin-rule-remove" type="button" data-rule-remove="${idx}" ${canEdit ? '' : 'disabled'} aria-label="Remove rule">×</button>
       </div>
