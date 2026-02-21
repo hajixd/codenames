@@ -23654,8 +23654,8 @@ body:is(.og-mode, .cozy-mode) #og-chat-host .operative-chat-panel.chat-team-blue
   body:is(.og-mode, .cozy-mode) .game-center-area .game-board-wrapper {
     flex: 0 0 auto;
     overflow: visible !important;
-    margin-top: calc(clamp(22px, 4.6vh, 56px) + var(--og-mobile-overlap-extra, 0px)) !important;
-    margin-bottom: calc(clamp(22px, 4.6vh, 56px) + var(--og-mobile-overlap-extra, 0px)) !important;
+    margin-top: calc(clamp(28px, 5.4vh, 66px) + var(--og-mobile-overlap-extra, 0px)) !important;
+    margin-bottom: clamp(8px, 1.8vh, 18px) !important;
     padding: 0 0 max(0px, env(safe-area-inset-bottom, 0px));
   }
 
@@ -26135,12 +26135,22 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 }
 
 @media (max-width: 1024px) {
+  body:is(.og-mode, .cozy-mode) #game-board-container.game-container-expanded {
+    padding-top: 2px !important;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-topbar {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    margin-top: -1px;
+  }
+
   body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip {
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 30px;
-    margin: 4px 10px 6px;
+    margin: 1px 10px 4px;
     padding: 5px 10px;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.24);
@@ -26182,7 +26192,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
 
   /* Lower mobile team boxes slightly while keeping cards close below them. */
   body:is(.og-mode, .cozy-mode) #og-mobile-panels {
-    margin-top: 6px;
+    margin-top: 2px;
   }
 
   /* Keep clue word visible on mobile (not just clue number). */
@@ -26191,6 +26201,7 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     max-width: 100%;
     margin-inline: 0;
     justify-content: space-between !important;
+    flex-wrap: nowrap !important;
     gap: 8px;
     padding: 4px 8px;
     border-radius: 999px;
@@ -26220,6 +26231,12 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
   body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .operative-actions-expanded {
     flex: 0 0 auto;
     margin-left: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .game-action-bar.row-clue-endturn .operative-actions-expanded .btn {
+    white-space: nowrap;
+    min-height: 32px;
+    padding: 0 10px;
   }
 }
 
