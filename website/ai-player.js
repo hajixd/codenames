@@ -2950,31 +2950,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
   } catch (_) {}
 }
 
-/**
- * Local-only AI marks overlay.
- * Kept for backward compatibility with older card-tag UI paths.
- */
-let aiCardMarks = {}; // gameId -> { [cardIndex]: "yes"|"maybe"|"no" }
-
-function aiMarkCard(gameId, cardIndex, tag) {
-  try {
-    const gid = String(gameId || '');
-    if (!gid) return;
-    const idx = Number(cardIndex);
-    if (!Number.isFinite(idx) || idx < 0) return;
-    const t = String(tag || '').toLowerCase();
-    if (!['yes','maybe','no','clear',''].includes(t)) return;
-    if (!aiCardMarks[gid]) aiCardMarks[gid] = {};
-    if (!t || t === 'clear') delete aiCardMarks[gid][idx];
-    else aiCardMarks[gid][idx] = t;
-    if (typeof renderCardTags === 'function') renderCardTags();
-  } catch (_) {}
-}
-
-window.getAICardMarksForGame = function(gameId) {
-  try { return (aiCardMarks && aiCardMarks[String(gameId)] ) ? aiCardMarks[String(gameId)] : {}; } catch (_) { return {}; }
-};
-
 function sanitizeChatText(text, vision, maxLen = 180) {
   try {
     let s = String(text || '').trim();
@@ -5255,11 +5230,6 @@ tx.update(ref, updates);
 didEnd = true;
     });
 
-    // Clear AI marks when the turn ends (do NOT touch human tags)
-    if (didEnd && game.id && aiCardMarks[game.id]) {
-      aiCardMarks[game.id] = {};
-      if (typeof renderCardTags === 'function') renderCardTags();
-    }
     if (didEnd) {
       try { await syncAIConsideringState(game.id, ai.team, ai, { action: 'end_turn', marks: [] }); } catch (_) {}
     }
@@ -6251,18 +6221,25 @@ function buildConsideringReactionMessage(ai, consideringRows = [], selfOwner = '
     const others = (Array.isArray(row.byOwner) ? row.byOwner : []).filter(x => String(x.owner || '') !== String(selfOwner || ''));
     if (!others.length) return '';
     const initials = others.map(x => String(x.initials || '?').slice(0, 3)).join(', ');
+    const names = others
+      .map(x => _shortPersonName(x?.name || ''))
+      .filter(Boolean)
+      .filter((n, idx, arr) => arr.findIndex(v => String(v).toLowerCase() === String(n).toLowerCase()) === idx);
+    const addressed = names.length ? names[Math.floor(Math.random() * names.length)] : '';
     const spicy = (emo.mood === 'angry' || emo.mood === 'annoyed') && emo.intensity >= 55;
 
     if (others.length >= 3) {
       return _pick([
+        addressed ? `${addressed}, i see the pile on ${row.word} — let's sanity-check the downside first` : '',
         spicy ? `${row.word} has everyone hovering on it (${initials}) and i'm still not sold` : `${row.word} has a crowd of initials (${initials}) — feels like the team's leaning there`,
         `${row.word} got a bunch of people considering it (${initials}), worth pressure-checking risk before lock-in`,
-      ]);
+      ].filter(Boolean));
     }
     return _pick([
+      addressed ? `${addressed}, i can see why you marked ${row.word}, but i still want one cleaner link` : '',
       spicy ? `seeing ${initials} on ${row.word} — wait, are we forcing this?` : `noted ${initials} on ${row.word}, i can see why it's in play`,
       `${row.word} has live initials (${initials}); i'm tracking it too`,
-    ]);
+    ].filter(Boolean));
   } catch (_) {
     return '';
   }
@@ -6578,7 +6555,7 @@ function startAIGameLoop() {
 
       // Operatives phase
       if (game.currentPhase === 'operatives') {
-        // Marker chatter: react when teammate marker consensus/conflicts shift.
+        // Considering-chip chatter: react when teammate initials consensus/conflicts shift.
         const markerCandidates = (getAIOperatives(currentTeam) || [])
           .filter(a => a && a.mode === 'autonomous')
           .sort((a, b) => {
@@ -6672,8 +6649,6 @@ window.cleanupAllAI = cleanupAllAI;
 window.getAIPlayerByOdId = getAIPlayerByOdId;
 window.countAIsOnTeam = countAIsOnTeam;
 window.AI_CONFIG = AI_CONFIG;
-window.aiCardMarks = aiCardMarks;
-window.aiMarkCard = aiMarkCard;
 window.aiSpymasterPropose = aiSpymasterPropose;
 window.aiSpymasterFollowup = aiSpymasterFollowup;
 window.chooseSpymasterClue = chooseSpymasterClue;
