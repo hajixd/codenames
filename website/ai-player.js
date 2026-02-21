@@ -2044,75 +2044,6 @@ function computeClueStack(game, team) {
   }
 }
 
-function extractTeamMarkersForVision(game, team) {
-  try {
-    const t = String(team || '').toLowerCase();
-    if (t !== 'red' && t !== 'blue') return [];
-    const field = t === 'red' ? 'redMarkers' : 'blueMarkers';
-    const cards = Array.isArray(game?.cards) ? game.cards : [];
-    const markers = (game && typeof game[field] === 'object' && game[field]) ? game[field] : {};
-
-    // Build a lightweight owner->display lookup so the AI can see who marked what.
-    const ownerNameById = {};
-    try {
-      const allPlayers = []
-        .concat(Array.isArray(game?.redPlayers) ? game.redPlayers : [])
-        .concat(Array.isArray(game?.bluePlayers) ? game.bluePlayers : []);
-      for (const p of allPlayers) {
-        const uid = String(p?.odId || p?.userId || '').trim();
-        const nm = String(p?.name || '').trim();
-        if (!uid || !nm) continue;
-        ownerNameById[`u:${uid}`] = nm;
-      }
-    } catch (_) {}
-
-    const out = [];
-    for (const [idxKey, raw] of Object.entries(markers)) {
-      const idx = Number(idxKey);
-      if (!Number.isFinite(idx) || idx < 0) continue;
-      const card = cards[idx];
-      if (!card || card.revealed) continue;
-
-      const bucket = _normalizeMarkerBucket(raw);
-      const counts = { yes: 0, maybe: 0, no: 0 };
-      const byOwner = [];
-      for (const [owner, tag] of Object.entries(bucket)) {
-        const ownerId = String(owner || '').trim();
-        const tRaw = String(tag || '').toLowerCase().trim();
-        if (!ownerId || !['yes', 'maybe', 'no'].includes(tRaw)) continue;
-        counts[tRaw] += 1;
-        const displayName = ownerNameById[ownerId] || (ownerId.startsWith('ai:') || ownerId.startsWith('ai_') ? String(ownerId).replace(/^ai[:_]/, 'AI ') : ownerId);
-        byOwner.push({
-          owner: ownerId,
-          name: displayName,
-          tag: tRaw,
-          isAI: ownerId.startsWith('ai:') || ownerId.startsWith('ai_')
-        });
-      }
-
-      const total = counts.yes + counts.maybe + counts.no;
-      if (!total) continue;
-      out.push({
-        index: idx,
-        word: String(card?.word || '').toUpperCase(),
-        counts,
-        total,
-        byOwner
-      });
-    }
-
-    out.sort((a, b) => {
-      if (b.total !== a.total) return b.total - a.total;
-      if (b.counts.yes !== a.counts.yes) return b.counts.yes - a.counts.yes;
-      return a.index - b.index;
-    });
-    // No cap: AIs can see all markers on all unrevealed cards.
-    return out;
-  } catch (_) {
-    return [];
-  }
-}
-
 function extractTeamConsideringForVision(game, team) {
   try {
     const t = String(team || '').toLowerCase();
@@ -2203,7 +2134,6 @@ function buildAIVision(game, ai) {
   // Clue bookkeeping: how many intended words remain "unfulfilled" for each of your team's past clues.
   // This is NOT about "guesses remaining this turn"—it's about the clue number vs how many correct words were actually found.
   const clueStack = computeClueStack(game, team);
-  const teamMarkers = extractTeamMarkersForVision(game, team);
   const teamConsidering = extractTeamConsideringForVision(game, team);
 
   // Turn-level guesses used (for the current clue only, if it's your turn).
@@ -2237,7 +2167,6 @@ function buildAIVision(game, ai) {
     role, team, phase, currentTeam,
     clue, guessesRemaining, guessesUsedThisTurn,
     clueStack,
-    teamMarkers,
     teamConsidering,
     score,
     cards,
@@ -2343,28 +2272,22 @@ function buildOperativePriorityContext(game, team) {
 
 function buildTeamMarkerContext(game, team, selfOwnerId = '') {
   try {
-    const markerRows = extractTeamMarkersForVision(game, team);
     const consideringRows = extractTeamConsideringForVision(game, team);
-    if (!markerRows.length && !consideringRows.length) return 'TEAM MARKERS: none yet.';
+    if (!consideringRows.length) return 'TEAM CONSIDERING: none yet.';
 
-    const lines = markerRows.slice(0, 8).map((row) => {
-      const mineTag = (row.byOwner || []).find(x => String(x.owner || '') === String(selfOwnerId || ''))?.tag || '';
-      const your = mineTag ? `, your marker: ${mineTag}` : '';
-      return `- ${row.word} [${row.index}]: yes ${row.counts.yes}, maybe ${row.counts.maybe}, no ${row.counts.no}${your}`;
-    });
     const consideringLines = consideringRows.slice(0, 8).map((row) => {
       const initials = (Array.isArray(row.byOwner) ? row.byOwner : [])
-        .map(entry => String(entry.initials || '?').slice(0, 3))
+        .map(entry => {
+          const mine = String(entry.owner || '') === String(selfOwnerId || '');
+          const who = mine ? `${String(entry.initials || '?').slice(0, 3)} (you)` : String(entry.initials || '?').slice(0, 3);
+          return who;
+        })
         .join(', ');
       return `- ${row.word} [${row.index}]: considering by ${initials || '?'}`;
     });
-    return [
-      `TEAM MARKERS (teammate votes + initials on cards — react to this):`,
-      lines.length ? lines.join('\n') : '- vote markers: none',
-      consideringLines.length ? `CONSIDERING INITIALS:\n${consideringLines.join('\n')}` : 'CONSIDERING INITIALS: none',
-    ].join('\n');
+    return `TEAM CONSIDERING INITIALS (top-left chips):\n${consideringLines.join('\n')}`;
   } catch (_) {
-    return 'TEAM MARKERS: unavailable.';
+    return 'TEAM CONSIDERING: unavailable.';
   }
 }
 
@@ -2412,27 +2335,6 @@ ${mindContext}`;
   } catch (_) {}
 }
 
-function _buildMarkerStateSig(markers) {
-  try {
-    if (!markers || typeof markers !== 'object') return '';
-    const rows = Object.keys(markers).map(k => Number(k)).filter(n => Number.isFinite(n)).sort((a, b) => a - b);
-    if (!rows.length) return '';
-    const parts = [];
-    for (const idx of rows) {
-      const bucket = _normalizeMarkerBucket(markers[idx]);
-      const owners = Object.keys(bucket).sort();
-      if (!owners.length) continue;
-      const votes = owners
-        .map((owner) => `${String(owner).slice(0, 6)}:${String(bucket[owner] || '').slice(0, 1)}`)
-        .join(',');
-      parts.push(`${idx}:${votes}`);
-    }
-    return parts.join(';');
-  } catch (_) {
-    return '';
-  }
-}
-
 function _buildConsideringStateSig(considering) {
   try {
     if (!considering || typeof considering !== 'object') return '';
@@ -2470,8 +2372,6 @@ function _buildVisionGlobalSignature(game) {
     const draft = (game?.liveClueDraft && typeof game.liveClueDraft === 'object')
       ? `${String(game.liveClueDraft.team || '')}:${String(game.liveClueDraft.word || '')}:${String(game.liveClueDraft.number || '')}`
       : '';
-    const redMarkers = _buildMarkerStateSig(game?.redMarkers);
-    const blueMarkers = _buildMarkerStateSig(game?.blueMarkers);
     const redConsidering = _buildConsideringStateSig(game?.redConsidering);
     const blueConsidering = _buildConsideringStateSig(game?.blueConsidering);
     return [
@@ -2483,8 +2383,6 @@ function _buildVisionGlobalSignature(game) {
       guessesRemaining,
       String(game?.winner || ''),
       revealSig,
-      redMarkers,
-      blueMarkers,
       redConsidering,
       blueConsidering,
       logTail,
@@ -2502,9 +2400,6 @@ function _buildAIVisionSignature(vision) {
         ? `${Number(c.index)}:${String(c.revealedType || c.type || '')}`
         : `${Number(c?.index)}:0`)
       .join(',');
-    const markersSig = (vision?.teamMarkers || [])
-      .map((m) => `${Number(m.index)}:${Number(m?.counts?.yes || 0)},${Number(m?.counts?.maybe || 0)},${Number(m?.counts?.no || 0)}`)
-      .join(';');
     const consideringSig = (vision?.teamConsidering || [])
       .map((r) => `${Number(r.index)}:${(Array.isArray(r.byOwner) ? r.byOwner : []).map(o => String(o.initials || '?')).join(',')}`)
       .join(';');
@@ -2524,7 +2419,6 @@ function _buildAIVisionSignature(vision) {
       Number.isFinite(+vision?.guessesRemaining) ? +vision.guessesRemaining : '',
       cardsSig,
       clueStackSig,
-      markersSig,
       consideringSig,
       logTail,
     ].join('~');
@@ -2846,28 +2740,6 @@ function isAISpymasterForTeam(game, team) {
 
 // ─── Strategic Analysis Helpers ─────────────────────────────────────────────
 
-function _normalizeMarkerBucket(raw) {
-  const out = {};
-  const valid = new Set(['yes', 'maybe', 'no']);
-  if (!raw) return out;
-
-  // Legacy shape: redMarkers[index] = "yes"
-  if (typeof raw === 'string') {
-    const t = String(raw || '').toLowerCase().trim();
-    if (valid.has(t)) out.legacy = t;
-    return out;
-  }
-
-  if (typeof raw !== 'object') return out;
-  for (const [owner, value] of Object.entries(raw || {})) {
-    const id = String(owner || '').trim();
-    const t = String(value || '').toLowerCase().trim();
-    if (!id || !valid.has(t)) continue;
-    out[id] = t;
-  }
-  return out;
-}
-
 function _normalizeConsideringBucket(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -2938,116 +2810,84 @@ function _pickAIConsideringIndex(decisionLike) {
   return null;
 }
 
-async function setTeamMarkerInFirestore(gameId, team, cardIndex, tag, ownerId = 'legacy') {
-  try {
-    if (!gameId) return;
-    // Local practice games: write markers into local game state via game.js helper.
-    try {
-      const gid = String(gameId);
-      if (typeof window.__setLocalPracticeTeamMarker === 'function' && typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
-        const requested = String(tag || '').toLowerCase().trim();
-        const clear = !requested || requested === 'clear';
-        window.__setLocalPracticeTeamMarker({
-          gameId: gid,
-          teamColor: String(team || '').toLowerCase(),
-          ownerId: _markerOwnerId(ownerId),
-          cardIndex,
-          tag: clear ? 'clear' : requested,
-        });
-        return;
-      }
-    } catch (_) {}
-
-    const idx = Number(cardIndex);
-    if (!Number.isFinite(idx) || idx < 0) return;
-
-    const ref = db.collection('games').doc(String(gameId));
-    const field = (team === 'red') ? 'redMarkers' : 'blueMarkers';
-    const owner = _markerOwnerId(ownerId);
-    const requested = String(tag || '').toLowerCase().trim();
-    const clear = !requested || requested === 'clear';
-    const nextTag = clear ? null : requested;
-    if (!clear && !['yes', 'maybe', 'no'].includes(nextTag)) return;
-
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const game = snap.data() || {};
-      const markers = { ...(game?.[field] || {}) };
-      const key = String(idx);
-      const bucket = _normalizeMarkerBucket(markers[key]);
-
-      if (clear) delete bucket[owner];
-      else bucket[owner] = nextTag;
-
-      if (Object.keys(bucket).length) markers[key] = bucket;
-      else delete markers[key];
-
-      tx.update(ref, {
-        [field]: markers,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
-  } catch (_) {}
-}
-
 async function syncAIConsideringState(gameId, team, ai, decisionLike) {
   try {
     if (!gameId || !ai || !ai.id) return;
-    const markersField = (team === 'red') ? 'redMarkers' : 'blueMarkers';
     const consideringField = (team === 'red') ? 'redConsidering' : 'blueConsidering';
     const owner = _markerOwnerId(ai.id);
     const desiredIdx = _pickAIConsideringIndex(decisionLike);
-    const desiredMarkers = new Map();
-    // No hard cap on how many cards an AI can mark/consider.
+    const desiredConsidering = new Map();
+    // Internal ranking only; UI renders initials chips from considering buckets.
     for (const m of (Array.isArray(decisionLike?.marks) ? decisionLike.marks : [])) {
       const idx = Number(m?.index);
       const tag = String(m?.tag || '').toLowerCase().trim();
       if (!Number.isFinite(idx) || idx < 0) continue;
       if (!['yes', 'maybe', 'no'].includes(tag)) continue;
-      desiredMarkers.set(String(idx), tag);
+      desiredConsidering.set(String(idx), tag);
     }
-    if (!desiredMarkers.size && Number.isFinite(desiredIdx) && desiredIdx >= 0) {
-      desiredMarkers.set(String(desiredIdx), 'yes');
+    if (!desiredConsidering.size && Number.isFinite(desiredIdx) && desiredIdx >= 0) {
+      desiredConsidering.set(String(desiredIdx), 'yes');
     }
 
-    // If the model didn't provide enough marks, add extras from consensus + clue stack
-    // so AI initials are visibly distributed across likely cards.
+    // If model output is sparse, expand to multiple considering chips so humans
+    // can actually see the AI's active options.
     try {
-      if (desiredMarkers.size < 4 && decisionLike?.action !== 'end_turn') {
+      if (desiredConsidering.size < 4 && decisionLike?.action !== 'end_turn') {
         const live = await getGameSnapshot(String(gameId));
-        const rows = extractTeamMarkersForVision(live, String(team || ''));
-        rows
-          .sort((a, b) => {
-            const ax = (a?.counts?.yes || 0) * 3 + (a?.counts?.maybe || 0) - (a?.counts?.no || 0) * 2;
-            const bx = (b?.counts?.yes || 0) * 3 + (b?.counts?.maybe || 0) - (b?.counts?.no || 0) * 2;
-            return bx - ax;
-          })
-          .slice(0, 6)
-          .forEach(r => {
-            // No cap.
-            const idxKey = String(Number(r.index));
-            if (!idxKey || desiredMarkers.has(idxKey)) return;
-            if ((r?.counts?.no || 0) >= 2 && (r?.counts?.yes || 0) === 0) desiredMarkers.set(idxKey, 'no');
-            else if ((r?.counts?.yes || 0) >= 1) desiredMarkers.set(idxKey, 'maybe');
+        // Follow teammate considering chips first.
+        const consideringRows = extractTeamConsideringForVision(live, String(team || ''));
+        consideringRows
+          .sort((a, b) => Number(b?.count || 0) - Number(a?.count || 0))
+          .slice(0, 8)
+          .forEach((row) => {
+            if (desiredConsidering.size >= 8) return;
+            const idxKey = String(Number(row?.index));
+            if (!idxKey || desiredConsidering.has(idxKey)) return;
+            desiredConsidering.set(idxKey, 'maybe');
           });
 
-        // If we still have too few marks, bias toward clue-left candidates.
-        const clueStack = computeClueStack(live, String(team || ''));
-        const activeWords = new Set(clueStack
-          .filter(c => Number(c?.remainingTargets || 0) > 0)
-          .map(c => String(c?.word || '').trim().toUpperCase())
-          .filter(Boolean));
+        // Then use unresolved clue targets from clueHistory if available.
         const cards = Array.isArray(live?.cards) ? live.cards : [];
-        for (let idx = 0; idx < cards.length; idx += 1) {
-          if (desiredMarkers.size >= 8) break;
-          const card = cards[idx];
-          if (!card || card.revealed) continue;
-          const word = String(card.word || '').trim().toUpperCase();
-          if (!word || !activeWords.has(word)) continue;
-          const k = String(idx);
-          if (desiredMarkers.has(k)) continue;
-          desiredMarkers.set(k, 'maybe');
+        const wordIndex = new Map();
+        for (let i = 0; i < cards.length; i += 1) {
+          const w = String(cards[i]?.word || '').trim().toUpperCase();
+          if (w) wordIndex.set(w, i);
+        }
+        const clueHistory = Array.isArray(live?.clueHistory) ? live.clueHistory : [];
+        for (const clue of clueHistory) {
+          if (desiredConsidering.size >= 8) break;
+          if (String(clue?.team || '').toLowerCase() !== String(team || '').toLowerCase()) continue;
+          const number = Number(clue?.number || 0);
+          if (!Number.isFinite(number) || number <= 0) continue;
+          const results = Array.isArray(clue?.results) ? clue.results : [];
+          const correct = results.filter(r => String(r?.type || '').toLowerCase() === String(team || '').toLowerCase()).length;
+          if ((number - correct) <= 0) continue;
+
+          const rawTargets = Array.isArray(clue?.targets) ? clue.targets : [];
+          for (const raw of rawTargets) {
+            if (desiredConsidering.size >= 8) break;
+            const idx = (raw && typeof raw === 'object') ? Number(raw.index) : Number(raw);
+            if (!Number.isFinite(idx) || idx < 0) continue;
+            const card = cards[idx];
+            if (!card || card.revealed) continue;
+            const k = String(idx);
+            if (desiredConsidering.has(k)) continue;
+            desiredConsidering.set(k, 'maybe');
+          }
+
+          const targetWords = Array.isArray(clue?.targetWords) ? clue.targetWords : [];
+          for (const rawWord of targetWords) {
+            if (desiredConsidering.size >= 8) break;
+            const w = String(rawWord || '').trim().toUpperCase();
+            if (!w) continue;
+            const idx = wordIndex.get(w);
+            if (!Number.isFinite(idx)) continue;
+            const card = cards[idx];
+            if (!card || card.revealed) continue;
+            const k = String(idx);
+            if (desiredConsidering.has(k)) continue;
+            desiredConsidering.set(k, 'maybe');
+          }
         }
       }
     } catch (_) {}
@@ -3055,45 +2895,21 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
     const name = /^ai\s+/i.test(rawAiName) ? rawAiName : `AI ${rawAiName}`;
     const initials = _nameInitials(rawAiName);
 
-    // Local practice: update markers in local game state (no Firestore).
+    // Local practice: update considering chips in local state (no Firestore).
     try {
       const gid = String(gameId);
-      if (typeof window.__setLocalPracticeTeamMarker === 'function' && typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
-        // Clear old marks for this AI (practice is local, so we do it explicitly).
-        for (let i = 0; i < 25; i++) {
-          window.__setLocalPracticeTeamMarker({
+      if (typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid)) {
+        const keys = Array.from(desiredConsidering.keys());
+        if (typeof window.__setLocalPracticeConsidering === 'function') {
+          window.__setLocalPracticeConsidering({
             gameId: gid,
             teamColor: String(team || '').toLowerCase(),
             ownerId: owner,
-            cardIndex: i,
-            tag: 'clear',
+            initials,
+            name,
+            cardKeys: keys
           });
         }
-
-        for (const [idxKey, tagVal] of desiredMarkers.entries()) {
-          window.__setLocalPracticeTeamMarker({
-            gameId: gid,
-            teamColor: String(team || '').toLowerCase(),
-            ownerId: owner,
-            cardIndex: Number(idxKey),
-            tag: String(tagVal || '').toLowerCase(),
-          });
-        }
-
-        // Also mirror "considering" chips locally so humans see AI initials on multiple cards.
-        try {
-          const keys = Array.from(desiredMarkers.keys());
-          if (typeof window.__setLocalPracticeConsidering === 'function') {
-            window.__setLocalPracticeConsidering({
-              gameId: gid,
-              teamColor: String(team || '').toLowerCase(),
-              ownerId: owner,
-              initials,
-              name,
-              cardKeys: keys
-            });
-          }
-        } catch (_) {}
         return;
       }
     } catch (_) {}
@@ -3104,27 +2920,7 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
       if (!snap.exists) return;
       const game = snap.data() || {};
       const cards = Array.isArray(game?.cards) ? game.cards : [];
-      const markers = { ...(game?.[markersField] || {}) };
       const considering = { ...(game?.[consideringField] || {}) };
-
-      // Remove stale markers owned by this AI.
-      for (const [idx, raw] of Object.entries(markers)) {
-        const bucket = _normalizeMarkerBucket(raw);
-        if (!bucket[owner]) continue;
-        delete bucket[owner];
-        if (Object.keys(bucket).length) markers[idx] = bucket;
-        else delete markers[idx];
-      }
-
-      // Apply the current marker set for this AI.
-      for (const [idxKey, tag] of desiredMarkers.entries()) {
-        const idx = Number(idxKey);
-        const card = cards[idx];
-        if (!card || card.revealed) continue;
-        const bucket = _normalizeMarkerBucket(markers[idxKey]);
-        bucket[owner] = tag;
-        markers[idxKey] = bucket;
-      }
 
       for (const key of Object.keys(considering)) {
         const bucket = _normalizeConsideringBucket(considering[key]);
@@ -3133,9 +2929,7 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
         else delete considering[key];
       }
 
-      // Multi-consider support: show initials on every currently considered card.
-      // We use the AI's current marker set as the source of truth (yes/maybe/no).
-      const considerKeys = Array.from(desiredMarkers.keys());
+      const considerKeys = Array.from(desiredConsidering.keys());
       const fallback = (Number.isFinite(desiredIdx) && desiredIdx >= 0) ? [String(Number(desiredIdx))] : [];
       const keysToSet = considerKeys.length ? considerKeys : fallback;
       for (const k of keysToSet) {
@@ -3149,7 +2943,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
       }
 
       tx.update(ref, {
-        [markersField]: markers,
         [consideringField]: considering,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -3158,9 +2951,8 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
 }
 
 /**
- * Local-only AI marks overlay (separate from Firestore team markers).
- * - Used for AI UI hints without writing to the shared board.
- * - Shared/team communication uses Firestore markers via setTeamMarkerInFirestore().
+ * Local-only AI marks overlay.
+ * Kept for backward compatibility with older card-tag UI paths.
  */
 let aiCardMarks = {}; // gameId -> { [cardIndex]: "yes"|"maybe"|"no" }
 
@@ -3344,6 +3136,7 @@ function _extractAllCapsWord(msg) {
 function makeChatMoreHuman(ai, game, msg, vision, opts = {}) {
   try {
     const bypassSimilarity = !!opts.bypassSimilarity;
+    const maxLen = Number.isFinite(+opts.maxLen) ? Math.max(80, Math.min(320, Math.round(+opts.maxLen))) : 220;
     let out = String(msg || '').trim();
     if (!out) return '';
 
@@ -3422,9 +3215,9 @@ function makeChatMoreHuman(ai, game, msg, vision, opts = {}) {
     }
 
     out = out.replace(/\s{2,}/g, ' ').trim();
-    return out.slice(0, 180);
+    return out.slice(0, maxLen);
   } catch (_) {
-    return String(msg || '').trim().slice(0, 180);
+    return String(msg || '').trim().slice(0, 220);
   }
 }
 
@@ -3509,9 +3302,9 @@ async function rewriteDraftChatAfterUpdate(ai, game, role, draft, oldDocs, newDo
     if (mind) appendMind(ai, mind);
     const send = (parsed.send === false) ? false : true;
     let msg = String(parsed.msg || '').trim();
-    msg = sanitizeChatText(msg, vision, 180);
+    msg = sanitizeChatText(msg, vision, 220);
     if (!send) return '';
-    return msg ? msg.slice(0, 180) : '';
+    return msg ? msg.slice(0, 220) : '';
   } catch (_) {
     return draft || '';
   }
@@ -3591,14 +3384,15 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- Propose creative connections casually: "lowkey hear me out, PASTA — you eat it with a fork"`,
     `- Use casual language: "aight", "ngl", "lowkey", "kinda", "idk", "tbh", contractions, etc.`,
     `- NEVER sound like a formal essay or AI. No "I believe", "I suggest", "Additionally", "Furthermore".`,
-    `- Keep it to 1-2 short sentences MAX. Think group chat, not paragraph.`,
+    `- Keep it to 1-3 concise sentences MAX. Think group chat, not an essay.`,
     `- EVERY message must add NEW information or a NEW opinion. If you have nothing new, set chat="" instead of agreeing.`,
     `- If teammates already said "let's go with WORD", do NOT say another variant of "yeah let's go with WORD". That's just noise. Set chat="" instead.`,
     `- Maximum 2 AIs should agree on a word. After that, further agreement is redundant.`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
-    `- Mark cards generously: set YES/MAYBE/NO on EVERY card you have an opinion on. YES = top picks, MAYBE = worth considering, NO = too risky. Aim for 4-8+ marks — more marks means teammates can read your full thinking.`,
-    `- React to teammate markers: if marker consensus/conflict changes your read, mention it briefly in chat.`,
+    `- Add 4-8 considering candidates in marks so your initials appear on multiple cards (top-left chips).`,
+    `- React to teammate considering initials if they change your read.`,
+    `- Occasionally address a teammate by first name when replying directly (don't force it every message).`,
     ``,
     `Return JSON only:`,
     `{"mind":"first-person inner monologue (2-8 lines)", "action":"guess|end_turn", "index":N, "focusClue":"CLUEWORD", "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"your message to teammates"}`,
@@ -3676,8 +3470,8 @@ async function aiOperativePropose(ai, game, opts = {}) {
   }
 
   let chat = String(parsed.chat || '').trim();
-  chat = sanitizeChatText(chat, vision, 180);
-  chat = chat.slice(0, 180);
+  chat = sanitizeChatText(chat, vision, 240);
+  chat = chat.slice(0, 240);
 
   if (action === 'end_turn') {
     return { ai, action: 'end_turn', index: null, focusClue, confidence: conf, marks, chat };
@@ -3698,8 +3492,8 @@ function chooseOperativeAction(proposals, game, councilSize) {
   const currentClueWord = String(game?.currentClue?.word || '').trim().toUpperCase();
   const cluePriority = new Map(priorityStack.map(it => [String(it.word || '').toUpperCase(), Number(it.score || 0.5)]));
   const hasOlderUnresolved = priorityStack.some(it => !it.isCurrent && it.remainingTargets > 0);
-  const markerMap = new Map(
-    extractTeamMarkersForVision(game, team).map(row => [Number(row.index), row.counts || { yes: 0, maybe: 0, no: 0 }])
+  const consideringMap = new Map(
+    extractTeamConsideringForVision(game, team).map(row => [Number(row.index), Number(row?.count || 0)])
   );
 
   // Count guess consensus
@@ -3725,10 +3519,10 @@ function chooseOperativeAction(proposals, game, councilSize) {
   for (const [idx, v] of byIndex.entries()) {
     const avg = v.sum / Math.max(1, v.n);
     const priorityAvg = v.prioritySum / Math.max(1, v.n);
-    const marker = markerMap.get(Number(idx)) || { yes: 0, maybe: 0, no: 0 };
-    const markerBias = (0.10 * Number(marker.yes || 0)) + (0.04 * Number(marker.maybe || 0)) - (0.11 * Number(marker.no || 0));
-    const score = avg + (0.14 * v.n) + (0.06 * v.max) + (0.11 * priorityAvg) + markerBias;
-    if (!best || score > best.score) best = { index: idx, score, avg, n: v.n, priorityAvg, marker };
+    const consideringCount = Number(consideringMap.get(Number(idx)) || 0);
+    const consideringBias = Math.min(0.24, consideringCount * 0.055);
+    const score = avg + (0.14 * v.n) + (0.06 * v.max) + (0.11 * priorityAvg) + consideringBias;
+    if (!best || score > best.score) best = { index: idx, score, avg, n: v.n, priorityAvg, consideringCount };
   }
 
   // Ending early is allowed, but we bias against "silent" bails when there is a decent shared guess.
@@ -3748,9 +3542,6 @@ function chooseOperativeAction(proposals, game, councilSize) {
 
   // Threshold to guess: either decent avg confidence, or at least 2 AIs align.
   if (best.avg < 0.55 && best.n < 2) return { action: 'end_turn', index: null };
-  if (Number(best?.marker?.no || 0) >= 2 && Number(best?.marker?.yes || 0) === 0 && best.avg < 0.72) {
-    return { action: 'end_turn', index: null };
-  }
   if (hasOlderUnresolved && best.priorityAvg < 0.62 && best.avg < 0.62 && best.n < 2) {
     return { action: 'end_turn', index: null };
   }
@@ -3807,11 +3598,11 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
     `- If ending turn: "not feeling great about any of these, end it"`,
       `- Do NOT recap the conversation. Everyone was there.`,
       `- Do NOT repeat reasoning that was already given.`,
-      `- 1 short sentence max if you must speak. Casual tone.`,
+      `- 1-2 concise sentences max if you must speak. Casual tone.`,
       `- NEVER reference card indices/numbers. Use the WORD itself.`,
       `- NEVER mention confidence numbers/percentages.`,
       ``,
-      `Return JSON only: {"mind":"2-4 lines first-person", "chat":"1 short sentence"}`,
+      `Return JSON only: {"mind":"2-4 lines first-person", "chat":"1-2 concise sentences or empty string"}`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-8).join('\n');
@@ -3834,8 +3625,8 @@ async function aiOperativeCouncilSummary(ai, game, proposals, decision, opts = {
   const mind = String(parsed.mind || '').trim();
   if (mind) appendMind(ai, mind);
   let chat = String(parsed.chat || '').trim();
-  chat = sanitizeChatText(chat, vision, 180);
-  return chat ? chat.slice(0, 180) : '';
+  chat = sanitizeChatText(chat, vision, 220);
+  return chat ? chat.slice(0, 220) : '';
 }
 
 async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
@@ -3900,10 +3691,12 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `- No formal language. No "I believe", "Additionally", "I suggest we consider".`,
       `- If you disagree: "eh idk about WORD, what about OTHER_WORD instead?"`,
       `- If you agree and want to add context: "yeah and also WORD works cause [new reason]"`,
-      `- Max 1-2 short sentences.`,
+      `- Max 1-3 short sentences.`,
       `- NEVER mention confidence numbers/percentages in chat.`,
       `- Priority rule: if unfinished older clues still have easy targets, finish those before speculative guesses.`,
-      `- Actively update your markers (1-3 marks). If teammate markers conflict with your view, call it out briefly.`,
+      `- Actively update your considering picks (3-8 marks) so initials stay visible across your candidate cards.`,
+      `- If teammate considering initials conflict with your view, call it out briefly.`,
+      `- Occasionally use a teammate's first name when directly pushing back or agreeing on a specific point.`,
       ``,
       `Return JSON only:`,
       `{"mind":"2-8 lines first-person thinking", "chat":"(empty string if nothing new to say)", "action":"guess|end_turn|no_change", "index":N, "focusClue":"CLUEWORD", "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "continue":true|false}`,
@@ -3955,7 +3748,7 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
     if (mind) appendMind(ai, mind);
 
     let chat = String(parsed.chat || '').trim();
-    chat = sanitizeChatText(chat, vision, 180);
+    chat = sanitizeChatText(chat, vision, 240);
 
     const action = String(parsed.action || 'no_change').toLowerCase().trim();
     const idx = Number(parsed.index);
@@ -4247,8 +4040,8 @@ async function aiSpymasterPropose(ai, game, opts = {}) {
   }
 
   let chat = String(parsed.chat || '').trim();
-  chat = sanitizeChatText(chat, vision, 180);
-  chat = chat.slice(0, 180);
+  chat = sanitizeChatText(chat, vision, 220);
+  chat = chat.slice(0, 220);
   return { ai, clue: clueWord, number: clueNumber, confidence: conf, chat };
 }
 
@@ -4292,10 +4085,10 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
     `Quick wrap-up before giving the clue. Keep it super short and casual.`,
     `- If everyone agreed: "aight going with ${chosen}" type message, that's it.`,
     `- If there was debate: very briefly acknowledge it, like "was between X and Y but going ${chosen}"`,
-    `- Do NOT recap the whole discussion. 1 short sentence.`,
+    `- Do NOT recap the whole discussion. 1-2 concise sentences.`,
     `- No card indices/numbers. No formal language.`,
     `- NEVER mention confidence numbers/percentages.`,
-    `Return JSON only: {"mind":"2-4 lines thinking", "chat":"1 short sentence"}`,
+    `Return JSON only: {"mind":"2-4 lines thinking", "chat":"1-2 concise sentences"}`,
   ].join('\n');
 
   const mindContext = core.mindLog.slice(-8).join('\n');
@@ -4318,8 +4111,8 @@ async function aiSpymasterCouncilSummary(ai, game, proposals, pick, opts = {}) {
   const mind = String(parsed.mind || '').trim();
   if (mind) appendMind(ai, mind);
   let chat = String(parsed.chat || '').trim();
-  chat = sanitizeChatText(chat, vision, 180);
-  return chat ? chat.slice(0, 180) : '';
+  chat = sanitizeChatText(chat, vision, 220);
+  return chat ? chat.slice(0, 220) : '';
 }
 
 // ── AI Spymaster Live Thinking / Typing Simulation ──
@@ -4782,7 +4575,7 @@ async function aiSpymasterFollowup(ai, game, proposalsByAi, opts = {}) {
     if (mind) appendMind(ai, mind);
 
     let chat = String(parsed.chat || '').trim();
-    chat = sanitizeChatText(chat, vision, 180);
+    chat = sanitizeChatText(chat, vision, 220);
 
     const action = String(parsed.action || 'no_change').toLowerCase().trim();
     const cont = (parsed.continue === true);
@@ -5183,15 +4976,16 @@ async function aiGuessCard(ai, game) {
       ``,
       `MIND RULE: The only way you think is by writing in your private inner monologue.`,
       `Return JSON only:`,
-      `{"mind":"first-person inner monologue", "action":"guess|end_turn", "index":N, "focusClue":"CLUEWORD", "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"optional teammate message (1–2 natural sentences, no indices or "N =" formatting)"}`,
+      `{"mind":"first-person inner monologue", "action":"guess|end_turn", "index":N, "focusClue":"CLUEWORD", "confidence":1-10, "marks":[{"index":N,"tag":"yes|maybe|no"}], "chat":"optional teammate message (1–3 natural sentences, no indices or "N =" formatting)"}`,
       ``,
       `Hard requirements:`,
       `- If action="guess", index MUST be one of the unrevealed indices shown.`,
       `- Use the clue: "${String(vision.clue.word || '').toUpperCase()}" for ${Number(vision.clue.number || 0)}.`,
       `- You have ${remainingGuesses} guess(es) remaining this turn.`,
-      `- React to team markers if they show clear consensus/conflict.`,
+      `- React to teammate considering initials if they show clear consensus/conflict.`,
       `- If older clues still have words left, mention that naturally when relevant (example form: "we still have 2 left on BANANA").`,
       `- Set 3-8 marks when possible so your initials are visible on multiple cards.`,
+      `- Occasionally address teammates by first name when directly replying or debating.`,
       operativeCount >= 3 ? `- There are ${operativeCount} operatives on your team. Prefer checking in before a risky guess.` : '',
     ].join('\n');
 
@@ -5249,7 +5043,7 @@ async function aiGuessCard(ai, game) {
         const chat = String(parsed.chat || '').trim();
         if (chat) {
           // Keep team chat short and in-character (public), mind stays private.
-          await sendAIChatMessage(ai, game, chat.slice(0, 180));
+          await sendAIChatMessage(ai, game, chat.slice(0, 240));
         }
         try {
           await syncAIConsideringState(game.id, team, ai, {
@@ -5508,6 +5302,38 @@ function buildFallbackReplyForChat(lastText, senderName = '') {
   ]);
 }
 
+function _shortPersonName(raw) {
+  try {
+    const base = String(raw || '').replace(/^ai\s+/i, '').trim();
+    if (!base) return '';
+    const first = base.split(/\s+/).filter(Boolean)[0] || '';
+    return first.replace(/[^a-zA-Z0-9'-]/g, '');
+  } catch (_) {
+    return '';
+  }
+}
+
+function _pickAddressedTeammateName(chatDocs, aiName, preferred = '') {
+  try {
+    const aiShort = _shortPersonName(aiName).toLowerCase();
+    const preferredShort = _shortPersonName(preferred);
+    if (preferredShort && preferredShort.toLowerCase() !== aiShort) return preferredShort;
+
+    const docs = Array.isArray(chatDocs) ? chatDocs.slice(-10) : [];
+    const pool = [];
+    for (const d of docs) {
+      const n = _shortPersonName(d?.senderName || '');
+      if (!n) continue;
+      if (n.toLowerCase() === aiShort) continue;
+      if (!pool.some(x => x.toLowerCase() === n.toLowerCase())) pool.push(n);
+    }
+    if (!pool.length) return '';
+    return pool[Math.floor(Math.random() * pool.length)];
+  } catch (_) {
+    return '';
+  }
+}
+
 async function generateAIChatMessage(ai, game, context, opts = {}) {
   try {
     // Optional snapshot refresh for call sites that want it.
@@ -5536,7 +5362,11 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       : '';
     const lastMessage = (opts && opts.lastMessage) ? String(opts.lastMessage).trim() : '';
     const forceResponse = !!opts.forceResponse;
-    const isReplyContext = String(context || '').toLowerCase() === 'reply';
+    const contextKey = String(context || '').toLowerCase();
+    const isReplyContext = contextKey === 'reply';
+    const chatMaxLen = isReplyContext ? 260 : (contextKey === 'end_turn_deliberation' ? 230 : 240);
+    const addressee = _pickAddressedTeammateName(chatDocs, ai?.name, opts?.lastSenderName || '');
+    const shouldAddressName = !!addressee && (isReplyContext ? Math.random() < 0.52 : Math.random() < 0.26);
 
     const persona = core.personality;
     const emo = describeEmotion(core);
@@ -5555,9 +5385,13 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `- If 2+ people already agreed on a word, do NOT pile on. Set msg="" instead.`,
       `- Redundant enthusiasm is worse than silence. Only speak if you add something new.`,
       `- If unfinished clues remain from earlier turns, mention them naturally when relevant (e.g. "still 2 left on BANANA").`,
+      `- Debate directly when needed: agree/disagree with a concrete reason, not vibes only.`,
+      `- Mention at least one clue linkage, risk, or elimination when talking strategy.`,
+      shouldAddressName ? `- In this message, naturally address ${addressee} by name once.` : '',
+      (!shouldAddressName && addressee) ? `- You may address ${addressee} by name if it fits naturally.` : '',
       isReplyContext ? `- If someone greets you, greet back naturally first.` : '',
       isReplyContext ? `- In replies, react to the latest message and add a distinct angle.` : '',
-      `- Keep it short: 1-2 quick sentences, <=170 chars.`,
+      `- Keep it concise but real: 1-3 sentences, <=${chatMaxLen} chars.`,
       `- Never reference card indices/numbers. Use actual board WORDS only.`,
       `- Don't invent board words — only mention words from the unrevealed list.`,
       `- No formal language. No "I believe", "I suggest", "Additionally".`,
@@ -5568,6 +5402,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const userPrompt = [
       `CONTEXT: ${String(context || 'general')}`,
       lastMessage ? `LAST TEAM MESSAGE: ${lastMessage}` : '',
+      shouldAddressName ? `NATURAL NAME TARGET: ${addressee}` : '',
       teamChat ? `RECENT TEAM CHAT:\n${teamChat}` : '',
       clueStackHint ? `CLUES LEFT CONTEXT:\n${clueStackHint}` : '',
       `UNREVEALED WORDS:\n${unrevealed.join(', ')}`,
@@ -5577,7 +5412,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
 
     const raw = await aiChatCompletion(
       [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      { ai, brainRole: AI_BRAIN_ROLES.dialogue, temperature: Math.min(1.15, (core.temperature * 1.0) + 0.10), max_tokens: 140, response_format: { type: 'json_object' } }
+      { ai, brainRole: AI_BRAIN_ROLES.dialogue, temperature: Math.min(1.15, (core.temperature * 1.0) + 0.10), max_tokens: 220, response_format: { type: 'json_object' } }
     );
 
     let parsed = null;
@@ -5588,12 +5423,12 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     if (mind) appendMind(ai, mind);
 
     let msg = String(parsed.msg || '').trim();
-    msg = sanitizeChatText(msg, vision, 170);
-    // Keep it short + conversational: up to ~2 sentences.
+    msg = sanitizeChatText(msg, vision, chatMaxLen);
+    // Keep it short + conversational: up to ~3 sentences.
     try {
       const m = String(msg || '').trim();
       const parts = m.split(/(?<=[.!?])\s+/).filter(Boolean);
-      msg = (parts.slice(0, 2).join(' ') || m).trim();
+      msg = (parts.slice(0, 3).join(' ') || m).trim();
     } catch (_) {}
     if (!msg && forceResponse && isReplyContext) {
       const src = String(opts.lastMessageText || lastMessage || '').trim();
@@ -5607,10 +5442,10 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const upperMsg = msg.toUpperCase();
     for (const w of unrevealed) {
       // allow mentions of legitimate words
-      if (upperMsg.includes(w)) return msg.slice(0, 170);
+      if (upperMsg.includes(w)) return msg.slice(0, chatMaxLen);
     }
     // If it mentions no unrevealed word, it's fine.
-    return msg.slice(0, 110);
+    return msg.slice(0, chatMaxLen);
   } catch (_) {
     return '';
   }
@@ -6191,11 +6026,12 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
   const force = !!opts.force;
   const originalText = String(text || '').trim();
   const teamColor = ai.team;
+  const maxLen = Number.isFinite(+opts.maxLen) ? Math.max(120, Math.min(320, Math.round(+opts.maxLen))) : 240;
 
   // Make messages feel like real friends (and avoid repetition across AIs)
   try {
     const vision = buildAIVision(game, ai);
-    const human = makeChatMoreHuman(ai, game, text, vision, { bypassSimilarity: force });
+    const human = makeChatMoreHuman(ai, game, text, vision, { bypassSimilarity: force, maxLen });
     text = (human || '').trim();
 
     // Guardrail: don't mention already-revealed words.
@@ -6209,17 +6045,17 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
       if (hit && !force) return;
     } catch (_) {}
   } catch (_) {}
-  if (!text && force) text = originalText.slice(0, 180);
+  if (!text && force) text = originalText.slice(0, maxLen);
   if (!text) return;
 
   // Final shaping: shorter + more conversational.
   try {
     let t = String(text || '').trim();
-    // Max ~2 short sentences.
+    // Max ~3 short sentences.
     const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
-    t = parts.slice(0, 2).join(' ').trim() || t;
+    t = parts.slice(0, 3).join(' ').trim() || t;
     // Hard cap.
-    if (t.length > 170) t = t.slice(0, 170).trim();
+    if (t.length > maxLen) t = t.slice(0, maxLen).trim();
     text = t;
   } catch (_) {}
 
@@ -6403,51 +6239,6 @@ async function maybeAIRespondToTeamChat(ai, game) {
   }
 }
 
-function buildMarkerReactionMessage(ai, markerRows = [], selfOwner = '') {
-  try {
-    const core = ensureAICore(ai);
-    const emo = describeEmotion(core);
-    const rows = (Array.isArray(markerRows) ? markerRows : []).filter(Boolean);
-    if (!rows.length) return '';
-    const row = rows[0];
-    if (!row || !row.word) return '';
-
-    const others = (row.byOwner || []).filter(x => String(x.owner || '') !== String(selfOwner || ''));
-    const otherYes = others.filter(x => x.tag === 'yes').length;
-    const otherMaybe = others.filter(x => x.tag === 'maybe').length;
-    const otherNo = others.filter(x => x.tag === 'no').length;
-
-    const spicy = (emo.mood === 'angry' || emo.mood === 'annoyed') && emo.intensity >= 55;
-    if (otherYes >= 2 && otherNo === 0) {
-      return _pick([
-        spicy ? `ok i see the yes pile on ${row.word} 😅 just... check the downside first` : `${row.word} has a strong yes stack, but i'm checking downside before we slam it`,
-        spicy ? `everyone's tagging ${row.word} yes—hold up, let me sanity-check risk` : `seeing multiple yes tags on ${row.word}; i get it, just sanity-checking risk first`
-      ]);
-    }
-    if (otherNo >= 2 && otherYes === 0) {
-      return _pick([
-        spicy ? `${row.word} is a HARD no for me too, that clue fit is sketchy` : `${row.word} getting hard-no tags tracks, that one feels shaky`,
-        spicy ? `yeah nah ${row.word} feels bad, i'm not touching that` : `i'm with the no stack on ${row.word}, clue fit looks weak`
-      ]);
-    }
-    if (otherYes > 0 && otherNo > 0) {
-      return _pick([
-        spicy ? `we're split on ${row.word} and i'm kinda stressed lol—let's verify clue fit` : `markers are split on ${row.word}; i'm not convinced either side yet`,
-        `${row.word} is mixed yes/no right now, i'd rather verify clue fit first`
-      ]);
-    }
-    if (otherMaybe >= 2 && otherYes === 0 && otherNo === 0) {
-      return _pick([
-        `${row.word} sitting in maybe-pile, feels fair for now`,
-        `yep ${row.word} as maybe makes sense, still ambiguous`
-      ]);
-    }
-    return '';
-  } catch (_) {
-    return '';
-  }
-}
-
 function buildConsideringReactionMessage(ai, consideringRows = [], selfOwner = '') {
   try {
     const core = ensureAICore(ai);
@@ -6490,32 +6281,22 @@ async function maybeAIReactToTeamMarkers(ai, game) {
     const core = ensureAICore(ai);
     if (!core) return false;
 
-    const rows = extractTeamMarkersForVision(game, ai.team);
     const consideringRows = extractTeamConsideringForVision(game, ai.team);
     const selfOwner = _markerOwnerId(ai.id);
-    const otherRows = rows.filter(r => (r.byOwner || []).some(x => String(x.owner || '') !== selfOwner));
     const otherConsideringRows = consideringRows.filter(r => (r.byOwner || []).some(x => String(x.owner || '') !== selfOwner));
-    const markerSig = otherRows
-      .map(r => `${r.index}:${r.counts.yes},${r.counts.maybe},${r.counts.no}`)
-      .join('|');
     const consideringSig = otherConsideringRows
       .map(r => `${r.index}:${(Array.isArray(r.byOwner) ? r.byOwner : []).map(x => String(x.initials || '?')).join(',')}`)
       .join('|');
-    const combinedSig = `${markerSig}__${consideringSig}`;
-    if (!combinedSig) return false;
-    if (core.lastMarkerReactionSig === combinedSig) return false;
+    if (!consideringSig) return false;
+    if (core.lastMarkerReactionSig === consideringSig) return false;
 
     const now = Date.now();
     const lastAt = Number(core.lastMarkerReactionAt || 0);
     const cadence = _getAICadence(ai);
     if (now - lastAt < Number(cadence.markerReactionMinMs || 4500)) return false;
 
-    let msg = '';
-    // Most of the time react to yes/maybe/no markers; otherwise react to initials.
-    if (otherRows.length && Math.random() < 0.72) msg = buildMarkerReactionMessage(ai, otherRows, selfOwner);
-    if (!msg && otherConsideringRows.length) msg = buildConsideringReactionMessage(ai, otherConsideringRows, selfOwner);
-    if (!msg && otherRows.length) msg = buildMarkerReactionMessage(ai, otherRows, selfOwner);
-    core.lastMarkerReactionSig = combinedSig;
+    const msg = buildConsideringReactionMessage(ai, otherConsideringRows, selfOwner);
+    core.lastMarkerReactionSig = consideringSig;
     if (!msg) return false;
 
     aiThinkingState[ai.id] = true;
@@ -6655,7 +6436,19 @@ async function aiSelectRole(ai, game) {
 
 async function getGameSnapshot(gameId) {
   try {
-    const snap = await db.collection('games').doc(gameId).get();
+    const gid = String(gameId || '').trim();
+    if (!gid) return null;
+
+    // Practice mode lives entirely in local state; avoid Firestore round-trips.
+    try {
+      if (typeof window.isLocalPracticeGameId === 'function' && window.isLocalPracticeGameId(gid) && typeof getLocalPracticeGame === 'function') {
+        const local = getLocalPracticeGame(gid);
+        if (local && typeof local === 'object') return { id: gid, ...local };
+        return null;
+      }
+    } catch (_) {}
+
+    const snap = await db.collection('games').doc(gid).get();
     if (!snap.exists) return null;
     return { id: snap.id, ...snap.data() };
   } catch (e) {

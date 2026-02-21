@@ -5685,21 +5685,11 @@ function renderAdvancedFeatures() {
     clueTargetSelection = getCurrentClueTargetSelection(currentGame);
   }
 
-  // Load tags from localStorage for this game
-  loadTagsFromLocal();
-
   // Render advanced UI
-  renderCardTags();
   renderClueHistory();
   renderClueStackingPanel();
   renderTeamRoster();
   updateChatPrivacyBadge();
-
-  // Hide tag legend (tagging removed)
-  const tagLegend = document.getElementById('card-tag-legend');
-  if (tagLegend) {
-    tagLegend.style.display = 'none';
-  }
 
   // Initialize operative chat
   initOperativeChat();
@@ -9169,18 +9159,6 @@ function initAdvancedFeatures() {
   // This avoids inline onclick timing/bubbling glitches.
   setupBoardCardInteractions();
 
-  // Tag buttons
-  document.querySelectorAll('.tag-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag;
-      if (tag === 'clear') {
-        clearAllTags();
-        return;
-      }
-      setActiveTagMode(tag === activeTagMode ? null : tag);
-    });
-  });
-
   // Mobile swipe gestures: swipe right for Clue History/Log, swipe left for Team Chat
   initMobileSidebarSwipes();
 
@@ -9342,17 +9320,8 @@ setupBoardCardInteractions._lastAt = 0;
    Card Tagging System
 ========================= */
 function setActiveTagMode(mode) {
-  activeTagMode = mode;
-
-  // Update button states
-  document.querySelectorAll('.tag-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tag === mode);
-  });
-
-  // Update card cursor state
-  document.querySelectorAll('.game-card').forEach(card => {
-    card.classList.toggle('tag-mode', !!mode && !card.classList.contains('revealed'));
-  });
+  // Team vote markers are retired. Keep state cleared and rely on considering chips.
+  activeTagMode = null;
 }
 
 function getCurrentMarkerOwnerId() {
@@ -9812,79 +9781,18 @@ function tagCard(cardIndex, tag) {
 function clearAllTags() {
   cardTags = {};
   clearPendingCardSelection();
-  renderCardTags();
   saveTagsToLocal();
-  try { clearTeamMarkers(); } catch (_) {}
   setActiveTagMode(null);
 }
 
 function renderCardTags() {
+  // Team vote marker rendering is removed; keep a cleanup pass for old DOM nodes.
   const cards = document.querySelectorAll('.game-card');
-  const gameId = currentGame?.id;
-  const aiMarks = (gameId && typeof window.getAICardMarksForGame === 'function')
-    ? (window.getAICardMarksForGame(gameId) || {})
-    : {};
 
-  const myTeam = (typeof getMyTeamColor === 'function') ? (getMyTeamColor() || null) : null;
-  const teamMarkers = (myTeam === 'red')
-    ? (currentGame?.redMarkers || {})
-    : (myTeam === 'blue')
-      ? (currentGame?.blueMarkers || {})
-      : {};
-  const myOwnerId = getCurrentMarkerOwnerId();
-
-  cards.forEach((card, index) => {
-    // Remove existing tags (human, team, or AI)
+  cards.forEach((card) => {
+    // Remove any stale legacy marker elements.
     card.querySelectorAll('.card-tag-row').forEach(el => el.remove());
     card.querySelectorAll('.card-tag').forEach(el => el.remove());
-
-    if (card.classList.contains('revealed')) return;
-
-    const humanTag = cardTags[index];
-    const aiTag = aiMarks ? aiMarks[index] : null;
-    const sharedEntries = getTeamMarkerEntriesForCard(teamMarkers, index, myOwnerId);
-    const marks = [];
-
-    // Local mark first (instant feedback).
-    if (humanTag && ['yes', 'maybe', 'no'].includes(humanTag)) {
-      marks.push({ tag: humanTag, isAI: false, isShared: false, isMine: true, owner: myOwnerId });
-    }
-
-    // Team-shared marks (other players + AIs). If my local tag exists, suppress my shared duplicate.
-    sharedEntries
-      .sort((a, b) => {
-        if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
-        if (a.isAI !== b.isAI) return a.isAI ? 1 : -1;
-        return String(a.owner).localeCompare(String(b.owner));
-      })
-      .forEach(entry => {
-        if (!['yes', 'maybe', 'no'].includes(entry.tag)) return;
-        if (entry.isMine && humanTag) return;
-        marks.push({ tag: entry.tag, isAI: entry.isAI, isShared: true, isMine: entry.isMine, owner: entry.owner });
-      });
-
-    // Fallback to local-only AI hint if no shared marks are present.
-    if (!marks.length && aiTag && ['yes', 'maybe', 'no'].includes(aiTag)) {
-      marks.push({ tag: aiTag, isAI: true, isShared: false, isMine: false, owner: 'ai:local' });
-    }
-
-    if (!marks.length) return;
-
-    const row = document.createElement('div');
-    row.className = 'card-tag-row';
-
-    // Show all visible tags (no cap).
-    const visible = marks;
-    for (const mark of visible) {
-      const el = buildCardTagElement(mark.tag, {
-        isAI: mark.isAI,
-        isShared: mark.isShared,
-        isMine: mark.isMine
-      });
-      if (el) row.appendChild(el);
-    }
-
-    card.appendChild(row);
   });
 }
 
