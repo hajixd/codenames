@@ -45,6 +45,8 @@ const AI_CONFIG = {
   // Keep this isolated to final chat-message writing only.
   chatWriterTemperature: 2.0,
   chatWriterMaxTokens: 220,
+  // Private inner-monologue "mind tick" only (not strategy JSON decisions).
+  mindTemperature: 2.0,
   enableNebiusModelRouting: true,
   maxAIsPerTeam: 4,
 };
@@ -2245,6 +2247,20 @@ function appendMind(ai, text) {
   } catch (_) {}
 }
 
+function appendJudgeRejectionReasonToMind(ai, resultLike, clueWord = '', clueNumber = null) {
+  try {
+    if (!ai || !resultLike?.rejected) return;
+    const reason = String(resultLike?.reason || '').replace(/\s+/g, ' ').trim();
+    if (!reason) return;
+    const word = String(clueWord || '').trim().toUpperCase();
+    const num = Number.isFinite(+clueNumber) ? Math.max(0, Math.min(9, parseInt(clueNumber, 10) || 0)) : null;
+    const clueLabel = word ? `"${word}"${num !== null ? ` for ${num}` : ''}` : 'the clue';
+    appendMind(ai, `Judge rejected ${clueLabel}: ${reason}`);
+    const core = ensureAICore(ai);
+    if (core) core.lastJudgeRejectionReason = reason;
+  } catch (_) {}
+}
+
 window.getAIMindLog = function(aiId) {
   try { return (aiCore && aiCore[String(aiId)] && aiCore[String(aiId)].mindLog) ? aiCore[String(aiId)].mindLog.slice() : []; } catch (_) { return []; }
 };
@@ -2527,7 +2543,7 @@ function buildTeamMarkerContext(game, team, selfOwnerId = '') {
     const consideringRows = extractTeamConsideringForVision(game, team);
     if (!consideringRows.length) return 'TEAM CONSIDERING: none yet.';
 
-    const consideringLines = consideringRows.slice(0, 8).map((row) => {
+    const consideringLines = consideringRows.map((row) => {
       const initials = (Array.isArray(row.byOwner) ? row.byOwner : [])
         .map(entry => {
           const mine = String(entry.owner || '') === String(selfOwnerId || '');
@@ -2575,7 +2591,7 @@ ${mindContext}`;
     aiChatCompletion([{ role: 'system', content: sys }, { role: 'user', content: user }], {
       ai,
       brainRole: AI_BRAIN_ROLES.mind,
-      temperature: core.temperature,
+      temperature: _clamp(Number(AI_CONFIG.mindTemperature ?? 2), 0, 2),
       max_tokens: 180,
       response_format: { type: 'json_object' }
     }).then((raw) => {
@@ -3089,7 +3105,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
     if (!desiredConsidering.size && !hardClear) {
       const prev = Array.isArray(core?.lastConsideringKeys) ? core.lastConsideringKeys : [];
       for (const raw of prev) {
-        if (desiredConsidering.size >= 8) break;
         const idx = Number(raw);
         if (!Number.isFinite(idx) || idx < 0) continue;
         desiredConsidering.set(String(idx), 'maybe');
@@ -3130,7 +3145,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
           return Math.random() - 0.5;
         });
         for (const row of alternatives) {
-          if (desiredConsidering.size >= 6) break;
           const idxKey = String(Number(row?.index));
           if (!idxKey || desiredConsidering.has(idxKey)) continue;
           if (Math.random() < 0.74) desiredConsidering.set(idxKey, 'maybe');
@@ -3146,7 +3160,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
         const clueHistory = Array.isArray(live?.clueHistory) ? [...live.clueHistory] : [];
         clueHistory.sort(() => Math.random() - 0.5);
         for (const clue of clueHistory) {
-          if (desiredConsidering.size >= 8) break;
           if (String(clue?.team || '').toLowerCase() !== String(team || '').toLowerCase()) continue;
           const number = Number(clue?.number || 0);
           if (!Number.isFinite(number) || number <= 0) continue;
@@ -3157,7 +3170,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
           const rawTargets = Array.isArray(clue?.targets) ? [...clue.targets] : [];
           rawTargets.sort(() => Math.random() - 0.5);
           for (const raw of rawTargets) {
-            if (desiredConsidering.size >= 8) break;
             const idx = (raw && typeof raw === 'object') ? Number(raw.index) : Number(raw);
             if (!Number.isFinite(idx) || idx < 0) continue;
             const card = cards[idx];
@@ -3170,7 +3182,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
           const targetWords = Array.isArray(clue?.targetWords) ? [...clue.targetWords] : [];
           targetWords.sort(() => Math.random() - 0.5);
           for (const rawWord of targetWords) {
-            if (desiredConsidering.size >= 8) break;
             const w = String(rawWord || '').trim().toUpperCase();
             if (!w) continue;
             const idx = wordIndex.get(w);
@@ -3204,7 +3215,6 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
             return a.roll - b.roll;
           });
           for (const row of ranked) {
-            if (desiredConsidering.size >= 6) break;
             desiredConsidering.set(String(Number(row.idx)), 'maybe');
           }
         }
@@ -3219,7 +3229,7 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
       desiredKeys.every((k, i) => String(k) === String(previousKeys[i]))
     );
     if (!hardClear && desiredKeys.length) {
-      core.lastConsideringKeys = desiredKeys.slice(0, 8);
+      core.lastConsideringKeys = desiredKeys.slice();
     }
     if (!hardClear && !desiredKeys.length) {
       return; // keep previous markers instead of clearing on no_change/no-output turns
