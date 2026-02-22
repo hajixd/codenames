@@ -8349,12 +8349,16 @@ function renderJudgesAdminModal() {
   const listEl = document.getElementById('judges-admin-list');
   const nameInput = document.getElementById('judges-admin-name');
   const rulesEl = document.getElementById('judges-admin-rules');
+  const addJudgeBtn = document.getElementById('judges-admin-add-judge');
   const addRuleBtn = document.getElementById('judges-admin-add-rule');
   const removeJudgeBtn = document.getElementById('judges-admin-remove-judge');
   const editBtn = document.getElementById('judges-admin-edit-toggle');
+  const saveBtn = document.getElementById('judges-admin-save');
   const titleEl = document.getElementById('judges-admin-title');
   const backBtn = document.getElementById('judges-admin-back');
   if (!listEl || !nameInput || !rulesEl) return;
+  const canAdminEdit = !!isAdminUser();
+  if (!canAdminEdit && judgesAdminEditMode) judgesAdminEditMode = false;
 
   if (!judgesAdminSelectedId && judgesAdminDraft.length) {
     judgesAdminSelectedId = String(judgesAdminDraft[0].id || '').trim();
@@ -8389,13 +8393,16 @@ function renderJudgesAdminModal() {
     }).join('')
     : '<div class="empty-state">No judges yet.</div>';
 
-  const canEdit = !!selected && judgesAdminEditMode;
+  const canEdit = !!(canAdminEdit && selected && judgesAdminEditMode);
   if (editBtn) {
-    editBtn.disabled = !selected;
+    editBtn.disabled = !selected || !canAdminEdit;
     editBtn.textContent = judgesAdminEditMode ? 'Done' : 'Edit';
+    editBtn.classList.toggle('is-disabled', !canAdminEdit);
   }
+  if (addJudgeBtn) addJudgeBtn.disabled = !canAdminEdit;
   if (addRuleBtn) addRuleBtn.disabled = !canEdit;
   if (removeJudgeBtn) removeJudgeBtn.disabled = !canEdit;
+  if (saveBtn) saveBtn.disabled = !canAdminEdit;
 
   if (!selected) {
     nameInput.value = '';
@@ -8477,7 +8484,6 @@ function renderJudgesAdminModal() {
 }
 
 function openJudgesAdminModal() {
-  if (!isAdminUser()) return;
   const modal = document.getElementById('judges-admin-modal');
   if (!modal) return;
   judgesAdminDraft = cloneAIJudgeCatalog(getAIJudgeCatalog());
@@ -8485,7 +8491,7 @@ function openJudgesAdminModal() {
   judgesAdminEditMode = false;
   setJudgesAdminMobilePage(isJudgesAdminMobileViewport() ? 'list' : 'editor');
   judgesAdminModalOpen = true;
-  setJudgesAdminHint('');
+  setJudgesAdminHint(isAdminUser() ? '' : 'View only. Admin can edit.');
   renderJudgesAdminModal();
   modal.style.display = 'flex';
   requestAnimationFrame(() => modal.classList.add('modal-open'));
@@ -8543,6 +8549,7 @@ function initJudgesAdminModal() {
   });
 
   editBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
     if (!getSelectedJudgeFromDraft()) return;
     judgesAdminEditMode = !judgesAdminEditMode;
     setJudgesAdminHint('');
@@ -8592,6 +8599,7 @@ function initJudgesAdminModal() {
   });
 
   nameInput?.addEventListener('input', () => {
+    if (!isAdminUser()) return;
     if (!judgesAdminEditMode) return;
     const selected = getSelectedJudgeFromDraft();
     if (!selected) return;
@@ -8600,6 +8608,7 @@ function initJudgesAdminModal() {
   });
 
   addRuleBtn?.addEventListener('click', () => {
+    if (!isAdminUser()) return;
     if (!judgesAdminEditMode) return;
     const selected = getSelectedJudgeFromDraft();
     if (!selected) return;
@@ -8609,6 +8618,7 @@ function initJudgesAdminModal() {
   });
 
   rulesEl?.addEventListener('input', (e) => {
+    if (!isAdminUser()) return;
     if (!judgesAdminEditMode) return;
     const target = e.target;
     const selected = getSelectedJudgeFromDraft();
@@ -8637,6 +8647,7 @@ function initJudgesAdminModal() {
   });
 
   rulesEl?.addEventListener('click', (e) => {
+    if (!isAdminUser()) return;
     if (!judgesAdminEditMode) return;
     const btn = e.target?.closest?.('[data-rule-remove],[data-rule-add-example],[data-rule-remove-example]');
     if (!btn) return;
@@ -9006,9 +9017,9 @@ function initSettings() {
       } catch (_) {}
     }
     if (adminJudgesBtn) {
-      adminJudgesBtn.style.display = isAdmin ? '' : 'none';
-      adminJudgesBtn.disabled = !isAdmin;
-      adminJudgesBtn.classList.toggle('is-disabled', !isAdmin);
+      adminJudgesBtn.style.display = '';
+      adminJudgesBtn.disabled = false;
+      adminJudgesBtn.classList.remove('is-disabled');
     }
     if (isAdmin) {
       try { adminEnsureAutoBackupsRunning(); } catch (_) {}
@@ -9056,7 +9067,6 @@ function initSettings() {
   });
 
   adminJudgesBtn?.addEventListener('click', () => {
-    if (!isAdminUser()) return;
     playSound('click');
     try { closeSettingsModal(); } catch (_) {}
     try { openJudgesAdminModal(); } catch (_) {}
