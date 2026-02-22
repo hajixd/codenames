@@ -41,6 +41,10 @@ const AI_CONFIG = {
     scout: 'meta-llama/Llama-3.1-8B-Instruct',
     mind: 'meta-llama/Llama-3.3-70B-Instruct',
   },
+  // Token Factory chat completions accept temperature 0..2.
+  // Keep this isolated to final chat-message writing only.
+  chatWriterTemperature: 2.0,
+  chatWriterMaxTokens: 220,
   enableNebiusModelRouting: true,
   maxAIsPerTeam: 4,
 };
@@ -629,6 +633,47 @@ function _scoreNebiusModelForRole(model, role) {
   }
 
   return score;
+}
+
+function _scoreNebiusModelForChatWriter(model) {
+  const id = String(model?.id || '').toLowerCase();
+  const meta = String(model?.meta || '').toLowerCase();
+  const text = `${id} ${meta}`;
+  const sizeB = _extractSizeB(id);
+  let score = 0;
+
+  if (!_isLikelyChatGenerationModel(id, meta)) return -999;
+
+  if (/(hermes)/.test(text)) score += 120;
+  if (/(roleplay|dialogue|conversational|chat|assistant)/.test(text)) score += 46;
+  if (/(instruct)/.test(text)) score += 22;
+  if (/(llama|qwen|mistral|mixtral|command|nemotron|yi|gemma|phi)/.test(text)) score += 12;
+
+  // Avoid reasoning-specialized picks for pure conversational writing.
+  if (/(reason|r1|qwq|o1|chain.?of.?thought|cot|thinking|deepseek\-r1)/.test(text)) score -= 42;
+  if (/(embedding|rerank|speech|audio|asr|whisper|tts|vision-only|image|diffusion|sdxl|flux|moderation)/.test(text)) score -= 100;
+
+  if (sizeB !== null) {
+    if (sizeB >= 12 && sizeB <= 120) score += 8;
+    if (sizeB < 8) score -= 8;
+  }
+
+  return score;
+}
+
+function _resolveConversationWriterModel(ai = null) {
+  const models = Array.isArray(aiNebiusModelsState.models) ? aiNebiusModelsState.models : [];
+  let bestId = '';
+  let bestScore = -Infinity;
+  for (const m of models) {
+    const s = _scoreNebiusModelForChatWriter(m);
+    if (s > bestScore) {
+      bestScore = s;
+      bestId = String(m?.id || '').trim();
+    }
+  }
+  if (bestId) return bestId;
+  return _resolveModelForCall({ ai, brainRole: AI_BRAIN_ROLES.dialogue }, AI_BRAIN_ROLES.dialogue);
 }
 
 function _rankModelsForRole(models, role) {
@@ -1924,7 +1969,8 @@ function _buildAICadenceProfile(personality, seed = '') {
     offTurnChatChance,
     chatThinkMinMs,
     chatThinkMaxMs,
-    firstSeenChatLookbackMs: Math.round(_clamp(6000 + ((100 - tempo) * 55), 4500, 14000)),
+    // Wider initial lookback so newly-scanned AIs do not miss fresh human messages.
+    firstSeenChatLookbackMs: Math.round(_clamp(18000 + ((100 - tempo) * 220), 16000, 60000)),
   };
 }
 
@@ -5903,6 +5949,100 @@ function buildFallbackReplyForChat(lastText, senderName = '') {
   ]);
 }
 
+function _parseJsonObjectLoose(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  try {
+    const v = JSON.parse(text);
+    return (v && typeof v === 'object') ? v : null;
+  } catch (_) {}
+  const i = text.indexOf('{');
+  const j = text.lastIndexOf('}');
+  if (i >= 0 && j > i) {
+    try {
+      const v = JSON.parse(text.slice(i, j + 1));
+      return (v && typeof v === 'object') ? v : null;
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function rewriteChatTextWithConversationWriter(ai, game, draftText, opts = {}) {
+  try {
+    const draft = String(draftText || '').trim();
+    if (!draft) return '';
+    if (!ai || !game?.id) return draft;
+
+    const maxLen = Number.isFinite(+opts.maxLen) ? Math.max(100, Math.min(320, Math.round(+opts.maxLen))) : 240;
+    const vision = opts.vision || buildAIVision(game, ai);
+    const team = String(ai.team || '').toLowerCase() === 'blue' ? 'blue' : 'red';
+    const unrevealed = (Array.isArray(vision?.cards) ? vision.cards : [])
+      .filter(c => !c?.revealed)
+      .map(c => String(c?.word || '').toUpperCase())
+      .filter(Boolean);
+
+    if (AI_CONFIG.enableNebiusModelRouting && !aiNebiusModelsState.models.length) {
+      try { await fetchNebiusModelCatalog(); } catch (_) {}
+    } else {
+      primeNebiusModelCatalog();
+    }
+
+    const chatDocs = Array.isArray(opts.chatDocs)
+      ? opts.chatDocs
+      : await fetchRecentTeamChatDocs(game.id, team, 10, { cacheMs: 600 });
+    const recentChat = (Array.isArray(chatDocs) ? chatDocs : [])
+      .slice(-8)
+      .map(m => `${String(m?.senderName || 'Teammate')}: ${String(m?.text || '').trim()}`)
+      .filter(Boolean)
+      .join('\n');
+
+    const model = _resolveConversationWriterModel(ai);
+    const writerTemp = _clamp(Number(AI_CONFIG.chatWriterTemperature || 2), 0, 2);
+    const writerMaxTokens = Math.max(120, Math.min(320, Number(AI_CONFIG.chatWriterMaxTokens || 220)));
+
+    const systemPrompt = [
+      `You rewrite one teammate chat message for a live Codenames game.`,
+      `Goal: make it sound natural, conversational, and human.`,
+      `Rules:`,
+      `- Keep the intent of the draft, but improve wording and flow.`,
+      `- 1-3 short sentences, <=${maxLen} chars.`,
+      `- Not repetitive. Do not echo recent chat phrasing.`,
+      `- If someone greeted the team recently, greeting back is okay.`,
+      `- Use casual language and contractions.`,
+      `- Never mention card indices or coordinates.`,
+      `- If referencing board words, only use words from UNREVEALED WORDS.`,
+      `Return JSON only: {"msg":"rewritten message"}`,
+    ].join('\n');
+
+    const userPrompt = [
+      `DRAFT MESSAGE:\n${draft}`,
+      recentChat ? `RECENT TEAM CHAT:\n${recentChat}` : '',
+      unrevealed.length ? `UNREVEALED WORDS:\n${unrevealed.join(', ')}` : 'UNREVEALED WORDS:\n(none listed)',
+    ].filter(Boolean).join('\n\n');
+
+    const raw = await aiChatCompletion(
+      [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      {
+        ai,
+        model,
+        brainRole: AI_BRAIN_ROLES.dialogue,
+        temperature: writerTemp,
+        max_tokens: writerMaxTokens,
+        response_format: { type: 'json_object' },
+      }
+    );
+
+    const parsed = _parseJsonObjectLoose(raw);
+    let msg = String(parsed?.msg || '').trim();
+    if (!msg) msg = draft;
+    msg = sanitizeChatText(msg, vision, maxLen);
+    if (!msg) msg = sanitizeChatText(draft, vision, maxLen);
+    return String(msg || '').slice(0, maxLen);
+  } catch (_) {
+    return String(draftText || '').trim();
+  }
+}
+
 function _shortPersonName(raw) {
   try {
     const base = String(raw || '').replace(/^ai\s+/i, '').trim();
@@ -6810,6 +6950,13 @@ async function sendAIChatMessage(ai, game, text, opts = {}) {
   const teamColor = ai.team;
   const maxLen = Number.isFinite(+opts.maxLen) ? Math.max(120, Math.min(320, Math.round(+opts.maxLen))) : 240;
 
+  // Final chat content writer: isolated conversational model call at max temperature.
+  // This does not affect strategy/reasoning model temperatures.
+  try {
+    const rewritten = await rewriteChatTextWithConversationWriter(ai, game, originalText, { maxLen });
+    if (rewritten) text = rewritten;
+  } catch (_) {}
+
   // Make messages feel like real friends (and avoid repetition across AIs)
   try {
     const vision = buildAIVision(game, ai);
@@ -6978,10 +7125,11 @@ async function maybeAIRespondToTeamChat(ai, game) {
       const baseChance = senderIsAI
         ? Number(cadence.chatReplyChanceVsAI || 0.55)
         : Number(cadence.chatReplyChanceVsHuman || 0.72);
+      const humanBoost = senderIsAI ? 0 : 0.10;
       const phaseBoost = socialPhase.key === 'debate' ? 0.08 : (socialPhase.key === 'reasoning' ? -0.06 : (socialPhase.key === 'greeting' ? 0.04 : 0));
       const recencyPenalty = Math.min(0.22, Math.max(0, fresh.length - 1) * 0.05);
       const lengthBoost = Math.min(0.10, (text.length / 500));
-      const chance = _clamp(baseChance + phaseBoost - recencyPenalty + lengthBoost, 0.08, 0.95);
+      const chance = _clamp(baseChance + humanBoost + phaseBoost - recencyPenalty + lengthBoost, 0.08, 0.98);
       shouldReply = Math.random() < chance;
     }
 

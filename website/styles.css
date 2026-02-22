@@ -14775,6 +14775,19 @@ body.qp-gate-open .app {
   white-space: nowrap;
 }
 
+.players-popup-item .pp-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.players-popup-item .players-popup-avatar {
+  --avatar-size: 24px;
+  flex: 0 0 auto;
+}
+
 .players-popup-item .pp-role {
   font-size: 11px;
   color: var(--text-dim);

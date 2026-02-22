@@ -5996,15 +5996,32 @@ function findRosterPlayerByName(name, rosterPlayers) {
 }
 
 function renderPlayerAvatarHtmlGame(opts = {}) {
+  const rawId = String(opts?.userId || opts?.uid || opts?.profileId || '').trim();
+  let normalizedId = rawId;
+  const prefixed = rawId.match(/^(?:u|user|player):(.+)$/i);
+  if (prefixed && prefixed[1]) normalizedId = String(prefixed[1]).trim();
+  if (!normalizedId || normalizedId === 'local' || normalizedId === 'u:local') normalizedId = '';
+
+  const nextOpts = { ...opts };
+  if (normalizedId) {
+    nextOpts.userId = normalizedId;
+    nextOpts.uid = normalizedId;
+    nextOpts.profileId = normalizedId;
+  } else {
+    delete nextOpts.userId;
+    delete nextOpts.uid;
+    delete nextOpts.profileId;
+  }
+
   const fn = window?.renderProfileAvatarHtml;
   if (typeof fn === 'function') {
-    return fn(opts);
+    return fn(nextOpts);
   }
-  const name = String(opts?.name || 'Player').trim();
-  const size = Math.max(10, Math.min(160, Number(opts?.size) || 28));
-  const color = String(opts?.teamColor || '').trim() || '#3b82f6';
+  const name = String(nextOpts?.name || 'Player').trim();
+  const size = Math.max(10, Math.min(160, Number(nextOpts?.size) || 28));
+  const color = String(nextOpts?.teamColor || '').trim() || '#3b82f6';
   const initials = getPlayerInitials(name).slice(0, 2).toUpperCase();
-  const className = String(opts?.className || '').trim();
+  const className = String(nextOpts?.className || '').trim();
   const cls = ['ct-avatar', className, 'is-initials'].filter(Boolean).join(' ');
   return `<span class="${cls}" style="--avatar-size:${size}px;--avatar-bg:${escapeHtml(color)};" title="${escapeHtml(name)}"><span class="ct-avatar-initials">${escapeHtml(initials)}</span></span>`;
 }
@@ -13880,7 +13897,23 @@ function renderPlayersPopup() {
       const attrs = pid
         ? `class="players-popup-item ${team} ${isMe ? 'is-me' : ''} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
         : `class="players-popup-item ${team} ${isMe ? 'is-me' : ''}"`;
-      return `<div ${attrs}><span class="pp-name">${name}</span><span class="pp-role">${role}</span></div>`;
+      const teamHex = team === 'blue' ? '#3b82f6' : '#ef4444';
+      const avatarHtml = renderPlayerAvatarHtmlGame({
+        userId: pid,
+        name: displayName || 'Player',
+        avatarDataUrl: p?.avatarDataUrl || '',
+        teamColor: teamHex,
+        size: 24,
+        className: 'players-popup-avatar',
+        title: displayName || 'Player',
+        ariaHidden: true,
+      });
+      return `
+        <div ${attrs}>
+          <span class="pp-main">${avatarHtml}<span class="pp-name">${name}</span></span>
+          <span class="pp-role">${role}</span>
+        </div>
+      `;
     }).join('');
   };
 
