@@ -5651,10 +5651,11 @@ function initMyTeamControls() {
       const st = computeUserState(teamsCache);
       if (!st.teamId) return;
       try {
-      await renameTeamUnique(st.teamId, v);
-    } catch (e) {
-      setHint('teams-hint', e?.message || 'Could not rename team.');
-    }
+        await renameTeamUnique(st.teamId, v);
+      } catch (e) {
+        setHint('myteam-hint', e?.message || 'Could not rename team.');
+        throw e;
+      }
     }
   });
 
@@ -7441,9 +7442,13 @@ async function deleteTeam(teamId) {
         if (mappedId === tid) tx.delete(nameRef);
       }
       // Hard deletes are admin-only with locked-down rules. Archive instead.
+      // Clear members/pending so clients immediately see the team as gone.
       tx.update(teamRef, {
         archived: true,
         archivedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        members: [],
+        pending: [],
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
     });
 
@@ -7454,7 +7459,7 @@ async function deleteTeam(teamId) {
     activatePanel('panel-teams');
   } catch (e) {
     console.error(e);
-    setHint('teams-hint', e?.message || 'Could not delete team.');
+    setHint('myteam-hint', e?.message || 'Could not delete team.');
   }
 }
 
@@ -7841,9 +7846,14 @@ function wireInlineEdit({ displayEl, inputEl, getValue, onCommit }) {
     inputEl.style.display = 'none';
     displayEl.style.display = 'block';
     if (commit && next) {
-      try { await onCommit?.(next); } catch (_) {}
+      try {
+        await onCommit?.(next);
+        // Optimistically show the committed value; onSnapshot will confirm.
+        displayEl.textContent = next;
+        return;
+      } catch (_) {}
     }
-    // Always refresh display text from source of truth
+    // Revert to source-of-truth on cancel or failure.
     displayEl.textContent = (getValue?.() || '').trim() || '—';
   };
 
