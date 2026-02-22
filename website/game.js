@@ -47,6 +47,8 @@ let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
 const CARD_CONFIRM_ANIM_MS = 4200;
+const CARD_REVEAL_TIMER_PAUSE_MS = Math.max(CARD_CONFIRM_ANIM_MS + 120, 4300);
+const CLUE_REVEAL_TIMER_PAUSE_MS = 6300;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 const _REVEAL_ANIMATION_CLASSES = ['reveal-flip-animate', 'reveal-no-flip-pulse', 'reveal-no-flip-sweep'];
 let _cardAnimOverlayTimer = null;
@@ -664,6 +666,7 @@ function applyLocalPracticeGuessState(game, idx, actorName, actorId = '') {
   const team = game.currentTeam === 'blue' ? 'blue' : 'red';
   const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
   const guessByName = String(actorName || 'Someone');
+  const revealPauseMs = getCardRevealTimerPauseMs();
   const clueWordAtGuess = game.currentClue?.word || null;
   const clueNumberAtGuess = (game.currentClue && typeof game.currentClue.number !== 'undefined') ? game.currentClue.number : null;
 
@@ -758,6 +761,8 @@ function applyLocalPracticeGuessState(game, idx, actorName, actorId = '') {
     game.guessesRemaining = 0;
     if (timerTransitionFields) Object.assign(game, timerTransitionFields);
   }
+
+  applyTimerPauseToTarget(game, revealPauseMs);
 
   if (clueWordAtGuess && clueNumberAtGuess !== null && clueNumberAtGuess !== undefined) {
     appendGuessToClueHistoryLocal(game, team, clueWordAtGuess, clueNumberAtGuess, guessResult);
@@ -993,6 +998,7 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
   game.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
   game.currentPhase = 'operatives';
   Object.assign(game, timerFields);
+  applyTimerPauseToTarget(game, getClueRevealTimerPauseMs());
   game.log = Array.isArray(game.log) ? [...game.log] : [];
   game.log.push(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`);
   game.clueHistory = Array.isArray(game.clueHistory) ? [...game.clueHistory] : [];
@@ -8502,6 +8508,7 @@ function buildAcceptedClueRemoteUpdates(game, pending, opts = {}) {
     clueHistory: firebase.firestore.FieldValue.arrayUnion(buildClueEntryFromPending(pending)),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   };
+  applyTimerPauseToTarget(updates, getClueRevealTimerPauseMs());
   if (opts.seqField) updates[opts.seqField] = firebase.firestore.FieldValue.increment(1);
   return updates;
 }
@@ -8519,6 +8526,7 @@ function applyAcceptedClueLocalState(draft, pending, opts = {}) {
   draft.guessesRemaining = (pending.number === 0 ? 0 : (pending.number + 1));
   draft.currentPhase = 'operatives';
   Object.assign(draft, timerFields);
+  applyTimerPauseToTarget(draft, getClueRevealTimerPauseMs());
   draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
   draft.log.push(`${teamName} Spymaster: "${pending.word}" for ${pending.number}`);
   if (opts.review) draft.log.push(buildCouncilSummaryLine(pending, opts.review));
@@ -9557,7 +9565,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     ogBanner.style.display = isOgMode ? 'block' : 'none';
     if (isOgMode) {
       const allowBannerTurnTimer = !isCumulativeClockType(currentGame);
-      ogBanner.classList.toggle('show-cumulative-mobile', !allowBannerTurnTimer);
       if (currentGame.winner) {
         const winnerName = currentGame.winner === 'red'
           ? (currentGame.redTeamName || 'RED')
@@ -9567,14 +9574,14 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         ogText.classList.remove('is-cumulative');
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'spymaster') {
-        if (!allowBannerTurnTimer) {
-          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
-          updateOgPhaseBannerCumulativeText(snap, currentGame);
-        } else if (isMobileLayoutLike()) {
+        if (isMobileLayoutLike()) {
           ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
           ogText.classList.remove('is-timer');
           ogText.classList.remove('is-cumulative');
           ogText.classList.remove('red','blue');
+        } else if (!allowBannerTurnTimer) {
+          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+          updateOgPhaseBannerCumulativeText(snap, currentGame);
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
@@ -9590,14 +9597,14 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         }
       } else if (currentGame.currentPhase === 'operatives') {
         // Desktop-only: replace the old instruction with the live turn timer.
-        if (!allowBannerTurnTimer) {
-          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
-          updateOgPhaseBannerCumulativeText(snap, currentGame);
-        } else if (isMobileLayoutLike()) {
+        if (isMobileLayoutLike()) {
           ogText.textContent = '';
           ogText.classList.remove('is-timer');
           ogText.classList.remove('is-cumulative');
           ogText.classList.remove('red','blue');
+        } else if (!allowBannerTurnTimer) {
+          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+          updateOgPhaseBannerCumulativeText(snap, currentGame);
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
@@ -9624,7 +9631,6 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         ogText.classList.remove('is-cumulative');
       }
     }
-    if (!isOgMode) ogBanner.classList.remove('show-cumulative-mobile');
   }
 
   const canEndTurn = !spectator
@@ -10379,6 +10385,7 @@ async function handleCardClick(cardIndex) {
       const teamName = teamLive === 'red'
         ? (liveGame.redTeamName || 'Red Team')
         : (liveGame.blueTeamName || 'Blue Team');
+      const revealPauseMs = getCardRevealTimerPauseMs();
 
       const updates = {
         cards: nextCards,
@@ -10453,6 +10460,7 @@ async function handleCardClick(cardIndex) {
           team: teamLive,
           winner,
         }));
+        applyTimerPauseToTarget(updates, revealPauseMs);
         const winnerName = truncateTeamNameGame(winner === 'red' ? liveGame.redTeamName : liveGame.blueTeamName);
         logEntries.push(`${winnerName} wins!`);
       } else if (endTurn) {
@@ -10468,6 +10476,12 @@ async function handleCardClick(cardIndex) {
           team: nextTeam,
           winner: null,
         }));
+        applyTimerPauseToTarget(updates, revealPauseMs);
+      } else {
+        const currentEndMs = draftToMs(liveGame.timerEnd);
+        if (currentEndMs > 0) {
+          updates.timerEnd = toTimerTimestampFromMs(currentEndMs + revealPauseMs);
+        }
       }
       updates.log = firebase.firestore.FieldValue.arrayUnion(...logEntries);
 
@@ -12299,29 +12313,125 @@ function formatClockTime(remainingMs, unlimited = false) {
   return `${minutes}:${secs.toString().padStart(2, '0')}.${tenths}`;
 }
 
+function getCardRevealTimerPauseMs() {
+  if (document.body?.classList?.contains('no-animations')) return 0;
+  return CARD_REVEAL_TIMER_PAUSE_MS;
+}
+
+function getClueRevealTimerPauseMs() {
+  if (document.body?.classList?.contains('no-animations')) return 0;
+  return CLUE_REVEAL_TIMER_PAUSE_MS;
+}
+
+function applyTimerPauseToTarget(target, pauseMs) {
+  if (!target) return;
+  const extraMs = Math.max(0, Math.round(Number(pauseMs) || 0));
+  if (extraMs <= 0) return;
+  const endMs = draftToMs(target.timerEnd);
+  if (endMs <= 0) return;
+  target.timerEnd = toTimerTimestampFromMs(endMs + extraMs);
+}
+
 function updateOgMobileTurnStrip(timerText, phaseOverride) {
   const stripEl = document.getElementById('og-mobile-turn-strip');
   const stripTextEl = document.getElementById('og-mobile-turn-strip-text');
+  const cumulativeEl = document.getElementById('og-mobile-turn-strip-cumulative');
   if (!stripEl || !stripTextEl) return;
 
   const isOgMode = isOnlineStyleActive();
   const isMobile = isMobileLayoutLike();
   if (!isOgMode || !isMobile || !currentGame || currentGame.winner) {
     stripEl.style.display = 'none';
+    stripEl.classList.remove('is-cumulative');
+    if (stripTextEl) stripTextEl.style.display = '';
+    if (cumulativeEl) {
+      cumulativeEl.style.display = 'none';
+      cumulativeEl.innerHTML = '';
+    }
     return;
   }
 
   const phase = String(phaseOverride || currentGame.currentPhase || '');
   if (phase !== 'spymaster' && phase !== 'operatives') {
     stripEl.style.display = 'none';
+    stripEl.classList.remove('is-cumulative');
+    if (stripTextEl) stripTextEl.style.display = '';
+    if (cumulativeEl) {
+      cumulativeEl.style.display = 'none';
+      cumulativeEl.innerHTML = '';
+    }
     return;
   }
 
-  // In cumulative mode we show the full clock list in the OG banner instead.
   if (isCumulativeClockType(currentGame)) {
-    stripEl.style.display = 'none';
+    const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+    if (!snap || !Array.isArray(snap.rows) || !snap.rows.length || !cumulativeEl) {
+      stripEl.style.display = 'none';
+      return;
+    }
+
+    const mobileLabelForEntry = (entry, mode) => {
+      if (!entry) return 'Timer';
+      if (mode === 'role') {
+        if (entry.role === 'spymaster') return entry.theme === 'red' ? 'Red Spy' : 'Blue Spy';
+        if (entry.role === 'operatives') return entry.theme === 'red' ? 'Red Ops' : 'Blue Ops';
+      }
+      return entry.theme === 'red' ? 'Red Team' : 'Blue Team';
+    };
+
+    const buildPillHtml = (entry, mode, runningKey) => {
+      if (!entry) return '';
+      const classes = ['og-mobile-cumulative-pill', entry.theme === 'red' ? 'team-red' : 'team-blue'];
+      if (entry.role === 'spymaster') classes.push('role-spymaster');
+      else if (entry.role === 'operatives') classes.push('role-operatives');
+
+      const active = !!runningKey && entry.key === runningKey;
+      classes.push(active ? 'is-active' : 'is-idle');
+      if (!entry.unlimited && active) {
+        const seconds = Math.ceil(Math.max(0, Number(entry.ms) || 0) / 1000);
+        if (seconds <= 10) classes.push('danger');
+        else if (seconds <= 30) classes.push('warning');
+      }
+      const label = escapeHtml(mobileLabelForEntry(entry, mode));
+      const time = escapeHtml(formatClockTime(entry.ms, entry.unlimited));
+      return `
+        <span class="${classes.join(' ')}">
+          <span class="og-mobile-cumulative-pill-label">${label}</span>
+          <span class="og-mobile-cumulative-pill-time">${time}</span>
+        </span>
+      `;
+    };
+
+    const rowsHtml = [];
+    for (const row of snap.rows) {
+      if (!row?.left || !row?.right) continue;
+      rowsHtml.push(`
+        <span class="og-mobile-cumulative-row">
+          ${buildPillHtml(row.left, snap.mode, snap.runningKey)}
+          ${buildPillHtml(row.right, snap.mode, snap.runningKey)}
+        </span>
+      `);
+    }
+    if (!rowsHtml.length) {
+      stripEl.style.display = 'none';
+      return;
+    }
+
+    stripEl.classList.add('is-cumulative');
+    stripEl.classList.remove('phase-spymaster', 'phase-operatives', 'turn-red', 'turn-blue');
+    stripTextEl.style.display = 'none';
+    cumulativeEl.style.display = 'flex';
+    cumulativeEl.innerHTML = `<span class="og-mobile-cumulative-wrap">${rowsHtml.join('')}</span>`;
+    stripEl.style.display = 'flex';
     return;
   }
+
+  stripEl.classList.remove('is-cumulative');
+  if (cumulativeEl) {
+    cumulativeEl.style.display = 'none';
+    cumulativeEl.innerHTML = '';
+  }
+  stripTextEl.style.display = '';
 
   const fallbackTimer = `${getSingleTimerLabelForPhase(phase)}: ∞`;
   const safeTimer = String(timerText || '').trim()
@@ -12379,6 +12489,7 @@ function updateOgPhaseBannerCumulativeText(snap, game = currentGame) {
   if (!ogBanner || !ogText) return;
   if (!isOnlineStyleActive()) return;
   if (!game || game.winner) return;
+  if (isMobileLayoutLike()) return;
   if (!isCumulativeClockType(game)) return;
   if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) return;
 

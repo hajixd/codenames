@@ -25089,43 +25089,6 @@ body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
   body:is(.og-mode, .cozy-mode) .og-phase-banner {
     display: none !important;
   }
-
-  /* Cumulative mode: keep the full multi-clock banner visible on mobile. */
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile {
-    display: block !important;
-    padding: 3px 6px 2px;
-  }
-
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-  }
-
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-wrap {
-    width: 100%;
-    gap: 4px;
-  }
-
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-row {
-    gap: 6px;
-  }
-
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-clock {
-    padding: 5px 7px;
-    border-radius: 8px;
-    gap: 6px;
-  }
-
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-label {
-    font-size: 8px;
-    letter-spacing: 0.45px;
-  }
-
-  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-time {
-    font-size: 11px;
-    letter-spacing: 0.1px;
-  }
 }
 
 /* Bring back waiting status, but smaller/subtler. */
@@ -28318,10 +28281,117 @@ body.stacking-turn-active .clue-stack-input-slot .clue-form-expanded {
     text-transform: uppercase;
   }
 
-  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip span {
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip #og-mobile-turn-strip-text {
     color: #ffffff;
     width: 100%;
     font-variant-numeric: tabular-nums;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-turn-strip-cumulative {
+    display: none;
+    width: 100%;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip.is-cumulative {
+    min-height: 0;
+    padding: 4px 8px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(72, 76, 86, 0.94), rgba(40, 44, 52, 0.94));
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip.is-cumulative #og-mobile-turn-strip-text {
+    display: none;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip.is-cumulative .og-mobile-turn-strip-cumulative {
+    display: flex;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-wrap {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 4px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: #fff;
+    text-transform: none;
+    letter-spacing: 0;
+    transition: opacity 120ms ease, box-shadow 120ms ease, color 120ms ease;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.team-blue {
+    border-color: color-mix(in srgb, var(--game-blue) 66%, rgba(255, 255, 255, 0.15));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--game-blue) 36%, rgba(14, 24, 38, 0.88)) 0%, rgba(11, 18, 31, 0.84) 100%);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.team-red {
+    border-color: color-mix(in srgb, var(--game-red) 66%, rgba(255, 255, 255, 0.15));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--game-red) 36%, rgba(34, 16, 20, 0.88)) 0%, rgba(28, 15, 18, 0.84) 100%);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.role-operatives {
+    box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.2);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.role-spymaster {
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.is-idle {
+    opacity: 0.64;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.is-active {
+    opacity: 1;
+    box-shadow: 0 0 0 1px color-mix(in srgb, #7dd3fc 45%, rgba(255, 255, 255, 0.22)), 0 8px 16px rgba(0, 0, 0, 0.3);
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+    letter-spacing: 0.42px;
+    text-transform: uppercase;
+    font-weight: 800;
+    opacity: 0.92;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill-time {
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.1px;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.warning .og-mobile-cumulative-pill-time {
+    color: #facc15;
+  }
+
+  body:is(.og-mode, .cozy-mode) #game-board-container .og-mobile-turn-strip .og-mobile-cumulative-pill.danger .og-mobile-cumulative-pill-time {
+    color: #ef4444;
   }
 
   #game-board-container.turn-red .og-mobile-turn-strip {
