@@ -473,7 +473,7 @@
               <div class="practice-step" id="practice-step-vibe">
                 <div class="practice-step-title">3) Match settings</div>
                 <div class="practice-settings-row">
-                  <div class="practice-settings-summary" id="practice-page-rules-text">Rules: Assassin: 1 · Clue: ∞ · Guess: ∞ · Stacking: On · Challenge: On · Judges: Merry</div>
+                  <div class="practice-settings-summary" id="practice-page-rules-text">Rules: Assassin: 1 · Timer: Clue ∞ · Guess ∞ (Per Role, Per Turn) · Stacking: On · Challenge: On · Judges: Merry</div>
                   <button class="btn small" id="practice-page-settings-btn" type="button">Settings</button>
                   <button class="btn primary" id="practice-page-start" type="button" disabled>Start Singleplayer</button>
                 </div>
@@ -510,10 +510,18 @@
                 </label>
 
                 <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue">
-                  <span class="setting-label">Timer mode</span>
-                  <div class="segmented qp-timer-mode" role="group" aria-label="Timer mode">
-                    <button class="seg-btn active" id="practice-page-timer-mode-turn" data-timer-mode="turn" type="button" aria-pressed="true">Per Turn</button>
-                    <button class="seg-btn" id="practice-page-timer-mode-team" data-timer-mode="team" type="button" aria-pressed="false">Per Team</button>
+                  <span class="setting-label">Turn Type</span>
+                  <div class="segmented qp-timer-mode" role="group" aria-label="Turn type">
+                    <button class="seg-btn active" id="practice-page-turn-type-role" data-turn-type="role" type="button" aria-pressed="true">Per Role</button>
+                    <button class="seg-btn" id="practice-page-turn-type-team" data-turn-type="team" type="button" aria-pressed="false">Team</button>
+                  </div>
+                </div>
+
+                <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="guess">
+                  <span class="setting-label">Clock Type</span>
+                  <div class="segmented qp-timer-mode" role="group" aria-label="Clock type">
+                    <button class="seg-btn" id="practice-page-clock-type-cumulative" data-clock-type="cumulative" type="button" aria-pressed="false">Cumulative</button>
+                    <button class="seg-btn active" id="practice-page-clock-type-per-turn" data-clock-type="per-turn" type="button" aria-pressed="true">Per Turn</button>
                   </div>
                 </div>
 
@@ -1078,10 +1086,18 @@
                         </label>
 
                         <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue">
-                          <span class="setting-label">Timer mode</span>
-                          <div class="segmented qp-timer-mode" role="group" aria-label="Timer mode">
-                            <button class="seg-btn active" id="qp-timer-mode-turn" data-timer-mode="turn" type="button" aria-pressed="true">Per Turn</button>
-                            <button class="seg-btn" id="qp-timer-mode-team" data-timer-mode="team" type="button" aria-pressed="false">Per Team</button>
+                          <span class="setting-label">Turn Type</span>
+                          <div class="segmented qp-timer-mode" role="group" aria-label="Turn type">
+                            <button class="seg-btn active" id="qp-turn-type-role" data-turn-type="role" type="button" aria-pressed="true">Per Role</button>
+                            <button class="seg-btn" id="qp-turn-type-team" data-turn-type="team" type="button" aria-pressed="false">Team</button>
+                          </div>
+                        </div>
+
+                        <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="guess">
+                          <span class="setting-label">Clock Type</span>
+                          <div class="segmented qp-timer-mode" role="group" aria-label="Clock type">
+                            <button class="seg-btn" id="qp-clock-type-cumulative" data-clock-type="cumulative" type="button" aria-pressed="false">Cumulative</button>
+                            <button class="seg-btn active" id="qp-clock-type-per-turn" data-clock-type="per-turn" type="button" aria-pressed="true">Per Turn</button>
                           </div>
                         </div>
 
@@ -2005,12 +2021,9 @@
                   <span class="settings-row-label">Profile Photo</span>
                   <div class="settings-avatar-preview" id="settings-avatar-preview" aria-hidden="true"></div>
                 </div>
-                <div class="settings-profile-photo-actions">
-                  <button class="btn small" id="settings-avatar-upload-btn" type="button">Upload Photo</button>
-                  <button class="btn small danger" id="settings-avatar-remove-btn" type="button">Remove</button>
-                  <input type="file" id="settings-avatar-file-input" accept="image/*" hidden />
+                <div class="settings-tools-actions">
+                  <button class="btn" id="settings-edit-profile-photo-btn" type="button">Edit Profile Photo</button>
                 </div>
-                <div class="hint" id="settings-avatar-hint"></div>
               </div>
 <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>
@@ -2053,6 +2066,25 @@
           </div>
         </div>
 
+      </div>
+
+      <div class="modal profile-photo-modal" id="profile-photo-modal" style="display:none;" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-backdrop" id="profile-photo-modal-backdrop"></div>
+        <div class="modal-card profile-photo-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Edit Profile Photo</div>
+            <button class="icon-btn" id="profile-photo-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body profile-photo-modal-body">
+            <div class="profile-photo-modal-preview" id="profile-photo-modal-preview" aria-hidden="true"></div>
+            <div class="profile-photo-modal-actions">
+              <button class="btn primary" id="profile-photo-upload-btn" type="button">Upload Photo</button>
+              <button class="btn danger" id="profile-photo-remove-btn" type="button">Remove Photo</button>
+            </div>
+            <input type="file" id="profile-photo-file-input" accept="image/*" hidden />
+            <div class="hint profile-photo-modal-hint" id="profile-photo-hint" aria-live="polite"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Admin: Judges Manager Modal -->

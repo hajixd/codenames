@@ -8852,19 +8852,38 @@ function initSettings() {
   const testSoundBtn = document.getElementById('settings-test-sound');
   const openAnimationsBtn = document.getElementById('settings-open-animations-btn');
   const avatarPreview = document.getElementById('settings-avatar-preview');
-  const avatarUploadBtn = document.getElementById('settings-avatar-upload-btn');
-  const avatarRemoveBtn = document.getElementById('settings-avatar-remove-btn');
-  const avatarFileInput = document.getElementById('settings-avatar-file-input');
-  const avatarHintEl = document.getElementById('settings-avatar-hint');
+  const editProfilePhotoBtn = document.getElementById('settings-edit-profile-photo-btn');
+  const profilePhotoModal = document.getElementById('profile-photo-modal');
+  const profilePhotoBackdrop = document.getElementById('profile-photo-modal-backdrop');
+  const profilePhotoCloseBtn = document.getElementById('profile-photo-modal-close');
+  const profilePhotoPreview = document.getElementById('profile-photo-modal-preview');
+  const profilePhotoUploadBtn = document.getElementById('profile-photo-upload-btn');
+  const profilePhotoRemoveBtn = document.getElementById('profile-photo-remove-btn');
+  const profilePhotoFileInput = document.getElementById('profile-photo-file-input');
+  const profilePhotoHintEl = document.getElementById('profile-photo-hint');
 
   if (!gearBtn || !modal) return;
   try { updateSettingsTriggerAvatar(); } catch (_) {}
 
   let avatarBusy = false;
   const setAvatarHint = (msg, isError = false) => {
-    if (!avatarHintEl) return;
-    avatarHintEl.textContent = String(msg || '');
-    avatarHintEl.classList.toggle('error', !!isError && !!msg);
+    if (!profilePhotoHintEl) return;
+    profilePhotoHintEl.textContent = String(msg || '');
+    profilePhotoHintEl.classList.toggle('error', !!isError && !!msg);
+  };
+  const isProfilePhotoModalOpen = () => !!(profilePhotoModal && profilePhotoModal.classList.contains('modal-open'));
+  const updateProfilePhotoModalPreview = () => {
+    if (!profilePhotoPreview) return;
+    const uid = String(getUserId() || '').trim();
+    const name = String(getUserName() || '').trim() || 'You';
+    profilePhotoPreview.innerHTML = renderProfileAvatarHtml({
+      userId: uid,
+      name,
+      size: 74,
+      className: 'profile-photo-modal-avatar',
+      title: name,
+      ariaHidden: true,
+    });
   };
   const refreshAvatarControls = () => {
     const uid = String(getUserId() || '').trim();
@@ -8873,12 +8892,15 @@ function initSettings() {
     if (avatarPreview) {
       try { updateSettingsAvatarPreview(); } catch (_) {}
     }
-    if (avatarUploadBtn) avatarUploadBtn.disabled = avatarBusy || !uid;
-    if (avatarRemoveBtn) avatarRemoveBtn.disabled = avatarBusy || !uid || !hasUploaded;
+    try { updateProfilePhotoModalPreview(); } catch (_) {}
+    if (editProfilePhotoBtn) editProfilePhotoBtn.disabled = avatarBusy || !uid;
+    if (profilePhotoUploadBtn) profilePhotoUploadBtn.disabled = avatarBusy || !uid;
+    if (profilePhotoRemoveBtn) profilePhotoRemoveBtn.disabled = avatarBusy || !uid || !hasUploaded;
   };
   const refreshAvatarSurfaces = () => {
     try { updateSettingsTriggerAvatar(); } catch (_) {}
     try { updateSettingsAvatarPreview(); } catch (_) {}
+    try { updateProfilePhotoModalPreview(); } catch (_) {}
     try { renderPlayers(playersCache, teamsCache); } catch (_) {}
     try {
       if (chatMode === 'personal' && dmView === 'inbox') renderDmInbox();
@@ -8888,6 +8910,31 @@ function initSettings() {
       if (tm && tm.style.display === 'flex') renderTeammatesList();
     } catch (_) {}
     try { window.dispatchEvent(new CustomEvent('codenames:players-cache-updated')); } catch (_) {}
+  };
+  const openProfilePhotoModal = () => {
+    if (!profilePhotoModal) return;
+    if (!auth.currentUser) {
+      setAvatarHint('Sign in to manage your profile photo.', true);
+      return;
+    }
+    setAvatarHint('');
+    refreshAvatarControls();
+    profilePhotoModal.style.display = 'flex';
+    void profilePhotoModal.offsetWidth;
+    profilePhotoModal.classList.add('modal-open');
+    profilePhotoModal.setAttribute('aria-hidden', 'false');
+    try { window.bumpPresence?.(); } catch (_) {}
+  };
+  const closeProfilePhotoModal = () => {
+    if (!profilePhotoModal) return;
+    profilePhotoModal.classList.remove('modal-open');
+    profilePhotoModal.setAttribute('aria-hidden', 'true');
+    try { window.bumpPresence?.(); } catch (_) {}
+    setTimeout(() => {
+      if (!profilePhotoModal.classList.contains('modal-open')) {
+        profilePhotoModal.style.display = 'none';
+      }
+    }, 180);
   };
 
   // Set initial values
@@ -9021,18 +9068,25 @@ function initSettings() {
     try { openAnimationsPage(); } catch (_) {}
   });
 
-  avatarUploadBtn?.addEventListener('click', () => {
+  editProfilePhotoBtn?.addEventListener('click', () => {
+    if (avatarBusy) return;
+    openProfilePhotoModal();
+  });
+  profilePhotoCloseBtn?.addEventListener('click', closeProfilePhotoModal);
+  profilePhotoBackdrop?.addEventListener('click', closeProfilePhotoModal);
+
+  profilePhotoUploadBtn?.addEventListener('click', () => {
     if (avatarBusy) return;
     if (!auth.currentUser) {
       setAvatarHint('Sign in to upload a profile photo.', true);
       return;
     }
     setAvatarHint('');
-    try { avatarFileInput?.click(); } catch (_) {}
+    try { profilePhotoFileInput?.click(); } catch (_) {}
   });
 
-  avatarFileInput?.addEventListener('change', async () => {
-    const file = avatarFileInput?.files?.[0] || null;
+  profilePhotoFileInput?.addEventListener('change', async () => {
+    const file = profilePhotoFileInput?.files?.[0] || null;
     if (!file) return;
     if (!auth.currentUser) {
       setAvatarHint('Sign in to upload a profile photo.', true);
@@ -9061,12 +9115,12 @@ function initSettings() {
       setAvatarHint(e?.message || 'Could not upload image.', true);
     } finally {
       avatarBusy = false;
-      if (avatarFileInput) avatarFileInput.value = '';
+      if (profilePhotoFileInput) profilePhotoFileInput.value = '';
       refreshAvatarControls();
     }
   });
 
-  avatarRemoveBtn?.addEventListener('click', async () => {
+  profilePhotoRemoveBtn?.addEventListener('click', async () => {
     if (avatarBusy) return;
     if (!auth.currentUser) {
       setAvatarHint('Sign in to manage profile photo.', true);
@@ -9415,16 +9469,20 @@ function initSettings() {
 
   // Keyboard escape to close
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.classList.contains('modal-open')) {
-      try {
-        if (typeof isStyleMenuOpen === 'function' && isStyleMenuOpen()) {
-          closeStyleMenu();
-          try { styleTrigger && styleTrigger.focus(); } catch (_) {}
-          return;
-        }
-      } catch (_) {}
-      closeSettingsModal();
+    if (e.key !== 'Escape') return;
+    if (isProfilePhotoModalOpen()) {
+      closeProfilePhotoModal();
+      return;
     }
+    if (!modal.classList.contains('modal-open')) return;
+    try {
+      if (typeof isStyleMenuOpen === 'function' && isStyleMenuOpen()) {
+        closeStyleMenu();
+        try { styleTrigger && styleTrigger.focus(); } catch (_) {}
+        return;
+      }
+    } catch (_) {}
+    closeSettingsModal();
   });
 }
 
@@ -9465,6 +9523,12 @@ function closeSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
   modal.classList.remove('modal-open');
+  const photoModal = document.getElementById('profile-photo-modal');
+  if (photoModal) {
+    photoModal.classList.remove('modal-open');
+    photoModal.setAttribute('aria-hidden', 'true');
+    photoModal.style.display = 'none';
+  }
   try { window.bumpPresence?.(); } catch (_) {}
   setTimeout(() => {
     if (!modal.classList.contains('modal-open')) {
@@ -10849,7 +10913,6 @@ window.bumpPresenceNow = function bumpPresenceNow() {
 let presenceUnsub = null;
 let presenceCache = [];
 let presenceUpdateInterval = null;
-let lastActivityTime = Date.now();
 
 function initPresence() {
   const name = getUserName();
@@ -10860,22 +10923,14 @@ function initPresence() {
 
   // Set up periodic presence updates
   if (presenceUpdateInterval) clearInterval(presenceUpdateInterval);
-  presenceUpdateInterval = setInterval(updatePresence, PRESENCE_UPDATE_INTERVAL_MS);
-
-  // Track user activity
-  const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
-  const throttledActivity = throttle(() => {
-    lastActivityTime = Date.now();
-  }, 10000); // Throttle to once per 10 seconds
-
-  activityEvents.forEach(evt => {
-    document.addEventListener(evt, throttledActivity, { passive: true });
-  });
+  presenceUpdateInterval = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    updatePresence();
+  }, PRESENCE_UPDATE_INTERVAL_MS);
 
   // Update presence on visibility change
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      lastActivityTime = Date.now();
       updatePresence();
     }
   });
@@ -10895,17 +10950,6 @@ function initPresence() {
 
   // Start listening to all presence docs
   startPresenceListener();
-}
-
-function throttle(fn, wait) {
-  let last = 0;
-  return function(...args) {
-    const now = Date.now();
-    if (now - last >= wait) {
-      last = now;
-      fn.apply(this, args);
-    }
-  };
 }
 
 async function updatePresence() {
@@ -13408,7 +13452,18 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
   const clueTimerSeconds = Number.isFinite(clueTimerRaw) ? Math.max(0, clueTimerRaw) : 0;
   const guessTimerRaw = parseInt(opts?.guessTimerSeconds, 10);
   const guessTimerSeconds = Number.isFinite(guessTimerRaw) ? Math.max(0, guessTimerRaw) : 0;
-  const timerMode = String(opts?.timerMode || 'turn').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+  const legacyTimerMode = String(opts?.timerMode || '').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+  const turnTypeRaw = String(opts?.turnType || '').trim().toLowerCase();
+  const turnType = turnTypeRaw === 'team'
+    ? 'team'
+    : (turnTypeRaw === 'role' ? 'role' : (legacyTimerMode === 'team' ? 'team' : 'role'));
+  const clockTypeRaw = String(opts?.clockType || '').trim().toLowerCase();
+  const clockType = (clockTypeRaw === 'cumulative' || clockTypeRaw === 'cum' || clockTypeRaw === 'chess')
+    ? 'cumulative'
+    : ((clockTypeRaw === 'per-turn' || clockTypeRaw === 'perturn' || clockTypeRaw === 'turn')
+      ? 'per-turn'
+      : (legacyTimerMode === 'team' ? 'cumulative' : 'per-turn'));
+  const timerMode = turnType === 'team' ? 'team' : 'turn';
   const teamTimerRaw = parseInt(opts?.teamTimerSeconds, 10);
   const teamTimerSeconds = Number.isFinite(teamTimerRaw) ? Math.max(0, teamTimerRaw) : 0;
   const stackingEnabled = opts?.stackingEnabled !== false;
@@ -13441,6 +13496,8 @@ async function startPracticeInApp(opts = {}, hintEl = null) {
     blackCards,
     clueTimerSeconds,
     guessTimerSeconds,
+    turnType,
+    clockType,
     timerMode,
     teamTimerSeconds,
     stackingEnabled,
@@ -13474,8 +13531,10 @@ function initPracticePage() {
   const settingsStatusEl = document.getElementById('practice-page-settings-status');
   const settingsVibeEl = document.getElementById('practice-page-vibe');
   const settingsBlackCardsEl = document.getElementById('practice-page-black-cards');
-  const settingsTimerModeTurnBtn = document.getElementById('practice-page-timer-mode-turn');
-  const settingsTimerModeTeamBtn = document.getElementById('practice-page-timer-mode-team');
+  const settingsTurnTypeRoleBtn = document.getElementById('practice-page-turn-type-role');
+  const settingsTurnTypeTeamBtn = document.getElementById('practice-page-turn-type-team');
+  const settingsClockTypeCumulativeBtn = document.getElementById('practice-page-clock-type-cumulative');
+  const settingsClockTypePerTurnBtn = document.getElementById('practice-page-clock-type-per-turn');
   const settingsTurnClueRowEl = document.getElementById('practice-page-turn-clue-row');
   const settingsTurnGuessRowEl = document.getElementById('practice-page-turn-guess-row');
   const settingsTeamTimerRowEl = document.getElementById('practice-page-team-timer-row');
@@ -13504,6 +13563,8 @@ function initPracticePage() {
       blackCards: 1,
       clueTimerSeconds: 0,
       guessTimerSeconds: 0,
+      turnType: 'role',
+      clockType: 'per-turn',
       timerMode: 'turn',
       teamTimerSeconds: 12 * 60,
       stackingEnabled: true,
@@ -13578,6 +13639,14 @@ function initPracticePage() {
       .map((el) => String(el.getAttribute('data-ai-judge-key') || '').trim().toLowerCase())
       .filter(Boolean);
   };
+  const syncPracticeJudgeOptionSelectionClasses = () => {
+    if (!settingsAiJudgeOptionsEl) return;
+    const rows = Array.from(settingsAiJudgeOptionsEl.querySelectorAll('.qp-judge-option'));
+    rows.forEach((row) => {
+      const input = row.querySelector('input[type="checkbox"][data-ai-judge-key]');
+      row.classList.toggle('is-selected', !!input?.checked);
+    });
+  };
 
   const renderJudgeOptions = (preferredRaw = null) => {
     if (!settingsAiJudgeOptionsEl) return [];
@@ -13590,14 +13659,17 @@ function initPracticePage() {
     const selected = normalizeJudgeKeys(preferred, getDefaultJudgeKeys());
     settingsAiJudgeOptionsEl.innerHTML = defs.map((j) => {
       const id = `practice-page-ai-judge-${j.key}`;
-      const checked = selected.includes(j.key) ? ' checked' : '';
+      const isSelected = selected.includes(j.key);
+      const checked = isSelected ? ' checked' : '';
+      const selectedClass = isSelected ? ' is-selected' : '';
       return `
-        <label class="qp-judge-option" for="${escAttr(id)}">
+        <label class="qp-judge-option${selectedClass}" for="${escAttr(id)}">
           <input type="checkbox" id="${escAttr(id)}" data-ai-judge-key="${escAttr(j.key)}"${checked} />
           <span>${escHtml(j.name || 'Judge')}</span>
         </label>
       `;
     }).join('');
+    syncPracticeJudgeOptionSelectionClasses();
     return selected;
   };
 
@@ -13635,9 +13707,13 @@ function initPracticePage() {
       : [];
     if (!all.length) return;
     const checked = all.filter((el) => el.checked);
-    if (checked.length) return;
+    if (checked.length) {
+      syncPracticeJudgeOptionSelectionClasses();
+      return;
+    }
     if (changedEl) changedEl.checked = true;
     else if (all[0]) all[0].checked = true;
+    syncPracticeJudgeOptionSelectionClasses();
   };
 
   const normalizeInt = (value, fallback, min = 0, max = 600) => {
@@ -13657,7 +13733,22 @@ function initPracticePage() {
     return normalized;
   };
 
-  const normalizeTimerMode = (raw) => String(raw || '').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+  const normalizeLegacyTimerMode = (raw) => String(raw || '').trim().toLowerCase() === 'team' ? 'team' : 'turn';
+  const normalizeTurnType = (raw, legacyRaw = null) => {
+    const v = String(raw || '').trim().toLowerCase();
+    if (v === 'team') return 'team';
+    if (v === 'role') return 'role';
+    const legacy = normalizeLegacyTimerMode(legacyRaw == null ? state.settings.timerMode : legacyRaw);
+    return legacy === 'team' ? 'team' : 'role';
+  };
+  const normalizeClockType = (raw, legacyRaw = null) => {
+    const v = String(raw || '').trim().toLowerCase();
+    if (v === 'cumulative' || v === 'cum' || v === 'chess') return 'cumulative';
+    if (v === 'per-turn' || v === 'perturn' || v === 'turn') return 'per-turn';
+    const legacy = normalizeLegacyTimerMode(legacyRaw == null ? state.settings.timerMode : legacyRaw);
+    return legacy === 'team' ? 'cumulative' : 'per-turn';
+  };
+  const normalizeTimerMode = (turnTypeRaw) => (normalizeTurnType(turnTypeRaw) === 'team' ? 'team' : 'turn');
 
   const splitSecondsToClockParts = (seconds) => {
     const total = normalizeInt(seconds, 0, 0, 5999);
@@ -13700,35 +13791,56 @@ function initPracticePage() {
       : (s.aiChallengeEnabled === false ? 'Off' : 'On');
     const judgesStr = formatJudgeSummary(s);
     const strictnessStr = s.aiJudgesEnabled === false ? 'Off' : `${normalizeStrictness(s.aiJudgeStrictness, 55)}%`;
-    const timerMode = normalizeTimerMode(s.timerMode);
-    const timerStr = timerMode === 'team'
-      ? `Team: ${formatSeconds(s.teamTimerSeconds)}`
-      : `Turn: Clue ${formatSeconds(s.clueTimerSeconds)} · Guess ${formatSeconds(s.guessTimerSeconds)}`;
+    const turnType = normalizeTurnType(s.turnType, s.timerMode);
+    const clockType = normalizeClockType(s.clockType, s.timerMode);
+    const turnTypeStr = turnType === 'team' ? 'Team' : 'Per Role';
+    const clockTypeStr = clockType === 'cumulative' ? 'Cumulative' : 'Per Turn';
+    const timerStr = turnType === 'team'
+      ? `Team ${formatSeconds(s.teamTimerSeconds)}`
+      : `Clue ${formatSeconds(s.clueTimerSeconds)} · Guess ${formatSeconds(s.guessTimerSeconds)}`;
     const vibeStr = s.vibe ? ` · Vibe: ${s.vibe}` : '';
-    return `Rules: Assassin: ${s.blackCards} · Timer: ${timerStr} · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr} · Strictness: ${strictnessStr}${vibeStr}`;
+    return `Rules: Assassin: ${s.blackCards} · Timer: ${timerStr} (${turnTypeStr}, ${clockTypeStr}) · Stacking: ${stackStr} · Challenge: ${challengeStr} · Judges: ${judgesStr} · Strictness: ${strictnessStr}${vibeStr}`;
   };
 
-  const setTimerModeUi = (modeRaw) => {
-    const mode = normalizeTimerMode(modeRaw);
-    if (settingsTimerModeTurnBtn) {
-      const isActive = mode === 'turn';
-      settingsTimerModeTurnBtn.classList.toggle('active', isActive);
-      settingsTimerModeTurnBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  const setTurnTypeUi = (typeRaw) => {
+    const turnType = normalizeTurnType(typeRaw, state.settings.timerMode);
+    if (settingsTurnTypeRoleBtn) {
+      const isActive = turnType === 'role';
+      settingsTurnTypeRoleBtn.classList.toggle('active', isActive);
+      settingsTurnTypeRoleBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     }
-    if (settingsTimerModeTeamBtn) {
-      const isActive = mode === 'team';
-      settingsTimerModeTeamBtn.classList.toggle('active', isActive);
-      settingsTimerModeTeamBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    if (settingsTurnTypeTeamBtn) {
+      const isActive = turnType === 'team';
+      settingsTurnTypeTeamBtn.classList.toggle('active', isActive);
+      settingsTurnTypeTeamBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     }
-    if (settingsTurnClueRowEl) settingsTurnClueRowEl.style.display = mode === 'turn' ? 'flex' : 'none';
-    if (settingsTurnGuessRowEl) settingsTurnGuessRowEl.style.display = mode === 'turn' ? 'flex' : 'none';
-    if (settingsTeamTimerRowEl) settingsTeamTimerRowEl.style.display = mode === 'team' ? 'flex' : 'none';
+    if (settingsTurnClueRowEl) settingsTurnClueRowEl.style.display = turnType === 'role' ? 'flex' : 'none';
+    if (settingsTurnGuessRowEl) settingsTurnGuessRowEl.style.display = turnType === 'role' ? 'flex' : 'none';
+    if (settingsTeamTimerRowEl) settingsTeamTimerRowEl.style.display = turnType === 'team' ? 'flex' : 'none';
+  };
+
+  const setClockTypeUi = (typeRaw) => {
+    const clockType = normalizeClockType(typeRaw, state.settings.timerMode);
+    if (settingsClockTypeCumulativeBtn) {
+      const isActive = clockType === 'cumulative';
+      settingsClockTypeCumulativeBtn.classList.toggle('active', isActive);
+      settingsClockTypeCumulativeBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
+    if (settingsClockTypePerTurnBtn) {
+      const isActive = clockType === 'per-turn';
+      settingsClockTypePerTurnBtn.classList.toggle('active', isActive);
+      settingsClockTypePerTurnBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
   };
 
   const syncModalFromState = () => {
+    state.settings.turnType = normalizeTurnType(state.settings.turnType, state.settings.timerMode);
+    state.settings.clockType = normalizeClockType(state.settings.clockType, state.settings.timerMode);
+    state.settings.timerMode = normalizeTimerMode(state.settings.turnType);
     if (settingsVibeEl) settingsVibeEl.value = state.settings.vibe || '';
     if (settingsBlackCardsEl) settingsBlackCardsEl.value = String(state.settings.blackCards || 1);
-    setTimerModeUi(state.settings.timerMode);
+    setTurnTypeUi(state.settings.turnType);
+    setClockTypeUi(state.settings.clockType);
     writeClockParts(settingsClueTimerMinEl, settingsClueTimerSecEl, state.settings.clueTimerSeconds || 0);
     writeClockParts(settingsGuessTimerMinEl, settingsGuessTimerSecEl, state.settings.guessTimerSeconds || 0);
     writeClockParts(settingsTeamTimerMinEl, settingsTeamTimerSecEl, state.settings.teamTimerSeconds || 0);
@@ -13744,9 +13856,13 @@ function initPracticePage() {
   };
 
   const syncStateFromModal = () => {
+    const turnType = (settingsTurnTypeTeamBtn?.getAttribute('aria-pressed') === 'true') ? 'team' : 'role';
+    const clockType = (settingsClockTypeCumulativeBtn?.getAttribute('aria-pressed') === 'true') ? 'cumulative' : 'per-turn';
+    state.settings.turnType = normalizeTurnType(turnType, state.settings.timerMode);
+    state.settings.clockType = normalizeClockType(clockType, state.settings.timerMode);
+    state.settings.timerMode = normalizeTimerMode(state.settings.turnType);
     state.settings.vibe = String(settingsVibeEl?.value || '').trim();
     state.settings.blackCards = normalizeInt(settingsBlackCardsEl?.value, 1, 1, 3);
-    state.settings.timerMode = (settingsTimerModeTeamBtn?.getAttribute('aria-pressed') === 'true') ? 'team' : 'turn';
     state.settings.clueTimerSeconds = readClockPartsToSeconds(settingsClueTimerMinEl, settingsClueTimerSecEl, 0);
     state.settings.guessTimerSeconds = readClockPartsToSeconds(settingsGuessTimerMinEl, settingsGuessTimerSecEl, 0);
     state.settings.teamTimerSeconds = readClockPartsToSeconds(settingsTeamTimerMinEl, settingsTeamTimerSecEl, 12 * 60);
@@ -13840,6 +13956,8 @@ function initPracticePage() {
         blackCards: state.settings.blackCards,
         clueTimerSeconds: state.settings.clueTimerSeconds,
         guessTimerSeconds: state.settings.guessTimerSeconds,
+        turnType: state.settings.turnType,
+        clockType: state.settings.clockType,
         timerMode: state.settings.timerMode,
         teamTimerSeconds: state.settings.teamTimerSeconds,
         stackingEnabled: state.settings.stackingEnabled !== false,
@@ -13857,13 +13975,23 @@ function initPracticePage() {
   settingsBtn?.addEventListener('click', openSettingsModal);
   settingsCloseBtn?.addEventListener('click', closeSettingsModal);
   settingsBackdrop?.addEventListener('click', closeSettingsModal);
-  settingsTimerModeTurnBtn?.addEventListener('click', () => {
+  settingsTurnTypeRoleBtn?.addEventListener('click', () => {
+    state.settings.turnType = 'role';
     state.settings.timerMode = 'turn';
-    setTimerModeUi('turn');
+    setTurnTypeUi('role');
   });
-  settingsTimerModeTeamBtn?.addEventListener('click', () => {
+  settingsTurnTypeTeamBtn?.addEventListener('click', () => {
+    state.settings.turnType = 'team';
     state.settings.timerMode = 'team';
-    setTimerModeUi('team');
+    setTurnTypeUi('team');
+  });
+  settingsClockTypeCumulativeBtn?.addEventListener('click', () => {
+    state.settings.clockType = 'cumulative';
+    setClockTypeUi('cumulative');
+  });
+  settingsClockTypePerTurnBtn?.addEventListener('click', () => {
+    state.settings.clockType = 'per-turn';
+    setClockTypeUi('per-turn');
   });
   [settingsClueTimerMinEl, settingsGuessTimerMinEl, settingsTeamTimerMinEl].forEach((el) => {
     el?.addEventListener('blur', () => normalizeClockInput(el, 99));
@@ -13879,6 +14007,7 @@ function initPracticePage() {
     const target = e.target?.closest?.('input[type="checkbox"][data-ai-judge-key]');
     if (!target) return;
     enforceAtLeastOneJudge(target);
+    syncPracticeJudgeOptionSelectionClasses();
   });
   settingsAiStrictnessEl?.addEventListener('input', () => {
     syncStrictnessLabel(settingsAiStrictnessEl.value);
