@@ -7361,6 +7361,9 @@ function renderAdvancedFeatures() {
   const timerPhase = String(currentGame?.currentPhase || '');
   const timerSettings = getQuickSettings(currentGame);
   const clockType = normalizeQuickClockType(timerSettings.clockType, timerSettings.timerMode);
+  if (isTimedGameplayPhase(timerPhase) && currentGame?.timerEnd) {
+    void maybeResolveTurnTimerExpiry(currentGame, 'render-pass');
+  }
   if (currentGame?.winner) {
     stopGameTimer();
   } else if (clockType === 'cumulative') {
@@ -11187,6 +11190,9 @@ let gameTimerEnd = null;
 let timerBackfillInFlight = false;
 let timerBackfillLastKey = '';
 let timerBackfillLastAt = 0;
+let timerExpiryResolveInFlight = false;
+let timerExpiryLastKey = '';
+let timerExpiryLastAt = 0;
 
 function getActiveCumulativeClockMs(game, nowMs = Date.now()) {
   if (!game || !isCumulativeClockType(game) || game.winner) return 0;
@@ -12671,6 +12677,175 @@ function updateOgPhaseBannerCumulativeText(snap, game = currentGame) {
   ogText.classList.add('is-timer', 'is-cumulative');
 }
 
+function canCurrentClientResolveTimerExpiry(game) {
+  try {
+    if (!game) return false;
+    if (isLocalPracticeGameId(String(game?.id || ''))) return true;
+    if (typeof isSpectating === 'function' && isSpectating()) return false;
+    const myTeam = (typeof getMyTeamColor === 'function') ? getMyTeamColor() : null;
+    return myTeam === 'red' || myTeam === 'blue';
+  } catch (_) {
+    return false;
+  }
+}
+
+async function maybeResolveTurnTimerExpiry(game = currentGame, source = 'timer') {
+  try {
+    if (!game || game.winner) return false;
+    const phase = String(game.currentPhase || '');
+    if (!isTimedGameplayPhase(phase)) return false;
+    const endMs = draftToMs(game.timerEnd);
+    const now = Date.now();
+    if (!(endMs > 0) || endMs > (now + 40)) return false;
+    if (!canCurrentClientResolveTimerExpiry(game)) return false;
+
+    const settings = getQuickSettings(game);
+    const clockType = normalizeQuickClockType(settings.clockType, settings.timerMode);
+    const team = game.currentTeam === 'blue' ? 'blue' : 'red';
+    const key = `${String(game.id || '')}:${phase}:${team}:${clockType}:${endMs}`;
+    if (timerExpiryResolveInFlight) return false;
+    if (timerExpiryLastKey === key && (now - timerExpiryLastAt) < 900) return false;
+    timerExpiryResolveInFlight = true;
+    timerExpiryLastKey = key;
+    timerExpiryLastAt = now;
+
+    // Local practice path.
+    if (isLocalPracticeGameId(String(game.id || ''))) {
+      let applied = false;
+      mutateLocalPracticeGame(game.id, (draft) => {
+        if (!draft || draft.winner) return;
+        const livePhase = String(draft.currentPhase || '');
+        if (!isTimedGameplayPhase(livePhase)) return;
+        const liveEndMs = draftToMs(draft.timerEnd);
+        if (!(liveEndMs > 0) || liveEndMs > (Date.now() + 70)) return;
+
+        const liveTeam = draft.currentTeam === 'blue' ? 'blue' : 'red';
+        const liveTeamName = liveTeam === 'red'
+          ? String(draft.redTeamName || 'Red Team')
+          : String(draft.blueTeamName || 'Blue Team');
+        const liveNextTeam = liveTeam === 'red' ? 'blue' : 'red';
+        const liveClockType = normalizeQuickClockType(
+          getQuickSettings(draft).clockType,
+          getQuickSettings(draft).timerMode
+        );
+
+        if (liveClockType === 'cumulative') {
+          const winner = liveTeam === 'red' ? 'blue' : 'red';
+          const winnerName = winner === 'red'
+            ? String(draft.redTeamName || 'Red Team')
+            : String(draft.blueTeamName || 'Blue Team');
+          const timerFields = getTimerTransitionFields(draft, {
+            phase: 'ended',
+            team: liveTeam,
+            winner,
+          });
+          draft.winner = winner;
+          draft.currentPhase = 'ended';
+          draft.currentClue = null;
+          draft.pendingClue = null;
+          draft.liveClueDraft = null;
+          draft.guessesRemaining = 0;
+          Object.assign(draft, timerFields);
+          draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+          draft.log.push(`${liveTeamName} ran out of cumulative time. ${winnerName} wins on time.`);
+        } else {
+          const timerFields = getTimerTransitionFields(draft, {
+            phase: 'spymaster',
+            team: liveNextTeam,
+            winner: null,
+          });
+          draft.currentTeam = liveNextTeam;
+          draft.currentPhase = 'spymaster';
+          draft.currentClue = null;
+          draft.pendingClue = null;
+          draft.liveClueDraft = null;
+          draft.guessesRemaining = 0;
+          Object.assign(draft, timerFields);
+          draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
+          draft.log.push(`${liveTeamName} ran out of time. Turn skipped.`);
+        }
+
+        draft.updatedAtMs = Date.now();
+        draft.lastMoveAtMs = Date.now();
+        applied = true;
+      }, { skipAnimation: true });
+
+      if (applied) {
+        try { maybeStartLocalPracticeAI(); } catch (_) {}
+        return true;
+      }
+      return false;
+    }
+
+    // Firestore-backed quick/custom game path.
+    const gameRef = db.collection('games').doc(String(game.id || '').trim());
+    let committed = false;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(gameRef);
+      if (!snap.exists) return;
+      const live = { id: snap.id, ...snap.data() };
+      if (!live || live.winner) return;
+      const livePhase = String(live.currentPhase || '');
+      if (!isTimedGameplayPhase(livePhase)) return;
+      const liveEndMs = draftToMs(live.timerEnd);
+      if (!(liveEndMs > 0) || liveEndMs > (Date.now() + 70)) return;
+
+      const liveTeam = live.currentTeam === 'blue' ? 'blue' : 'red';
+      const liveTeamName = liveTeam === 'red'
+        ? String(live.redTeamName || 'Red Team')
+        : String(live.blueTeamName || 'Blue Team');
+      const liveNextTeam = liveTeam === 'red' ? 'blue' : 'red';
+      const liveSettings = getQuickSettings(live);
+      const liveClockType = normalizeQuickClockType(liveSettings.clockType, liveSettings.timerMode);
+
+      const updates = {
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        currentClue: null,
+        pendingClue: firebase.firestore.FieldValue.delete(),
+        liveClueDraft: firebase.firestore.FieldValue.delete(),
+        guessesRemaining: 0,
+      };
+
+      if (liveClockType === 'cumulative') {
+        const winner = liveTeam === 'red' ? 'blue' : 'red';
+        const winnerName = winner === 'red'
+          ? String(live.redTeamName || 'Red Team')
+          : String(live.blueTeamName || 'Blue Team');
+        Object.assign(updates, getTimerTransitionFields(live, {
+          phase: 'ended',
+          team: liveTeam,
+          winner,
+        }));
+        updates.winner = winner;
+        updates.currentPhase = 'ended';
+        updates.log = firebase.firestore.FieldValue.arrayUnion(
+          `${liveTeamName} ran out of cumulative time. ${winnerName} wins on time.`
+        );
+      } else {
+        Object.assign(updates, getTimerTransitionFields(live, {
+          phase: 'spymaster',
+          team: liveNextTeam,
+          winner: null,
+        }));
+        updates.currentTeam = liveNextTeam;
+        updates.currentPhase = 'spymaster';
+        updates.log = firebase.firestore.FieldValue.arrayUnion(
+          `${liveTeamName} ran out of time. Turn skipped.`
+        );
+      }
+
+      tx.update(gameRef, updates);
+      committed = true;
+    });
+    return committed;
+  } catch (e) {
+    console.error('Failed to resolve timer expiry:', e, { source });
+    return false;
+  } finally {
+    timerExpiryResolveInFlight = false;
+  }
+}
+
 function startGameTimer(endTime, phase, game = currentGame) {
   stopGameTimer();
 
@@ -12752,6 +12927,7 @@ function startGameTimer(endTime, phase, game = currentGame) {
     }
 
     if (remaining <= 0) {
+      void maybeResolveTurnTimerExpiry(game, 'per-turn-interval');
       stopGameTimer();
     }
   }, 100);
@@ -12859,6 +13035,9 @@ function startCumulativeGameTimer(game) {
     const activeEntry = snap.active
       || (Array.isArray(snap.rows) && snap.rows[0] && (snap.rows[0].left || snap.rows[0].right))
       || null;
+    if (activeEntry && !activeEntry.unlimited && Number(activeEntry.ms || 0) <= 0) {
+      void maybeResolveTurnTimerExpiry(live, 'cumulative-interval');
+    }
     const activeTimerText = activeEntry
       ? `${activeEntry.label}: ${formatClockTime(activeEntry.ms, activeEntry.unlimited)}`
       : 'Timer: ∞';

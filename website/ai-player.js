@@ -31,7 +31,6 @@ const AI_CONFIG = {
   // Otherwise keep a Llama Instruct model.
   model: 'meta-llama/Llama-3.3-70B-Instruct',
   reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
-  reasoningTemperature: 1.08, // keep slightly creative, but still instruction-stable
   // Brain-part defaults. Runtime can override these with the best currently
   // available Nebius models discovered from /v1/models.
   brainRoleModels: {
@@ -834,46 +833,26 @@ async function aiReasoningCompletion(messages, options = {}) {
     messages,
     max_tokens: options.max_tokens ?? 512,
   };
-  const requestedTemp = Number(options.temperature ?? AI_CONFIG.reasoningTemperature);
-  if (Number.isFinite(requestedTemp)) {
-    // Conservative cap: slightly higher creativity, without blowing up JSON adherence.
-    body.temperature = _clamp(requestedTemp, 0.6, 1.15);
-  }
   if (options.response_format) {
     body.response_format = options.response_format;
   }
+  // Reasoning models do not support temperature — omit it.
 
-  const postCompletion = async (payload) => {
-    const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${AI_CONFIG.apiKey}`,
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      return { ok: false, status: resp.status, text, data: null };
-    }
-    const data = await resp.json();
-    return { ok: true, status: resp.status, text: '', data };
-  };
+  const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${AI_CONFIG.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
 
-  let result = await postCompletion(body);
-  if (!result.ok && Object.prototype.hasOwnProperty.call(body, 'temperature')) {
-    const tempRejected = (result.status === 400 || result.status === 422) && /\btemperature\b/i.test(String(result.text || ''));
-    if (tempRejected) {
-      const fallbackBody = { ...body };
-      delete fallbackBody.temperature;
-      result = await postCompletion(fallbackBody);
-    }
-  }
-  if (!result.ok) {
-    throw new Error(`AI Reasoning API ${result.status}: ${result.text}`);
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`AI Reasoning API ${resp.status}: ${text}`);
   }
 
-  const data = result.data || {};
+  const data = await resp.json();
   const msg = data.choices?.[0]?.message || {};
   return {
     content: msg.content || '',
