@@ -4466,11 +4466,11 @@ body.light-mode .chat-meta{ color: var(--text); }
   align-items: center;
 }
 #quick-settings-modal .modal-card{
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
+  background: var(--card);
   margin: 0;
   margin-top: 0;
   width: min(460px, calc(100vw - 24px));
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 180px);
 
 }
 #quick-settings-modal .modal-head{
@@ -4481,13 +4481,14 @@ body.light-mode .chat-meta{ color: var(--text); }
 /* Quick Play settings: compact modal */
 #quick-settings-modal .modal-card{
   width: min(460px, calc(100vw - 24px));
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 180px);
+  opacity: 1;
 }
 #quick-settings-modal .modal-head{
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 #quick-settings-modal .modal-body{
-  padding: 12px 14px 14px;
+  padding: 10px 12px 12px;
   touch-action: pan-y;
 }
 #quick-settings-modal .qp-settings-banner{
@@ -4532,7 +4533,7 @@ body.light-mode .chat-meta{ color: var(--text); }
 
 @media (min-width: 821px) {
   #quick-settings-modal .modal-card {
-    max-height: min(74vh, 620px);
+    max-height: min(66vh, 540px);
   }
   #quick-settings-modal .modal-body {
     overflow-y: auto;
@@ -14813,7 +14814,7 @@ body.qp-gate-open .app {
 .roster-expand-card {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 46%;
   width: min(92vw, 420px);
   max-height: min(78vh, 620px);
   overflow: hidden;
@@ -27163,19 +27164,20 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 }
 
 #practice-page-settings-modal .modal-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)), var(--card);
+  background: var(--card);
   width: min(460px, calc(100vw - 24px));
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 180px);
+  opacity: 1;
 }
 
 #practice-page-settings-modal .modal-head {
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(34,197,94,0.14));
   border-bottom: 1px solid rgba(255,255,255,0.12);
 }
 
 #practice-page-settings-modal .modal-body {
-  padding: 12px 14px 14px;
+  padding: 10px 12px 12px;
 }
 
 #practice-page-settings-modal .qp-settings-grid {
@@ -27211,7 +27213,7 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 
 @media (min-width: 821px) {
   #practice-page-settings-modal .modal-card {
-    max-height: min(74vh, 620px);
+    max-height: min(66vh, 540px);
   }
   #practice-page-settings-modal .modal-body {
     overflow-y: auto;
