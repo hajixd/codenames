@@ -8072,10 +8072,11 @@ function renderBoard(isSpymaster) {
     const stackOrderHtml = stackOrder
       ? `<div class="card-stack-order" aria-hidden="true">${stackOrder}</div>`
       : '';
-    const redEntries = (!card.revealed)
+    const currentTeamTurn = currentGame.currentTeam === 'blue' ? 'blue' : 'red';
+    const redEntries = (!card.revealed && currentTeamTurn === 'red')
       ? getTeamConsideringEntriesForCard(redConsidering, i, myOwnerId).map((entry) => ({ ...entry, teamColor: '#ef4444' }))
       : [];
-    const blueEntries = (!card.revealed)
+    const blueEntries = (!card.revealed && currentTeamTurn === 'blue')
       ? getTeamConsideringEntriesForCard(blueConsidering, i, myOwnerId).map((entry) => ({ ...entry, teamColor: '#3b82f6' }))
       : [];
     let consideringVisible = [...redEntries, ...blueEntries]
@@ -10216,9 +10217,34 @@ function buildOgStructuredLog() {
         </div>`;
     }).join('');
 
+    const endedByName = String(clue.endedBy || '').trim();
+    const endedById = String(clue.endedById || '').trim();
+    let endedTurnHtml = '';
+    if (endedByName) {
+      const endedRosterEntry = findRosterPlayerByName(endedByName, teamRoster);
+      const endedId = endedById || String(getRosterPlayerId(endedRosterEntry) || '').trim();
+      const endedAvatarHtml = renderPlayerAvatarHtmlGame({
+        userId: endedId,
+        name: endedByName,
+        teamColor: teamHex,
+        size: 32,
+        className: 'gamelog-avatar-media',
+        title: endedByName,
+        maxInitials: 2,
+        ariaHidden: true,
+      });
+      endedTurnHtml = `<div class="gamelog-guess-item gamelog-ended-turn-item">
+          <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
+            <div class="gamelog-avatar">${endedAvatarHtml}</div>
+            <div class="gamelog-avatar-name">${escapeHtml(endedByName)}</div>
+          </div>
+          <div class="gamelog-word-pill type-ended">passed</div>
+        </div>`;
+    }
+
     return `<div class="gamelog-turn">
         ${clueRow}
-        ${guessesHtml ? `<div class="gamelog-guesses">${guessesHtml}</div>` : ''}
+        ${(guessesHtml || endedTurnHtml) ? `<div class="gamelog-guesses">${guessesHtml}${endedTurnHtml}</div>` : ''}
       </div>`;
   }).filter(Boolean).join('');
 }
@@ -10742,6 +10768,18 @@ async function handleEndTurn() {
       Object.assign(draft, timerFields);
       draft.log = Array.isArray(draft.log) ? [...draft.log] : [];
       draft.log.push(`${userName} (${draftTeamName}) ended their turn.`);
+      const draftHistory = Array.isArray(draft.clueHistory) ? [...draft.clueHistory] : [];
+      let draftHistIdx = -1;
+      for (let i = draftHistory.length - 1; i >= 0; i--) {
+        if (String(draftHistory[i]?.team) === draftTeam) { draftHistIdx = i; break; }
+      }
+      if (draftHistIdx >= 0) {
+        const entry = { ...draftHistory[draftHistIdx] };
+        entry.endedBy = userName;
+        entry.endedById = String(getUserId?.() || '').trim();
+        draftHistory[draftHistIdx] = entry;
+        draft.clueHistory = draftHistory;
+      }
       draft.updatedAtMs = Date.now();
       draft.lastMoveAtMs = Date.now();
     });
@@ -10751,6 +10789,17 @@ async function handleEndTurn() {
 
   try {
     const nextTeam = currentGame.currentTeam === 'red' ? 'blue' : 'red';
+    const liveHistory = Array.isArray(currentGame.clueHistory) ? [...currentGame.clueHistory] : [];
+    let liveHistIdx = -1;
+    for (let i = liveHistory.length - 1; i >= 0; i--) {
+      if (String(liveHistory[i]?.team) === currentGame.currentTeam) { liveHistIdx = i; break; }
+    }
+    if (liveHistIdx >= 0) {
+      const entry = { ...liveHistory[liveHistIdx] };
+      entry.endedBy = userName;
+      entry.endedById = String(getUserId?.() || '').trim();
+      liveHistory[liveHistIdx] = entry;
+    }
     await db.collection('games').doc(currentGame.id).update({
       currentTeam: nextTeam,
       currentPhase: 'spymaster',
@@ -10764,6 +10813,7 @@ async function handleEndTurn() {
         winner: null,
       }),
       log: firebase.firestore.FieldValue.arrayUnion(`${userName} (${teamName}) ended their turn.`),
+      ...(liveHistIdx >= 0 ? { clueHistory: liveHistory } : {}),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (e) {

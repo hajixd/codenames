@@ -20342,6 +20342,7 @@ body.og-mode .gamelog-word-pill.type-red { background: #C8553A; color: #ffffff; 
 body.og-mode .gamelog-word-pill.type-blue { background: #3B8BEB; color: #ffffff; }
 body.og-mode .gamelog-word-pill.type-neutral { background: #D4C5A9; color: #2c2416; }
 body.og-mode .gamelog-word-pill.type-assassin { background: #3A3A3A; color: #ffffff; }
+body.og-mode .gamelog-word-pill.type-ended { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.12); box-shadow: none; font-style: italic; letter-spacing: 1.5px; }
 
 body.og-mode .gamelog-system {
   font-size: 9px;
