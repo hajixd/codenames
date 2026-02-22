@@ -9557,6 +9557,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     ogBanner.style.display = isOgMode ? 'block' : 'none';
     if (isOgMode) {
       const allowBannerTurnTimer = !isCumulativeClockType(currentGame);
+      ogBanner.classList.toggle('show-cumulative-mobile', !allowBannerTurnTimer);
       if (currentGame.winner) {
         const winnerName = currentGame.winner === 'red'
           ? (currentGame.redTeamName || 'RED')
@@ -9566,14 +9567,14 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         ogText.classList.remove('is-cumulative');
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'spymaster') {
-        if (isMobileLayoutLike()) {
+        if (!allowBannerTurnTimer) {
+          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+          updateOgPhaseBannerCumulativeText(snap, currentGame);
+        } else if (isMobileLayoutLike()) {
           ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
           ogText.classList.remove('is-timer');
           ogText.classList.remove('is-cumulative');
           ogText.classList.remove('red','blue');
-        } else if (!allowBannerTurnTimer) {
-          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
-          updateOgPhaseBannerCumulativeText(snap, currentGame);
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
@@ -9589,14 +9590,14 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         }
       } else if (currentGame.currentPhase === 'operatives') {
         // Desktop-only: replace the old instruction with the live turn timer.
-        if (isMobileLayoutLike()) {
+        if (!allowBannerTurnTimer) {
+          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+          updateOgPhaseBannerCumulativeText(snap, currentGame);
+        } else if (isMobileLayoutLike()) {
           ogText.textContent = '';
           ogText.classList.remove('is-timer');
           ogText.classList.remove('is-cumulative');
           ogText.classList.remove('red','blue');
-        } else if (!allowBannerTurnTimer) {
-          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
-          updateOgPhaseBannerCumulativeText(snap, currentGame);
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
@@ -9623,6 +9624,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         ogText.classList.remove('is-cumulative');
       }
     }
+    if (!isOgMode) ogBanner.classList.remove('show-cumulative-mobile');
   }
 
   const canEndTurn = !spectator
@@ -12315,6 +12317,12 @@ function updateOgMobileTurnStrip(timerText, phaseOverride) {
     return;
   }
 
+  // In cumulative mode we show the full clock list in the OG banner instead.
+  if (isCumulativeClockType(currentGame)) {
+    stripEl.style.display = 'none';
+    return;
+  }
+
   const fallbackTimer = `${getSingleTimerLabelForPhase(phase)}: ∞`;
   const safeTimer = String(timerText || '').trim()
     || String(document.getElementById('og-topbar-timer-text')?.textContent || '').trim()
@@ -12371,7 +12379,6 @@ function updateOgPhaseBannerCumulativeText(snap, game = currentGame) {
   if (!ogBanner || !ogText) return;
   if (!isOnlineStyleActive()) return;
   if (!game || game.winner) return;
-  if (isMobileLayoutLike()) return;
   if (!isCumulativeClockType(game)) return;
   if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) return;
 

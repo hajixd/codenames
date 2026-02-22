@@ -25089,6 +25089,43 @@ body:is(.og-mode, .cozy-mode) .game-center-area .game-board {
   body:is(.og-mode, .cozy-mode) .og-phase-banner {
     display: none !important;
   }
+
+  /* Cumulative mode: keep the full multi-clock banner visible on mobile. */
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile {
+    display: block !important;
+    padding: 3px 6px 2px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-wrap {
+    width: 100%;
+    gap: 4px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-row {
+    gap: 6px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-clock {
+    padding: 5px 7px;
+    border-radius: 8px;
+    gap: 6px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-label {
+    font-size: 8px;
+    letter-spacing: 0.45px;
+  }
+
+  body:is(.og-mode, .cozy-mode) .og-phase-banner.show-cumulative-mobile .og-phase-text.is-cumulative .og-cumulative-time {
+    font-size: 11px;
+    letter-spacing: 0.1px;
+  }
 }
 
 /* Bring back waiting status, but smaller/subtler. */
