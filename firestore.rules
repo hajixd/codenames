@@ -94,6 +94,14 @@ service cloud.firestore {
       }
     }
 
+    // ===== team name registry =====
+    match /teamNames/{nameKey} {
+      allow read: if signedIn();
+      // Any signed-in user may write so team create/rename/delete can maintain
+      // the uniqueness registry. The app enforces ownership via transactions.
+      allow write: if signedIn();
+    }
+
     // ===== global chat =====
     match /globalChat/{msgId} {
       allow read: if signedIn();
