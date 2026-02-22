@@ -8047,6 +8047,10 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
   justify-content: center;
 }
 
+.settings-profile-edit-actions{
+  margin-top: 0;
+}
+
 .profile-photo-modal .modal-backdrop{
   position: fixed;
   inset: 0;
@@ -8054,12 +8058,14 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
   z-index: 999;
 }
 
+.profile-photo-modal{
+  align-items: center;
+  justify-content: center;
+}
+
 .profile-photo-modal-card{
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1001;
+  position: relative;
+  z-index: 1;
   width: min(420px, 92vw);
   border-radius: 20px;
   border: 1px solid color-mix(in srgb, var(--border) 88%, #ffffff 12%);
@@ -8118,7 +8124,6 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 @media (max-width: 640px){
   .profile-photo-modal-card{
     width: min(360px, 94vw);
-    top: 50%;
     border-radius: 17px;
   }
   .profile-photo-modal-body{
@@ -8138,20 +8143,20 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 }
 
 .profile-photo-modal.modal-open .profile-photo-modal-card{
-  transform: translate(-50%, -56%) scale(1) !important;
+  transform: translateY(-22px) scale(1) !important;
 }
 
 .profile-photo-modal:not(.modal-open) .profile-photo-modal-card{
-  transform: translate(-50%, -56%) scale(0.95) !important;
+  transform: translateY(-18px) scale(0.95) !important;
 }
 
 @media (max-width: 640px){
   .profile-photo-modal.modal-open .profile-photo-modal-card{
-    transform: translate(-50%, -54%) scale(1) !important;
+    transform: translateY(-14px) scale(1) !important;
   }
 
   .profile-photo-modal:not(.modal-open) .profile-photo-modal-card{
-    transform: translate(-50%, -54%) scale(0.95) !important;
+    transform: translateY(-10px) scale(0.95) !important;
   }
 }
 
@@ -8198,6 +8203,34 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 
 .moderators-modal-hint{
   min-height: 18px;
+}
+
+.moderators-modal-toolbar{
+  display: flex;
+  justify-content: flex-end;
+}
+
+.moderators-modal-add{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 11px;
+  border: 1px solid rgba(255,255,255,0.11);
+  background: rgba(255,255,255,0.03);
+}
+
+.moderators-modal-search{
+  width: 100%;
+}
+
+.moderators-modal-results{
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 230px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .moderators-modal-list{
@@ -8303,6 +8336,10 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
     min-height: 20px;
     padding: 2px 7px;
     font-size: 9px;
+  }
+
+  .moderators-modal-results{
+    max-height: 180px;
   }
 }
 .settings-row-meta{

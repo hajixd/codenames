@@ -2011,7 +2011,7 @@
               <div class="settings-tools-actions">
                 <button class="btn" id="settings-open-animations-btn" type="button">Animation Studio</button>
               </div>
-              <div class="settings-tools-actions">
+              <div class="settings-admin-actions settings-profile-edit-actions">
                 <button class="btn" id="settings-edit-profile-photo-btn" type="button">Edit Profile Picture</button>
               </div>
 <div class="settings-row settings-row-volume">
@@ -2086,6 +2086,13 @@
           </div>
           <div class="modal-body moderators-modal-body">
             <div class="hint moderators-modal-hint" id="moderators-modal-hint" aria-live="polite"></div>
+            <div class="moderators-modal-toolbar" id="moderators-modal-toolbar">
+              <button class="btn small" id="moderators-modal-add-btn" type="button">Add</button>
+            </div>
+            <div class="moderators-modal-add" id="moderators-modal-add" style="display:none;">
+              <input class="input moderators-modal-search" id="moderators-modal-search" type="text" placeholder="Search players..." autocomplete="off" />
+              <div class="moderators-modal-results" id="moderators-modal-results"></div>
+            </div>
             <div class="moderators-modal-list" id="moderators-modal-list"></div>
           </div>
         </div>

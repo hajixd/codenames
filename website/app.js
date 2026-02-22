@@ -8176,6 +8176,8 @@ let judgesAdminEditMode = false;
 let judgesAdminModalOpen = false;
 let judgesAdminMobilePage = 'list';
 let moderatorsModalOpen = false;
+let moderatorsAddOpen = false;
+let moderatorsSearchQuery = '';
 
 function defaultAIJudgeCatalog() {
   return [
@@ -8382,53 +8384,123 @@ function isPlayerRootAdminRecord(playerLike) {
   return !!(uid && me && uid === me && isRootAdminUser());
 }
 
+function getModeratorsOnlyPlayers() {
+  return getModeratorsSortedPlayers().filter((p) => !!(p && p.isModerator === true));
+}
+
+function getModeratorAddCandidates(searchQuery = '') {
+  const q = String(searchQuery || '').trim().toLowerCase();
+  const out = [];
+  for (const p of getModeratorsSortedPlayers()) {
+    const uid = String(p?.id || '').trim();
+    if (!uid) continue;
+    if (p?.isModerator === true) continue;
+    if (isPlayerRootAdminRecord(p)) continue;
+    if (q) {
+      const nameLower = String(p?.name || uid).trim().toLowerCase();
+      const uidLower = uid.toLowerCase();
+      if (!nameLower.includes(q) && !uidLower.includes(q)) continue;
+    }
+    out.push(p);
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+
 function renderModeratorsModal() {
   if (!moderatorsModalOpen) return;
   const listEl = document.getElementById('moderators-modal-list');
   const hintEl = document.getElementById('moderators-modal-hint');
+  const toolbarEl = document.getElementById('moderators-modal-toolbar');
+  const addBtn = document.getElementById('moderators-modal-add-btn');
+  const addPanelEl = document.getElementById('moderators-modal-add');
+  const searchEl = document.getElementById('moderators-modal-search');
+  const resultsEl = document.getElementById('moderators-modal-results');
   if (!listEl) return;
 
   const canManage = !!isRootAdminUser();
   if (hintEl) hintEl.textContent = canManage
-    ? 'Select users to add or remove moderators.'
-    : 'View only. Admin can change moderators.';
+    ? 'Showing current moderators.'
+    : 'View only. Showing current moderators.';
+  if (toolbarEl) toolbarEl.style.display = canManage ? 'flex' : 'none';
+  if (addBtn) {
+    addBtn.disabled = !canManage;
+    addBtn.textContent = moderatorsAddOpen ? 'Close' : 'Add';
+  }
+  if (addPanelEl) addPanelEl.style.display = (canManage && moderatorsAddOpen) ? 'flex' : 'none';
+  if (searchEl) searchEl.value = moderatorsSearchQuery;
 
-  const players = getModeratorsSortedPlayers();
-  if (!players.length) {
-    listEl.innerHTML = '<div class="empty-state">No players yet.</div>';
+  const moderators = getModeratorsOnlyPlayers();
+  if (!moderators.length) {
+    listEl.innerHTML = '<div class="empty-state">No moderators yet.</div>';
+  } else {
+    listEl.innerHTML = moderators.map((p) => {
+      const uid = String(p?.id || '').trim();
+      const name = String(p?.name || uid || 'Player').trim() || 'Player';
+      const isRoot = isPlayerRootAdminRecord(p);
+      const avatar = renderProfileAvatarHtml({
+        userId: uid,
+        name,
+        size: 30,
+        className: 'moderator-avatar',
+        title: name,
+        ariaHidden: true,
+      });
+
+      const action = (canManage && !isRoot)
+        ? `
+            <button
+              class="btn small danger"
+              type="button"
+              data-mod-user-id="${esc(uid)}"
+              data-mod-enabled="false"
+            >Remove</button>
+          `
+        : `<span class="moderator-role-chip ${isRoot ? 'is-admin' : 'is-moderator'}">${isRoot ? 'Admin' : 'Moderator'}</span>`;
+
+      return `
+        <div class="moderator-row">
+          <div class="moderator-row-left">
+            ${avatar}
+            <div class="moderator-row-text">
+              <div class="moderator-row-name">${esc(name)}</div>
+              <div class="moderator-row-meta">${esc(uid || 'No ID')}</div>
+            </div>
+          </div>
+          ${action}
+        </div>
+      `;
+    }).join('');
+  }
+
+  if (!resultsEl) return;
+  if (!canManage || !moderatorsAddOpen) {
+    resultsEl.innerHTML = '';
+    return;
+  }
+  const search = String(moderatorsSearchQuery || '').trim();
+  if (!search) {
+    resultsEl.innerHTML = '<div class="empty-state">Search for a player to add as moderator.</div>';
     return;
   }
 
-  listEl.innerHTML = players.map((p) => {
+  const candidates = getModeratorAddCandidates(search);
+  if (!candidates.length) {
+    resultsEl.innerHTML = '<div class="empty-state">No matching players found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = candidates.map((p) => {
     const uid = String(p?.id || '').trim();
     const name = String(p?.name || uid || 'Player').trim() || 'Player';
-    const isRoot = isPlayerRootAdminRecord(p);
-    const isMod = !!(p?.isModerator === true);
-    const roleClass = isRoot ? 'is-admin' : (isMod ? 'is-moderator' : '');
-    const roleLabel = isRoot ? 'Admin' : (isMod ? 'Moderator' : 'Player');
     const avatar = renderProfileAvatarHtml({
       userId: uid,
       name,
-      size: 30,
+      size: 28,
       className: 'moderator-avatar',
       title: name,
       ariaHidden: true,
     });
-
-    let action = `<span class="moderator-role-chip ${roleClass}">${esc(roleLabel)}</span>`;
-    if (canManage && !isRoot) {
-      const actionLabel = isMod ? 'Remove Moderator' : 'Make Moderator';
-      const actionClass = isMod ? 'btn small danger' : 'btn small';
-      action = `
-        <button
-          class="${actionClass}"
-          type="button"
-          data-mod-user-id="${esc(uid)}"
-          data-mod-enabled="${isMod ? 'false' : 'true'}"
-        >${esc(actionLabel)}</button>
-      `;
-    }
-
     return `
       <div class="moderator-row">
         <div class="moderator-row-left">
@@ -8438,7 +8510,12 @@ function renderModeratorsModal() {
             <div class="moderator-row-meta">${esc(uid || 'No ID')}</div>
           </div>
         </div>
-        ${action}
+        <button
+          class="btn small"
+          type="button"
+          data-mod-user-id="${esc(uid)}"
+          data-mod-enabled="true"
+        >Add</button>
       </div>
     `;
   }).join('');
@@ -8467,6 +8544,8 @@ function openModeratorsModal() {
   const modal = document.getElementById('moderators-modal');
   if (!modal) return;
   moderatorsModalOpen = true;
+  moderatorsAddOpen = false;
+  moderatorsSearchQuery = '';
   renderModeratorsModal();
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
@@ -8476,6 +8555,8 @@ function openModeratorsModal() {
 function closeModeratorsModal() {
   const modal = document.getElementById('moderators-modal');
   moderatorsModalOpen = false;
+  moderatorsAddOpen = false;
+  moderatorsSearchQuery = '';
   if (!modal) return;
   modal.classList.remove('modal-open');
   modal.setAttribute('aria-hidden', 'true');
@@ -8488,7 +8569,10 @@ function initModeratorsModal() {
   const modal = document.getElementById('moderators-modal');
   const closeBtn = document.getElementById('moderators-modal-close');
   const backdrop = document.getElementById('moderators-modal-backdrop');
+  const addBtn = document.getElementById('moderators-modal-add-btn');
+  const searchEl = document.getElementById('moderators-modal-search');
   const listEl = document.getElementById('moderators-modal-list');
+  const resultsEl = document.getElementById('moderators-modal-results');
   const hintEl = document.getElementById('moderators-modal-hint');
   if (!modal) return;
 
@@ -8498,7 +8582,22 @@ function initModeratorsModal() {
     if (e.target === modal) closeModeratorsModal();
   });
 
-  listEl?.addEventListener('click', async (e) => {
+  addBtn?.addEventListener('click', () => {
+    if (!isRootAdminUser()) return;
+    moderatorsAddOpen = !moderatorsAddOpen;
+    if (!moderatorsAddOpen) moderatorsSearchQuery = '';
+    renderModeratorsModal();
+    if (moderatorsAddOpen) {
+      try { searchEl?.focus?.(); } catch (_) {}
+    }
+  });
+
+  searchEl?.addEventListener('input', () => {
+    moderatorsSearchQuery = String(searchEl.value || '').trim();
+    renderModeratorsModal();
+  });
+
+  const handleModeratorActionClick = async (e) => {
     const btn = e.target?.closest?.('[data-mod-user-id]');
     if (!btn) return;
     if (!isRootAdminUser()) return;
@@ -8509,6 +8608,7 @@ function initModeratorsModal() {
       if (hintEl) hintEl.textContent = enabled ? 'Adding moderator…' : 'Removing moderator…';
       btn.disabled = true;
       await setModeratorForUser(uid, enabled);
+      if (enabled) moderatorsSearchQuery = '';
       if (hintEl) hintEl.textContent = enabled ? 'Moderator added.' : 'Moderator removed.';
       renderModeratorsModal();
     } catch (err) {
@@ -8516,7 +8616,9 @@ function initModeratorsModal() {
     } finally {
       btn.disabled = false;
     }
-  });
+  };
+  listEl?.addEventListener('click', handleModeratorActionClick);
+  resultsEl?.addEventListener('click', handleModeratorActionClick);
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
