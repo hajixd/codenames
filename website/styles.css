@@ -8078,7 +8078,7 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 
 .profile-photo-modal-card{
   position: fixed;
-  top: 50%;
+  top: 46%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1001;
@@ -8140,6 +8140,7 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 @media (max-width: 640px){
   .profile-photo-modal-card{
     width: min(360px, 94vw);
+    top: 45%;
     border-radius: 17px;
   }
   .profile-photo-modal-body{
