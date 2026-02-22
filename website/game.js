@@ -1136,6 +1136,101 @@ function syncLocalPracticeAIConsidering(gameId, team, ai, decisionLike = {}, opt
   } catch (_) {}
 }
 
+function orderLocalPracticeAIMarkerKeysByChat(game, markerKeys = [], chatText = '') {
+  const keys = Array.isArray(markerKeys) ? markerKeys.map((k) => String(k)) : [];
+  if (!keys.length) return [];
+  const cards = Array.isArray(game?.cards) ? game.cards : [];
+  const text = String(chatText || '').toUpperCase();
+  if (!text) return keys;
+
+  const ranked = keys.map((key, order) => {
+    const idx = Number(key);
+    const word = Number.isFinite(idx) ? String(cards[idx]?.word || '').trim().toUpperCase() : '';
+    const mention = word ? text.indexOf(word) : -1;
+    return {
+      key,
+      order,
+      mention: mention >= 0 ? mention : Number.POSITIVE_INFINITY,
+    };
+  });
+
+  ranked.sort((a, b) => {
+    if (a.mention !== b.mention) return a.mention - b.mention;
+    return a.order - b.order;
+  });
+  return ranked.map((row) => row.key);
+}
+
+function buildLocalPracticeMarkerStages(markerKeys = []) {
+  const keys = Array.isArray(markerKeys) ? markerKeys.map((k) => String(k)).filter(Boolean) : [];
+  if (!keys.length) return [];
+  const stages = [];
+  const stageCap = Math.min(4, keys.length);
+  for (let i = 0; i < stageCap; i += 1) {
+    stages.push(keys.slice(0, i + 1));
+  }
+  if (keys.length > stageCap) stages.push(keys.slice());
+  return stages;
+}
+
+function buildLocalPracticeStagedDecision(decisionLike = {}, markerKeys = []) {
+  const markMap = new Map();
+  for (const mark of (Array.isArray(decisionLike?.marks) ? decisionLike.marks : [])) {
+    const idx = Number(mark?.index);
+    const tag = String(mark?.tag || '').trim().toLowerCase();
+    if (!Number.isFinite(idx) || idx < 0) continue;
+    if (!['yes', 'maybe', 'no'].includes(tag)) continue;
+    markMap.set(String(idx), tag);
+  }
+  const guessIdx = Number(decisionLike?.index);
+  return {
+    ...decisionLike,
+    marks: markerKeys.map((key) => {
+      const idx = Number(key);
+      const tag = markMap.get(String(key)) || ((Number.isFinite(guessIdx) && idx === guessIdx) ? 'yes' : 'maybe');
+      return { index: idx, tag };
+    }),
+  };
+}
+
+async function syncLocalPracticeAIConsideringProgressive(gameId, team, ai, decisionLike = {}, opts = {}) {
+  try {
+    const gid = String(gameId || '').trim();
+    if (!gid) return;
+    const action = String(decisionLike?.action || '').trim().toLowerCase();
+    const shouldClear = !!decisionLike?.clear || action === 'end_turn' || action === 'clear_considering';
+    if (shouldClear) {
+      syncLocalPracticeAIConsidering(gid, team, ai, { ...decisionLike, clear: true, marks: [] }, { clear: true });
+      return;
+    }
+
+    const live = opts?.game || getLocalPracticeGame(gid) || currentGame;
+    const markerKeys = collectLocalPracticeAIMarkerKeys(live, decisionLike);
+    if (!markerKeys.length) {
+      syncLocalPracticeAIConsidering(gid, team, ai, decisionLike);
+      return;
+    }
+
+    const ordered = orderLocalPracticeAIMarkerKeysByChat(live, markerKeys, String(opts?.chatText || decisionLike?.chat || ''));
+    const stages = buildLocalPracticeMarkerStages(ordered);
+    if (!stages.length) {
+      syncLocalPracticeAIConsidering(gid, team, ai, decisionLike);
+      return;
+    }
+
+    const stepMin = Number.isFinite(+opts?.stepMinMs) ? Math.max(30, Math.min(260, Math.round(+opts.stepMinMs))) : 70;
+    const stepMax = Number.isFinite(+opts?.stepMaxMs) ? Math.max(stepMin, Math.min(360, Math.round(+opts.stepMaxMs))) : 150;
+    for (let i = 0; i < stages.length; i += 1) {
+      const stageDecision = buildLocalPracticeStagedDecision(decisionLike, stages[i]);
+      syncLocalPracticeAIConsidering(gid, team, ai, stageDecision);
+      if (i < (stages.length - 1)) {
+        const delay = stepMin + Math.floor(Math.random() * Math.max(1, (stepMax - stepMin + 1)));
+        await localPracticePause(delay);
+      }
+    }
+  } catch (_) {}
+}
+
 async function submitLocalPracticeClueWithReview(gameId, team, clueWord, clueNumber, aiSpy = null) {
   const live = getLocalPracticeGame(gameId);
   if (!live || live.winner || live.currentPhase !== 'spymaster' || live.currentTeam !== team) return false;
@@ -1446,7 +1541,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
   if (!useRealCouncil) {
     const idx = pickLocalPracticeAIGuessIndex(game, team);
     if (Number.isInteger(idx) && idx >= 0) {
-      syncLocalPracticeAIConsidering(gameId, team, firstActor, { action: 'guess', index: idx });
+      await syncLocalPracticeAIConsideringProgressive(gameId, team, firstActor, { action: 'guess', index: idx }, { game });
     } else {
       clearAllAiConsidering();
     }
@@ -1480,7 +1575,10 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
     }
     if (!proposal) continue;
     proposalsByAi.set(ai.id, proposal);
-    syncLocalPracticeAIConsidering(gameId, team, ai, proposal);
+    await syncLocalPracticeAIConsideringProgressive(gameId, team, ai, proposal, {
+      game: live,
+      chatText: proposal.chat || '',
+    });
     if (proposal.chat && appendLocalPracticeTeamChat(gameId, team, ai, proposal.chat)) {
       await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
     }
@@ -1506,7 +1604,10 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
           const prev = proposalsByAi.get(ai.id) || { ai };
           proposalsByAi.set(ai.id, { ...prev, ...follow });
         }
-        syncLocalPracticeAIConsidering(gameId, team, ai, follow);
+        await syncLocalPracticeAIConsideringProgressive(gameId, team, ai, follow, {
+          game: live,
+          chatText: follow.chat || '',
+        });
         if (follow.chat && appendLocalPracticeTeamChat(gameId, team, ai, follow.chat)) {
           anySpoke = true;
           await localPracticePause(LOCAL_PRACTICE_COUNCIL_PACE.betweenSpeakersMs);
@@ -1549,7 +1650,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
 
   const executor = pickLocalPracticeRotatingAI(finalState, team, 'op', aiOps) || firstActor;
   const actorName = `AI ${String(executor?.name || 'Player')}`.trim();
-  syncLocalPracticeAIConsidering(gameId, team, executor, decision);
+  await syncLocalPracticeAIConsideringProgressive(gameId, team, executor, decision, { game: finalState });
 
   if (executor && proposals.length >= 2 && typeof summarizeCouncil === 'function') {
     try {
@@ -2094,23 +2195,18 @@ function isTimedGameplayPhase(phase) {
   return p === 'spymaster' || p === 'operatives';
 }
 
-function readMmssInputSeconds(minId, secId, fallback = 0) {
+function readMinuteInputSeconds(minId, fallback = 0) {
   const minRaw = parseInt(document.getElementById(minId)?.value || '0', 10);
-  const secRaw = parseInt(document.getElementById(secId)?.value || '0', 10);
   const min = Number.isFinite(minRaw) ? Math.max(0, Math.min(99, minRaw)) : 0;
-  const sec = Number.isFinite(secRaw) ? Math.max(0, Math.min(59, secRaw)) : 0;
-  const total = (min * 60) + sec;
+  const total = min * 60;
   return Number.isFinite(total) ? total : fallback;
 }
 
-function writeMmssInputSeconds(minId, secId, totalSeconds = 0) {
+function writeMinuteInputSeconds(minId, totalSeconds = 0) {
   const total = Number.isFinite(+totalSeconds) ? Math.max(0, Math.min(5999, +totalSeconds)) : 0;
-  const min = Math.floor(total / 60);
-  const sec = total % 60;
+  const min = Math.round(total / 60);
   const minEl = document.getElementById(minId);
-  const secEl = document.getElementById(secId);
   if (minEl) minEl.value = String(min);
-  if (secEl) secEl.value = String(sec);
 }
 
 function clampMmssInputField(el, max) {
@@ -2186,9 +2282,9 @@ function readQuickSettingsFromUI() {
   const blackCards = parseInt(document.getElementById('qp-black-cards')?.value || '1', 10);
   const turnType = normalizeQuickTurnType(getQuickTurnTypeFromUI());
   const clockType = normalizeQuickClockType(getQuickClockTypeFromUI());
-  const clueTimerSeconds = readMmssInputSeconds('qp-clue-timer-min', 'qp-clue-timer-sec', 0);
-  const guessTimerSeconds = readMmssInputSeconds('qp-guess-timer-min', 'qp-guess-timer-sec', 0);
-  const teamTimerSeconds = readMmssInputSeconds('qp-team-timer-min', 'qp-team-timer-sec', 12 * 60);
+  const clueTimerSeconds = readMinuteInputSeconds('qp-clue-timer-min', 0);
+  const guessTimerSeconds = readMinuteInputSeconds('qp-guess-timer-min', 0);
+  const teamTimerSeconds = readMinuteInputSeconds('qp-team-timer-min', 12 * 60);
   const stackingToggle = document.getElementById('qp-stacking-toggle');
   const stackingEnabled = stackingToggle ? !!stackingToggle.checked : true;
   const judgeSettings = readQuickAIJudgeSettingsFromUI();
@@ -3742,10 +3838,6 @@ function initGameUI() {
     const el = document.getElementById(id);
     el?.addEventListener('blur', () => clampMmssInputField(el, 99));
   });
-  ['qp-clue-timer-sec', 'qp-guess-timer-sec', 'qp-team-timer-sec'].forEach((id) => {
-    const el = document.getElementById(id);
-    el?.addEventListener('blur', () => clampMmssInputField(el, 59));
-  });
   document.getElementById('qp-ai-judges-toggle')?.addEventListener('change', (e) => {
     const enabled = !!e?.currentTarget?.checked;
     if (enabled) ensureQuickAtLeastOneJudge();
@@ -4426,9 +4518,9 @@ function openQuickSettingsModal() {
   if (blackCardsEl) blackCardsEl.value = String(s.blackCards ?? 1);
   setQuickTurnTypeUI(s.turnType || normalizeQuickTurnType('', s.timerMode || 'turn'));
   setQuickClockTypeUI(s.clockType || normalizeQuickClockType('', s.timerMode || 'turn'));
-  writeMmssInputSeconds('qp-clue-timer-min', 'qp-clue-timer-sec', s.clueTimerSeconds ?? 0);
-  writeMmssInputSeconds('qp-guess-timer-min', 'qp-guess-timer-sec', s.guessTimerSeconds ?? 0);
-  writeMmssInputSeconds('qp-team-timer-min', 'qp-team-timer-sec', s.teamTimerSeconds ?? (12 * 60));
+  writeMinuteInputSeconds('qp-clue-timer-min', s.clueTimerSeconds ?? 0);
+  writeMinuteInputSeconds('qp-guess-timer-min', s.guessTimerSeconds ?? 0);
+  writeMinuteInputSeconds('qp-team-timer-min', s.teamTimerSeconds ?? (12 * 60));
   if (stackingToggleEl) stackingToggleEl.checked = s.stackingEnabled !== false;
   const judgeKeys = normalizeAIJudgeKeys(s.enabledAIJudges, getAIJudgeDefaultKeys());
   if (aiJudgesToggleEl) aiJudgesToggleEl.checked = s.aiJudgesEnabled !== false;

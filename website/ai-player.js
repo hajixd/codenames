@@ -1901,17 +1901,17 @@ function _buildAICadenceProfile(personality, seed = '') {
 
   const visionMinMs = Math.round(_clamp((420 + ((100 - tempo) * 7.8) + (depth * 2.1)) * jitter, 420, 1750));
   const mindTickMinMs = Math.round(_clamp((900 + (depth * 10.5) + ((100 - tempo) * 4.4)) * jitter, 880, 3200));
-  const chatReplyMinMs = Math.round(_clamp((2500 + ((100 - verbosity) * 30) + ((100 - tempo) * 22) + ((100 - confidence) * 16)) * jitter, 2400, 9800));
-  const markerReactionMinMs = Math.round(_clamp((3200 + ((100 - verbosity) * 22) + ((100 - teamSpirit) * 20)) * jitter, 2600, 10800));
-  const offTurnScoutMinMs = Math.round(_clamp((7600 + ((100 - verbosity) * 50) + ((100 - confidence) * 28)) * jitter, 6200, 23000));
+  const chatReplyMinMs = Math.round(_clamp((980 + ((100 - verbosity) * 12) + ((100 - tempo) * 9) + ((100 - confidence) * 7)) * jitter, 700, 4200));
+  const markerReactionMinMs = Math.round(_clamp((1650 + ((100 - verbosity) * 11) + ((100 - teamSpirit) * 10)) * jitter, 1100, 6200));
+  const offTurnScoutMinMs = Math.round(_clamp((5400 + ((100 - verbosity) * 30) + ((100 - confidence) * 18)) * jitter, 3800, 15000));
 
   const baseReplyChance = _clamp(0.23 + (verbosity / 220) + (teamSpirit / 500), 0.22, 0.86);
   const chatReplyChanceVsHuman = _clamp(baseReplyChance + (confidence / 680), 0.25, 0.92);
   const chatReplyChanceVsAI = _clamp(baseReplyChance - 0.11 + (confidence / 920), 0.12, 0.79);
   const offTurnChatChance = _clamp(0.40 + (verbosity / 260) + (confidence / 780), 0.34, 0.88);
 
-  const chatThinkMinMs = Math.round(_clamp(120 + (depth * 1.8) + ((100 - tempo) * 1.1), 120, 460));
-  const chatThinkMaxMs = Math.round(_clamp(chatThinkMinMs + 290 + (depth * 3.6) + ((100 - confidence) * 4.2), 420, 1900));
+  const chatThinkMinMs = Math.round(_clamp(55 + (depth * 0.95) + ((100 - tempo) * 0.58), 55, 220));
+  const chatThinkMaxMs = Math.round(_clamp(chatThinkMinMs + 170 + (depth * 1.9) + ((100 - confidence) * 1.7), 170, 820));
 
   return {
     visionMinMs,
@@ -1959,9 +1959,9 @@ function _effectiveCadenceForGame(ai, game = null) {
 
   const visionMinMs = Math.round(_clamp(Number(base.visionMinMs || 900) * turnScale * urgencyScale, 320, 2600));
   const mindTickMinMs = Math.round(_clamp(Number(base.mindTickMinMs || 1300) * (isMyTurn ? 0.9 : 1.16) * urgencyScale, 620, 4200));
-  const chatReplyMinMs = Math.round(_clamp(Number(base.chatReplyMinMs || 3500) * (isMyTurn ? 0.84 : 1.14) * (urgencyScale < 0.8 ? 0.86 : 1), 1200, 12000));
-  const markerReactionMinMs = Math.round(_clamp(Number(base.markerReactionMinMs || 4500) * (phase === 'operatives' ? 0.92 : 1.12), 1600, 12000));
-  const offTurnScoutMinMs = Math.round(_clamp(Number(base.offTurnScoutMinMs || 12000) * ((phase === 'operatives' && !isMyTurn) ? 0.92 : 1.16), 5000, 26000));
+  const chatReplyMinMs = Math.round(_clamp(Number(base.chatReplyMinMs || 1300) * (isMyTurn ? 0.7 : 0.98) * (urgencyScale < 0.8 ? 0.78 : 0.94), 550, 6200));
+  const markerReactionMinMs = Math.round(_clamp(Number(base.markerReactionMinMs || 2600) * (phase === 'operatives' ? 0.82 : 1.04), 700, 7000));
+  const offTurnScoutMinMs = Math.round(_clamp(Number(base.offTurnScoutMinMs || 7600) * ((phase === 'operatives' && !isMyTurn) ? 0.84 : 1.06), 3000, 18000));
 
   const replyVsHuman = _clamp(Number(base.chatReplyChanceVsHuman || 0.7) * (isMyTurn ? 1.1 : 0.95), 0.16, 0.95);
   const replyVsAI = _clamp(Number(base.chatReplyChanceVsAI || 0.55) * (isMyTurn ? 1.08 : 0.92), 0.10, 0.86);
@@ -3250,6 +3250,123 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
   } catch (_) {}
 }
 
+function _normalizeConsideringMarksForStage(decisionLike = {}) {
+  const out = [];
+  const seen = new Set();
+  const push = (rawIndex, rawTag = 'maybe') => {
+    const idx = Number(rawIndex);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    const key = String(idx);
+    if (seen.has(key)) return;
+    const tag = String(rawTag || '').toLowerCase().trim();
+    if (!['yes', 'maybe', 'no'].includes(tag)) return;
+    seen.add(key);
+    out.push({ index: idx, tag });
+  };
+
+  const marks = Array.isArray(decisionLike?.marks) ? decisionLike.marks : [];
+  for (const mark of marks) {
+    push(mark?.index, mark?.tag);
+    if (out.length >= 8) break;
+  }
+
+  const action = String(decisionLike?.action || '').toLowerCase().trim();
+  if (action === 'guess') {
+    const guessIdx = Number(decisionLike?.index);
+    if (Number.isFinite(guessIdx) && guessIdx >= 0) {
+      const key = String(guessIdx);
+      if (!seen.has(key)) out.unshift({ index: guessIdx, tag: 'yes' });
+    }
+  }
+
+  return out.slice(0, 8);
+}
+
+function _orderConsideringMarksByChat(gameLike, marks = [], chatText = '') {
+  const list = Array.isArray(marks) ? marks : [];
+  if (!list.length) return [];
+  const cards = Array.isArray(gameLike?.cards) ? gameLike.cards : [];
+  const text = String(chatText || '').toUpperCase();
+  const tagPriority = { yes: 0, maybe: 1, no: 2 };
+  const rows = list.map((mark, order) => {
+    const idx = Number(mark?.index);
+    const tagRaw = String(mark?.tag || '').toLowerCase().trim();
+    const tag = ['yes', 'maybe', 'no'].includes(tagRaw) ? tagRaw : 'maybe';
+    let mentionIndex = Number.POSITIVE_INFINITY;
+    if (text && Number.isFinite(idx) && idx >= 0) {
+      const word = String(cards[idx]?.word || '').trim().toUpperCase();
+      if (word) {
+        const pos = text.indexOf(word);
+        if (pos >= 0) mentionIndex = pos;
+      }
+    }
+    return { index: idx, tag, order, mentionIndex };
+  });
+
+  rows.sort((a, b) => {
+    const ma = Number.isFinite(a.mentionIndex) ? a.mentionIndex : Number.POSITIVE_INFINITY;
+    const mb = Number.isFinite(b.mentionIndex) ? b.mentionIndex : Number.POSITIVE_INFINITY;
+    if (ma !== mb) return ma - mb;
+    const ta = Number(tagPriority[a.tag] ?? 1);
+    const tb = Number(tagPriority[b.tag] ?? 1);
+    if (ta !== tb) return ta - tb;
+    return a.order - b.order;
+  });
+
+  return rows.map(({ index, tag }) => ({ index, tag }));
+}
+
+function _buildConsideringStageMarks(marks = []) {
+  const list = Array.isArray(marks) ? marks.filter(Boolean) : [];
+  if (!list.length) return [];
+  const stages = [];
+  const stageCap = Math.min(4, list.length);
+  for (let i = 0; i < stageCap; i += 1) {
+    stages.push(list.slice(0, i + 1));
+  }
+  if (list.length > stageCap) {
+    stages.push(list.slice());
+  }
+  return stages;
+}
+
+async function syncAIConsideringStateStaged(gameLike, team, ai, decisionLike = {}, opts = {}) {
+  try {
+    const gameId = String((typeof gameLike === 'string' ? gameLike : gameLike?.id) || '').trim();
+    if (!gameId) return;
+    const action = String(decisionLike?.action || '').toLowerCase().trim();
+    const shouldClear = !!decisionLike?.clear || action === 'end_turn' || action === 'clear_considering';
+    if (shouldClear) {
+      await syncAIConsideringState(gameId, team, ai, { ...decisionLike, clear: true, marks: [] });
+      return;
+    }
+
+    const normalizedMarks = _normalizeConsideringMarksForStage(decisionLike);
+    if (!normalizedMarks.length) {
+      await syncAIConsideringState(gameId, team, ai, decisionLike);
+      return;
+    }
+
+    const orderedMarks = _orderConsideringMarksByChat(
+      gameLike,
+      normalizedMarks,
+      String(opts.chatText || decisionLike?.chat || '')
+    );
+    const stages = _buildConsideringStageMarks(orderedMarks);
+    if (!stages.length) {
+      await syncAIConsideringState(gameId, team, ai, { ...decisionLike, marks: orderedMarks });
+      return;
+    }
+
+    const stepMinMs = Number.isFinite(+opts.stepMinMs) ? Math.max(35, Math.min(260, Math.round(+opts.stepMinMs))) : 80;
+    const stepMaxMs = Number.isFinite(+opts.stepMaxMs) ? Math.max(stepMinMs, Math.min(360, Math.round(+opts.stepMaxMs))) : 170;
+    for (let i = 0; i < stages.length; i += 1) {
+      await syncAIConsideringState(gameId, team, ai, { ...decisionLike, marks: stages[i] });
+      if (i < (stages.length - 1)) await sleep(_randMs(stepMinMs, stepMaxMs));
+    }
+  } catch (_) {}
+}
+
 function sanitizeChatText(text, vision, maxLen = 180) {
   try {
     let s = String(text || '').trim();
@@ -4291,8 +4408,15 @@ async function runOperativeCouncil(game, team) {
       proposalsByAi.set(ai.id, prop);
 
       // Share current AI focus with teammates via considering chips.
-      await syncAIConsideringState(game.id, team, ai, prop);
-      if (prop?.chat) await sendAIChatMessage(ai, working, prop.chat);
+      const stagedMarkers = syncAIConsideringStateStaged(working || game, team, ai, prop, { chatText: prop?.chat || '' });
+      if (prop?.chat) {
+        await Promise.all([
+          stagedMarkers,
+          sendAIChatMessage(ai, working, prop.chat),
+        ]);
+      } else {
+        await stagedMarkers;
+      }
 
       core.lastSuggestionKey = key;
     } catch (_) {
@@ -4356,7 +4480,7 @@ async function runOperativeCouncil(game, team) {
           }
 
           // Update the AI's current focus indicator.
-          await syncAIConsideringState(game.id, team, ai, follow);
+          const stagedMarkers = syncAIConsideringStateStaged(working || game, team, ai, follow, { chatText: chat || '' });
 
           // Update this AI's latest lean if it provided one.
           if (follow.action === 'guess' || follow.action === 'end_turn') {
@@ -4365,9 +4489,14 @@ async function runOperativeCouncil(game, team) {
           }
 
           if (chat) {
-            await sendAIChatMessage(ai, working, chat);
+            await Promise.all([
+              stagedMarkers,
+              sendAIChatMessage(ai, working, chat),
+            ]);
             anySpoke = true;
             // If they want to continue, they'll get another chance in the next round.
+          } else {
+            await stagedMarkers;
           }
         } catch (_) {
         } finally {
@@ -5502,16 +5631,21 @@ async function aiGuessCard(ai, game) {
           marks.unshift({ index: candidate.index, tag: 'yes' });
         }
         const chat = String(parsed.chat || '').trim();
-        if (chat) {
-          // Keep team chat short and in-character (public), mind stays private.
-          await sendAIChatMessage(ai, game, chat.slice(0, 240));
-        }
+        const consideringDecision = {
+          action: 'guess',
+          index: candidate.index,
+          marks,
+        };
         try {
-          await syncAIConsideringState(game.id, team, ai, {
-            action: 'guess',
-            index: candidate.index,
-            marks
-          });
+          if (chat) {
+            // Mark while the AI talks so card focus feels more natural.
+            await Promise.all([
+              syncAIConsideringStateStaged(game, team, ai, consideringDecision, { chatText: chat }),
+              sendAIChatMessage(ai, game, chat.slice(0, 240)),
+            ]);
+          } else {
+            await syncAIConsideringStateStaged(game, team, ai, consideringDecision);
+          }
         } catch (_) {}
         const revealResult = await aiRevealCard(ai, game, candidate.index, true);
         if (revealResult?.turnEnded) return 'turn_already_ended';
@@ -6195,9 +6329,9 @@ async function queueAIReactionsFromLogEntries(newEntries, game) {
       for (const ai of candidates.filter(Boolean)) {
         const cadence = _effectiveCadenceForGame(ai, game);
         const now = Date.now();
-        const minGap = Math.max(1800, Math.round(Number(cadence.chatReplyMinMs || 3500) * 0.82));
+        const minGap = Math.max(700, Math.round(Number(cadence.chatReplyMinMs || 1300) * 0.64));
         if ((now - Number(aiLastActionReactionMs[ai.id] || 0)) < minGap) continue;
-        if ((now - Number(aiLastChatReplyMs[ai.id] || 0)) < Math.max(1400, Math.round(minGap * 0.7))) continue;
+        if ((now - Number(aiLastChatReplyMs[ai.id] || 0)) < Math.max(550, Math.round(minGap * 0.6))) continue;
 
         const kind = String(event.kind || '').toLowerCase();
         const aiTeam = String(ai.team || '').toLowerCase();
@@ -6272,7 +6406,7 @@ async function maybeAIReactToTimePressure(game) {
     const ai = pool[0];
     const cadence = _effectiveCadenceForGame(ai, game);
     const now = Date.now();
-    if ((now - Number(aiLastActionReactionMs[ai.id] || 0)) < Math.max(1600, Math.round(Number(cadence.chatReplyMinMs || 3500) * 0.75))) return false;
+    if ((now - Number(aiLastActionReactionMs[ai.id] || 0)) < Math.max(750, Math.round(Number(cadence.chatReplyMinMs || 1300) * 0.62))) return false;
 
     const event = {
       kind: 'time_pressure',
@@ -6327,9 +6461,9 @@ function _getAIChatTypingProfile(aiLike) {
   const d = Number.isFinite(reasoningDepth) ? Math.max(1, Math.min(100, reasoningDepth)) : 58;
 
   // Faster baseline cadence with intentional messy human-like revisions.
-  const baseMinMs = Math.round(_clamp(88 + ((100 - t) * 0.95), 70, 240));
-  const baseMaxMs = Math.round(_clamp(235 + ((100 - t) * 2.05) + (d * 1.35), 210, 980));
-  const jitterMs = Math.round(_clamp(110 + ((100 - c) * 1.35) + (d * 0.9), 100, 520));
+  const baseMinMs = Math.round(_clamp(46 + ((100 - t) * 0.55), 34, 130));
+  const baseMaxMs = Math.round(_clamp(130 + ((100 - t) * 1.2) + (d * 0.82), 120, 520));
+  const jitterMs = Math.round(_clamp(70 + ((100 - c) * 0.72) + (d * 0.52), 60, 260));
 
   const burstChance = _clamp(0.14 + (t / 420), 0.14, 0.44);
   const slowStretchChance = _clamp(0.08 + ((100 - t) / 560) + (d / 760), 0.08, 0.34);
@@ -6338,16 +6472,16 @@ function _getAIChatTypingProfile(aiLike) {
   const rhythmSwapChance = _clamp(0.19 + (d / 620), 0.16, 0.42);
 
   // Mistakes are now substantially more frequent and varied.
-  const typoChance = _clamp(0.13 + ((100 - c) / 260), 0.10, 0.44);
-  const typoBurstChance = _clamp(0.09 + ((100 - c) / 360), 0.06, 0.30);
-  const wordRevisionChance = _clamp(0.20 + ((100 - c) / 240) + (d / 700), 0.16, 0.56);
-  const halfDeleteChance = _clamp(0.18 + ((100 - c) / 250) + (d / 820), 0.14, 0.50);
+  const typoChance = _clamp(0.16 + ((100 - c) / 240), 0.13, 0.50);
+  const typoBurstChance = _clamp(0.12 + ((100 - c) / 330), 0.08, 0.36);
+  const wordRevisionChance = _clamp(0.24 + ((100 - c) / 230) + (d / 680), 0.18, 0.62);
+  const halfDeleteChance = _clamp(0.22 + ((100 - c) / 230) + (d / 760), 0.16, 0.56);
   const fullWordRestartChance = _clamp(0.04 + ((100 - c) / 1100), 0.03, 0.16);
 
-  const preThinkMinMs = Math.round(_clamp(300 + (d * 4.8), 280, 1100));
-  const preThinkMaxMs = Math.round(_clamp(preThinkMinMs + 640 + ((100 - t) * 8.8) + (d * 7.4), 900, 4200));
-  const submitPauseMinMs = Math.round(_clamp(220 + ((100 - c) * 2.2), 180, 760));
-  const submitPauseMaxMs = Math.round(_clamp(submitPauseMinMs + 420 + (d * 6.4), 540, 2600));
+  const preThinkMinMs = Math.round(_clamp(110 + (d * 1.8), 100, 320));
+  const preThinkMaxMs = Math.round(_clamp(preThinkMinMs + 240 + ((100 - t) * 3.4) + (d * 2.8), 220, 1100));
+  const submitPauseMinMs = Math.round(_clamp(80 + ((100 - c) * 1.1), 70, 240));
+  const submitPauseMaxMs = Math.round(_clamp(submitPauseMinMs + 190 + (d * 1.7), 170, 720));
 
   const out = {
     baseMinMs,
@@ -6407,7 +6541,7 @@ async function _simulateAITyping(aiLikeOrName, teamColor, text, opts = {}) {
   const dotsEl = typingEl.querySelector('.chat-typing-indicator');
 
   // Variable "thinking before typing" delay.
-  const preThink = _randMs(profile.preThinkMinMs, profile.preThinkMaxMs) + Math.min(2800, Math.round(String(text || '').length * (8.6 + Math.random() * 13.8)));
+  const preThink = _randMs(profile.preThinkMinMs, profile.preThinkMaxMs) + Math.min(900, Math.round(String(text || '').length * (2.4 + Math.random() * 4.8)));
   await new Promise(r => setTimeout(r, preThink));
 
   // Start revealing characters (with rhythm shifts, bursts, pauses, typo bursts,
@@ -6697,7 +6831,7 @@ async function maybeAIRespondToTeamChat(ai, game) {
     const cadence = _effectiveCadenceForGame(ai, game);
     const now = Date.now();
     const lastReply = Number(aiLastChatReplyMs[ai.id] || 0);
-    if (now - lastReply < Number(cadence.chatReplyMinMs || 3500)) return false;
+    if (now - lastReply < Number(cadence.chatReplyMinMs || 1300)) return false;
 
     const msgs = await fetchRecentTeamChatDocs(game.id, ai.team, 14, { cacheMs: 850 });
     if (!msgs || !msgs.length) return false;
@@ -6751,8 +6885,8 @@ async function maybeAIRespondToTeamChat(ai, game) {
 
     aiThinkingState[ai.id] = true;
     locked = true;
-    const thinkFloor = Number(cadence.chatThinkMinMs || 120);
-    const thinkCeil = Number(cadence.chatThinkMaxMs || 650);
+    const thinkFloor = Number(cadence.chatThinkMinMs || 70);
+    const thinkCeil = Number(cadence.chatThinkMaxMs || 320);
     const contextual = Math.min(620, Math.round((text.length * 3.6) + (question ? 170 : 0) + (directHit ? 130 : 0)));
     await sleep(_randMs(thinkFloor, thinkCeil) + Math.round(contextual * (0.25 + Math.random() * 0.30)));
 
@@ -7022,8 +7156,8 @@ async function getGameSnapshot(gameId) {
 const AI_SPEED = { spymasterDelay:[0,0], operativeThinkDelay:[0,0], operativeChatDelay:[0,0], betweenGuessesDelay:[0,0], idleLoopDelayMs: 250 };
 
 const AI_COUNCIL_PACE = {
-  betweenSpeakersMs: 650,  // pause after a teammate message/marker so others can read it
-  beforeDecisionMs: 900,   // pause after all proposals before executing an action
+  betweenSpeakersMs: 320,  // short pause after teammate message/marker
+  beforeDecisionMs: 460,   // short pause before executing agreed action
 };
 
 function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }

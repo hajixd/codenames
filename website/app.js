@@ -13539,11 +13539,8 @@ function initPracticePage() {
   const settingsTurnGuessRowEl = document.getElementById('practice-page-turn-guess-row');
   const settingsTeamTimerRowEl = document.getElementById('practice-page-team-timer-row');
   const settingsClueTimerMinEl = document.getElementById('practice-page-clue-timer-min');
-  const settingsClueTimerSecEl = document.getElementById('practice-page-clue-timer-sec');
   const settingsGuessTimerMinEl = document.getElementById('practice-page-guess-timer-min');
-  const settingsGuessTimerSecEl = document.getElementById('practice-page-guess-timer-sec');
   const settingsTeamTimerMinEl = document.getElementById('practice-page-team-timer-min');
-  const settingsTeamTimerSecEl = document.getElementById('practice-page-team-timer-sec');
   const settingsStackingToggleEl = document.getElementById('practice-page-stacking-toggle');
   const settingsAiJudgesToggleEl = document.getElementById('practice-page-ai-judges-toggle');
   const settingsAiChallengeRowEl = document.getElementById('practice-page-ai-challenge-row');
@@ -13752,22 +13749,18 @@ function initPracticePage() {
 
   const splitSecondsToClockParts = (seconds) => {
     const total = normalizeInt(seconds, 0, 0, 5999);
-    const min = Math.floor(total / 60);
-    const sec = total % 60;
-    return { min, sec };
+    return { min: Math.round(total / 60) };
   };
 
-  const readClockPartsToSeconds = (minEl, secEl, fallback = 0) => {
+  const readClockPartsToSeconds = (minEl, fallback = 0) => {
     const mm = normalizeInt(minEl?.value, 0, 0, 99);
-    const ss = normalizeInt(secEl?.value, 0, 0, 59);
-    const total = (mm * 60) + ss;
+    const total = mm * 60;
     return Number.isFinite(total) ? total : fallback;
   };
 
-  const writeClockParts = (minEl, secEl, seconds) => {
+  const writeClockParts = (minEl, seconds) => {
     const parts = splitSecondsToClockParts(seconds);
     if (minEl) minEl.value = String(parts.min);
-    if (secEl) secEl.value = String(parts.sec);
   };
 
   const normalizeClockInput = (el, max) => {
@@ -13841,9 +13834,9 @@ function initPracticePage() {
     if (settingsBlackCardsEl) settingsBlackCardsEl.value = String(state.settings.blackCards || 1);
     setTurnTypeUi(state.settings.turnType);
     setClockTypeUi(state.settings.clockType);
-    writeClockParts(settingsClueTimerMinEl, settingsClueTimerSecEl, state.settings.clueTimerSeconds || 0);
-    writeClockParts(settingsGuessTimerMinEl, settingsGuessTimerSecEl, state.settings.guessTimerSeconds || 0);
-    writeClockParts(settingsTeamTimerMinEl, settingsTeamTimerSecEl, state.settings.teamTimerSeconds || 0);
+    writeClockParts(settingsClueTimerMinEl, state.settings.clueTimerSeconds || 0);
+    writeClockParts(settingsGuessTimerMinEl, state.settings.guessTimerSeconds || 0);
+    writeClockParts(settingsTeamTimerMinEl, state.settings.teamTimerSeconds || 0);
     if (settingsStackingToggleEl) settingsStackingToggleEl.checked = state.settings.stackingEnabled !== false;
     if (settingsAiJudgesToggleEl) settingsAiJudgesToggleEl.checked = state.settings.aiJudgesEnabled !== false;
     if (settingsAiChallengeToggleEl) settingsAiChallengeToggleEl.checked = state.settings.aiChallengeEnabled !== false;
@@ -13863,9 +13856,9 @@ function initPracticePage() {
     state.settings.timerMode = normalizeTimerMode(state.settings.turnType);
     state.settings.vibe = String(settingsVibeEl?.value || '').trim();
     state.settings.blackCards = normalizeInt(settingsBlackCardsEl?.value, 1, 1, 3);
-    state.settings.clueTimerSeconds = readClockPartsToSeconds(settingsClueTimerMinEl, settingsClueTimerSecEl, 0);
-    state.settings.guessTimerSeconds = readClockPartsToSeconds(settingsGuessTimerMinEl, settingsGuessTimerSecEl, 0);
-    state.settings.teamTimerSeconds = readClockPartsToSeconds(settingsTeamTimerMinEl, settingsTeamTimerSecEl, 12 * 60);
+    state.settings.clueTimerSeconds = readClockPartsToSeconds(settingsClueTimerMinEl, 0);
+    state.settings.guessTimerSeconds = readClockPartsToSeconds(settingsGuessTimerMinEl, 0);
+    state.settings.teamTimerSeconds = readClockPartsToSeconds(settingsTeamTimerMinEl, 12 * 60);
     state.settings.stackingEnabled = !!settingsStackingToggleEl?.checked;
     state.settings.aiJudgesEnabled = !!settingsAiJudgesToggleEl?.checked;
     state.settings.aiChallengeEnabled = state.settings.aiJudgesEnabled
@@ -13995,9 +13988,6 @@ function initPracticePage() {
   });
   [settingsClueTimerMinEl, settingsGuessTimerMinEl, settingsTeamTimerMinEl].forEach((el) => {
     el?.addEventListener('blur', () => normalizeClockInput(el, 99));
-  });
-  [settingsClueTimerSecEl, settingsGuessTimerSecEl, settingsTeamTimerSecEl].forEach((el) => {
-    el?.addEventListener('blur', () => normalizeClockInput(el, 59));
   });
   settingsAiJudgesToggleEl?.addEventListener('change', () => {
     if (settingsAiJudgesToggleEl.checked) enforceAtLeastOneJudge();

@@ -3421,12 +3421,24 @@ body.light-mode .modal{
   font-variant-numeric: tabular-nums;
   padding: 7px 6px !important;
 }
+.mmss-input-minutes{
+  gap: 8px;
+}
 .mmss-sep{
   font-size: 13px;
   font-weight: 900;
   color: var(--text-dim);
   min-width: 8px;
   text-align: center;
+}
+.mmss-unit{
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  min-width: 24px;
+  text-align: right;
 }
 .mmss-part::-webkit-outer-spin-button,
 .mmss-part::-webkit-inner-spin-button{
@@ -8035,40 +8047,6 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
   justify-content: center;
 }
 
-.settings-profile-photo{
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface2) 90%, transparent);
-  border: 1px solid var(--border-soft);
-}
-
-.settings-profile-photo-head{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.settings-avatar-preview{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  min-height: 36px;
-}
-
-.settings-avatar-preview .settings-avatar-preview-media{
-  --avatar-size: 36px;
-}
-
-.settings-profile-photo .settings-tools-actions .btn{
-  width: 100%;
-  justify-content: center;
-}
-
 .profile-photo-modal .modal-backdrop{
   position: fixed;
   inset: 0;
@@ -8078,7 +8056,7 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 
 .profile-photo-modal-card{
   position: fixed;
-  top: 46%;
+  top: 43%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1001;
@@ -8140,7 +8118,7 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
 @media (max-width: 640px){
   .profile-photo-modal-card{
     width: min(360px, 94vw);
-    top: 45%;
+    top: 41%;
     border-radius: 17px;
   }
   .profile-photo-modal-body{
@@ -8176,6 +8154,11 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
   border: 0;
   outline: none;
   text-align: left;
+  cursor: default;
+}
+.settings-row-action .btn{
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 .settings-row-meta{
   font-size: 12px;

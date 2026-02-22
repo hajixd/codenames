@@ -527,28 +527,25 @@
 
                 <label class="setting-row qp-setting qp-setting-time" data-accent="clue" id="practice-page-turn-clue-row">
                   <span class="setting-label">Spymaster clue timer</span>
-                  <div class="mmss-input">
+                  <div class="mmss-input mmss-input-minutes">
                     <input class="input mmss-part" id="practice-page-clue-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Practice clue timer minutes" />
-                    <span class="mmss-sep">:</span>
-                    <input class="input mmss-part" id="practice-page-clue-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Practice clue timer seconds" />
+                    <span class="mmss-unit">min</span>
                   </div>
                 </label>
 
                 <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="practice-page-turn-guess-row">
                   <span class="setting-label">Guess timer</span>
-                  <div class="mmss-input">
+                  <div class="mmss-input mmss-input-minutes">
                     <input class="input mmss-part" id="practice-page-guess-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Practice guess timer minutes" />
-                    <span class="mmss-sep">:</span>
-                    <input class="input mmss-part" id="practice-page-guess-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Practice guess timer seconds" />
+                    <span class="mmss-unit">min</span>
                   </div>
                 </label>
 
                 <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="practice-page-team-timer-row" style="display:none;">
                   <span class="setting-label">Team clock</span>
-                  <div class="mmss-input">
+                  <div class="mmss-input mmss-input-minutes">
                     <input class="input mmss-part" id="practice-page-team-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="12" aria-label="Practice team timer minutes" />
-                    <span class="mmss-sep">:</span>
-                    <input class="input mmss-part" id="practice-page-team-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Practice team timer seconds" />
+                    <span class="mmss-unit">min</span>
                   </div>
                 </label>
 
@@ -1103,28 +1100,25 @@
 
                         <label class="setting-row qp-setting qp-setting-time" data-accent="clue" id="qp-turn-clue-row">
                           <span class="setting-label">Spymaster clue timer</span>
-                          <div class="mmss-input">
+                          <div class="mmss-input mmss-input-minutes">
                             <input class="input mmss-part" id="qp-clue-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Clue timer minutes" />
-                            <span class="mmss-sep">:</span>
-                            <input class="input mmss-part" id="qp-clue-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Clue timer seconds" />
+                            <span class="mmss-unit">min</span>
                           </div>
                         </label>
 
                         <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="qp-turn-guess-row">
                           <span class="setting-label">Guess timer</span>
-                          <div class="mmss-input">
+                          <div class="mmss-input mmss-input-minutes">
                             <input class="input mmss-part" id="qp-guess-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Guess timer minutes" />
-                            <span class="mmss-sep">:</span>
-                            <input class="input mmss-part" id="qp-guess-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Guess timer seconds" />
+                            <span class="mmss-unit">min</span>
                           </div>
                         </label>
 
                         <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="qp-team-timer-row" style="display:none;">
                           <span class="setting-label">Team clock</span>
-                          <div class="mmss-input">
+                          <div class="mmss-input mmss-input-minutes">
                             <input class="input mmss-part" id="qp-team-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="12" aria-label="Team timer minutes" />
-                            <span class="mmss-sep">:</span>
-                            <input class="input mmss-part" id="qp-team-timer-sec" type="number" min="0" max="59" step="1" inputmode="numeric" value="0" aria-label="Team timer seconds" />
+                            <span class="mmss-unit">min</span>
                           </div>
                         </label>
                         <label class="setting-row qp-setting qp-setting-toggle" data-accent="stacking">
@@ -2017,14 +2011,9 @@
               <div class="settings-tools-actions">
                 <button class="btn" id="settings-open-animations-btn" type="button">Animation Studio</button>
               </div>
-              <div class="settings-profile-photo" id="settings-profile-photo">
-                <div class="settings-profile-photo-head">
-                  <span class="settings-row-label">Profile Photo</span>
-                  <div class="settings-avatar-preview" id="settings-avatar-preview" aria-hidden="true"></div>
-                </div>
-                <div class="settings-tools-actions">
-                  <button class="btn" id="settings-edit-profile-photo-btn" type="button">Edit Profile</button>
-                </div>
+              <div class="settings-row settings-row-action">
+                <span class="settings-row-label">Edit Profile Photo</span>
+                <button class="btn" id="settings-edit-profile-photo-btn" type="button">Edit</button>
               </div>
 <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>
