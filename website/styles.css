@@ -169,15 +169,24 @@ body.light-mode {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--chip-font-size);
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.22px;
-  color: rgba(245, 248, 255, 0.98);
+  overflow: hidden;
   border: var(--chip-border-width) solid rgba(255, 255, 255, 0.82);
-  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.28), rgba(255,255,255,0.05) 42%, rgba(0,0,0,0.16) 85%), linear-gradient(180deg, rgba(73, 92, 117, 0.92), rgba(34, 46, 63, 0.92));
+  background: rgba(20, 28, 40, 0.78);
   box-shadow: 0 3px 8px rgba(0,0,0,0.42);
   margin-left: 0;
+}
+
+.game-card .card-considering-chip .card-considering-avatar{
+  --avatar-size: 100%;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.game-card .card-considering-chip .card-considering-avatar .ct-avatar-initials{
+  font-size: calc(var(--chip-size) * 0.44);
 }
 
 .game-card .card-considering-row.chips-3 { --chip-size: 20px; --chip-font-size: 9px; }
@@ -189,15 +198,14 @@ body.light-mode {
 .game-card .card-considering-row.chips-9plus { --chip-size: 12px; --chip-font-size: 6px; --chip-gap: 1px; }
 
 .game-card .card-considering-chip.mine{
-  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.32), rgba(255,255,255,0.06) 44%, rgba(0,0,0,0.14) 85%), linear-gradient(180deg, rgba(66, 145, 220, 0.96), rgba(32, 91, 162, 0.96));
+  background: rgba(20, 46, 78, 0.86);
   border-color: rgba(164, 212, 255, 0.88);
-  color: #ffffff;
   pointer-events: auto;
   cursor: pointer;
 }
 .game-card .card-considering-chip.ai{
   border-color: rgba(255, 214, 128, 0.92);
-  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.34), rgba(255,255,255,0.08) 46%, rgba(0,0,0,0.15) 86%), linear-gradient(180deg, rgba(192, 122, 56, 0.96), rgba(122, 74, 28, 0.96));
+  background: rgba(104, 64, 28, 0.84);
 }
 .game-card .card-considering-chip.mine:hover{
   filter: brightness(1.18);
@@ -5195,6 +5203,14 @@ button:disabled{
   gap: 12px;
 }
 
+#teams-list,
+#players-list,
+#myteam-members,
+#dm-thread-list{
+  content-visibility: auto;
+  contain-intrinsic-size: 420px;
+}
+
 .player-row{
   padding: 6px 10px;
   border-radius: 6px;
@@ -5510,11 +5526,20 @@ body.tournament.has-team-color .team-list-item.is-mine{
 /* Directory rows: name + team on the left, status/actions on the right */
 .player-directory-row{ align-items: center; }
 .player-directory-row .player-left{
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  width: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.player-directory-row .player-name-wrap{
+  min-width: 0;
+}
+.player-directory-row .player-avatar{
+  --avatar-size: 28px;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-soft));
 }
 .player-directory-row .player-right{
   display: flex;
@@ -7797,17 +7822,42 @@ line-height: 1.25;
   border-radius: 8px;
 }
 
-.teammate-avatar {
-  width: 28px;
-  height: 28px;
+.ct-avatar{
+  --avatar-size: 30px;
+  --avatar-bg: #3b82f6;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--team-color, #3b82f6) 0%, rgba(59, 130, 246, 0.5) 100%);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: white;
+  overflow: hidden;
+  flex: 0 0 auto;
+  color: #ffffff;
+  border: 1px solid rgba(255,255,255,0.28);
+  background:
+    radial-gradient(circle at 30% 28%, rgba(255,255,255,0.28), rgba(255,255,255,0.08) 42%, rgba(0,0,0,0.18) 84%),
+    var(--avatar-bg);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+}
+
+.ct-avatar-img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ct-avatar-initials{
+  font-size: calc(var(--avatar-size) * 0.38);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+
+.teammate-avatar {
+  --avatar-size: 28px;
   flex-shrink: 0;
 }
 
@@ -7847,13 +7897,12 @@ line-height: 1.25;
 /* Settings Gear Button */
 .settings-gear-btn {
   appearance: none;
-  border: none;
+  border: 1px solid var(--border-soft);
   background: transparent;
-  color: var(--text-dim);
-  width: 30px;
-  height: 30px;
-  padding: 4px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -7864,26 +7913,29 @@ line-height: 1.25;
 }
 
 @media (max-width: 520px){
-  .settings-gear-btn{ margin-left: 1px; }
-}
-
-.settings-gear-btn svg {
-  width: 16px;
-  height: 16px;
+  .settings-gear-btn{ margin-left: 1px; width: 26px; height: 26px; }
 }
 
 .settings-gear-btn:hover {
-  background: var(--surface2);
-  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
 }
 
 .settings-gear-btn:active {
   transform: scale(0.95);
 }
 
-/* Team-colored gear when in tournament with team */
-body.tournament.has-team-color .settings-gear-btn:hover {
-  color: var(--team-accent);
+.settings-gear-btn .settings-trigger-avatar{
+  --avatar-size: 28px;
+  border-color: rgba(255,255,255,0.32);
+}
+
+@media (max-width: 520px){
+  .settings-gear-btn .settings-trigger-avatar{ --avatar-size: 22px; }
+}
+
+body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar {
+  border-color: color-mix(in srgb, var(--team-accent) 65%, #ffffff 35%);
 }
 
 /* Settings Modal */
@@ -7953,6 +8005,54 @@ body.tournament.has-team-color .settings-gear-btn:hover {
 .settings-tools-actions .btn{
   width: 100%;
   justify-content: center;
+}
+
+.settings-profile-photo{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface2) 90%, transparent);
+  border: 1px solid var(--border-soft);
+}
+
+.settings-profile-photo-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-avatar-preview{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.settings-avatar-preview .settings-avatar-preview-media{
+  --avatar-size: 36px;
+}
+
+.settings-profile-photo-actions{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.settings-profile-photo-actions .btn{
+  width: 100%;
+  justify-content: center;
+}
+
+#settings-avatar-hint{
+  min-height: 16px;
+}
+
+#settings-avatar-hint.error{
+  color: #fca5a5;
 }
 
 .settings-row {
@@ -10290,14 +10390,14 @@ body.tournament.has-team-color .input:focus {
   animation: countPulse var(--anim-duration-slow) var(--anim-ease);
 }
 
-/* Settings icon hover animation */
-.settings-gear-btn svg {
+/* Settings avatar hover animation */
+.settings-gear-btn .settings-trigger-avatar {
   transition: transform var(--anim-duration-slow) var(--anim-ease),
-              color var(--anim-duration) var(--anim-ease);
+              border-color var(--anim-duration) var(--anim-ease);
 }
 
-.settings-gear-btn:hover svg {
-  transform: scale(1.06);
+.settings-gear-btn:hover .settings-trigger-avatar {
+  transform: scale(1.04);
 }
 
 /* Game turn indicator pulse */
@@ -14575,17 +14675,9 @@ body.qp-gate-open .app {
 }
 
 .roster-expand-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  --avatar-size: 30px;
   font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.55px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.26);
+  letter-spacing: 0.4px;
   border: 1px solid rgba(255,255,255,0.18);
 }
 
@@ -15190,17 +15282,8 @@ body.light-mode .chat-personal-item{ background: rgba(40,70,100,.05); }
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .dm-avatar{
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight: 900;
-  font-size: 13px;
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface2));
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-soft));
+  --avatar-size: 34px;
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border-soft));
   flex: 0 0 auto;
 }
 .dm-thread-main{ min-width: 0; width: 100%; }
@@ -19723,6 +19806,20 @@ body.og-mode .gamelog-avatar img {
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
+}
+
+body.og-mode .gamelog-avatar .ct-avatar,
+body.cozy-mode .gamelog-avatar .ct-avatar {
+  --avatar-size: 100%;
+  width: 100%;
+  height: 100%;
+  border-width: 0;
+  box-shadow: none;
+}
+
+body.og-mode .gamelog-avatar .ct-avatar .ct-avatar-initials,
+body.cozy-mode .gamelog-avatar .ct-avatar .ct-avatar-initials {
+  font-size: 45%;
 }
 
 body.og-mode .gamelog-avatar-name {

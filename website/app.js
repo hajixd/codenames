@@ -50,6 +50,7 @@ const LS_SETTINGS_ANIM_CARD_STYLE = 'ct_anim_card_style_v1';
 const LS_SETTINGS_ANIM_CLUE_STYLE = 'ct_anim_clue_style_v1';
 const LS_SETTINGS_ANIM_PEEK_STYLE = 'ct_anim_peek_style_v1';
 const LS_SETTINGS_ANIM_LOADING_STYLE = 'ct_anim_loading_style_v1';
+const MAX_PROFILE_AVATAR_DATA_URL_LEN = 220000;
 
 // Signup / provisioning guard. During account creation, Firebase Auth may
 // report an authenticated user before Firestore username/profile docs are
@@ -472,6 +473,8 @@ const LS_ACTIVE_GAME_SPECTATOR = 'ct_activeGameSpectator_v1';
 
 let teamsCache = [];
 let playersCache = [];
+let playersByIdCache = new Map();        // uid -> players doc
+let playerTeamColorIndex = new Map();    // uid -> team hex color
 
 // Throttle best-effort empty-team auto-archiving (admin only)
 const emptyTeamCleanupAttempts = new Map(); // teamId -> lastAttemptMs
@@ -995,6 +998,7 @@ let bootAuthResolvedOnce = false;
 // Messages drawer (global/team/personal)
 let chatDrawerOpen = false;
 let lastHeaderInGameState = null;
+let headerIconVisibilityObserver = null;
 
 function finishBootAuthLoading(minVisibleMs = 700) {
   // Keep the loading screen up long enough to avoid a UI "flash" while Auth
@@ -1079,6 +1083,13 @@ function initChatDrawerChrome() {
   const btn = document.getElementById('header-chat-btn');
   const close = document.getElementById('chat-drawer-close');
   const backdrop = document.getElementById('chat-drawer-backdrop');
+  const syncVisibility = () => {
+    try {
+      requestAnimationFrame(() => updateHeaderIconVisibility());
+    } catch (_) {
+      updateHeaderIconVisibility();
+    }
+  };
 
   btn?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -1097,8 +1108,22 @@ function initChatDrawerChrome() {
 
   backdrop?.addEventListener('click', () => setChatDrawerOpen(false));
 
-  // Keep icon visibility correct
-  setInterval(() => updateHeaderIconVisibility(), 500);
+  // Event-driven icon visibility updates (lower CPU than polling).
+  const board = document.getElementById('game-board-container');
+  const panelGame = document.getElementById('panel-game');
+  const targets = [board, panelGame, document.body].filter(Boolean);
+  if (targets.length) {
+    try { headerIconVisibilityObserver?.disconnect?.(); } catch (_) {}
+    headerIconVisibilityObserver = new MutationObserver(() => syncVisibility());
+    targets.forEach((t) => {
+      try { headerIconVisibilityObserver.observe(t, { attributes: true, attributeFilter: ['class', 'style'] }); } catch (_) {}
+    });
+  }
+  document.addEventListener('visibilitychange', syncVisibility, { passive: true });
+  window.addEventListener('focus', syncVisibility, { passive: true });
+  window.addEventListener('pageshow', syncVisibility, { passive: true });
+  window.addEventListener('resize', syncVisibility, { passive: true });
+  syncVisibility();
 }
 
 
@@ -2092,6 +2117,10 @@ function initAuthGate() {
         playersUnsub = null;
         teamsCache = [];
         playersCache = [];
+        playersByIdCache = new Map();
+        playerTeamColorIndex = new Map();
+        try { updateSettingsTriggerAvatar(); } catch (_) {}
+        try { updateSettingsAvatarPreview(); } catch (_) {}
         // Stop DM thread listener + clear caches so badges reset.
         try { stopDmInboxListener(); } catch (_) {}
         unreadPersonalCount = 0;
@@ -2798,6 +2827,13 @@ async function setUserName(name, opts = {}) {
 
     // Persist the last known username locally so boot/self-heal paths can resolve identity.
     try { safeLSSet(LS_LAST_USERNAME, nextName); } catch (_) {}
+    try {
+      const prev = playersByIdCache.get(uid) || { id: uid };
+      const next = { ...prev, name: nextName };
+      playersByIdCache.set(uid, next);
+      const idx = playersCache.findIndex((p) => String(p?.id || '').trim() === uid);
+      if (idx >= 0) playersCache[idx] = { ...playersCache[idx], name: nextName };
+    } catch (_) {}
 
     // Best-effort: keep team rosters up to date (for older docs that store embedded names).
     try { updateNameInAllTeams(getUserId(), nextName).catch(() => {}); } catch (_) {}
@@ -2932,6 +2968,8 @@ function refreshNameUI() {
   if (headerNamePill2) headerNamePill2.style.display = canEnter ? '' : 'none';
   if (headerTeamPill) headerTeamPill.style.display = canEnter ? '' : 'none';
   if (settingsGear) settingsGear.style.display = '';
+  try { updateSettingsTriggerAvatar(); } catch (_) {}
+  try { updateSettingsAvatarPreview(); } catch (_) {}
 
   // Update UI that depends on name (join buttons etc)
   renderTeams(teamsCache);
@@ -2976,6 +3014,9 @@ function listenToTeams() {
     .orderBy('createdAt', 'asc')
     .onSnapshot((snapshot) => {
       teamsCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      rebuildPlayerTeamColorIndex(teamsCache);
+      try { updateSettingsTriggerAvatar(); } catch (_) {}
+      try { updateSettingsAvatarPreview(); } catch (_) {}
 
       // Admin-only hygiene: auto-archive teams that have become empty (no members, no pending).
       // This keeps the tournament / lobby views clean even if old/legacy data had orphan teams.
@@ -3042,11 +3083,22 @@ function listenToPlayers() {
     .orderBy('name', 'asc')
     .onSnapshot((snapshot) => {
       playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      playersByIdCache = new Map((playersCache || []).map((p) => [String(p?.id || '').trim(), p]).filter(([id]) => !!id));
       // Duplicate player docs are no longer expected with Firebase Auth (uid keys).
+      try { updateSettingsTriggerAvatar(); } catch (_) {}
+      try { updateSettingsAvatarPreview(); } catch (_) {}
       recomputeUnreadBadges();
       recomputeMyTeamTabBadge();
       renderPlayers(playersCache, teamsCache);
       renderInvites(playersCache, teamsCache);
+      try {
+        if (chatMode === 'personal' && dmView === 'inbox') renderDmInbox();
+      } catch (_) {}
+      try {
+        const tm = document.getElementById('teammates-modal');
+        if (tm && tm.style.display === 'flex') renderTeammatesList();
+      } catch (_) {}
+      try { window.dispatchEvent(new CustomEvent('codenames:players-cache-updated')); } catch (_) {}
     }, (err) => {
       console.error('Players listener error:', err);
       setHint('players-hint', 'Error loading players.');
@@ -3307,6 +3359,124 @@ function applyTeamThemeFromState(st) {
   }
 }
 
+function rebuildPlayerTeamColorIndex(teams = teamsCache) {
+  const next = new Map();
+  for (const t of (teams || [])) {
+    const color = getDisplayTeamColor(t);
+    for (const m of getMembers(t)) {
+      const uid = String(entryAccountId(m) || '').trim();
+      if (!uid || next.has(uid)) continue;
+      next.set(uid, color);
+    }
+  }
+  playerTeamColorIndex = next;
+}
+
+function getPlayerTeamColor(uid, fallbackColor = '') {
+  const id = String(uid || '').trim();
+  if (!id) return isValidHexColor(fallbackColor) ? fallbackColor : '';
+  const color = String(playerTeamColorIndex.get(id) || '').trim();
+  if (isValidHexColor(color)) return color;
+  return isValidHexColor(fallbackColor) ? fallbackColor : '';
+}
+
+function normalizeAvatarDataUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (value.length > MAX_PROFILE_AVATAR_DATA_URL_LEN) return '';
+  if (!/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(value)) return '';
+  return value;
+}
+
+function avatarColorFromSeed(seed) {
+  const palette = ['#3b82f6', '#ef4444', '#0ea5e9', '#22c55e', '#f97316', '#a855f7', '#14b8a6', '#eab308'];
+  const s = String(seed || '').trim() || 'player';
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    h = ((h << 5) - h) + s.charCodeAt(i);
+    h |= 0;
+  }
+  return palette[Math.abs(h) % palette.length];
+}
+
+function getAvatarInitials(name, maxChars = 2) {
+  const capped = Math.max(1, Math.min(3, Number(maxChars) || 2));
+  const raw = String(name || '').trim();
+  if (!raw) return '?';
+  const parts = raw.split(/[\s_.-]+/g).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).slice(0, capped).toUpperCase();
+  }
+  const cleaned = raw.replace(/[^a-z0-9]/gi, '');
+  return (cleaned || raw).slice(0, capped).toUpperCase();
+}
+
+function resolveProfileAvatarData(opts = {}) {
+  const uid = String(opts.userId || opts.uid || opts.profileId || '').trim();
+  const player = uid ? (playersByIdCache.get(uid) || null) : null;
+  const explicitName = String(opts.name || '').trim();
+  const name = explicitName || String(player?.name || getNameForAccount(uid) || opts.defaultName || '').trim() || 'Player';
+  const explicitColor = String(opts.teamColor || '').trim();
+  const color = isValidHexColor(explicitColor)
+    ? explicitColor
+    : (getPlayerTeamColor(uid, String(opts.fallbackTeamColor || '').trim()) || avatarColorFromSeed(uid || name));
+  const avatarDataUrl = normalizeAvatarDataUrl(opts.avatarDataUrl || player?.avatarDataUrl);
+  const initials = getAvatarInitials(name, opts.maxInitials || 2);
+  return { uid, name, color, avatarDataUrl, initials };
+}
+
+function renderProfileAvatarHtml(opts = {}) {
+  const data = resolveProfileAvatarData(opts);
+  const size = Math.max(10, Math.min(160, Number(opts.size) || 30));
+  const classes = ['ct-avatar'];
+  if (opts.className) classes.push(String(opts.className));
+  if (!data.avatarDataUrl) classes.push('is-initials');
+  const title = String(opts.title || data.name || '').trim();
+  const style = `--avatar-size:${size}px;--avatar-bg:${data.color};`;
+  const titleAttr = title ? ` title="${esc(title)}"` : '';
+  const ariaAttr = opts.ariaHidden ? ' aria-hidden="true"' : '';
+  if (data.avatarDataUrl) {
+    const alt = String(opts.alt || data.name || 'Profile').trim();
+    return `<span class="${classes.join(' ')}" style="${style}"${titleAttr}${ariaAttr}><img class="ct-avatar-img" src="${esc(data.avatarDataUrl)}" alt="${esc(alt)}" loading="lazy" decoding="async" /></span>`;
+  }
+  return `<span class="${classes.join(' ')}" style="${style}"${titleAttr}${ariaAttr}><span class="ct-avatar-initials">${esc(data.initials)}</span></span>`;
+}
+
+function updateSettingsTriggerAvatar() {
+  const btn = document.getElementById('settings-gear-btn');
+  if (!btn) return;
+  const uid = String(getUserId() || '').trim();
+  const name = String(getUserName() || '').trim() || 'You';
+  btn.innerHTML = renderProfileAvatarHtml({
+    userId: uid,
+    name,
+    size: 28,
+    className: 'settings-trigger-avatar',
+    title: name,
+    ariaHidden: true,
+  });
+  btn.setAttribute('aria-label', 'Settings');
+}
+window.updateSettingsTriggerAvatar = updateSettingsTriggerAvatar;
+
+function updateSettingsAvatarPreview() {
+  const preview = document.getElementById('settings-avatar-preview');
+  if (!preview) return;
+  const uid = String(getUserId() || '').trim();
+  const name = String(getUserName() || '').trim() || 'You';
+  preview.innerHTML = renderProfileAvatarHtml({
+    userId: uid,
+    name,
+    size: 36,
+    className: 'settings-avatar-preview-media',
+    title: name,
+    ariaHidden: true,
+  });
+}
+window.resolveProfileAvatarData = resolveProfileAvatarData;
+window.renderProfileAvatarHtml = renderProfileAvatarHtml;
+window.getPlayerTeamColor = getPlayerTeamColor;
+
 function dedupeInvitesByTeamId(invites) {
   const out = [];
   const seen = new Set();
@@ -3470,6 +3640,15 @@ function renderPlayers(players, teams) {
       const teamPillStyle = teamColor
         ? `style="border-color:${esc(hexToRgba(teamColor, 0.35))}; color:${esc(teamColor)}; background:${esc(hexToRgba(teamColor, 0.10))}"`
         : '';
+      const avatarHtml = renderProfileAvatarHtml({
+        userId: uid,
+        name,
+        teamColor,
+        size: 28,
+        className: 'player-avatar',
+        title: name,
+        ariaHidden: true,
+      });
 
       // Always show the status pill (Available or Team). If you're on a team,
       // also show an Invite pill to the RIGHT of the status pill.
@@ -3500,7 +3679,10 @@ function renderPlayers(players, teams) {
       return `
         <div class="player-row player-directory-row">
           <div class="player-left">
-            <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(name)}</span>
+            ${avatarHtml}
+            <div class="player-name-wrap">
+              <span class="player-name profile-link" data-profile-type="player" data-profile-id="${esc(uid)}" ${nameStyle}>${esc(name)}</span>
+            </div>
           </div>
           <div class="player-right">
             ${statusPillHtml}
@@ -6392,7 +6574,7 @@ function getNameForAccount(uid) {
   const id = String(uid || '').trim();
   if (!id) return '';
   // Prefer player profile name
-  const p = (playersCache || []).find(pp => String(pp?.id || '').trim() === id);
+  const p = playersByIdCache.get(id) || null;
   if (p?.name) return String(p.name).trim();
   // Fall back to username registry doc id
   const u = (usernamesCache || []).find(x => String(x?.uid || '').trim() === id);
@@ -6513,10 +6695,17 @@ function renderDmInbox() {
     const preview = lastText ? esc(lastText) : '<span class="dm-preview-muted">Tap to open</span>';
     const unreadDot = unread ? '<span class="dm-unread-dot" aria-label="Unread"></span>' : '';
 
-    const initials = (name || 'U').trim().slice(0, 1).toUpperCase();
+    const avatarHtml = renderProfileAvatarHtml({
+      userId: otherId,
+      name: name || 'Unknown',
+      size: 34,
+      className: 'dm-avatar',
+      title: name || 'Unknown',
+      ariaHidden: true,
+    });
     return `
       <button class="dm-thread-row ${unread ? 'unread' : ''}" type="button" data-thread-id="${esc(tid)}" data-other-id="${esc(otherId)}">
-        <div class="dm-avatar" aria-hidden="true">${esc(initials)}</div>
+        ${avatarHtml}
         <div class="dm-thread-main">
           <div class="dm-thread-top">
             <div class="dm-thread-name">${esc(name)}</div>
@@ -8545,6 +8734,68 @@ function attachAudioUnlockListeners() {
   document.addEventListener('keydown', unlockAudioFromGesture, onceOpts);
 }
 
+function loadImageElementFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const blobUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      reject(new Error('Could not load image.'));
+    };
+    img.src = blobUrl;
+  });
+}
+
+async function encodeProfileAvatarFromFile(file) {
+  if (!file || !String(file.type || '').toLowerCase().startsWith('image/')) {
+    throw new Error('Choose an image file.');
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('Image is too large. Max 10MB.');
+  }
+
+  const img = await loadImageElementFromFile(file);
+  const srcW = Number(img.naturalWidth || img.width || 0);
+  const srcH = Number(img.naturalHeight || img.height || 0);
+  if (!srcW || !srcH) throw new Error('Could not read image size.');
+
+  const crop = Math.min(srcW, srcH);
+  const sx = Math.max(0, Math.floor((srcW - crop) / 2));
+  const sy = Math.max(0, Math.floor((srcH - crop) / 2));
+  const outSize = 160;
+  const canvas = document.createElement('canvas');
+  canvas.width = outSize;
+  canvas.height = outSize;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas unavailable.');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, crop, crop, 0, 0, outSize, outSize);
+
+  let quality = 0.86;
+  let encoded = canvas.toDataURL('image/webp', quality);
+  while (encoded.length > MAX_PROFILE_AVATAR_DATA_URL_LEN && quality > 0.42) {
+    quality -= 0.08;
+    encoded = canvas.toDataURL('image/webp', quality);
+  }
+  if (encoded.length > MAX_PROFILE_AVATAR_DATA_URL_LEN) {
+    quality = 0.8;
+    encoded = canvas.toDataURL('image/jpeg', quality);
+    while (encoded.length > MAX_PROFILE_AVATAR_DATA_URL_LEN && quality > 0.40) {
+      quality -= 0.08;
+      encoded = canvas.toDataURL('image/jpeg', quality);
+    }
+  }
+  if (encoded.length > MAX_PROFILE_AVATAR_DATA_URL_LEN) {
+    throw new Error('Image is still too large after compression.');
+  }
+  return encoded;
+}
+
 function initSettings() {
   // Load saved settings from localStorage
   const savedAnimations = safeLSGet(LS_SETTINGS_ANIMATIONS);
@@ -8600,8 +8851,44 @@ function initSettings() {
   const volumeValue = document.getElementById('settings-volume-value');
   const testSoundBtn = document.getElementById('settings-test-sound');
   const openAnimationsBtn = document.getElementById('settings-open-animations-btn');
+  const avatarPreview = document.getElementById('settings-avatar-preview');
+  const avatarUploadBtn = document.getElementById('settings-avatar-upload-btn');
+  const avatarRemoveBtn = document.getElementById('settings-avatar-remove-btn');
+  const avatarFileInput = document.getElementById('settings-avatar-file-input');
+  const avatarHintEl = document.getElementById('settings-avatar-hint');
 
   if (!gearBtn || !modal) return;
+  try { updateSettingsTriggerAvatar(); } catch (_) {}
+
+  let avatarBusy = false;
+  const setAvatarHint = (msg, isError = false) => {
+    if (!avatarHintEl) return;
+    avatarHintEl.textContent = String(msg || '');
+    avatarHintEl.classList.toggle('error', !!isError && !!msg);
+  };
+  const refreshAvatarControls = () => {
+    const uid = String(getUserId() || '').trim();
+    const me = uid ? (playersByIdCache.get(uid) || null) : null;
+    const hasUploaded = !!normalizeAvatarDataUrl(me?.avatarDataUrl);
+    if (avatarPreview) {
+      try { updateSettingsAvatarPreview(); } catch (_) {}
+    }
+    if (avatarUploadBtn) avatarUploadBtn.disabled = avatarBusy || !uid;
+    if (avatarRemoveBtn) avatarRemoveBtn.disabled = avatarBusy || !uid || !hasUploaded;
+  };
+  const refreshAvatarSurfaces = () => {
+    try { updateSettingsTriggerAvatar(); } catch (_) {}
+    try { updateSettingsAvatarPreview(); } catch (_) {}
+    try { renderPlayers(playersCache, teamsCache); } catch (_) {}
+    try {
+      if (chatMode === 'personal' && dmView === 'inbox') renderDmInbox();
+    } catch (_) {}
+    try {
+      const tm = document.getElementById('teammates-modal');
+      if (tm && tm.style.display === 'flex') renderTeammatesList();
+    } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent('codenames:players-cache-updated')); } catch (_) {}
+  };
 
   // Set initial values
   if (animToggle) animToggle.checked = settingsAnimations;
@@ -8641,6 +8928,10 @@ function initSettings() {
   if (soundToggle) soundToggle.checked = settingsSounds;
   if (volumeSlider) volumeSlider.value = settingsVolume;
   if (volumeValue) volumeValue.textContent = settingsVolume + '%';
+  refreshAvatarControls();
+  window.addEventListener('codenames:players-cache-updated', () => {
+    refreshAvatarControls();
+  });
 
   // Admin actions
   const adminSection = document.getElementById('settings-admin');
@@ -8728,6 +9019,87 @@ function initSettings() {
     playSound('click');
     try { closeSettingsModal(); } catch (_) {}
     try { openAnimationsPage(); } catch (_) {}
+  });
+
+  avatarUploadBtn?.addEventListener('click', () => {
+    if (avatarBusy) return;
+    if (!auth.currentUser) {
+      setAvatarHint('Sign in to upload a profile photo.', true);
+      return;
+    }
+    setAvatarHint('');
+    try { avatarFileInput?.click(); } catch (_) {}
+  });
+
+  avatarFileInput?.addEventListener('change', async () => {
+    const file = avatarFileInput?.files?.[0] || null;
+    if (!file) return;
+    if (!auth.currentUser) {
+      setAvatarHint('Sign in to upload a profile photo.', true);
+      return;
+    }
+    avatarBusy = true;
+    refreshAvatarControls();
+    setAvatarHint('Uploading…');
+    try {
+      const dataUrl = await encodeProfileAvatarFromFile(file);
+      const uid = String(getUserId() || '').trim();
+      if (!uid) throw new Error('Not signed in.');
+      await db.collection('players').doc(uid).set({
+        avatarDataUrl: dataUrl,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      const prev = playersByIdCache.get(uid) || { id: uid, name: getUserName() || 'Player' };
+      const next = { ...prev, avatarDataUrl: dataUrl };
+      playersByIdCache.set(uid, next);
+      const idx = playersCache.findIndex((p) => String(p?.id || '').trim() === uid);
+      if (idx >= 0) playersCache[idx] = { ...playersCache[idx], avatarDataUrl: dataUrl };
+      else playersCache.push(next);
+      refreshAvatarSurfaces();
+      setAvatarHint('Profile photo updated.');
+    } catch (e) {
+      setAvatarHint(e?.message || 'Could not upload image.', true);
+    } finally {
+      avatarBusy = false;
+      if (avatarFileInput) avatarFileInput.value = '';
+      refreshAvatarControls();
+    }
+  });
+
+  avatarRemoveBtn?.addEventListener('click', async () => {
+    if (avatarBusy) return;
+    if (!auth.currentUser) {
+      setAvatarHint('Sign in to manage profile photo.', true);
+      return;
+    }
+    avatarBusy = true;
+    refreshAvatarControls();
+    setAvatarHint('Removing…');
+    try {
+      const uid = String(getUserId() || '').trim();
+      if (!uid) throw new Error('Not signed in.');
+      await db.collection('players').doc(uid).set({
+        avatarDataUrl: firebase.firestore.FieldValue.delete(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      const prev = playersByIdCache.get(uid) || { id: uid, name: getUserName() || 'Player' };
+      const next = { ...prev };
+      delete next.avatarDataUrl;
+      playersByIdCache.set(uid, next);
+      const idx = playersCache.findIndex((p) => String(p?.id || '').trim() === uid);
+      if (idx >= 0) {
+        const row = { ...playersCache[idx] };
+        delete row.avatarDataUrl;
+        playersCache[idx] = row;
+      }
+      refreshAvatarSurfaces();
+      setAvatarHint('Photo removed. Using initials avatar.');
+    } catch (e) {
+      setAvatarHint(e?.message || 'Could not remove photo.', true);
+    } finally {
+      avatarBusy = false;
+      refreshAvatarControls();
+    }
   });
 
   adminRestoreBtn?.addEventListener('click', async () => {
@@ -8829,6 +9201,8 @@ function initSettings() {
   gearBtn.addEventListener('click', () => {
     playSound('click');
     refreshAdminUI();
+    setAvatarHint('');
+    refreshAvatarControls();
     openSettingsModal();
   });
 
@@ -9077,6 +9451,8 @@ function openSettingsModal() {
   if (deleteHint && !signedIn) {
     deleteHint.textContent = 'Sign in to use this.';
   }
+  try { updateSettingsAvatarPreview(); } catch (_) {}
+  try { window.dispatchEvent(new CustomEvent('codenames:players-cache-updated')); } catch (_) {}
 
   modal.style.display = 'block';
   // Trigger reflow for animation
@@ -11461,6 +11837,7 @@ function renderTeammatesList() {
   }
 
   const team = st.team;
+  const teamColor = getDisplayTeamColor(team);
   if (titleEl) titleEl.textContent = truncateTeamName(team.teamName || 'My Team');
   if (hintEl) hintEl.textContent = '';
 
@@ -11471,14 +11848,23 @@ function renderTeammatesList() {
   for (const member of members) {
     const isYou = member.userId === myId;
     const isOwner = member.userId === ownerId;
-    const initial = (member.name || '?').charAt(0).toUpperCase();
     const memberId = entryAccountId(member);
+    const memberName = String(member.name || 'Unknown');
+    const avatarHtml = renderProfileAvatarHtml({
+      userId: memberId,
+      name: memberName,
+      teamColor,
+      size: 28,
+      className: 'teammate-avatar',
+      title: memberName,
+      ariaHidden: true,
+    });
 
     html += `
       <div class="teammate-row${isYou ? ' is-you' : ''}${isOwner ? ' is-owner' : ''}">
-        <div class="teammate-avatar">${esc(initial)}</div>
+        ${avatarHtml}
         <div class="teammate-info">
-          <div class="teammate-name profile-link" data-profile-type="player" data-profile-id="${esc(memberId)}">${esc(member.name || 'Unknown')}${isYou ? ' (you)' : ''}</div>
+          <div class="teammate-name profile-link" data-profile-type="player" data-profile-id="${esc(memberId)}">${esc(memberName)}${isYou ? ' (you)' : ''}</div>
         </div>
       </div>
     `;

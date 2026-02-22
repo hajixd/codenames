@@ -317,14 +317,9 @@
           </button>
 
           <button class="settings-gear-btn" id="settings-gear-btn" type="button" aria-label="Settings">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-              <line x1="4" y1="6" x2="20" y2="6"></line>
-              <circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"></circle>
-              <line x1="4" y1="12" x2="20" y2="12"></line>
-              <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"></circle>
-              <line x1="4" y1="18" x2="20" y2="18"></line>
-              <circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"></circle>
-            </svg>
+            <span class="ct-avatar settings-trigger-avatar is-initials" style="--avatar-size:28px;--avatar-bg:#3b82f6;" aria-hidden="true">
+              <span class="ct-avatar-initials">?</span>
+            </span>
           </button>
         </div>
       </header>
@@ -2004,6 +1999,18 @@
               </label>
               <div class="settings-tools-actions">
                 <button class="btn" id="settings-open-animations-btn" type="button">Animation Studio</button>
+              </div>
+              <div class="settings-profile-photo" id="settings-profile-photo">
+                <div class="settings-profile-photo-head">
+                  <span class="settings-row-label">Profile Photo</span>
+                  <div class="settings-avatar-preview" id="settings-avatar-preview" aria-hidden="true"></div>
+                </div>
+                <div class="settings-profile-photo-actions">
+                  <button class="btn small" id="settings-avatar-upload-btn" type="button">Upload Photo</button>
+                  <button class="btn small danger" id="settings-avatar-remove-btn" type="button">Remove</button>
+                  <input type="file" id="settings-avatar-file-input" accept="image/*" hidden />
+                </div>
+                <div class="hint" id="settings-avatar-hint"></div>
               </div>
 <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>

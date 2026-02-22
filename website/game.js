@@ -627,7 +627,7 @@ function appendGuessToClueHistoryLocal(game, team, clueWord, clueNumber, guess) 
   game.clueHistory = history;
 }
 
-function applyLocalPracticeGuessState(game, idx, actorName) {
+function applyLocalPracticeGuessState(game, idx, actorName, actorId = '') {
   if (!game || !Array.isArray(game.cards)) return null;
   if (!Number.isInteger(idx) || idx < 0 || idx >= game.cards.length) return null;
   const card = game.cards[idx];
@@ -702,6 +702,7 @@ function applyLocalPracticeGuessState(game, idx, actorName) {
       ? 'assassin'
       : (card.type === team ? 'correct' : (card.type === 'neutral' ? 'neutral' : 'wrong')),
     type: card.type,
+    byId: String(actorId || '').trim() || String(getUserId?.() || '').trim(),
     by: guessByName,
     timestamp: new Date().toISOString()
   };
@@ -956,6 +957,8 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
   if (!game) return;
   const actingTeam = team === 'blue' ? 'blue' : 'red';
   const teamName = actingTeam === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+  const spyName = String(getTeamSpymasterName(actingTeam, game) || `${teamName} Spymaster`).trim();
+  const spyId = getRosterPlayerId(findRosterPlayerByName(spyName, getTeamPlayers(actingTeam, game)));
   game.currentClue = { word: clueWord, number: clueNumber };
   game.guessesRemaining = (clueNumber === 0 ? 0 : clueNumber + 1);
   game.currentPhase = 'operatives';
@@ -971,6 +974,8 @@ function applyLocalPracticeSpymasterClueState(game, team, clueWord, clueNumber) 
     team: actingTeam,
     word: clueWord,
     number: clueNumber,
+    byId: spyId || '',
+    byName: spyName || `${teamName} Spymaster`,
     targets: [],
     targetWords: [],
     results: [],
@@ -1414,7 +1419,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
     mutateLocalPracticeGame(gameId, (draft) => {
       if (!draft || draft.winner || draft.currentPhase !== 'operatives' || draft.currentTeam !== team) return;
       if (Number.isInteger(idx) && idx >= 0) {
-        const applied = applyLocalPracticeGuessState(draft, idx, firstActorName);
+        const applied = applyLocalPracticeGuessState(draft, idx, firstActorName, String(firstActor?.id || firstActor?.odId || '').trim());
         if (!applied) applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
       } else {
         applyLocalPracticeOperativeEndTurnState(draft, firstActorName);
@@ -1530,7 +1535,7 @@ async function runLocalPracticeOperativesTurn(gameId, game, team) {
     bumpLocalPracticeAISeq(draft, team, 'op');
     if (decision.action === 'guess' && Number.isInteger(+decision.index)) {
       const idx = Number(decision.index);
-      const applied = applyLocalPracticeGuessState(draft, idx, actorName);
+      const applied = applyLocalPracticeGuessState(draft, idx, actorName, String(executor?.id || executor?.odId || '').trim());
       if (!applied) applyLocalPracticeOperativeEndTurnState(draft, actorName);
     } else {
       applyLocalPracticeOperativeEndTurnState(draft, actorName);
@@ -3394,6 +3399,17 @@ function initGameUI() {
     _stackingSettingsBindingReady = true;
     window.addEventListener('codenames:stacking-setting-changed', () => {
       clueTargetSelection = [];
+      try { renderGame(); } catch (_) {}
+    });
+  }
+  if (!_avatarSyncBindingReady) {
+    _avatarSyncBindingReady = true;
+    window.addEventListener('codenames:players-cache-updated', () => {
+      if (!currentGame) return;
+      try {
+        const board = document.getElementById('game-board-container');
+        if (board && window.getComputedStyle(board).display === 'none') return;
+      } catch (_) {}
       try { renderGame(); } catch (_) {}
     });
   }
@@ -5357,6 +5373,31 @@ function getTeamPlayers(team, game = currentGame) {
   return Array.isArray(game?.[key]) ? game[key] : [];
 }
 
+function getRosterPlayerId(entry) {
+  return String(entry?.odId || entry?.userId || entry?.id || '').trim();
+}
+
+function findRosterPlayerByName(name, rosterPlayers) {
+  const target = normalizeSpyIdentity(name);
+  if (!target) return null;
+  const list = Array.isArray(rosterPlayers) ? rosterPlayers : [];
+  return list.find((p) => normalizeSpyIdentity(p?.name) === target) || null;
+}
+
+function renderPlayerAvatarHtmlGame(opts = {}) {
+  const fn = window?.renderProfileAvatarHtml;
+  if (typeof fn === 'function') {
+    return fn(opts);
+  }
+  const name = String(opts?.name || 'Player').trim();
+  const size = Math.max(10, Math.min(160, Number(opts?.size) || 28));
+  const color = String(opts?.teamColor || '').trim() || '#3b82f6';
+  const initials = getPlayerInitials(name).slice(0, 2).toUpperCase();
+  const className = String(opts?.className || '').trim();
+  const cls = ['ct-avatar', className, 'is-initials'].filter(Boolean).join(' ');
+  return `<span class="${cls}" style="--avatar-size:${size}px;--avatar-bg:${escapeHtml(color)};" title="${escapeHtml(name)}"><span class="ct-avatar-initials">${escapeHtml(initials)}</span></span>`;
+}
+
 function normalizeSpyIdentity(value) {
   return String(value || '')
     .trim()
@@ -6894,11 +6935,20 @@ function openRosterExpandPopup(team, role, sourceBox = null) {
       const attrs = pid && !ai
         ? `class="${rowClasses} profile-link" data-profile-type="player" data-profile-id="${escapeHtml(pid)}"`
         : `class="${rowClasses}"`;
-      const initials = escapeHtml((displayPlayerName(p) || '?').trim().slice(0, 2).toUpperCase());
+      const teamHex = teamColor === 'blue' ? '#3b82f6' : '#ef4444';
+      const avatarHtml = renderPlayerAvatarHtmlGame({
+        userId: pid,
+        name: displayPlayerName(p) || 'Player',
+        teamColor: teamHex,
+        size: 30,
+        className: 'roster-expand-avatar',
+        title: displayPlayerName(p) || 'Player',
+        ariaHidden: true,
+      });
       const badge = ai ? 'AI' : (isMe ? 'YOU' : 'HUMAN');
       return `
         <div ${attrs}>
-          <div class="roster-expand-avatar">${initials}</div>
+          ${avatarHtml}
           <div class="roster-expand-meta">
             <div class="roster-expand-name">${name}</div>
             <div class="roster-expand-kind">${ai ? 'Autonomous AI' : 'Player'}</div>
@@ -7376,10 +7426,10 @@ function renderBoard(isSpymaster) {
       ? `<div class="card-stack-order" aria-hidden="true">${stackOrder}</div>`
       : '';
     const redEntries = (!card.revealed)
-      ? getTeamConsideringEntriesForCard(redConsidering, i, myOwnerId)
+      ? getTeamConsideringEntriesForCard(redConsidering, i, myOwnerId).map((entry) => ({ ...entry, teamColor: '#ef4444' }))
       : [];
     const blueEntries = (!card.revealed)
-      ? getTeamConsideringEntriesForCard(blueConsidering, i, myOwnerId)
+      ? getTeamConsideringEntriesForCard(blueConsidering, i, myOwnerId).map((entry) => ({ ...entry, teamColor: '#3b82f6' }))
       : [];
     let consideringVisible = [...redEntries, ...blueEntries]
       .sort((a, b) => {
@@ -7389,11 +7439,13 @@ function renderBoard(isSpymaster) {
         return bt - at;
       });
     if (canSelectForConsidering && pendingCardSelection === i && !consideringVisible.some(entry => entry.isMine)) {
+      const mineTeam = getMyTeamColor();
       consideringVisible.unshift({
         owner: myOwnerId,
         initials: getPlayerInitials(getUserName()),
         name: getUserName() || 'You',
         ts: Date.now(),
+        teamColor: mineTeam === 'blue' ? '#3b82f6' : '#ef4444',
         isMine: true
       });
     }
@@ -7406,9 +7458,19 @@ function renderBoard(isSpymaster) {
       ? `
           <div class="card-considering-row ${chipCountCls}" data-chip-count="${chipCount}" aria-hidden="true">
             ${visibleConsidering.map(entry => {
-              const initials = escapeHtml(String(entry.initials || '?').slice(0, 3));
               const title = escapeHtml(entry.name || 'Teammate');
-              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${initials}</span>`;
+              const ownerId = String(entry?.owner || '').trim();
+              const avatarHtml = renderPlayerAvatarHtmlGame({
+                userId: ownerId,
+                name: entry.name || 'Teammate',
+                teamColor: entry.teamColor || '',
+                size: 20,
+                className: 'card-considering-avatar',
+                title: entry.name || 'Teammate',
+                maxInitials: 2,
+                ariaHidden: true,
+              });
+              return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${avatarHtml}</span>`;
             }).join('')}
           </div>
         `
@@ -9422,7 +9484,19 @@ function buildOgStructuredLog() {
     const teamRoster = getTeamPlayers(team, currentGame);
     const spymasterRaw = getTeamSpymasterName(team, currentGame) || 'Spymaster';
     const spymaster = displayNameFromRoster(spymasterRaw, teamRoster) || 'Spymaster';
-    const initial = (spymaster || 'S').trim().slice(0, 1).toUpperCase();
+    const teamHex = team === 'blue' ? '#3b82f6' : '#ef4444';
+    const spymasterByName = findRosterPlayerByName(spymasterRaw, teamRoster) || findRosterPlayerByName(spymaster, teamRoster);
+    const spymasterId = String(clue?.byId || getRosterPlayerId(spymasterByName) || '').trim();
+    const clueAvatarHtml = renderPlayerAvatarHtmlGame({
+      userId: spymasterId,
+      name: spymaster,
+      teamColor: teamHex,
+      size: 32,
+      className: 'gamelog-avatar-media',
+      title: spymaster,
+      maxInitials: 2,
+      ariaHidden: true,
+    });
     const clueWord = String(clue.word || '').trim() || 'CLUE';
     const clueNumberRaw = parseInt(clue.number, 10);
     const clueNumberOriginal = Number.isFinite(clueNumberRaw) && clueNumberRaw >= 0 ? clueNumberRaw : 0;
@@ -9436,7 +9510,7 @@ function buildOgStructuredLog() {
     const clueRow = `<div class="gamelog-clue-row">
         <div class="gamelog-clue-pill clue-with-avatar team-${escapeHtml(team)}">
           <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
-            <div class="gamelog-avatar">${escapeHtml(initial)}</div>
+            <div class="gamelog-avatar">${clueAvatarHtml}</div>
             <div class="gamelog-avatar-name">${escapeHtml(spymaster)}</div>
           </div>
           <div class="gamelog-clue-word">${escapeHtml(clueWord)}</div>
@@ -9447,7 +9521,18 @@ function buildOgStructuredLog() {
     const guesses = Array.isArray(clue.results) ? clue.results : [];
     const guessesHtml = guesses.map(r => {
       const name = String(r?.by || 'Someone').trim() || 'Someone';
-      const gi = name.trim().slice(0, 1).toUpperCase();
+      const guesserByName = findRosterPlayerByName(name, teamRoster);
+      const guesserId = String(r?.byId || getRosterPlayerId(guesserByName) || '').trim();
+      const guessAvatarHtml = renderPlayerAvatarHtmlGame({
+        userId: guesserId,
+        name,
+        teamColor: teamHex,
+        size: 32,
+        className: 'gamelog-avatar-media',
+        title: name,
+        maxInitials: 2,
+        ariaHidden: true,
+      });
       const typeRaw = String(r?.type || 'neutral').toLowerCase();
       const cardType = (typeRaw === 'red' || typeRaw === 'blue' || typeRaw === 'neutral' || typeRaw === 'assassin')
         ? typeRaw
@@ -9455,7 +9540,7 @@ function buildOgStructuredLog() {
       const guessedWord = String(r?.word || '').trim() || 'Unknown';
       return `<div class="gamelog-guess-item">
           <div class="gamelog-avatar-wrap small team-${escapeHtml(team)}">
-            <div class="gamelog-avatar">${escapeHtml(gi)}</div>
+            <div class="gamelog-avatar">${guessAvatarHtml}</div>
             <div class="gamelog-avatar-name">${escapeHtml(name)}</div>
           </div>
           <div class="gamelog-word-pill type-${escapeHtml(cardType)}">${escapeHtml(guessedWord)}</div>
@@ -9733,9 +9818,10 @@ async function handleCardClick(cardIndex) {
 
     if (isCurrentLocalPracticeGame()) {
       const guessByName = getUserName() || 'Someone';
+      const guessById = String(getUserId() || '').trim();
       if (window.playSound) window.playSound('cardReveal');
       mutateLocalPracticeGame(currentGame.id, (draft) => {
-        applyLocalPracticeGuessState(draft, idx, guessByName);
+        applyLocalPracticeGuessState(draft, idx, guessByName, guessById);
       });
       maybeStartLocalPracticeAI();
       return true;
@@ -9857,6 +9943,7 @@ async function handleCardClick(cardIndex) {
           ? 'assassin'
           : (cardLive.type === teamLive ? 'correct' : (cardLive.type === 'neutral' ? 'neutral' : 'wrong')),
         type: cardLive.type,
+        byId: String(getUserId?.() || '').trim(),
         by: guessByName,
         timestamp: new Date().toISOString()
       };
@@ -10418,6 +10505,7 @@ let clueTargetSelection = [];
 let gameLogActiveTab = 'history';
 let _gameLogTabBindingsReady = false;
 let _stackingSettingsBindingReady = false;
+let _avatarSyncBindingReady = false;
 // Used to run the slow, smooth selection animation exactly once
 let _pendingSelectAnimIndex = null; // cardIndex pending confirmation
 let _pendingSelectionContextKey = null; // turn/clue context at time of selection
@@ -12851,6 +12939,8 @@ window.handleCardConfirm = handleCardConfirm;
 // Helper to add clue to history when given
 async function addClueToHistory(gameId, team, word, number) {
   if (!gameId) return;
+  const byId = String(getUserId?.() || '').trim();
+  const byName = String(getUserName?.() || '').trim() || 'Spymaster';
 
   if (isLocalPracticeGameId(gameId)) {
     mutateLocalPracticeGame(gameId, (draft) => {
@@ -12859,6 +12949,8 @@ async function addClueToHistory(gameId, team, word, number) {
         team,
         word,
         number,
+        byId,
+        byName,
         targets: [],
         targetWords: [],
         results: [],
@@ -12873,6 +12965,8 @@ async function addClueToHistory(gameId, team, word, number) {
     team,
     word,
     number,
+    byId,
+    byName,
     targets: [],
     targetWords: [],
     results: [],
