@@ -299,6 +299,10 @@ function buildLiveDraftFastPathSignature(game) {
     String(Number.isFinite(+game.teamTimerBlueMs) ? +game.teamTimerBlueMs : ''),
     String(Number.isFinite(+game.roleTimerSpymasterMs) ? +game.roleTimerSpymasterMs : ''),
     String(Number.isFinite(+game.roleTimerOperativesMs) ? +game.roleTimerOperativesMs : ''),
+    String(Number.isFinite(+game.roleTimerRedSpymasterMs) ? +game.roleTimerRedSpymasterMs : ''),
+    String(Number.isFinite(+game.roleTimerBlueSpymasterMs) ? +game.roleTimerBlueSpymasterMs : ''),
+    String(Number.isFinite(+game.roleTimerRedOperativesMs) ? +game.roleTimerRedOperativesMs : ''),
+    String(Number.isFinite(+game.roleTimerBlueOperativesMs) ? +game.roleTimerBlueOperativesMs : ''),
     String(normalizeQuickTurnType(
       game?.quickSettings?.turnType || game?.practice?.turnType || '',
       game?.quickSettings?.timerMode || game?.practice?.timerMode || 'turn'
@@ -2380,11 +2384,71 @@ function getRoleClockBaseMs(game, role) {
   return Math.max(0, Math.round(secs * 1000));
 }
 
-function getStoredRoleClockMs(game, role) {
-  const key = role === 'spymaster' ? 'roleTimerSpymasterMs' : 'roleTimerOperativesMs';
-  const raw = Number(game?.[key]);
-  if (Number.isFinite(raw) && raw >= 0) return Math.max(0, Math.round(raw));
+function getRoleClockFieldKey(role, team = null) {
+  const safeRole = role === 'spymaster' ? 'spymaster' : 'operatives';
+  if (team === 'red') {
+    return safeRole === 'spymaster' ? 'roleTimerRedSpymasterMs' : 'roleTimerRedOperativesMs';
+  }
+  if (team === 'blue') {
+    return safeRole === 'spymaster' ? 'roleTimerBlueSpymasterMs' : 'roleTimerBlueOperativesMs';
+  }
+  return safeRole === 'spymaster' ? 'roleTimerSpymasterMs' : 'roleTimerOperativesMs';
+}
+
+function getStoredRoleClockMs(game, role, team = null) {
+  const scopedKey = getRoleClockFieldKey(role, team);
+  const scopedRaw = Number(game?.[scopedKey]);
+  if (Number.isFinite(scopedRaw) && scopedRaw >= 0) return Math.max(0, Math.round(scopedRaw));
+
+  if (team === 'red' || team === 'blue') {
+    // Backward compatibility with legacy 2-clock cumulative role data.
+    const legacyRaw = Number(game?.[getRoleClockFieldKey(role, null)]);
+    if (Number.isFinite(legacyRaw) && legacyRaw >= 0) return Math.max(0, Math.round(legacyRaw));
+  }
   return getRoleClockBaseMs(game, role);
+}
+
+function getRoleClockSnapshot(game, nowMs = Date.now()) {
+  if (!game || !isCumulativeClockType(game) || getQuickTurnType(game) !== 'role') return null;
+
+  const baseSpymasterMs = getRoleClockBaseMs(game, 'spymaster');
+  const baseOperativesMs = getRoleClockBaseMs(game, 'operatives');
+  let redSpymasterMs = getStoredRoleClockMs(game, 'spymaster', 'red');
+  let blueSpymasterMs = getStoredRoleClockMs(game, 'spymaster', 'blue');
+  let redOperativesMs = getStoredRoleClockMs(game, 'operatives', 'red');
+  let blueOperativesMs = getStoredRoleClockMs(game, 'operatives', 'blue');
+
+  const runningTeam = (!game?.winner && isTimedGameplayPhase(game?.currentPhase))
+    ? (game.currentTeam === 'blue' ? 'blue' : 'red')
+    : null;
+  const runningRole = (!game?.winner && isTimedGameplayPhase(game?.currentPhase))
+    ? (game.currentPhase === 'spymaster' ? 'spymaster' : 'operatives')
+    : null;
+  const runningKey = (runningTeam && runningRole) ? `${runningTeam}-${runningRole}` : null;
+
+  if (runningKey) {
+    const endMs = draftToMs(game?.timerEnd);
+    if (endMs > 0) {
+      const remaining = Math.max(0, endMs - nowMs);
+      if (runningRole === 'spymaster' && baseSpymasterMs > 0) {
+        if (runningTeam === 'red') redSpymasterMs = remaining;
+        else blueSpymasterMs = remaining;
+      } else if (runningRole === 'operatives' && baseOperativesMs > 0) {
+        if (runningTeam === 'red') redOperativesMs = remaining;
+        else blueOperativesMs = remaining;
+      }
+    }
+  }
+
+  return {
+    runningKey,
+    redSpymasterMs: Math.max(0, Math.round(redSpymasterMs)),
+    blueSpymasterMs: Math.max(0, Math.round(blueSpymasterMs)),
+    redOperativesMs: Math.max(0, Math.round(redOperativesMs)),
+    blueOperativesMs: Math.max(0, Math.round(blueOperativesMs)),
+    spymasterUnlimited: baseSpymasterMs <= 0,
+    operativesUnlimited: baseOperativesMs <= 0,
+  };
 }
 
 function getCumulativeClockSnapshot(game, nowMs = Date.now()) {
@@ -2393,50 +2457,86 @@ function getCumulativeClockSnapshot(game, nowMs = Date.now()) {
   if (turnType === 'team') {
     const snap = getTeamClockSnapshot(game, nowMs);
     if (!snap) return null;
+    const rows = [{
+      id: 'team',
+      left: {
+        key: 'red',
+        label: getTeamTimerLabel('red', game),
+        ms: snap.redMs,
+        unlimited: snap.unlimited,
+        theme: 'red',
+        role: null,
+      },
+      right: {
+        key: 'blue',
+        label: getTeamTimerLabel('blue', game),
+        ms: snap.blueMs,
+        unlimited: snap.unlimited,
+        theme: 'blue',
+        role: null,
+      },
+    }];
+    const active = snap.runningTeam === 'blue' ? rows[0].right : rows[0].left;
     return {
       mode: 'team',
-      leftKey: 'blue',
-      rightKey: 'red',
-      leftLabel: getTeamTimerLabel('blue'),
-      rightLabel: getTeamTimerLabel('red'),
-      leftMs: snap.blueMs,
-      rightMs: snap.redMs,
-      leftUnlimited: snap.unlimited,
-      rightUnlimited: snap.unlimited,
+      rows,
       runningKey: snap.runningTeam,
-      leftTheme: 'blue',
-      rightTheme: 'red',
+      active,
     };
   }
 
-  const baseSpymasterMs = getRoleClockBaseMs(game, 'spymaster');
-  const baseOperativesMs = getRoleClockBaseMs(game, 'operatives');
-  let spymasterMs = getStoredRoleClockMs(game, 'spymaster');
-  let operativesMs = getStoredRoleClockMs(game, 'operatives');
-  const runningKey = (!game?.winner && isTimedGameplayPhase(game?.currentPhase))
-    ? (game.currentPhase === 'spymaster' ? 'spymaster' : 'operatives')
-    : null;
-  if (runningKey) {
-    const endMs = draftToMs(game?.timerEnd);
-    if (endMs > 0) {
-      const remaining = Math.max(0, endMs - nowMs);
-      if (runningKey === 'spymaster' && baseSpymasterMs > 0) spymasterMs = remaining;
-      if (runningKey === 'operatives' && baseOperativesMs > 0) operativesMs = remaining;
-    }
+  const snap = getRoleClockSnapshot(game, nowMs);
+  if (!snap) return null;
+  const rows = [
+    {
+      id: 'operatives',
+      left: {
+        key: 'red-operatives',
+        label: 'Red Operatives',
+        ms: snap.redOperativesMs,
+        unlimited: snap.operativesUnlimited,
+        theme: 'red',
+        role: 'operatives',
+      },
+      right: {
+        key: 'blue-operatives',
+        label: 'Blue Operatives',
+        ms: snap.blueOperativesMs,
+        unlimited: snap.operativesUnlimited,
+        theme: 'blue',
+        role: 'operatives',
+      },
+    },
+    {
+      id: 'spymaster',
+      left: {
+        key: 'red-spymaster',
+        label: 'Red Spymaster',
+        ms: snap.redSpymasterMs,
+        unlimited: snap.spymasterUnlimited,
+        theme: 'red',
+        role: 'spymaster',
+      },
+      right: {
+        key: 'blue-spymaster',
+        label: 'Blue Spymaster',
+        ms: snap.blueSpymasterMs,
+        unlimited: snap.spymasterUnlimited,
+        theme: 'blue',
+        role: 'spymaster',
+      },
+    },
+  ];
+  let active = rows[0].left;
+  for (const row of rows) {
+    if (row.left.key === snap.runningKey) active = row.left;
+    if (row.right.key === snap.runningKey) active = row.right;
   }
   return {
     mode: 'role',
-    leftKey: 'spymaster',
-    rightKey: 'operatives',
-    leftLabel: 'Spymaster',
-    rightLabel: 'Operatives',
-    leftMs: Math.max(0, Math.round(spymasterMs)),
-    rightMs: Math.max(0, Math.round(operativesMs)),
-    leftUnlimited: baseSpymasterMs <= 0,
-    rightUnlimited: baseOperativesMs <= 0,
-    runningKey,
-    leftTheme: 'spymaster',
-    rightTheme: 'operatives',
+    rows,
+    runningKey: snap.runningKey,
+    active,
   };
 }
 
@@ -2482,39 +2582,60 @@ function getTeamTimerTransitionFields(game, nextState = {}) {
 function getRoleTimerTransitionFields(game, nextState = {}) {
   const now = Date.now();
   const prevPhase = String(game?.currentPhase || '');
+  const prevTeam = game?.currentTeam === 'blue' ? 'blue' : 'red';
   const nextPhase = String(nextState.phase ?? prevPhase ?? '');
+  const nextTeamRaw = String(nextState.team ?? prevTeam ?? '');
+  const nextTeam = nextTeamRaw === 'blue' ? 'blue' : 'red';
   const nextWinner = (typeof nextState.winner !== 'undefined') ? nextState.winner : game?.winner;
   const resetRoleClocks = !!(nextState.resetRoleClocks || nextState.resetTeamClocks);
 
   const baseSpymasterMs = getRoleClockBaseMs(game, 'spymaster');
   const baseOperativesMs = getRoleClockBaseMs(game, 'operatives');
-  let spymasterMs = resetRoleClocks ? baseSpymasterMs : getStoredRoleClockMs(game, 'spymaster');
-  let operativesMs = resetRoleClocks ? baseOperativesMs : getStoredRoleClockMs(game, 'operatives');
+  let redSpymasterMs = resetRoleClocks ? baseSpymasterMs : getStoredRoleClockMs(game, 'spymaster', 'red');
+  let blueSpymasterMs = resetRoleClocks ? baseSpymasterMs : getStoredRoleClockMs(game, 'spymaster', 'blue');
+  let redOperativesMs = resetRoleClocks ? baseOperativesMs : getStoredRoleClockMs(game, 'operatives', 'red');
+  let blueOperativesMs = resetRoleClocks ? baseOperativesMs : getStoredRoleClockMs(game, 'operatives', 'blue');
 
-  const prevRunning = !game?.winner && (prevPhase === 'spymaster' || prevPhase === 'operatives');
+  const prevRunning = !game?.winner && isTimedGameplayPhase(prevPhase) && (prevTeam === 'red' || prevTeam === 'blue');
   if (!resetRoleClocks && prevRunning) {
     const endMs = draftToMs(game?.timerEnd);
     if (endMs > 0) {
       const remaining = Math.max(0, endMs - now);
-      if (prevPhase === 'spymaster' && baseSpymasterMs > 0) spymasterMs = remaining;
-      if (prevPhase === 'operatives' && baseOperativesMs > 0) operativesMs = remaining;
+      if (prevPhase === 'spymaster' && baseSpymasterMs > 0) {
+        if (prevTeam === 'red') redSpymasterMs = remaining;
+        else blueSpymasterMs = remaining;
+      }
+      if (prevPhase === 'operatives' && baseOperativesMs > 0) {
+        if (prevTeam === 'red') redOperativesMs = remaining;
+        else blueOperativesMs = remaining;
+      }
     }
   }
 
-  const nextRunning = !nextWinner && (nextPhase === 'spymaster' || nextPhase === 'operatives');
+  const nextRunning = !nextWinner && isTimedGameplayPhase(nextPhase) && (nextTeam === 'red' || nextTeam === 'blue');
   let timerEnd = null;
   if (nextRunning) {
     if (nextPhase === 'spymaster') {
-      if (baseSpymasterMs > 0 && spymasterMs > 0) timerEnd = toTimerTimestampFromMs(now + spymasterMs);
-    } else if (baseOperativesMs > 0 && operativesMs > 0) {
-      timerEnd = toTimerTimestampFromMs(now + operativesMs);
+      const activeMs = nextTeam === 'red' ? redSpymasterMs : blueSpymasterMs;
+      if (baseSpymasterMs > 0 && activeMs > 0) timerEnd = toTimerTimestampFromMs(now + activeMs);
+    } else if (nextPhase === 'operatives') {
+      const activeMs = nextTeam === 'red' ? redOperativesMs : blueOperativesMs;
+      if (baseOperativesMs > 0 && activeMs > 0) timerEnd = toTimerTimestampFromMs(now + activeMs);
     }
   }
 
+  const legacySpymasterMs = Math.min(redSpymasterMs, blueSpymasterMs);
+  const legacyOperativesMs = Math.min(redOperativesMs, blueOperativesMs);
+
   return {
     timerEnd,
-    roleTimerSpymasterMs: Math.max(0, Math.round(spymasterMs)),
-    roleTimerOperativesMs: Math.max(0, Math.round(operativesMs)),
+    roleTimerRedSpymasterMs: Math.max(0, Math.round(redSpymasterMs)),
+    roleTimerBlueSpymasterMs: Math.max(0, Math.round(blueSpymasterMs)),
+    roleTimerRedOperativesMs: Math.max(0, Math.round(redOperativesMs)),
+    roleTimerBlueOperativesMs: Math.max(0, Math.round(blueOperativesMs)),
+    // Keep legacy fields populated for backward compatibility.
+    roleTimerSpymasterMs: Math.max(0, Math.round(legacySpymasterMs)),
+    roleTimerOperativesMs: Math.max(0, Math.round(legacyOperativesMs)),
   };
 }
 
@@ -3344,6 +3465,10 @@ window.createPracticeGame = async function createPracticeGame(opts = {}) {
     teamTimerBlueMs: null,
     roleTimerSpymasterMs: null,
     roleTimerOperativesMs: null,
+    roleTimerRedSpymasterMs: null,
+    roleTimerBlueSpymasterMs: null,
+    roleTimerRedOperativesMs: null,
+    roleTimerBlueOperativesMs: null,
     redCardsLeft: FIRST_TEAM_CARDS,
     blueCardsLeft: SECOND_TEAM_CARDS,
     winner: null,
@@ -4784,6 +4909,10 @@ async function buildQuickPlayGameData(settings = { blackCards: 1, clueTimerSecon
     teamTimerBlueMs: null,
     roleTimerSpymasterMs: null,
     roleTimerOperativesMs: null,
+    roleTimerRedSpymasterMs: null,
+    roleTimerBlueSpymasterMs: null,
+    roleTimerRedOperativesMs: null,
+    roleTimerBlueOperativesMs: null,
     quickSettings: {
       blackCards: settings.blackCards,
       clueTimerSeconds: settings.clueTimerSeconds,
@@ -9418,6 +9547,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
     const isOgMode = isOnlineStyleActive();
     ogBanner.style.display = isOgMode ? 'block' : 'none';
     if (isOgMode) {
+      const allowBannerTurnTimer = !isCumulativeClockType(currentGame);
       if (currentGame.winner) {
         const winnerName = currentGame.winner === 'red'
           ? (currentGame.redTeamName || 'RED')
@@ -9434,7 +9564,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
             || '').trim();
-          if (liveTimer && liveTimer !== '∞') {
+          if (allowBannerTurnTimer && liveTimer && liveTimer !== '∞') {
             updateOgPhaseBannerTimerText(liveTimer, 'spymaster');
           } else {
             ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
@@ -9452,7 +9582,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
             || '').trim();
-          if (liveTimer) {
+          if (allowBannerTurnTimer && liveTimer) {
             // Use the helper so the banner stays synced while the timer ticks.
             updateOgPhaseBannerTimerText(liveTimer, 'operatives');
           } else {
@@ -12061,12 +12191,29 @@ function getRoleLabelForPhase(phase) {
   }
 }
 
+function normalizeTeamTimerLabel(rawName, team) {
+  const fallback = team === 'blue' ? 'Blue Team' : 'Red Team';
+  const raw = String(rawName || '').trim();
+  if (!raw) return fallback;
+
+  // "Team Blue" -> "Blue Team" and avoid "Team Red Team".
+  if (/^team\s+/i.test(raw)) {
+    const rest = raw.replace(/^team\s+/i, '').trim();
+    if (!rest) return fallback;
+    if (/\bteam\b/i.test(rest)) return rest;
+    return `${rest} Team`;
+  }
+  if (/\bteam\b/i.test(raw)) return raw;
+  if (/^(red|blue)$/i.test(raw)) return `${raw[0].toUpperCase()}${raw.slice(1).toLowerCase()} Team`;
+  return raw;
+}
+
 function getTeamTimerLabel(team, game = currentGame) {
-  if (!game) return team === 'blue' ? 'Team Blue' : 'Team Red';
-  const raw = team === 'blue' ? String(game.blueTeamName || 'Blue') : String(game.redTeamName || 'Red');
-  const clean = raw.trim() || (team === 'blue' ? 'Blue' : 'Red');
-  if (/^team\s+/i.test(clean)) return clean;
-  return `Team ${clean}`;
+  const safeTeam = team === 'blue' ? 'blue' : 'red';
+  const fallback = safeTeam === 'blue' ? 'Blue Team' : 'Red Team';
+  if (!game) return fallback;
+  const raw = safeTeam === 'blue' ? game.blueTeamName : game.redTeamName;
+  return normalizeTeamTimerLabel(raw, safeTeam);
 }
 
 function getSingleTimerLabelForPhase(phase, game = currentGame) {
@@ -12257,23 +12404,64 @@ function startCumulativeGameTimer(game) {
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
   const teamRowEl = document.getElementById('team-timer-row');
-  const leftEl = document.getElementById('team-timer-blue');
-  const rightEl = document.getElementById('team-timer-red');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
-  if (!timerEl || !fillEl || !textEl || !teamRowEl || !leftEl || !rightEl) return;
+  if (!timerEl || !fillEl || !textEl || !teamRowEl) return;
 
   timerEl.style.display = 'flex';
   timerEl.classList.add('team-mode');
   fillEl.style.display = 'none';
   textEl.style.display = 'none';
   teamRowEl.style.display = 'flex';
+  teamRowEl.classList.remove('layout-team', 'layout-role');
+  delete teamRowEl.dataset.layoutMode;
 
   if (ogTimerEl) ogTimerEl.style.display = 'inline-flex';
   if (ogTimerPhaseEl) {
     ogTimerPhaseEl.textContent = getQuickTurnType(game) === 'team' ? 'TEAM' : 'ROLE';
   }
+
+  const ensureLayout = (mode) => {
+    const safeMode = mode === 'role' ? 'role' : 'team';
+    if (teamRowEl.dataset.layoutMode === safeMode) return;
+    if (safeMode === 'role') {
+      teamRowEl.innerHTML = `
+        <div class="team-timer-pair-row">
+          <span class="team-timer-pill" data-clock-key="red-operatives"></span>
+          <span class="team-timer-pill" data-clock-key="blue-operatives"></span>
+        </div>
+        <div class="team-timer-pair-row">
+          <span class="team-timer-pill" data-clock-key="red-spymaster"></span>
+          <span class="team-timer-pill" data-clock-key="blue-spymaster"></span>
+        </div>
+      `;
+      teamRowEl.classList.remove('layout-team');
+      teamRowEl.classList.add('layout-role');
+    } else {
+      teamRowEl.innerHTML = `
+        <span class="team-timer-pill" data-clock-key="red"></span>
+        <span class="team-timer-pill" data-clock-key="blue"></span>
+      `;
+      teamRowEl.classList.remove('layout-role');
+      teamRowEl.classList.add('layout-team');
+    }
+    teamRowEl.dataset.layoutMode = safeMode;
+  };
+
+  const resetPill = (el, entry, runningKey) => {
+    if (!el) return;
+    el.classList.remove('team-blue', 'team-red', 'role-spymaster', 'role-operatives', 'is-active', 'is-idle', 'warning', 'danger');
+    if (entry?.theme === 'blue') el.classList.add('team-blue');
+    else if (entry?.theme === 'red') el.classList.add('team-red');
+    if (entry?.role === 'spymaster') el.classList.add('role-spymaster');
+    else if (entry?.role === 'operatives') el.classList.add('role-operatives');
+
+    if (runningKey) {
+      if (entry?.key === runningKey) el.classList.add('is-active');
+      else el.classList.add('is-idle');
+    }
+  };
 
   const render = () => {
     if (document.visibilityState === 'hidden') return;
@@ -12283,55 +12471,37 @@ function startCumulativeGameTimer(game) {
       stopGameTimer();
       return;
     }
+    ensureLayout(snap.mode);
+    const pills = new Map(
+      Array.from(teamRowEl.querySelectorAll('.team-timer-pill'))
+        .map((el) => [String(el.getAttribute('data-clock-key') || ''), el])
+    );
 
-    const leftText = `${snap.leftLabel}: ${formatClockTime(snap.leftMs, snap.leftUnlimited)}`;
-    const rightText = `${snap.rightLabel}: ${formatClockTime(snap.rightMs, snap.rightUnlimited)}`;
-    leftEl.textContent = leftText;
-    rightEl.textContent = rightText;
-
-    const resetPill = (el, theme) => {
-      if (!el) return;
-      el.classList.remove('team-blue', 'team-red', 'role-spymaster', 'role-operatives', 'is-active', 'is-idle', 'warning', 'danger');
-      if (theme === 'blue') el.classList.add('team-blue');
-      else if (theme === 'red') el.classList.add('team-red');
-      else if (theme === 'spymaster') el.classList.add('role-spymaster');
-      else if (theme === 'operatives') el.classList.add('role-operatives');
-    };
-    resetPill(leftEl, snap.leftTheme);
-    resetPill(rightEl, snap.rightTheme);
-
-    if (snap.runningKey === snap.leftKey) {
-      leftEl.classList.add('is-active');
-      rightEl.classList.add('is-idle');
-    } else if (snap.runningKey === snap.rightKey) {
-      rightEl.classList.add('is-active');
-      leftEl.classList.add('is-idle');
+    const allEntries = [];
+    for (const row of (Array.isArray(snap.rows) ? snap.rows : [])) {
+      if (row?.left) allEntries.push(row.left);
+      if (row?.right) allEntries.push(row.right);
     }
-
-    if (snap.runningKey) {
-      const runningOnLeft = snap.runningKey === snap.leftKey;
-      const activeMs = runningOnLeft ? snap.leftMs : snap.rightMs;
-      const activeUnlimited = runningOnLeft ? snap.leftUnlimited : snap.rightUnlimited;
-      const seconds = Math.ceil(activeMs / 1000);
-      if (!activeUnlimited) {
-        if (seconds <= 10) {
-          (runningOnLeft ? leftEl : rightEl).classList.add('danger');
-        } else if (seconds <= 30) {
-          (runningOnLeft ? leftEl : rightEl).classList.add('warning');
-        }
+    for (const entry of allEntries) {
+      const el = pills.get(String(entry.key || ''));
+      if (!el) continue;
+      el.textContent = `${entry.label}: ${formatClockTime(entry.ms, entry.unlimited)}`;
+      resetPill(el, entry, snap.runningKey);
+      if (snap.runningKey && entry.key === snap.runningKey && !entry.unlimited) {
+        const seconds = Math.ceil(Math.max(0, Number(entry.ms) || 0) / 1000);
+        if (seconds <= 10) el.classList.add('danger');
+        else if (seconds <= 30) el.classList.add('warning');
       }
     }
 
-    const activeTimerText = snap.runningKey
-      ? (snap.runningKey === snap.leftKey
-        ? `${snap.leftLabel}: ${formatClockTime(snap.leftMs, snap.leftUnlimited)}`
-        : `${snap.rightLabel}: ${formatClockTime(snap.rightMs, snap.rightUnlimited)}`)
-      : `${snap.leftLabel}: ${formatClockTime(snap.leftMs, snap.leftUnlimited)}`;
+    const activeEntry = snap.active
+      || (Array.isArray(snap.rows) && snap.rows[0] && (snap.rows[0].left || snap.rows[0].right))
+      || null;
+    const activeTimerText = activeEntry
+      ? `${activeEntry.label}: ${formatClockTime(activeEntry.ms, activeEntry.unlimited)}`
+      : 'Timer: ∞';
     if (ogTimerTextEl) ogTimerTextEl.textContent = activeTimerText;
     updateOgMobileTurnStrip(activeTimerText, live?.currentPhase);
-    try {
-      updateOgPhaseBannerTimerText(activeTimerText, live?.currentPhase);
-    } catch (_) {}
   };
 
   render();
@@ -12398,15 +12568,20 @@ function stopGameTimer() {
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
   const teamRowEl = document.getElementById('team-timer-row');
-  const leftEl = document.getElementById('team-timer-blue');
-  const rightEl = document.getElementById('team-timer-red');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   if (timerEl) timerEl.style.display = 'none';
   if (timerEl) timerEl.classList.remove('team-mode');
   if (fillEl) fillEl.style.display = '';
   if (textEl) textEl.style.display = '';
-  if (teamRowEl) teamRowEl.style.display = 'none';
-  [leftEl, rightEl].forEach((el) => {
+  if (teamRowEl) {
+    teamRowEl.style.display = 'none';
+    teamRowEl.classList.remove('layout-team', 'layout-role');
+    delete teamRowEl.dataset.layoutMode;
+  }
+  const timerPills = teamRowEl
+    ? Array.from(teamRowEl.querySelectorAll('.team-timer-pill'))
+    : [];
+  timerPills.forEach((el) => {
     el?.classList.remove('team-blue', 'team-red', 'role-spymaster', 'role-operatives', 'is-active', 'is-idle', 'warning', 'danger');
   });
   if (ogTimerEl) {

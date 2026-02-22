@@ -27425,11 +27425,34 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
 }
 
 .game-timer-display.topbar-timer.team-mode{
-  width: min(480px, 64vw);
+  width: min(860px, 92vw);
   min-width: 232px;
 }
 
+.game-timer-display.topbar-timer.team-mode .timer-bar,
+.game-timer-display.topbar-timer.team-mode .timer-text{
+  display: none !important;
+}
+
 .team-timer-row{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.team-timer-row.layout-team{
+  flex-direction: row;
+}
+
+.team-timer-row.layout-role{
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.team-timer-pair-row{
   width: 100%;
   display: flex;
   align-items: center;
@@ -27578,11 +27601,19 @@ body:is(.og-mode, .cozy-mode) .gamelog-entries {
   }
 
   .game-timer-display.topbar-timer.team-mode{
-    width: min(98vw, 440px);
+    width: min(98vw, 540px);
     min-width: 0;
   }
 
   .team-timer-row{
+    gap: 6px;
+  }
+
+  .team-timer-row.layout-role{
+    gap: 5px;
+  }
+
+  .team-timer-pair-row{
     gap: 6px;
   }
 
