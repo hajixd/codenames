@@ -8056,7 +8056,7 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
   position: fixed;
   inset: 0;
   background: rgba(4, 8, 14, 0.76);
-  z-index: 999;
+  z-index: 0;
 }
 
 .profile-photo-modal{
@@ -8073,7 +8073,7 @@ body.tournament.has-team-color .settings-gear-btn:hover .settings-trigger-avatar
   background:
     radial-gradient(90% 120% at 10% -10%, rgba(59,130,246,0.22), transparent 58%),
     radial-gradient(90% 120% at 90% -18%, rgba(239,68,68,0.20), transparent 58%),
-    var(--surface);
+    var(--card);
   box-shadow: 0 22px 64px rgba(0,0,0,0.52);
   overflow: hidden;
 }

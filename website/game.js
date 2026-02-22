@@ -3972,6 +3972,7 @@ function initGameUI() {
     window.addEventListener('codenames:stacking-setting-changed', () => {
       clueTargetSelection = [];
       try { renderGame(); } catch (_) {}
+      try { applyGameLogTabState(); } catch (_) {}
     });
   }
   if (!_avatarSyncBindingReady) {
@@ -4007,6 +4008,13 @@ function normalizeGameLogTab(tab) {
 }
 
 function applyGameLogTabState() {
+  const stackingEnabled = !!(typeof isStackingEnabledForGame === 'function' && isStackingEnabledForGame(currentGame));
+
+  // If stacking is off, force the tab to history since Clues Left is inaccessible
+  if (!stackingEnabled && normalizeGameLogTab(gameLogActiveTab) === 'clues-left') {
+    gameLogActiveTab = 'history';
+  }
+
   const activeTab = normalizeGameLogTab(gameLogActiveTab);
   const historyVisible = activeTab === 'history';
   const cluesVisible = activeTab === 'clues-left';
@@ -4030,6 +4038,14 @@ function applyGameLogTabState() {
     root.setAttribute('data-active-tab', activeTab);
     root.querySelectorAll('.gamelog-tab-btn[data-gamelog-tab]').forEach((btn) => {
       const tab = normalizeGameLogTab(btn.getAttribute('data-gamelog-tab'));
+      const isCluesLeft = tab === 'clues-left';
+      if (isCluesLeft && !stackingEnabled) {
+        btn.style.display = 'none';
+        btn.setAttribute('aria-hidden', 'true');
+        return;
+      }
+      btn.style.display = '';
+      btn.removeAttribute('aria-hidden');
       const isActive = tab === activeTab;
       btn.classList.toggle('active', isActive);
       btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -8039,7 +8055,64 @@ function renderBoard(isSpymaster) {
     `considering:blue:${canViewConsidering ? JSON.stringify(blueConsidering || {}) : ''}`,
   ].join('||');
   if (_lastBoardRenderSignature === boardRenderSignature) return;
+
+  // When only the considering state changed, surgically update just the marker
+  // chip rows on each card instead of replacing the entire board innerHTML.
+  // This prevents the brief flash/disappearance that a full re-render causes.
+  const _prevSig = _lastBoardRenderSignature;
   _lastBoardRenderSignature = boardRenderSignature;
+  if (_prevSig) {
+    const stripConsidering = (sig) => sig.split('||').filter(s => !s.startsWith('considering:')).join('||');
+    if (stripConsidering(boardRenderSignature) === stripConsidering(_prevSig)) {
+      currentGame.cards.forEach((card, i) => {
+        const cardEl = boardEl.querySelector(`.game-card[data-index="${i}"]`);
+        if (!cardEl) return;
+        const currentTeamTurn = currentGame.currentTeam === 'blue' ? 'blue' : 'red';
+        const redEntries = (!card.revealed && currentTeamTurn === 'red')
+          ? getTeamConsideringEntriesForCard(redConsidering, i, myOwnerId).map(e => ({ ...e, teamColor: '#ef4444' }))
+          : [];
+        const blueEntries = (!card.revealed && currentTeamTurn === 'blue')
+          ? getTeamConsideringEntriesForCard(blueConsidering, i, myOwnerId).map(e => ({ ...e, teamColor: '#3b82f6' }))
+          : [];
+        const visibleConsidering = [...redEntries, ...blueEntries].sort((a, b) => {
+          if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
+          return Number(b?.ts || 0) - Number(a?.ts || 0);
+        });
+        const chipCount = visibleConsidering.length;
+        const chipCountCls = chipCount >= 9 ? 'chips-9plus' : `chips-${chipCount}`;
+        const newConsideringHtml = chipCount
+          ? `<div class="card-considering-row ${chipCountCls}" data-chip-count="${chipCount}" aria-hidden="true">${
+              visibleConsidering.map(entry => {
+                const title = escapeHtml(entry.name || 'Teammate');
+                const ownerId = String(entry?.owner || '').trim();
+                const avatarHtml = renderPlayerAvatarHtmlGame({
+                  userId: ownerId,
+                  name: entry.name || 'Teammate',
+                  teamColor: entry.teamColor || '',
+                  size: 20,
+                  className: 'card-considering-avatar',
+                  title: entry.name || 'Teammate',
+                  maxInitials: 2,
+                  ariaHidden: true,
+                });
+                return `<span class="card-considering-chip ${entry.isMine ? 'mine' : ''} ${entry.isAI ? 'ai' : ''}"${entry.isMine ? ` data-toggle-considering="${i}"` : ''} title="${title}">${avatarHtml}</span>`;
+              }).join('')
+            }</div>`
+          : '';
+        const existingRow = cardEl.querySelector('.card-considering-row');
+        if (newConsideringHtml) {
+          if (existingRow) {
+            existingRow.outerHTML = newConsideringHtml;
+          } else {
+            cardEl.insertAdjacentHTML('beforeend', newConsideringHtml);
+          }
+        } else if (existingRow) {
+          existingRow.remove();
+        }
+      });
+      return;
+    }
+  }
 
   boardEl.innerHTML = currentGame.cards.map((card, i) => {
     const classes = ['game-card'];
