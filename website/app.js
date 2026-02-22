@@ -495,25 +495,57 @@ let mergeNamesInFlight = new Set();
 // The UI also hides admin features for non-admins, but the real security must
 // be enforced by Firestore security rules + (ideally) server-side functions.
 let cachedIsAdmin = false;
+let cachedIsModerator = false;
+
+function refreshModeratorRoleFromCache() {
+  try {
+    const uid = String(auth.currentUser?.uid || getUserId() || '').trim();
+    if (!uid) {
+      cachedIsModerator = false;
+      return false;
+    }
+    const me = playersByIdCache.get(uid) || null;
+    cachedIsModerator = !!(me && me.isModerator === true);
+    return cachedIsModerator;
+  } catch (_) {
+    return !!cachedIsModerator;
+  }
+}
+
 async function refreshAdminClaims() {
   try {
     const u = auth.currentUser;
-    if (!u) { cachedIsAdmin = false; return false; }
+    if (!u) {
+      cachedIsAdmin = false;
+      cachedIsModerator = false;
+      return false;
+    }
     const token = await u.getIdTokenResult(true);
     cachedIsAdmin = !!token?.claims?.admin;
+    refreshModeratorRoleFromCache();
     return cachedIsAdmin;
   } catch (_) {
     cachedIsAdmin = false;
+    refreshModeratorRoleFromCache();
     return false;
   }
 }
-function isAdminUser() {
+
+function isRootAdminUser() {
   try {
     const nm = normalizeUsername(getUserName() || auth.currentUser?.displayName || '');
     return !!cachedIsAdmin || nm === 'admin';
   } catch (_) {
     return !!cachedIsAdmin;
   }
+}
+
+function isModeratorUser() {
+  return !!refreshModeratorRoleFromCache();
+}
+
+function isAdminUser() {
+  return isRootAdminUser() || isModeratorUser();
 }
 
 // =========================
@@ -1217,6 +1249,7 @@ document.addEventListener('DOMContentLoaded', () => {
     forceClose('settings-modal');
     forceClose('password-change-modal');
     forceClose('profile-details-modal');
+    forceClose('moderators-modal');
   } catch (_) {}
 
   // Remove the booting class once we've forcibly closed transient UI.
@@ -1268,6 +1301,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initInvitesModal();
   initAdminAssignModal();
   initJudgesAdminModal();
+  initModeratorsModal();
   initChatTab();
   initChatDrawerChrome();
   updateHeaderIconVisibility();
@@ -2119,6 +2153,7 @@ function initAuthGate() {
         playersCache = [];
         playersByIdCache = new Map();
         playerTeamColorIndex = new Map();
+        cachedIsModerator = false;
         try { updateSettingsTriggerAvatar(); } catch (_) {}
         try { updateSettingsAvatarPreview(); } catch (_) {}
         // Stop DM thread listener + clear caches so badges reset.
@@ -2908,7 +2943,9 @@ function startProfileNameSync() {
   // another device), refresh the UI. We do not write to localStorage.
   profileUnsub = db.collection('players').doc(uid).onSnapshot((snap) => {
     if (!snap?.exists) return;
-    const remoteName = String(snap.data()?.name || '').trim();
+    const data = snap.data() || {};
+    cachedIsModerator = !!(data?.isModerator === true);
+    const remoteName = String(data?.name || '').trim();
     if (!remoteName) return;
     const localName = getUserName();
     if (remoteName !== localName) {
@@ -3084,6 +3121,7 @@ function listenToPlayers() {
     .onSnapshot((snapshot) => {
       playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       playersByIdCache = new Map((playersCache || []).map((p) => [String(p?.id || '').trim(), p]).filter(([id]) => !!id));
+      refreshModeratorRoleFromCache();
       // Duplicate player docs are no longer expected with Firebase Auth (uid keys).
       try { updateSettingsTriggerAvatar(); } catch (_) {}
       try { updateSettingsAvatarPreview(); } catch (_) {}
@@ -8137,6 +8175,7 @@ let judgesAdminSelectedId = '';
 let judgesAdminEditMode = false;
 let judgesAdminModalOpen = false;
 let judgesAdminMobilePage = 'list';
+let moderatorsModalOpen = false;
 
 function defaultAIJudgeCatalog() {
   return [
@@ -8320,6 +8359,175 @@ function saveAIJudgeCatalog(nextCatalog) {
     }));
   } catch (_) {}
   return normalized;
+}
+
+function getModeratorsSortedPlayers() {
+  const src = Array.isArray(playersCache) ? playersCache.slice() : [];
+  src.sort((a, b) => {
+    const an = String(a?.name || '').trim().toLowerCase();
+    const bn = String(b?.name || '').trim().toLowerCase();
+    if (an && bn) return an.localeCompare(bn);
+    if (an) return -1;
+    if (bn) return 1;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
+  return src;
+}
+
+function isPlayerRootAdminRecord(playerLike) {
+  const uid = String(playerLike?.id || '').trim();
+  const name = normalizeUsername(playerLike?.name || '');
+  const me = String(auth.currentUser?.uid || getUserId() || '').trim();
+  if (name === 'admin') return true;
+  return !!(uid && me && uid === me && isRootAdminUser());
+}
+
+function renderModeratorsModal() {
+  if (!moderatorsModalOpen) return;
+  const listEl = document.getElementById('moderators-modal-list');
+  const hintEl = document.getElementById('moderators-modal-hint');
+  if (!listEl) return;
+
+  const canManage = !!isRootAdminUser();
+  if (hintEl) hintEl.textContent = canManage
+    ? 'Select users to add or remove moderators.'
+    : 'View only. Admin can change moderators.';
+
+  const players = getModeratorsSortedPlayers();
+  if (!players.length) {
+    listEl.innerHTML = '<div class="empty-state">No players yet.</div>';
+    return;
+  }
+
+  listEl.innerHTML = players.map((p) => {
+    const uid = String(p?.id || '').trim();
+    const name = String(p?.name || uid || 'Player').trim() || 'Player';
+    const isRoot = isPlayerRootAdminRecord(p);
+    const isMod = !!(p?.isModerator === true);
+    const roleClass = isRoot ? 'is-admin' : (isMod ? 'is-moderator' : '');
+    const roleLabel = isRoot ? 'Admin' : (isMod ? 'Moderator' : 'Player');
+    const avatar = renderProfileAvatarHtml({
+      userId: uid,
+      name,
+      size: 30,
+      className: 'moderator-avatar',
+      title: name,
+      ariaHidden: true,
+    });
+
+    let action = `<span class="moderator-role-chip ${roleClass}">${esc(roleLabel)}</span>`;
+    if (canManage && !isRoot) {
+      const actionLabel = isMod ? 'Remove Moderator' : 'Make Moderator';
+      const actionClass = isMod ? 'btn small danger' : 'btn small';
+      action = `
+        <button
+          class="${actionClass}"
+          type="button"
+          data-mod-user-id="${esc(uid)}"
+          data-mod-enabled="${isMod ? 'false' : 'true'}"
+        >${esc(actionLabel)}</button>
+      `;
+    }
+
+    return `
+      <div class="moderator-row">
+        <div class="moderator-row-left">
+          ${avatar}
+          <div class="moderator-row-text">
+            <div class="moderator-row-name">${esc(name)}</div>
+            <div class="moderator-row-meta">${esc(uid || 'No ID')}</div>
+          </div>
+        </div>
+        ${action}
+      </div>
+    `;
+  }).join('');
+}
+
+async function setModeratorForUser(targetUserId, enabled) {
+  if (!isRootAdminUser()) throw new Error('Admin only');
+  const uid = String(targetUserId || '').trim();
+  if (!uid) throw new Error('Missing user.');
+  await db.collection('players').doc(uid).set({
+    isModerator: !!enabled,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  const prev = playersByIdCache.get(uid) || { id: uid };
+  const next = { ...prev, isModerator: !!enabled };
+  playersByIdCache.set(uid, next);
+  const idx = playersCache.findIndex((p) => String(p?.id || '').trim() === uid);
+  if (idx >= 0) playersCache[idx] = { ...playersCache[idx], isModerator: !!enabled };
+  else playersCache.push(next);
+  refreshModeratorRoleFromCache();
+  try { window.dispatchEvent(new CustomEvent('codenames:players-cache-updated')); } catch (_) {}
+}
+
+function openModeratorsModal() {
+  const modal = document.getElementById('moderators-modal');
+  if (!modal) return;
+  moderatorsModalOpen = true;
+  renderModeratorsModal();
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+}
+
+function closeModeratorsModal() {
+  const modal = document.getElementById('moderators-modal');
+  moderatorsModalOpen = false;
+  if (!modal) return;
+  modal.classList.remove('modal-open');
+  modal.setAttribute('aria-hidden', 'true');
+  setTimeout(() => {
+    if (!modal.classList.contains('modal-open')) modal.style.display = 'none';
+  }, 200);
+}
+
+function initModeratorsModal() {
+  const modal = document.getElementById('moderators-modal');
+  const closeBtn = document.getElementById('moderators-modal-close');
+  const backdrop = document.getElementById('moderators-modal-backdrop');
+  const listEl = document.getElementById('moderators-modal-list');
+  const hintEl = document.getElementById('moderators-modal-hint');
+  if (!modal) return;
+
+  closeBtn?.addEventListener('click', closeModeratorsModal);
+  backdrop?.addEventListener('click', closeModeratorsModal);
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeModeratorsModal();
+  });
+
+  listEl?.addEventListener('click', async (e) => {
+    const btn = e.target?.closest?.('[data-mod-user-id]');
+    if (!btn) return;
+    if (!isRootAdminUser()) return;
+    const uid = String(btn.getAttribute('data-mod-user-id') || '').trim();
+    const enabled = String(btn.getAttribute('data-mod-enabled') || '').trim().toLowerCase() === 'true';
+    if (!uid) return;
+    try {
+      if (hintEl) hintEl.textContent = enabled ? 'Adding moderator…' : 'Removing moderator…';
+      btn.disabled = true;
+      await setModeratorForUser(uid, enabled);
+      if (hintEl) hintEl.textContent = enabled ? 'Moderator added.' : 'Moderator removed.';
+      renderModeratorsModal();
+    } catch (err) {
+      if (hintEl) hintEl.textContent = err?.message || 'Could not update moderators.';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!moderatorsModalOpen) return;
+    closeModeratorsModal();
+  });
+
+  window.addEventListener('codenames:players-cache-updated', () => {
+    if (!moderatorsModalOpen) return;
+    renderModeratorsModal();
+  });
 }
 
 function getSelectedJudgeFromDraft() {
@@ -8997,6 +9205,7 @@ function initSettings() {
   const adminRestoreBtn = document.getElementById('admin-restore-5min-btn');
   const adminLogsBtn = document.getElementById('admin-logs-btn');
   const adminJudgesBtn = document.getElementById('admin-judges-btn');
+  const adminModeratorsBtn = document.getElementById('admin-moderators-btn');
   const adminHintEl = document.getElementById('admin-restore-hint');
 
   // Account danger action: delete the current user (frees username).
@@ -9020,6 +9229,11 @@ function initSettings() {
       adminJudgesBtn.style.display = '';
       adminJudgesBtn.disabled = false;
       adminJudgesBtn.classList.remove('is-disabled');
+    }
+    if (adminModeratorsBtn) {
+      adminModeratorsBtn.style.display = '';
+      adminModeratorsBtn.disabled = false;
+      adminModeratorsBtn.classList.remove('is-disabled');
     }
     if (isAdmin) {
       try { adminEnsureAutoBackupsRunning(); } catch (_) {}
@@ -9070,6 +9284,12 @@ function initSettings() {
     playSound('click');
     try { closeSettingsModal(); } catch (_) {}
     try { openJudgesAdminModal(); } catch (_) {}
+  });
+
+  adminModeratorsBtn?.addEventListener('click', () => {
+    playSound('click');
+    try { closeSettingsModal(); } catch (_) {}
+    try { openModeratorsModal(); } catch (_) {}
   });
 
   openAnimationsBtn?.addEventListener('click', () => {

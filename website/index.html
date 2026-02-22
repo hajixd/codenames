@@ -2011,9 +2011,8 @@
               <div class="settings-tools-actions">
                 <button class="btn" id="settings-open-animations-btn" type="button">Animation Studio</button>
               </div>
-              <div class="settings-row settings-row-action">
-                <span class="settings-row-label">Edit Profile Photo</span>
-                <button class="btn" id="settings-edit-profile-photo-btn" type="button">Edit</button>
+              <div class="settings-tools-actions">
+                <button class="btn" id="settings-edit-profile-photo-btn" type="button">Edit Profile Picture</button>
               </div>
 <div class="settings-row settings-row-volume">
                 <span class="settings-row-label">Volume</span>
@@ -2040,6 +2039,7 @@
                   <button class="btn" id="admin-backup-now-btn" type="button">Backup</button>
                   <button class="btn" id="admin-logs-btn" type="button">Logs</button>
                   <button class="btn" id="admin-judges-btn" type="button">Judges</button>
+                  <button class="btn" id="admin-moderators-btn" type="button">Moderators</button>
                   <button class="btn" id="admin-restore-5min-btn" type="button">Restore 15m</button>
                 </div>
                 <div class="hint" id="admin-restore-hint" aria-live="polite"></div>
@@ -2073,6 +2073,20 @@
             </div>
             <input type="file" id="profile-photo-file-input" accept="image/*" hidden />
             <div class="hint profile-photo-modal-hint" id="profile-photo-hint" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal moderators-modal" id="moderators-modal" style="display:none;" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-backdrop" id="moderators-modal-backdrop"></div>
+        <div class="modal-card moderators-modal-card">
+          <div class="modal-head">
+            <div class="modal-title">Moderators</div>
+            <button class="icon-btn" id="moderators-modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body moderators-modal-body">
+            <div class="hint moderators-modal-hint" id="moderators-modal-hint" aria-live="polite"></div>
+            <div class="moderators-modal-list" id="moderators-modal-list"></div>
           </div>
         </div>
       </div>
