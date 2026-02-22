@@ -644,6 +644,7 @@ function _scoreNebiusModelForChatWriter(model) {
 
   if (!_isLikelyChatGenerationModel(id, meta)) return -999;
 
+  // Prefer models tuned for human dialogue.
   if (/(hermes)/.test(text)) score += 120;
   if (/(roleplay|dialogue|conversational|chat|assistant)/.test(text)) score += 46;
   if (/(instruct)/.test(text)) score += 22;
