@@ -233,6 +233,15 @@ function draftToMs(value) {
     if (typeof value === 'number') return value;
     if (typeof value.toMillis === 'function') return value.toMillis();
     if (value instanceof Date) return value.getTime();
+    if (typeof value?.seconds === 'number') {
+      const secs = Number(value.seconds);
+      const nanos = Number(value.nanoseconds || 0);
+      return Math.max(0, Math.round((secs * 1000) + (nanos / 1e6)));
+    }
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
   } catch (_) {}
   return 0;
 }
@@ -11028,17 +11037,40 @@ let timerBackfillInFlight = false;
 let timerBackfillLastKey = '';
 let timerBackfillLastAt = 0;
 
+function getActiveCumulativeClockMs(game, nowMs = Date.now()) {
+  if (!game || !isCumulativeClockType(game) || game.winner) return 0;
+  const phase = String(game.currentPhase || '');
+  if (!isTimedGameplayPhase(phase)) return 0;
+
+  const turnType = getQuickTurnType(game);
+  if (turnType === 'team') {
+    const snap = getTeamClockSnapshot(game, nowMs);
+    if (!snap || snap.unlimited || !snap.runningTeam) return 0;
+    return snap.runningTeam === 'red' ? snap.redMs : snap.blueMs;
+  }
+
+  const roleSnap = getRoleClockSnapshot(game, nowMs);
+  if (!roleSnap || !roleSnap.runningKey) return 0;
+  if (roleSnap.runningKey === 'red-spymaster' && !roleSnap.spymasterUnlimited) return roleSnap.redSpymasterMs;
+  if (roleSnap.runningKey === 'blue-spymaster' && !roleSnap.spymasterUnlimited) return roleSnap.blueSpymasterMs;
+  if (roleSnap.runningKey === 'red-operatives' && !roleSnap.operativesUnlimited) return roleSnap.redOperativesMs;
+  if (roleSnap.runningKey === 'blue-operatives' && !roleSnap.operativesUnlimited) return roleSnap.blueOperativesMs;
+  return 0;
+}
+
 function maybeBackfillCurrentTurnTimer(game) {
   if (!game || game.type !== 'quick' || game.winner) return;
-  if (isCumulativeClockType(game)) return;
   const phase = String(game.currentPhase || '');
   if (phase !== 'spymaster' && phase !== 'operatives') return;
   if (game.timerEnd) return;
 
-  const secs = getPhaseTimerSeconds(game, phase);
-  if (!secs) return;
+  const cumulative = isCumulativeClockType(game);
+  const activeMs = cumulative
+    ? Math.max(0, Math.round(getActiveCumulativeClockMs(game, Date.now())))
+    : Math.max(0, Math.round(getPhaseTimerSeconds(game, phase) * 1000));
+  if (!activeMs) return;
 
-  const key = `${String(game.id || '')}:${phase}:${String(game.currentTeam || '')}:${secs}`;
+  const key = `${String(game.id || '')}:${phase}:${String(game.currentTeam || '')}:${cumulative ? 'cum' : 'turn'}:${activeMs}`;
   const now = Date.now();
   if (timerBackfillInFlight) return;
   if (timerBackfillLastKey === key && (now - timerBackfillLastAt) < 1500) return;
@@ -11052,12 +11084,18 @@ function maybeBackfillCurrentTurnTimer(game) {
     const snap = await tx.get(ref);
     if (!snap.exists) return;
     const current = snap.data() || {};
-    if (isCumulativeClockType({ quickSettings: current.quickSettings })) return;
+    const isCumNow = isCumulativeClockType({ quickSettings: current.quickSettings });
     if (current.winner) return;
     if (String(current.currentPhase || '') !== phase) return;
     if (String(current.currentTeam || '') !== String(game.currentTeam || '')) return;
     if (current.timerEnd) return;
-    const end = buildPhaseTimerEndValue(current, phase);
+    const backfillMs = isCumNow
+      ? Math.max(0, Math.round(getActiveCumulativeClockMs(current, Date.now())))
+      : Math.max(0, Math.round(getPhaseTimerSeconds(current, phase) * 1000));
+    if (!backfillMs) return;
+    const end = isCumNow
+      ? toTimerTimestampFromMs(Date.now() + backfillMs)
+      : buildPhaseTimerEndValue(current, phase);
     if (!end) return;
     tx.update(ref, {
       timerEnd: end,
@@ -12374,6 +12412,7 @@ function startGameTimer(endTime, phase, game = currentGame) {
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
   const teamRowEl = document.getElementById('team-timer-row');
+  const topbarCenterEl = document.querySelector('.topbar-center');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
@@ -12383,6 +12422,7 @@ function startGameTimer(endTime, phase, game = currentGame) {
 
   timerEl.style.display = 'flex';
   timerEl.classList.remove('team-mode');
+  topbarCenterEl?.classList.remove('has-cumulative-timer');
   if (teamRowEl) teamRowEl.style.display = 'none';
   fillEl.style.display = '';
   textEl.style.display = '';
@@ -12444,6 +12484,7 @@ function startCumulativeGameTimer(game) {
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
   const teamRowEl = document.getElementById('team-timer-row');
+  const topbarCenterEl = document.querySelector('.topbar-center');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
@@ -12451,6 +12492,7 @@ function startCumulativeGameTimer(game) {
 
   timerEl.style.display = 'flex';
   timerEl.classList.add('team-mode');
+  topbarCenterEl?.classList.add('has-cumulative-timer');
   fillEl.style.display = 'none';
   textEl.style.display = 'none';
   teamRowEl.style.display = 'flex';
@@ -12468,20 +12510,20 @@ function startCumulativeGameTimer(game) {
     if (safeMode === 'role') {
       teamRowEl.innerHTML = `
         <div class="team-timer-pair-row">
-          <span class="team-timer-pill" data-clock-key="red-operatives"></span>
-          <span class="team-timer-pill" data-clock-key="blue-operatives"></span>
+          <span class="team-timer-pill side-left" data-clock-key="red-operatives"></span>
+          <span class="team-timer-pill side-right" data-clock-key="blue-operatives"></span>
         </div>
         <div class="team-timer-pair-row">
-          <span class="team-timer-pill" data-clock-key="red-spymaster"></span>
-          <span class="team-timer-pill" data-clock-key="blue-spymaster"></span>
+          <span class="team-timer-pill side-left" data-clock-key="red-spymaster"></span>
+          <span class="team-timer-pill side-right" data-clock-key="blue-spymaster"></span>
         </div>
       `;
       teamRowEl.classList.remove('layout-team');
       teamRowEl.classList.add('layout-role');
     } else {
       teamRowEl.innerHTML = `
-        <span class="team-timer-pill" data-clock-key="red"></span>
-        <span class="team-timer-pill" data-clock-key="blue"></span>
+        <span class="team-timer-pill side-left" data-clock-key="red"></span>
+        <span class="team-timer-pill side-right" data-clock-key="blue"></span>
       `;
       teamRowEl.classList.remove('layout-role');
       teamRowEl.classList.add('layout-team');
@@ -12560,6 +12602,7 @@ function showStaticGameTimer(phase, game = currentGame) {
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
   const teamRowEl = document.getElementById('team-timer-row');
+  const topbarCenterEl = document.querySelector('.topbar-center');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   const ogTimerTextEl = document.getElementById('og-topbar-timer-text');
   const ogTimerPhaseEl = document.getElementById('og-topbar-timer-phase');
@@ -12570,6 +12613,7 @@ function showStaticGameTimer(phase, game = currentGame) {
 
   timerEl.style.display = 'flex';
   timerEl.classList.remove('team-mode');
+  topbarCenterEl?.classList.remove('has-cumulative-timer');
   fillEl.style.display = '';
   textEl.style.display = '';
   if (teamRowEl) teamRowEl.style.display = 'none';
@@ -12609,9 +12653,11 @@ function stopGameTimer() {
   const fillEl = document.getElementById('timer-fill');
   const textEl = document.getElementById('timer-text');
   const teamRowEl = document.getElementById('team-timer-row');
+  const topbarCenterEl = document.querySelector('.topbar-center');
   const ogTimerEl = document.getElementById('og-topbar-timer');
   if (timerEl) timerEl.style.display = 'none';
   if (timerEl) timerEl.classList.remove('team-mode');
+  topbarCenterEl?.classList.remove('has-cumulative-timer');
   if (fillEl) fillEl.style.display = '';
   if (textEl) textEl.style.display = '';
   if (teamRowEl) {
