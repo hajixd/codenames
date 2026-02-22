@@ -9554,12 +9554,17 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           : (currentGame.blueTeamName || 'BLUE');
         ogText.textContent = winnerName.toUpperCase() + ' TEAM WINS!';
         ogText.classList.remove('is-timer');
+        ogText.classList.remove('is-cumulative');
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'spymaster') {
         if (isMobileLayoutLike()) {
           ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
           ogText.classList.remove('is-timer');
+          ogText.classList.remove('is-cumulative');
           ogText.classList.remove('red','blue');
+        } else if (!allowBannerTurnTimer) {
+          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+          updateOgPhaseBannerCumulativeText(snap, currentGame);
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
@@ -9569,6 +9574,7 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
           } else {
             ogText.textContent = 'GIVE YOUR OPERATIVES A CLUE';
             ogText.classList.remove('is-timer');
+            ogText.classList.remove('is-cumulative');
             ogText.classList.remove('red','blue');
           }
         }
@@ -9577,7 +9583,11 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
         if (isMobileLayoutLike()) {
           ogText.textContent = '';
           ogText.classList.remove('is-timer');
+          ogText.classList.remove('is-cumulative');
           ogText.classList.remove('red','blue');
+        } else if (!allowBannerTurnTimer) {
+          const snap = getCumulativeClockSnapshot(currentGame, Date.now());
+          updateOgPhaseBannerCumulativeText(snap, currentGame);
         } else {
           const liveTimer = String(document.getElementById('og-topbar-timer-text')?.textContent
             || document.getElementById('timer-text')?.textContent
@@ -9589,16 +9599,19 @@ function renderClueArea(isSpymaster, myTeamColor, spectator) {
             // Fallback while timer is booting.
             ogText.textContent = '';
             ogText.classList.remove('is-timer');
+            ogText.classList.remove('is-cumulative');
             ogText.classList.remove('red','blue');
                     }
         }
       } else if (currentGame.currentPhase === 'waiting') {
         ogText.textContent = '';
         ogText.classList.remove('is-timer');
+        ogText.classList.remove('is-cumulative');
         ogText.classList.remove('red','blue');
       } else if (currentGame.currentPhase === 'role-selection') {
         ogText.textContent = 'SELECT YOUR ROLE';
         ogText.classList.remove('is-timer');
+        ogText.classList.remove('is-cumulative');
       }
     }
   }
@@ -12308,9 +12321,36 @@ function updateOgPhaseBannerTimerText(timerText, phaseOverride) {
   if (!safeTimer) return;
 
   ogText.textContent = safeTimer;
+  ogText.classList.remove('is-cumulative');
   ogText.classList.add('is-timer');
   ogText.classList.toggle('red', activeTeam === 'red');
   ogText.classList.toggle('blue', activeTeam === 'blue');
+}
+
+function updateOgPhaseBannerCumulativeText(snap, game = currentGame) {
+  const ogBanner = document.getElementById('og-phase-banner');
+  const ogText = document.getElementById('og-phase-text');
+  if (!ogBanner || !ogText) return;
+  if (!isOnlineStyleActive()) return;
+  if (!game || game.winner) return;
+  if (isMobileLayoutLike()) return;
+  if (!isCumulativeClockType(game)) return;
+  if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) return;
+
+  const lines = [];
+  for (const row of snap.rows) {
+    const left = row?.left || null;
+    const right = row?.right || null;
+    if (!left || !right) continue;
+    const leftText = `${left.label}: ${formatClockTime(left.ms, left.unlimited)}`;
+    const rightText = `${right.label}: ${formatClockTime(right.ms, right.unlimited)}`;
+    lines.push(`${leftText}     ${rightText}`);
+  }
+  if (!lines.length) return;
+
+  ogText.textContent = lines.join('\n');
+  ogText.classList.remove('red', 'blue');
+  ogText.classList.add('is-timer', 'is-cumulative');
 }
 
 function startGameTimer(endTime, phase, game = currentGame) {
@@ -12502,6 +12542,7 @@ function startCumulativeGameTimer(game) {
       : 'Timer: ∞';
     if (ogTimerTextEl) ogTimerTextEl.textContent = activeTimerText;
     updateOgMobileTurnStrip(activeTimerText, live?.currentPhase);
+    try { updateOgPhaseBannerCumulativeText(snap, live); } catch (_) {}
   };
 
   render();

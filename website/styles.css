@@ -18198,6 +18198,15 @@ body.og-mode .og-phase-banner {
   letter-spacing: 1.6px;
 }
 
+.og-phase-text.is-cumulative {
+  font-size: clamp(11px, 1.15vw, 14px);
+  letter-spacing: 0.45px;
+  line-height: 1.22;
+  text-transform: none;
+  white-space: pre-line;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- OG Game Board --- */
 body.og-mode .game-board {
   gap: 10px;
