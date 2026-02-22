@@ -5607,25 +5607,14 @@ function initMyTeamControls() {
     const st = computeUserState(teamsCache);
     if (!st.teamId) return;
 
-    if (st.isCreator) {
-      const ok = await showCustomConfirm({
-        title: 'Delete team?',
-        message: 'Are you sure you want to delete your team? This cannot be undone.',
-        okText: 'Delete',
-        danger: true
-      });
-      if (!ok) return;
-      await deleteTeam(st.teamId);
-    } else {
-      const ok = await showCustomConfirm({
-        title: 'Leave team?',
-        message: 'Are you sure you want to leave this team?',
-        okText: 'Leave',
-        danger: true
-      });
-      if (!ok) return;
-      await leaveTeam(st.teamId, st.userId);
-    }
+    const ok = await showCustomConfirm({
+      title: 'Delete team?',
+      message: 'Are you sure you want to delete your team? This cannot be undone.',
+      okText: 'Delete',
+      danger: true
+    });
+    if (!ok) return;
+    await deleteTeam(st.teamId);
   });
 
   document.getElementById('open-requests')?.addEventListener('click', () => {
@@ -5660,7 +5649,7 @@ function initMyTeamControls() {
     },
     onCommit: async (v) => {
       const st = computeUserState(teamsCache);
-      if (!st.isCreator || !st.teamId) return;
+      if (!st.teamId) return;
       try {
       await renameTeamUnique(st.teamId, v);
     } catch (e) {
@@ -5731,7 +5720,7 @@ function renderMyTeam(teams) {
       if (sz > SOFT_TEAM_MAX) sub.textContent = 'Too many players — this team is not eligible.';
       else sub.textContent = st.isCreator
         ? 'Double click the team name to rename. You can kick teammates and manage requests.'
-        : 'You are on a team. You can manage requests.';
+        : 'Double click the team name to rename. You can manage requests.';
     }
     else sub.textContent = 'Create a team or request to join one from the Teams tab.';
   }
@@ -5760,7 +5749,7 @@ function renderMyTeam(teams) {
   // Footer buttons
   if (leaveDeleteBtn) {
     leaveDeleteBtn.style.display = 'inline-flex';
-    leaveDeleteBtn.textContent = st.isCreator ? 'Delete team' : 'Leave team';
+    leaveDeleteBtn.textContent = 'Delete team';
   }
   if (requestsBtn) {
     requestsBtn.style.display = hasTeam ? 'inline-flex' : 'none';
