@@ -5436,137 +5436,161 @@ async function aiGiveClue(ai, game) {
 
     const boardWords = (vision.cards || []).map(c => String(c.word || '').trim().toUpperCase()).filter(Boolean);
 
-    const systemPrompt = [
-      `You are ${ai.name}.`,
-      `You are the Codenames SPYMASTER for the ${String(team || '').toUpperCase()} team.`,
-      ``,
-      buildPersonalityBlock(persona),
-      ``,
-      AI_TIPS_MANUAL,
-      ``,
-      `VISION (exact current on-screen state for your role) will be provided as JSON.`,
-      ``,
-      `MIND RULE: You have a private inner monologue. The only way you think is by writing.`,
-      `Return JSON only with this schema:`,
-      `{"mind":"first-person inner monologue", "candidates":[{"clue":"CLUE_TEXT","number":N}], "final":{"clue":"CLUE_TEXT","number":N}}`,
-      ``,
-      `Hard requirements:`,
-      `- EVERY clue (candidates + final) may contain multiple words only when it expresses one clear unified concept.`,
-      `- EVERY clue must NOT be any board word: ${boardWords.join(', ')}`,
-      `- numbers are integers 0-9.`,
-      `- Give 2-4 candidates (including the final if you want), and then pick ONE final.`,
-      ...(vision.secondsRemaining !== null && vision.totalPhaseSeconds > 0 ? [
-        vision.secondsRemaining <= 8
-          ? `- ⚠ TIME CRITICAL: Only ${vision.secondsRemaining}s left! Pick ONE candidate and commit instantly — no elaborate mind, output JSON NOW.`
-          : vision.secondsRemaining <= 20
-          ? `- ⏱ LOW TIME: ${vision.secondsRemaining}s left. Be decisive — short mind, go with your first solid connection.`
-          : vision.secondsRemaining <= 45
-          ? `- ⏱ ${vision.secondsRemaining}s remaining. Keep your reasoning tight — don't over-analyze.`
-          : `- ⏱ ${vision.secondsRemaining}s remaining. You have time — explore multiple connections before committing.`,
-      ] : []),
-    ].join('\n');
+    const rejectedClues = new Set();
+    const seqField = _aiSeqField(team, 'spy');
+    let clueWord = '';
+    let clueNumber = 1;
+    let mind = '';
+    let considered = [];
+    let clueAccepted = false;
 
-    const mindContext = core.mindLog.slice(-10).join('\n');
-    const userPrompt = `VISION:
+    for (let judgeAttempt = 1; judgeAttempt <= 3; judgeAttempt++) {
+      clueWord = '';
+      clueNumber = 1;
+
+      // Rebuild system prompt each attempt so rejected clues are listed as hard constraints.
+      const bannedWords = rejectedClues.size > 0
+        ? `${boardWords.join(', ')}, ${[...rejectedClues].join(', ')}`
+        : boardWords.join(', ');
+      const systemPrompt = [
+        `You are ${ai.name}.`,
+        `You are the Codenames SPYMASTER for the ${String(team || '').toUpperCase()} team.`,
+        ``,
+        buildPersonalityBlock(persona),
+        ``,
+        AI_TIPS_MANUAL,
+        ``,
+        `VISION (exact current on-screen state for your role) will be provided as JSON.`,
+        ``,
+        `MIND RULE: You have a private inner monologue. The only way you think is by writing.`,
+        `Return JSON only with this schema:`,
+        `{"mind":"first-person inner monologue", "candidates":[{"clue":"CLUE_TEXT","number":N}], "final":{"clue":"CLUE_TEXT","number":N}}`,
+        ``,
+        `Hard requirements:`,
+        `- EVERY clue (candidates + final) may contain multiple words only when it expresses one clear unified concept.`,
+        `- EVERY clue must NOT be any of these words: ${bannedWords}`,
+        `- numbers are integers 0-9.`,
+        `- Give 2-4 candidates (including the final if you want), and then pick ONE final.`,
+        ...(rejectedClues.size > 0 ? [
+          `- ⚠ The judge already rejected these clues — do NOT propose them again: ${[...rejectedClues].map(w => `"${w}"`).join(', ')}`,
+        ] : []),
+        ...(vision.secondsRemaining !== null && vision.totalPhaseSeconds > 0 ? [
+          vision.secondsRemaining <= 8
+            ? `- ⚠ TIME CRITICAL: Only ${vision.secondsRemaining}s left! Pick ONE candidate and commit instantly — no elaborate mind, output JSON NOW.`
+            : vision.secondsRemaining <= 20
+            ? `- ⏱ LOW TIME: ${vision.secondsRemaining}s left. Be decisive — short mind, go with your first solid connection.`
+            : vision.secondsRemaining <= 45
+            ? `- ⏱ ${vision.secondsRemaining}s remaining. Keep your reasoning tight — don't over-analyze.`
+            : `- ⏱ ${vision.secondsRemaining}s remaining. You have time — explore multiple connections before committing.`,
+        ] : []),
+      ].join('\n');
+
+      // Rebuild user prompt each attempt so rejection feedback appended to mind log is included.
+      const mindContext = core.mindLog.slice(-10).join('\n');
+      const userPrompt = `VISION:
 ${JSON.stringify(vision)}
 
 RECENT MIND:
 ${mindContext}`;
 
-    let clueWord = '';
-    let clueNumber = 1;
-    let mind = '';
-    let considered = [];
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const { content: raw, reasoning } = await aiReasoningCompletion(
+          [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+          { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 420, response_format: { type: 'json_object' } }
+        );
+        appendReasoningToMind(ai, reasoning);
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const { content: raw, reasoning } = await aiReasoningCompletion(
-        [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        { ai, brainRole: AI_BRAIN_ROLES.reasoning, max_tokens: 420, response_format: { type: 'json_object' } }
-      );
-      appendReasoningToMind(ai, reasoning);
+        let parsed = null;
+        try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
+        if (!parsed) continue;
 
-      let parsed = null;
-      try { parsed = JSON.parse(String(raw || '').trim()); } catch (_) {}
-      if (!parsed) continue;
+        mind = String(parsed.mind || '').trim();
+        if (mind) appendMind(ai, mind);
 
-      mind = String(parsed.mind || '').trim();
-      if (mind) appendMind(ai, mind);
+        // Collect considered candidates (for live typing simulation)
+        const rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
+        considered = _dedupeConsideredClues(rawCandidates);
 
-      // Collect considered candidates (for live typing simulation)
-      const rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
-      considered = _dedupeConsideredClues(rawCandidates);
+        const finalObj = (parsed.final && typeof parsed.final === 'object') ? parsed.final : null;
+        clueWord = _sanitizeOneWordClue(finalObj?.clue ?? parsed.clue);
+        clueNumber = parseInt(finalObj?.number ?? parsed.number, 10);
+        if (!Number.isFinite(clueNumber)) clueNumber = 1;
+        clueNumber = Math.max(0, Math.min(9, clueNumber));
 
-      const finalObj = (parsed.final && typeof parsed.final === 'object') ? parsed.final : null;
-      clueWord = _sanitizeOneWordClue(finalObj?.clue ?? parsed.clue);
-      clueNumber = parseInt(finalObj?.number ?? parsed.number, 10);
-      if (!Number.isFinite(clueNumber)) clueNumber = 1;
-      clueNumber = Math.max(0, Math.min(9, clueNumber));
+        // If final is missing/invalid but we have candidates, fall back to the first valid candidate.
+        if (!clueWord && considered.length) {
+          clueWord = considered[0].clue;
+          clueNumber = (considered[0].number === null || considered[0].number === undefined) ? 1 : considered[0].number;
+        }
 
-      // If final is missing/invalid but we have candidates, fall back to the first valid candidate.
-      if (!clueWord && considered.length) {
-        clueWord = considered[0].clue;
-        clueNumber = (considered[0].number === null || considered[0].number === undefined) ? 1 : considered[0].number;
+        const bad =
+          (!clueWord) ? 'empty clue' :
+          (boardWords.includes(clueWord)) ? 'clue is on the board' :
+          (rejectedClues.has(clueWord)) ? `"${clueWord}" was already rejected by the judge` :
+          null;
+
+        if (!bad) break;
+        // Write a quick mind note and retry.
+        appendMind(ai, `I need to retry: ${bad}. I'll pick a different clue.`);
+        clueWord = '';
       }
 
-      const bad =
-        (!clueWord) ? 'empty clue' :
-        (boardWords.includes(clueWord)) ? 'clue is on the board' :
-        null;
+      if (!clueWord) return;
 
-      if (!bad) break;
-      // Write a quick mind note and retry.
-      appendMind(ai, `I need to retry: ${bad}. I'll pick a different clue.`);
-      clueWord = '';
-    }
+      // Simulate live thinking/typing visible to opposing spymaster
+      await simulateAISpymasterThinking(ai, game, clueWord, clueNumber, { considered });
 
-    if (!clueWord) return;
-
-    // Simulate live thinking/typing visible to opposing spymaster
-    await simulateAISpymasterThinking(ai, game, clueWord, clueNumber, { considered });
-
-    const seqField = _aiSeqField(team, 'spy');
-    let clueAccepted = false;
-    const submitWithReview = window.submitClueForReviewFlow;
-    if (typeof submitWithReview === 'function') {
-      const result = await submitWithReview({
-        game,
-        word: clueWord,
-        number: clueNumber,
-        targets: [],
-        targetWords: [],
-        byId: String(ai?.odId || ai?.id || '').trim(),
-        byName: String(ai?.name || 'AI').trim() || 'AI',
-        seqField,
-      });
-      clueAccepted = !!result?.accepted;
-    } else {
-      const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
-      const clueEntry = {
-        team: game.currentTeam,
-        word: clueWord,
-        number: clueNumber,
-        results: [],
-        timestamp: new Date().toISOString(),
-      };
-
-      const ref = db.collection('games').doc(game.id);
-      await db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists) return;
-        const current = snap.data();
-        if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
-
-        tx.update(ref, {
-          currentClue: { word: clueWord, number: clueNumber },
-          guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
-          currentPhase: 'operatives',
-          log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
-          clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
-          [seqField]: firebase.firestore.FieldValue.increment(1),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      const submitWithReview = window.submitClueForReviewFlow;
+      if (typeof submitWithReview === 'function') {
+        const result = await submitWithReview({
+          game,
+          word: clueWord,
+          number: clueNumber,
+          targets: [],
+          targetWords: [],
+          byId: String(ai?.odId || ai?.id || '').trim(),
+          byName: String(ai?.name || 'AI').trim() || 'AI',
+          seqField,
         });
-        clueAccepted = true;
-      });
+        clueAccepted = !!result?.accepted;
+        if (result?.rejected) {
+          // Log the rejection reason so the AI understands why and won't repeat the clue.
+          appendJudgeRejectionReasonToMind(ai, result, clueWord, clueNumber);
+          rejectedClues.add(clueWord);
+          clueAccepted = false;
+          continue; // retry generation with a different clue
+        }
+      } else {
+        const teamName = team === 'red' ? (game.redTeamName || 'Red Team') : (game.blueTeamName || 'Blue Team');
+        const clueEntry = {
+          team: game.currentTeam,
+          word: clueWord,
+          number: clueNumber,
+          results: [],
+          timestamp: new Date().toISOString(),
+        };
+
+        const ref = db.collection('games').doc(game.id);
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists) return;
+          const current = snap.data();
+          if (current.currentPhase !== 'spymaster' || current.currentTeam !== team) return;
+
+          tx.update(ref, {
+            currentClue: { word: clueWord, number: clueNumber },
+            guessesRemaining: (clueNumber === 0 ? 0 : (clueNumber + 1)),
+            currentPhase: 'operatives',
+            log: firebase.firestore.FieldValue.arrayUnion(`${teamName} Spymaster: "${clueWord}" for ${clueNumber}`),
+            clueHistory: firebase.firestore.FieldValue.arrayUnion(clueEntry),
+            [seqField]: firebase.firestore.FieldValue.increment(1),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+          clueAccepted = true;
+        });
+      }
+
+      break; // clue was accepted or directly submitted
     }
 
     if (clueAccepted && window.playSound) window.playSound('clueGiven');
