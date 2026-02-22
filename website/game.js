@@ -46,13 +46,16 @@ function getWordsForDeck(deckId) {
 let currentGame = null;
 let _prevClue = null; // Track previous clue for clue animation
 let _prevBoardSignature = null; // Track board identity so we can reset per-game markers/tags
-const CARD_CONFIRM_ANIM_MS = 4200;
-const CARD_REVEAL_TIMER_PAUSE_MS = Math.max(CARD_CONFIRM_ANIM_MS + 120, 4300);
+const CARD_CONFIRM_ANIM_MS = 2600;
+const CARD_REVEAL_TIMER_PAUSE_MS = Math.max(CARD_CONFIRM_ANIM_MS + 220, 2820);
 const CLUE_REVEAL_TIMER_PAUSE_MS = 6300;
 const _CONFIRM_BACK_TYPES = ['red', 'blue', 'neutral', 'assassin'];
 const _REVEAL_ANIMATION_CLASSES = ['reveal-flip-animate', 'reveal-no-flip-pulse', 'reveal-no-flip-sweep'];
 let _cardAnimOverlayTimer = null;
 const _revealFlipCleanupByIndex = new Map();
+const _revealRetryTimersByIndex = new Map();
+const REVEAL_FORCE_RETRY_DELAY_MS = 55;
+const REVEAL_FORCE_MAX_RETRIES = 18;
 // Expose current game phase for presence (app.js)
 window.getCurrentGamePhase = () => (currentGame && currentGame.currentPhase) ? currentGame.currentPhase : null;
 
@@ -108,7 +111,24 @@ function clearConfirmAnimationClasses(cardEl, cardIndex = null) {
     const oldTid = _revealFlipCleanupByIndex.get(idx);
     if (oldTid) clearTimeout(oldTid);
     _revealFlipCleanupByIndex.delete(idx);
+    const retryTid = _revealRetryTimersByIndex.get(idx);
+    if (retryTid) clearTimeout(retryTid);
+    _revealRetryTimersByIndex.delete(idx);
   }
+}
+
+function clearRevealRetryTimers(cardIndex = null) {
+  const idx = Number(cardIndex);
+  if (Number.isInteger(idx) && idx >= 0) {
+    const tid = _revealRetryTimersByIndex.get(idx);
+    if (tid) clearTimeout(tid);
+    _revealRetryTimersByIndex.delete(idx);
+    return;
+  }
+  for (const tid of _revealRetryTimersByIndex.values()) {
+    clearTimeout(tid);
+  }
+  _revealRetryTimersByIndex.clear();
 }
 
 function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
@@ -146,6 +166,7 @@ function applyConfirmAnimationClasses(cardEl, _confirmBackType, opts = {}) {
 }
 
 function clearRevealAnimationSuppressions() {
+  clearRevealRetryTimers();
   for (const tid of _revealFlipCleanupByIndex.values()) {
     clearTimeout(tid);
   }
@@ -154,6 +175,32 @@ function clearRevealAnimationSuppressions() {
     document.querySelectorAll('.game-card.reveal-flip-animate, .game-card.reveal-no-flip-pulse, .game-card.reveal-no-flip-sweep, .game-card.confirming-guess, .game-card.confirm-animate, .game-card.confirm-hold')
       .forEach((el) => clearConfirmAnimationClasses(el));
   } catch (_) {}
+}
+
+function forceRevealAnimationForCard(rawIdx, revealType, cards = currentGame?.cards, attempt = 0) {
+  const idx = Number(rawIdx);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  clearRevealRetryTimers(idx);
+
+  const shouldBeRevealed = !!(currentGame?.cards?.[idx]?.revealed || cards?.[idx]?.revealed);
+  const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
+  if (cardEl && shouldBeRevealed) {
+    // If DOM paint lags one frame, force reveal state before replaying.
+    if (!cardEl.classList.contains('revealed')) cardEl.classList.add('revealed');
+    void cardEl.offsetWidth;
+    applyConfirmAnimationClasses(cardEl, revealType, { cardIndex: idx });
+    return;
+  }
+
+  if (!shouldBeRevealed) return;
+  if (attempt >= REVEAL_FORCE_MAX_RETRIES) return;
+
+  const delay = REVEAL_FORCE_RETRY_DELAY_MS + (attempt >= 10 ? 30 : 0);
+  const tid = window.setTimeout(() => {
+    _revealRetryTimersByIndex.delete(idx);
+    forceRevealAnimationForCard(idx, revealType, cards, attempt + 1);
+  }, delay);
+  _revealRetryTimersByIndex.set(idx, tid);
 }
 
 function initAnimationTestingPanel() {
@@ -219,13 +266,9 @@ function animateNewlyRevealedCards(cardIndices = [], cards = currentGame?.cards)
     const idx = Number(rawIdx);
     if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
     seen.add(idx);
-
-    const cardEl = document.querySelector(`.game-card[data-index="${idx}"]`);
-    if (!cardEl || !cardEl.classList.contains('revealed')) return;
-
     const cardTypeRaw = String(cards?.[idx]?.type || currentGame?.cards?.[idx]?.type || '').toLowerCase();
     const revealType = normalizeConfirmBackType(cardTypeRaw);
-    applyConfirmAnimationClasses(cardEl, revealType, { cardIndex: idx });
+    forceRevealAnimationForCard(idx, revealType, cards, 0);
   });
 }
 

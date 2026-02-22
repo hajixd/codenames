@@ -31,6 +31,7 @@ const AI_CONFIG = {
   // Otherwise keep a Llama Instruct model.
   model: 'meta-llama/Llama-3.3-70B-Instruct',
   reasoningModel: 'deepseek-ai/DeepSeek-R1-0528',        // reasoning brain — strategic decisions
+  reasoningTemperature: 1.08, // keep slightly creative, but still instruction-stable
   // Brain-part defaults. Runtime can override these with the best currently
   // available Nebius models discovered from /v1/models.
   brainRoleModels: {
@@ -833,26 +834,46 @@ async function aiReasoningCompletion(messages, options = {}) {
     messages,
     max_tokens: options.max_tokens ?? 512,
   };
+  const requestedTemp = Number(options.temperature ?? AI_CONFIG.reasoningTemperature);
+  if (Number.isFinite(requestedTemp)) {
+    // Conservative cap: slightly higher creativity, without blowing up JSON adherence.
+    body.temperature = _clamp(requestedTemp, 0.6, 1.15);
+  }
   if (options.response_format) {
     body.response_format = options.response_format;
   }
-  // Reasoning models do not support temperature — omit it.
 
-  const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${AI_CONFIG.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const postCompletion = async (payload) => {
+    const resp = await fetch(`${AI_CONFIG.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${AI_CONFIG.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      return { ok: false, status: resp.status, text, data: null };
+    }
+    const data = await resp.json();
+    return { ok: true, status: resp.status, text: '', data };
+  };
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(`AI Reasoning API ${resp.status}: ${text}`);
+  let result = await postCompletion(body);
+  if (!result.ok && Object.prototype.hasOwnProperty.call(body, 'temperature')) {
+    const tempRejected = (result.status === 400 || result.status === 422) && /\btemperature\b/i.test(String(result.text || ''));
+    if (tempRejected) {
+      const fallbackBody = { ...body };
+      delete fallbackBody.temperature;
+      result = await postCompletion(fallbackBody);
+    }
+  }
+  if (!result.ok) {
+    throw new Error(`AI Reasoning API ${result.status}: ${result.text}`);
   }
 
-  const data = await resp.json();
+  const data = result.data || {};
   const msg = data.choices?.[0]?.message || {};
   return {
     content: msg.content || '',
@@ -2994,16 +3015,6 @@ function _nameInitials(name) {
   return plain.slice(0, 2).toUpperCase();
 }
 
-function _stableMarkerHash(seed) {
-  let h = 2166136261 >>> 0;
-  const s = String(seed || '');
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
 function _pickAIConsideringIndex(decisionLike) {
   const action = String(decisionLike?.action || '').toLowerCase().trim();
   if (action === 'end_turn') return null;
@@ -3071,17 +3082,33 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
         } catch (_) {}
         if (!live) live = await getGameSnapshot(String(gameId));
         if (!live) throw new Error('no_live_snapshot');
-        // Follow teammate considering chips first.
         const consideringRows = extractTeamConsideringForVision(live, String(team || ''));
-        consideringRows
-          .sort((a, b) => Number(b?.count || 0) - Number(a?.count || 0))
-          .slice(0, 8)
-          .forEach((row) => {
-            if (desiredConsidering.size >= 8) return;
-            const idxKey = String(Number(row?.index));
-            if (!idxKey || desiredConsidering.has(idxKey)) return;
-            desiredConsidering.set(idxKey, 'maybe');
-          });
+        const crowdCountByIndex = new Map(
+          consideringRows.map((row) => [Number(row?.index), Number(row?.count || 0)])
+        );
+
+        // Keep some awareness of teammate focus, but avoid everyone mirroring
+        // the same exact cards.
+        const crowdSorted = [...consideringRows]
+          .filter(Boolean)
+          .sort((a, b) => Number(b?.count || 0) - Number(a?.count || 0));
+        if (crowdSorted.length && desiredConsidering.size < 2 && Math.random() < 0.86) {
+          const leader = crowdSorted[0];
+          const leadIdx = Number(leader?.index);
+          if (Number.isFinite(leadIdx) && leadIdx >= 0) desiredConsidering.set(String(leadIdx), 'maybe');
+        }
+        const alternatives = crowdSorted.slice(1).sort((a, b) => {
+          const ac = Number(a?.count || 0);
+          const bc = Number(b?.count || 0);
+          if (ac !== bc) return ac - bc;
+          return Math.random() - 0.5;
+        });
+        for (const row of alternatives) {
+          if (desiredConsidering.size >= 6) break;
+          const idxKey = String(Number(row?.index));
+          if (!idxKey || desiredConsidering.has(idxKey)) continue;
+          if (Math.random() < 0.74) desiredConsidering.set(idxKey, 'maybe');
+        }
 
         // Then use unresolved clue targets from clueHistory if available.
         const cards = Array.isArray(live?.cards) ? live.cards : [];
@@ -3090,7 +3117,8 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
           const w = String(cards[i]?.word || '').trim().toUpperCase();
           if (w) wordIndex.set(w, i);
         }
-        const clueHistory = Array.isArray(live?.clueHistory) ? live.clueHistory : [];
+        const clueHistory = Array.isArray(live?.clueHistory) ? [...live.clueHistory] : [];
+        clueHistory.sort(() => Math.random() - 0.5);
         for (const clue of clueHistory) {
           if (desiredConsidering.size >= 8) break;
           if (String(clue?.team || '').toLowerCase() !== String(team || '').toLowerCase()) continue;
@@ -3100,7 +3128,8 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
           const correct = results.filter(r => String(r?.type || '').toLowerCase() === String(team || '').toLowerCase()).length;
           if ((number - correct) <= 0) continue;
 
-          const rawTargets = Array.isArray(clue?.targets) ? clue.targets : [];
+          const rawTargets = Array.isArray(clue?.targets) ? [...clue.targets] : [];
+          rawTargets.sort(() => Math.random() - 0.5);
           for (const raw of rawTargets) {
             if (desiredConsidering.size >= 8) break;
             const idx = (raw && typeof raw === 'object') ? Number(raw.index) : Number(raw);
@@ -3112,7 +3141,8 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
             desiredConsidering.set(k, 'maybe');
           }
 
-          const targetWords = Array.isArray(clue?.targetWords) ? clue.targetWords : [];
+          const targetWords = Array.isArray(clue?.targetWords) ? [...clue.targetWords] : [];
+          targetWords.sort(() => Math.random() - 0.5);
           for (const rawWord of targetWords) {
             if (desiredConsidering.size >= 8) break;
             const w = String(rawWord || '').trim().toUpperCase();
@@ -3127,35 +3157,30 @@ async function syncAIConsideringState(gameId, team, ai, decisionLike) {
           }
         }
 
-        // Final fallback: pick deterministic unrevealed cards so initials stay
-        // visible even when model output is sparse/no_change.
+        // Final fallback: pick varied low-crowd unrevealed cards so initials
+        // stay visible even when model output is sparse/no_change.
         if (desiredConsidering.size < 3) {
           const cards = Array.isArray(live?.cards) ? live.cards : [];
           const unrevealed = [];
           for (let i = 0; i < cards.length; i += 1) {
             const card = cards[i];
             if (!card || card.revealed) continue;
+            if (desiredConsidering.has(String(i))) continue;
             unrevealed.push(i);
           }
-          const turnSig = [
-            String(live?.id || gameId),
-            String(live?.currentPhase || ''),
-            String(live?.currentTeam || ''),
-            String(live?.currentClue?.word || '').toUpperCase(),
-            String(Number(live?.currentClue?.number || 0)),
-          ].join('|');
-          const aiSeed = String(ai?.id || ai?.odId || ai?.name || owner);
-          unrevealed
-            .sort((a, b) => {
-              const ah = _stableMarkerHash(`${aiSeed}|${turnSig}|${a}`);
-              const bh = _stableMarkerHash(`${aiSeed}|${turnSig}|${b}`);
-              return ah - bh;
-            })
-            .forEach((idx) => {
-              if (desiredConsidering.size >= 6) return;
-              const k = String(Number(idx));
-              if (!desiredConsidering.has(k)) desiredConsidering.set(k, 'maybe');
-            });
+          const ranked = unrevealed.map((idx) => ({
+            idx,
+            crowd: Number(crowdCountByIndex.get(Number(idx)) || 0),
+            roll: Math.random(),
+          }));
+          ranked.sort((a, b) => {
+            if (a.crowd !== b.crowd) return a.crowd - b.crowd;
+            return a.roll - b.roll;
+          });
+          for (const row of ranked) {
+            if (desiredConsidering.size >= 6) break;
+            desiredConsidering.set(String(Number(row.idx)), 'maybe');
+          }
         }
       }
     } catch (_) {}
@@ -3928,9 +3953,12 @@ async function aiOperativePropose(ai, game, opts = {}) {
     `- EVERY message must add NEW information or a NEW opinion. If you have nothing new, set chat="" instead of agreeing.`,
     `- If teammates already said "let's go with WORD", do NOT say another variant of "yeah let's go with WORD". That's just noise. Set chat="" instead.`,
     `- Maximum 2 AIs should agree on a word. After that, further agreement is redundant.`,
+    `- If the room is converging too fast, stress-test one different card before locking in.`,
+    `- Push back on weak links with a specific reason ("risk overlap", "clue fit is thin", etc.).`,
     `- NEVER mention your confidence score/percent in chat.`,
     `- Priority rule: when unfinished older clues exist, prefer the easiest unresolved clue first before riskier bonus guesses.`,
     `- Add 4-8 considering candidates in marks so your initials appear on multiple cards (top-left chips).`,
+    `- Include at least one alternative card in marks when disagreeing.`,
     `- React to teammate considering initials if they change your read.`,
     `- Occasionally address a teammate by first name when replying directly (don't force it every message).`,
     ``,
@@ -4247,8 +4275,10 @@ async function aiOperativeFollowup(ai, game, proposalsByAi, opts = {}) {
       `- If you agree and want to add context: "yeah and also WORD works cause [new reason]"`,
       `- Max 1-3 short sentences.`,
       `- NEVER mention confidence numbers/percentages in chat.`,
+      `- If chat is becoming too agreeable, challenge one assumption before you align.`,
       `- Priority rule: if unfinished older clues still have easy targets, finish those before speculative guesses.`,
       `- Actively update your considering picks (3-8 marks) so initials stay visible across your candidate cards.`,
+      `- Keep at least one non-consensus candidate in marks while debating.`,
       `- If teammate considering initials conflict with your view, call it out briefly.`,
       `- Occasionally use a teammate's first name when directly pushing back or agreeing on a specific point.`,
       ``,
@@ -5876,7 +5906,9 @@ function buildFallbackReplyForChat(lastText, senderName = '') {
   const senderShort = sender.replace(/^ai\s+/i, '').split(/\s+/).filter(Boolean)[0] || '';
 
   if (isGreetingLike(lower)) {
-    return senderShort ? `yo ${senderShort}` : _pick(['yo', 'hey', 'sup']);
+    return senderShort
+      ? _pick([`hi ${senderShort}`, `hey ${senderShort}`, `yo ${senderShort}`])
+      : _pick(['hi', 'hey', 'yo']);
   }
   if (/\?/.test(text) || /\b(thoughts|what do you think|agree|should we)\b/.test(lower)) {
     return _pick([
@@ -5928,8 +5960,10 @@ function deriveSocialChatPhase(game, vision, contextKey, chatDocs = [], lastMess
   const docs = (Array.isArray(chatDocs) ? chatDocs : []).slice(-10);
   const texts = docs.map(d => String(d?.text || '').trim()).filter(Boolean);
   const greetingCount = texts.filter(t => isGreetingLike(t)).length;
+  const agreementCount = texts.filter(t => /\b(yeah|yep|agree|same|sounds good|let'?s go|go with|i'?m down|on board|exactly)\b/i.test(t)).length;
   const disagreementCount = texts.filter(t => /\b(no|nah|idk about|not sold|disagree|risky|force|bad pick|don't like)\b/i.test(t)).length;
   const questionCount = texts.filter(t => /\?/.test(t)).length;
+  const agreementHeavy = texts.length >= 3 && agreementCount >= 2 && disagreementCount <= 1;
   const unresolved = (Array.isArray(vision?.clueStack) ? vision.clueStack : [])
     .filter(c => Number(c?.remainingTargets || 0) > 0)
     .length;
@@ -5939,6 +5973,7 @@ function deriveSocialChatPhase(game, vision, contextKey, chatDocs = [], lastMess
   let key = 'discussion';
   if (contextKey === 'start' || (!texts.length && !String(lastMessage || '').trim())) key = 'greeting';
   else if (contextKey === 'end_turn_deliberation' || (Number.isFinite(secsLeft) && secsLeft <= 18)) key = 'reasoning';
+  else if (agreementHeavy) key = 'debate';
   else if (disagreementCount >= 2 || (questionCount >= 2 && disagreementCount >= 1)) key = 'debate';
   else if (unresolved >= 2) key = 'search';
 
@@ -5969,7 +6004,14 @@ function deriveSocialChatPhase(game, vision, contextKey, chatDocs = [], lastMess
       socialCue: 'speak only if it moves the decision forward',
     },
   };
-  return { key, ...(defs[key] || defs.discussion) };
+  return {
+    key,
+    agreementCount,
+    disagreementCount,
+    questionCount,
+    agreementHeavy,
+    ...(defs[key] || defs.discussion)
+  };
 }
 
 async function generateAIChatMessage(ai, game, context, opts = {}) {
@@ -6003,6 +6045,9 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const contextKey = String(context || '').toLowerCase();
     const isReplyContext = contextKey === 'reply';
     const socialPhase = deriveSocialChatPhase(game, vision, contextKey, chatDocs, lastMessage);
+    const disagreementNudge = (socialPhase.agreementHeavy || socialPhase.key === 'debate')
+      ? `The chat is drifting toward pile-on agreement. Prefer a respectful challenge or an alternative card unless evidence is strong.`
+      : '';
     const chatMaxLen = isReplyContext ? 260 : (contextKey === 'end_turn_deliberation' ? 230 : 240);
     const addressee = _pickAddressedTeammateName(chatDocs, ai?.name, opts?.lastSenderName || '');
     const addressChance = (socialPhase.key === 'debate')
@@ -6033,6 +6078,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       `- If unfinished clues remain from earlier turns, mention them naturally when relevant (e.g. "still 2 left on BANANA").`,
       `- Debate directly when needed: agree/disagree with a concrete reason, not vibes only.`,
       `- Mention at least one clue linkage, risk, or elimination when talking strategy.`,
+      disagreementNudge ? `- ${disagreementNudge}` : '',
       shouldAddressName ? `- In this message, naturally address ${addressee} by name once.` : '',
       (!shouldAddressName && addressee) ? `- You may address ${addressee} by name if it fits naturally.` : '',
       isReplyContext ? `- If someone greets you, greet back naturally first.` : '',
@@ -6048,6 +6094,7 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     const userPrompt = [
       `CONTEXT: ${String(context || 'general')}`,
       `CHAT PHASE CONTEXT: ${socialPhase.key}`,
+      `CHAT COUNTS: agreement=${Number(socialPhase.agreementCount || 0)}, disagreement=${Number(socialPhase.disagreementCount || 0)}, questions=${Number(socialPhase.questionCount || 0)}`,
       lastMessage ? `LAST TEAM MESSAGE: ${lastMessage}` : '',
       shouldAddressName ? `NATURAL NAME TARGET: ${addressee}` : '',
       teamChat ? `RECENT TEAM CHAT:\n${teamChat}` : '',
@@ -6070,6 +6117,8 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
     if (mind) appendMind(ai, mind);
 
     let msg = String(parsed.msg || '').trim();
+    const sourceText = String(opts.lastMessageText || lastMessage || '').trim();
+    const sender = String(opts.lastSenderName || '').trim();
     msg = sanitizeChatText(msg, vision, chatMaxLen);
     // Keep it short + conversational: up to ~3 sentences.
     try {
@@ -6078,9 +6127,14 @@ async function generateAIChatMessage(ai, game, context, opts = {}) {
       msg = (parts.slice(0, 3).join(' ') || m).trim();
     } catch (_) {}
     if (!msg && forceResponse && isReplyContext) {
-      const src = String(opts.lastMessageText || lastMessage || '').trim();
-      const sender = String(opts.lastSenderName || '').trim();
-      msg = buildFallbackReplyForChat(src, sender);
+      msg = buildFallbackReplyForChat(sourceText, sender);
+    }
+    if (msg && isReplyContext && isGreetingLike(sourceText) && !isGreetingLike(msg)) {
+      const senderShort = _shortPersonName(sender);
+      const prefix = senderShort
+        ? _pick([`hi ${senderShort}`, `hey ${senderShort}`])
+        : _pick(['hi', 'hey']);
+      msg = `${prefix} - ${msg}`.slice(0, chatMaxLen);
     }
     if (!msg) return '';
 
@@ -6210,22 +6264,65 @@ function _teamOperativeCount(game, team) {
   return roster.filter(p => String(p?.role || 'operative') !== 'spymaster').length;
 }
 
-async function _assessQuickGuessWithoutCheckin(event, game) {
-  try {
-    if (!event || !event.team || !game?.id) return false;
-    if (!/^guess_/.test(String(event.kind || ''))) return false;
-    if (_teamOperativeCount(game, event.team) < 2) return false;
+function _normalizeSpeakerHandle(raw) {
+  return String(raw || '')
+    .replace(/^ai\s+/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-    const docs = await fetchRecentTeamChatDocs(game.id, event.team, 20, { cacheMs: 120, bypassCache: false });
-    if (!docs.length) return true;
+function _messageLooksLikeJustification(text, guessedWord = '', clueWord = '') {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const upper = raw.toUpperCase();
+  const guess = String(guessedWord || '').trim().toUpperCase();
+  const clue = String(clueWord || '').trim().toUpperCase();
+  const hasReasonCue = /\b(because|since|fits?|fit|links?|linking|connect|reason|risk|safe|unsafe|clue|lean|thinking|not sold|better|worse|overlap)\b/i.test(raw);
+  const mentionsGuess = !!(guess && upper.includes(guess));
+  const mentionsClue = !!(clue && upper.includes(clue));
+  if (hasReasonCue && (mentionsGuess || mentionsClue)) return true;
+  if ((mentionsGuess || mentionsClue) && raw.length >= 18) return true;
+  return false;
+}
+
+async function _assessGuessCommunicationQuality(event, game) {
+  const out = { quickGuessNoConsensus: false, noJustification: false };
+  try {
+    if (!event || !event.team || !game?.id) return out;
+    if (!/^guess_/.test(String(event.kind || ''))) return out;
+
+    const docs = await fetchRecentTeamChatDocs(game.id, event.team, 26, { cacheMs: 120, bypassCache: false });
+    if (!docs.length) {
+      out.quickGuessNoConsensus = _teamOperativeCount(game, event.team) >= 2;
+      out.noJustification = true;
+      return out;
+    }
+
     const now = Date.now();
-    const recent = docs.filter(m => (now - Number(m.createdAtMs || 0)) <= 8500);
-    if (!recent.length) return true;
-    const actor = String(event.actorName || '').trim().toLowerCase();
-    const nonActorMsgs = recent.filter(m => String(m.senderName || '').trim().toLowerCase() !== actor);
-    return nonActorMsgs.length <= 1;
+    const recent = docs.filter(m => (now - Number(m.createdAtMs || 0)) <= 11000);
+    if (!recent.length) {
+      out.quickGuessNoConsensus = _teamOperativeCount(game, event.team) >= 2;
+      out.noJustification = true;
+      return out;
+    }
+
+    const actor = _normalizeSpeakerHandle(event.actorName || '');
+    const actorMsgs = recent.filter((m) => _normalizeSpeakerHandle(m?.senderName || '') === actor);
+    const nonActorMsgs = recent.filter((m) => _normalizeSpeakerHandle(m?.senderName || '') !== actor);
+
+    if (_teamOperativeCount(game, event.team) >= 2) {
+      out.quickGuessNoConsensus = nonActorMsgs.length <= 1;
+    }
+
+    const clueWord = String(game?.currentClue?.word || '').trim().toUpperCase();
+    const guessWord = String(event.guessedWord || '').trim().toUpperCase();
+    const actorJustified = actorMsgs.some((m) => _messageLooksLikeJustification(m?.text || '', guessWord, clueWord));
+    out.noJustification = !actorJustified;
+    return out;
   } catch (_) {
-    return false;
+    return out;
   }
 }
 
@@ -6243,6 +6340,7 @@ async function generateAIActionReactionMessage(ai, game, event, opts = {}) {
       .map(c => `${String(c.word || '').toUpperCase()} (${Number(c.remainingTargets || 0)} left)`)
       .join(', ');
     const markerCtx = buildTeamMarkerContext(game, ai.team, _markerOwnerId(ai.id));
+    const noJustificationWrongGuess = !!opts.noJustificationWrongGuess;
 
     const systemPrompt = [
       `You are ${ai.name}, OPERATIVE on ${String(ai.team || '').toUpperCase()} team in Codenames.`,
@@ -6252,6 +6350,7 @@ async function generateAIActionReactionMessage(ai, game, event, opts = {}) {
       `- Keep it 1 short sentence (max 130 chars).`,
       `- Sound natural and specific to this event.`,
       `- If teammate guessed too fast without discussion, mention coordination politely (no lecturing).`,
+      noJustificationWrongGuess ? `- This was a wrong guess with no real justification. Sound clearly irritated/frustrated (still one sentence).` : '',
       `- If there are clues left from older clues, you can reference them naturally.`,
       `- No card indices/numbers. Use WORDS only.`,
       `Return JSON only: {"mind":"private thought","msg":"chat message or empty string"}`,
@@ -6261,6 +6360,7 @@ async function generateAIActionReactionMessage(ai, game, event, opts = {}) {
       `EVENT KIND: ${String(event?.kind || '')}`,
       `EVENT TEXT: ${String(event?.text || '')}`,
       opts.quickGuessNoConsensus ? `EVENT DETAIL: guess happened without much team check-in` : '',
+      noJustificationWrongGuess ? `EVENT DETAIL: wrong guess happened without explanation/justification from the guesser` : '',
       unresolved ? `CLUES LEFT: ${unresolved}` : '',
       markerCtx ? markerCtx : '',
       `VISION:\n${JSON.stringify(vision)}`,
@@ -6314,13 +6414,23 @@ async function queueAIReactionsFromLogEntries(newEntries, game) {
       if (!primaryPool.length) continue;
 
       let quickGuessNoConsensus = false;
+      let noJustification = false;
       if (/^guess_/.test(String(event.kind || ''))) {
-        quickGuessNoConsensus = await _assessQuickGuessWithoutCheckin(event, game);
+        const quality = await _assessGuessCommunicationQuality(event, game);
+        quickGuessNoConsensus = !!quality.quickGuessNoConsensus;
+        noJustification = !!quality.noJustification;
       }
+      const eventKind = String(event.kind || '').toLowerCase();
+      const noJustificationWrongGuess =
+        noJustification && /guess_wrong|guess_neutral|guess_assassin/.test(eventKind);
 
       const candidates = [];
       primaryPool.sort((a, b) => Number(aiLastActionReactionMs[a.id] || 0) - Number(aiLastActionReactionMs[b.id] || 0));
       candidates.push(primaryPool[0]);
+      if (noJustificationWrongGuess && sameTeamPool.length > 1) {
+        sameTeamPool.sort((a, b) => Number(aiLastActionReactionMs[a.id] || 0) - Number(aiLastActionReactionMs[b.id] || 0));
+        candidates.push(sameTeamPool[1]);
+      }
       if (oppTeamPool.length && (/guess_wrong|guess_neutral|guess_assassin/.test(String(event.kind || '')) || quickGuessNoConsensus)) {
         oppTeamPool.sort((a, b) => Number(aiLastActionReactionMs[a.id] || 0) - Number(aiLastActionReactionMs[b.id] || 0));
         candidates.push(oppTeamPool[0]);
@@ -6349,18 +6459,33 @@ async function queueAIReactionsFromLogEntries(newEntries, game) {
           bumpEmotion(ai, sameTeam ? -3 : +2, +3);
         }
         if (quickGuessNoConsensus && sameTeam) bumpEmotion(ai, -9, +11);
+        if (noJustificationWrongGuess && sameTeam) bumpEmotion(ai, -18, +16);
+        const driftEventKind = [
+          kind,
+          quickGuessNoConsensus ? 'quick_guess_no_consensus' : '',
+          noJustificationWrongGuess ? 'no_justification' : '',
+        ].filter(Boolean).join('_');
         applyEmotionDriftFromState(
           ai,
           game,
           buildAIVision(game, ai),
           {
-            eventKind: quickGuessNoConsensus ? `${kind}_quick_guess_no_consensus` : kind,
+            eventKind: driftEventKind || kind,
             force: true
           }
         );
 
-        let msg = await generateAIActionReactionMessage(ai, game, event, { quickGuessNoConsensus });
-        if (!msg && quickGuessNoConsensus) {
+        let msg = await generateAIActionReactionMessage(ai, game, event, {
+          quickGuessNoConsensus,
+          noJustificationWrongGuess
+        });
+        if (!msg && noJustificationWrongGuess) {
+          msg = _pick([
+            `that was a blind swing with no rationale, we can't do that again`,
+            `we need a reason before locking guesses, that miss was avoidable`,
+            `i'm frustrated, that had zero setup in chat`,
+          ]);
+        } else if (!msg && quickGuessNoConsensus) {
           // Soft fallback when no model text is returned.
           msg = _pick([
             `quick check-in first? we still have lines to verify`,
@@ -7225,9 +7350,13 @@ function startAIGameLoop() {
           ordered.push(chatCandidates[(start + i) % chatCandidates.length]);
         }
         aiChatScanCursor = (start + checksThisTick) % chatCandidates.length;
+        let repliesThisTick = 0;
+        const maxRepliesThisTick = Math.max(1, Math.min(2, checksThisTick));
         for (const candidate of ordered.slice(0, checksThisTick)) {
           const replied = await maybeAIRespondToTeamChat(candidate, game);
-          if (replied) break;
+          if (!replied) continue;
+          repliesThisTick += 1;
+          if (repliesThisTick >= maxRepliesThisTick) break;
         }
       }
 

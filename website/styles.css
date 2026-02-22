@@ -22651,7 +22651,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
 :root{
   --card-reveal-duration: 920ms;
   --card-select-duration: 280ms;
-  --card-confirm-duration: 4200ms;
+  --card-confirm-duration: 2600ms;
   --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   --card-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -22661,7 +22661,7 @@ body.cozy-mode .clue-form-expanded .btn.primary{
   :root{
     --card-reveal-duration: 920ms;
     --card-select-duration: 280ms;
-    --card-confirm-duration: 4200ms;
+    --card-confirm-duration: 2600ms;
     --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
   }
 }
@@ -22979,7 +22979,7 @@ body:is(.og-mode, .cozy-mode) .game-card:is(.confirm-animate, .confirm-hold, .re
 }
 
 body.anim-card-style-classic {
-  --card-confirm-duration: 4200ms;
+  --card-confirm-duration: 2600ms;
   --card-confirm-ease: cubic-bezier(0.18, 0.88, 0.24, 1);
 }
 
