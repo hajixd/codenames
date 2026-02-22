@@ -2377,6 +2377,12 @@ function switchToPanel(panelId) {
     } catch (_) {}
   }
 
+  if (targetId === 'panel-teams') {
+    try { renderTeams(teamsCache); } catch (_) {}
+  }
+  if (targetId === 'panel-myteam') {
+    try { renderMyTeam(teamsCache); } catch (_) {}
+  }
   if (targetId === 'panel-brackets') {
     try { renderBrackets(teamsCache); } catch (_) {}
   }
@@ -5650,10 +5656,16 @@ function initMyTeamControls() {
     onCommit: async (v) => {
       const st = computeUserState(teamsCache);
       if (!st.teamId) return;
+      const ok = await showCustomConfirm({
+        title: 'Rename team?',
+        message: `Rename team to "${v}"?`,
+        okText: 'Rename',
+      });
+      if (!ok) throw new Error('cancelled');
       try {
         await renameTeamUnique(st.teamId, v);
       } catch (e) {
-        setHint('myteam-hint', e?.message || 'Could not rename team.');
+        if (e?.message !== 'cancelled') setHint('myteam-hint', e?.message || 'Could not rename team.');
         throw e;
       }
     }
