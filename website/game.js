@@ -7518,31 +7518,9 @@ function closeRosterExpandPopup() {
 
 function positionRosterExpandPopupCard(popup, cardEl, sourceBox = null) {
   if (!popup || !cardEl) return;
-  if (!sourceBox || !sourceBox.isConnected || typeof sourceBox.getBoundingClientRect !== 'function') {
-    cardEl.style.removeProperty('left');
-    cardEl.style.removeProperty('top');
-    return;
-  }
-
-  const sourceRect = sourceBox.getBoundingClientRect();
-  const cardRect = cardEl.getBoundingClientRect();
-  const viewportW = window.innerWidth || document.documentElement?.clientWidth || 0;
-  const viewportH = window.innerHeight || document.documentElement?.clientHeight || 0;
-  if (!(viewportW > 0 && viewportH > 0)) return;
-
-  const margin = 14;
-  const halfW = Math.max(140, cardRect.width / 2);
-  const halfH = Math.max(140, cardRect.height / 2);
-  const desiredCenterX = sourceRect.left + (sourceRect.width / 2);
-  // Bias upward so the popup overlays the small role box instead of sitting too low.
-  const liftPx = Math.max(56, Math.min(118, sourceRect.height * 1.35));
-  const desiredCenterY = (sourceRect.top + (sourceRect.height / 2)) - liftPx;
-
-  const clampedCenterX = Math.max(halfW + margin, Math.min(viewportW - halfW - margin, desiredCenterX));
-  const clampedCenterY = Math.max(halfH + margin, Math.min(viewportH - halfH - margin, desiredCenterY));
-
-  cardEl.style.left = `${Math.round(clampedCenterX)}px`;
-  cardEl.style.top = `${Math.round(clampedCenterY)}px`;
+  // Always center via CSS (left: 50%, top: 50%, transform: translate(-50%,-50%))
+  cardEl.style.removeProperty('left');
+  cardEl.style.removeProperty('top');
 }
 
 function openRosterExpandPopup(team, role, sourceBox = null) {
