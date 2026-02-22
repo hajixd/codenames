@@ -2469,14 +2469,6 @@ function getCumulativeClockSnapshot(game, nowMs = Date.now()) {
     const rows = [{
       id: 'team',
       left: {
-        key: 'red',
-        label: getTeamTimerLabel('red', game),
-        ms: snap.redMs,
-        unlimited: snap.unlimited,
-        theme: 'red',
-        role: null,
-      },
-      right: {
         key: 'blue',
         label: getTeamTimerLabel('blue', game),
         ms: snap.blueMs,
@@ -2484,8 +2476,16 @@ function getCumulativeClockSnapshot(game, nowMs = Date.now()) {
         theme: 'blue',
         role: null,
       },
+      right: {
+        key: 'red',
+        label: getTeamTimerLabel('red', game),
+        ms: snap.redMs,
+        unlimited: snap.unlimited,
+        theme: 'red',
+        role: null,
+      },
     }];
-    const active = snap.runningTeam === 'blue' ? rows[0].right : rows[0].left;
+    const active = snap.runningTeam === 'blue' ? rows[0].left : rows[0].right;
     return {
       mode: 'team',
       rows,
@@ -2500,14 +2500,6 @@ function getCumulativeClockSnapshot(game, nowMs = Date.now()) {
     {
       id: 'operatives',
       left: {
-        key: 'red-operatives',
-        label: 'Red Operatives',
-        ms: snap.redOperativesMs,
-        unlimited: snap.operativesUnlimited,
-        theme: 'red',
-        role: 'operatives',
-      },
-      right: {
         key: 'blue-operatives',
         label: 'Blue Operatives',
         ms: snap.blueOperativesMs,
@@ -2515,23 +2507,31 @@ function getCumulativeClockSnapshot(game, nowMs = Date.now()) {
         theme: 'blue',
         role: 'operatives',
       },
+      right: {
+        key: 'red-operatives',
+        label: 'Red Operatives',
+        ms: snap.redOperativesMs,
+        unlimited: snap.operativesUnlimited,
+        theme: 'red',
+        role: 'operatives',
+      },
     },
     {
       id: 'spymaster',
       left: {
-        key: 'red-spymaster',
-        label: 'Red Spymaster',
-        ms: snap.redSpymasterMs,
-        unlimited: snap.spymasterUnlimited,
-        theme: 'red',
-        role: 'spymaster',
-      },
-      right: {
         key: 'blue-spymaster',
         label: 'Blue Spymaster',
         ms: snap.blueSpymasterMs,
         unlimited: snap.spymasterUnlimited,
         theme: 'blue',
+        role: 'spymaster',
+      },
+      right: {
+        key: 'red-spymaster',
+        label: 'Red Spymaster',
+        ms: snap.redSpymasterMs,
+        unlimited: snap.spymasterUnlimited,
+        theme: 'red',
         role: 'spymaster',
       },
     },
@@ -12375,18 +12375,45 @@ function updateOgPhaseBannerCumulativeText(snap, game = currentGame) {
   if (!isCumulativeClockType(game)) return;
   if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) return;
 
-  const lines = [];
+  const buildClockHtml = (entry) => {
+    if (!entry) return '';
+    const themeClass = entry.theme === 'red' ? 'is-red' : 'is-blue';
+    const activeClass = snap.runningKey && entry.key === snap.runningKey ? 'is-active' : 'is-idle';
+    const roleClass = entry.role === 'spymaster'
+      ? 'is-spymaster'
+      : (entry.role === 'operatives' ? 'is-operatives' : '');
+    const ms = Math.max(0, Number(entry.ms) || 0);
+    let urgencyClass = '';
+    if (!entry.unlimited && snap.runningKey && entry.key === snap.runningKey) {
+      const seconds = Math.ceil(ms / 1000);
+      if (seconds <= 10) urgencyClass = 'is-danger';
+      else if (seconds <= 30) urgencyClass = 'is-warning';
+    }
+    const label = escapeHtml(String(entry.label || 'Timer'));
+    const clock = escapeHtml(formatClockTime(ms, !!entry.unlimited));
+    return `
+      <span class="og-cumulative-clock ${themeClass} ${activeClass} ${roleClass} ${urgencyClass}">
+        <span class="og-cumulative-label">${label}</span>
+        <span class="og-cumulative-time">${clock}</span>
+      </span>
+    `;
+  };
+
+  const rowsHtml = [];
   for (const row of snap.rows) {
     const left = row?.left || null;
     const right = row?.right || null;
     if (!left || !right) continue;
-    const leftText = `${left.label}: ${formatClockTime(left.ms, left.unlimited)}`;
-    const rightText = `${right.label}: ${formatClockTime(right.ms, right.unlimited)}`;
-    lines.push(`${leftText}     ${rightText}`);
+    rowsHtml.push(`
+      <span class="og-cumulative-row">
+        ${buildClockHtml(left)}
+        ${buildClockHtml(right)}
+      </span>
+    `);
   }
-  if (!lines.length) return;
+  if (!rowsHtml.length) return;
 
-  ogText.textContent = lines.join('\n');
+  ogText.innerHTML = `<span class="og-cumulative-wrap">${rowsHtml.join('')}</span>`;
   ogText.classList.remove('red', 'blue');
   ogText.classList.add('is-timer', 'is-cumulative');
 }
@@ -12510,20 +12537,20 @@ function startCumulativeGameTimer(game) {
     if (safeMode === 'role') {
       teamRowEl.innerHTML = `
         <div class="team-timer-pair-row">
-          <span class="team-timer-pill side-left" data-clock-key="red-operatives"></span>
-          <span class="team-timer-pill side-right" data-clock-key="blue-operatives"></span>
+          <span class="team-timer-pill side-left" data-clock-key="blue-operatives"></span>
+          <span class="team-timer-pill side-right" data-clock-key="red-operatives"></span>
         </div>
         <div class="team-timer-pair-row">
-          <span class="team-timer-pill side-left" data-clock-key="red-spymaster"></span>
-          <span class="team-timer-pill side-right" data-clock-key="blue-spymaster"></span>
+          <span class="team-timer-pill side-left" data-clock-key="blue-spymaster"></span>
+          <span class="team-timer-pill side-right" data-clock-key="red-spymaster"></span>
         </div>
       `;
       teamRowEl.classList.remove('layout-team');
       teamRowEl.classList.add('layout-role');
     } else {
       teamRowEl.innerHTML = `
-        <span class="team-timer-pill side-left" data-clock-key="red"></span>
-        <span class="team-timer-pill side-right" data-clock-key="blue"></span>
+        <span class="team-timer-pill side-left" data-clock-key="blue"></span>
+        <span class="team-timer-pill side-right" data-clock-key="red"></span>
       `;
       teamRowEl.classList.remove('layout-role');
       teamRowEl.classList.add('layout-team');

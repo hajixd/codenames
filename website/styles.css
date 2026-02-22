@@ -18205,12 +18205,98 @@ body.og-mode .og-phase-banner {
 }
 
 .og-phase-text.is-cumulative {
-  font-size: clamp(11px, 1.15vw, 14px);
-  letter-spacing: 0.45px;
-  line-height: 1.22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: min(760px, 88vw);
+  letter-spacing: 0;
+  line-height: 1;
   text-transform: none;
-  white-space: pre-line;
+  white-space: normal;
   font-variant-numeric: tabular-nums;
+}
+
+.og-phase-text.is-cumulative .og-cumulative-wrap {
+  width: min(760px, 88vw);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.og-phase-text.is-cumulative .og-cumulative-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: opacity 120ms ease, border-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-blue {
+  border-color: color-mix(in srgb, var(--game-blue) 62%, rgba(255, 255, 255, 0.16));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--game-blue) 34%, rgba(14, 24, 38, 0.88)) 0%, rgba(11, 18, 31, 0.84) 100%);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-red {
+  border-color: color-mix(in srgb, var(--game-red) 62%, rgba(255, 255, 255, 0.16));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--game-red) 34%, rgba(34, 16, 20, 0.88)) 0%, rgba(28, 15, 18, 0.84) 100%);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-operatives {
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.2);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-spymaster {
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-idle {
+  opacity: 0.62;
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-active {
+  opacity: 1;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #7dd3fc 48%, rgba(255, 255, 255, 0.2)), 0 10px 22px rgba(0, 0, 0, 0.32);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-warning .og-cumulative-time {
+  color: var(--gold);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-clock.is-danger .og-cumulative-time {
+  color: var(--red);
+}
+
+.og-phase-text.is-cumulative .og-cumulative-label {
+  font-size: clamp(10px, 0.74vw, 11px);
+  letter-spacing: 0.75px;
+  text-transform: uppercase;
+  font-weight: 800;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.og-phase-text.is-cumulative .og-cumulative-time {
+  font-size: clamp(15px, 1.08vw, 20px);
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
 }
 
 /* --- OG Game Board --- */
