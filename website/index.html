@@ -493,14 +493,14 @@
 
             <div class="modal-body">
               <div class="settings-grid qp-settings-grid">
-                <label class="setting-row qp-setting" data-accent="vibe">
+                <label class="setting-row qp-setting" data-accent="vibe" data-advanced="true" style="display:none;">
                   <span class="setting-label">Board vibe</span>
                   <input type="text" class="input setting-input" id="practice-page-vibe"
                          placeholder="e.g. geography, movies, food..."
                          maxlength="60" autocomplete="off" />
                 </label>
 
-                <label class="setting-row qp-setting" data-accent="black">
+                <label class="setting-row qp-setting" data-accent="black" data-advanced="true" style="display:none;">
                   <span class="setting-label">Assassin (black) cards</span>
                   <select class="input setting-select" id="practice-page-black-cards">
                     <option value="1" selected>1 (standard)</option>
@@ -509,7 +509,7 @@
                   </select>
                 </label>
 
-                <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue">
+                <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue" data-advanced="true" style="display:none;">
                   <span class="setting-label">Turn Type</span>
                   <div class="segmented qp-timer-mode" role="group" aria-label="Turn type">
                     <button class="seg-btn active" id="practice-page-turn-type-role" data-turn-type="role" type="button" aria-pressed="true">Per Role</button>
@@ -517,7 +517,7 @@
                   </div>
                 </div>
 
-                <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="guess">
+                <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="guess" data-advanced="true" style="display:none;">
                   <span class="setting-label">Clock Type</span>
                   <div class="segmented qp-timer-mode" role="group" aria-label="Clock type">
                     <button class="seg-btn" id="practice-page-clock-type-cumulative" data-clock-type="cumulative" type="button" aria-pressed="false">Cumulative</button>
@@ -526,7 +526,7 @@
                 </div>
 
                 <label class="setting-row qp-setting qp-setting-time" data-accent="clue" id="practice-page-turn-clue-row">
-                  <span class="setting-label">Spymaster clue timer</span>
+                  <span class="setting-label">Spymaster Clock</span>
                   <div class="mmss-input mmss-input-minutes">
                     <input class="input mmss-part" id="practice-page-clue-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Practice clue timer minutes" />
                     <span class="mmss-unit">min</span>
@@ -534,7 +534,7 @@
                 </label>
 
                 <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="practice-page-turn-guess-row">
-                  <span class="setting-label">Guess timer</span>
+                  <span class="setting-label">Operative Clock</span>
                   <div class="mmss-input mmss-input-minutes">
                     <input class="input mmss-part" id="practice-page-guess-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Practice guess timer minutes" />
                     <span class="mmss-unit">min</span>
@@ -566,7 +566,7 @@
                 <label class="setting-row qp-setting qp-setting-toggle" data-accent="judges" id="practice-page-ai-challenge-row">
                   <span class="setting-label">Enable Challenge</span>
                   <div class="toggle-switch">
-                    <input type="checkbox" id="practice-page-ai-challenge-toggle" checked />
+                    <input type="checkbox" id="practice-page-ai-challenge-toggle" />
                     <span class="toggle-slider"></span>
                   </div>
                 </label>
@@ -589,6 +589,9 @@
                       <span>Judge Vlaada Chvátil</span>
                     </label>
                   </div>
+                </div>
+                <div class="advanced-settings-trigger">
+                  <button type="button" class="btn small advanced-settings-btn" id="practice-page-advanced-btn">Advanced Settings</button>
                 </div>
               </div>
 
@@ -1067,14 +1070,14 @@
                     </div>
 
                     <div class="modal-body">
-                      <div class="settings-grid qp-settings-grid"><label class="setting-row qp-setting" data-accent="vibe">
+                      <div class="settings-grid qp-settings-grid"><label class="setting-row qp-setting" data-accent="vibe" data-advanced="true" style="display:none;">
                           <span class="setting-label">Board vibe</span>
                           <input type="text" class="input setting-input" id="qp-vibe"
                                  placeholder="e.g. geography, movies, food..."
                                  maxlength="60" autocomplete="off" />
                         </label>
 
-                        <label class="setting-row qp-setting" data-accent="black">
+                        <label class="setting-row qp-setting" data-accent="black" data-advanced="true" style="display:none;">
                           <span class="setting-label">Assassin (black) cards</span>
                           <select class="input setting-select" id="qp-black-cards">
                             <option value="1" selected>1 (standard)</option>
@@ -1083,7 +1086,7 @@
                           </select>
                         </label>
 
-                        <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue">
+                        <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="clue" data-advanced="true" style="display:none;">
                           <span class="setting-label">Turn Type</span>
                           <div class="segmented qp-timer-mode" role="group" aria-label="Turn type">
                             <button class="seg-btn active" id="qp-turn-type-role" data-turn-type="role" type="button" aria-pressed="true">Per Role</button>
@@ -1091,7 +1094,7 @@
                           </div>
                         </div>
 
-                        <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="guess">
+                        <div class="setting-row qp-setting qp-setting-timer-mode" data-accent="guess" data-advanced="true" style="display:none;">
                           <span class="setting-label">Clock Type</span>
                           <div class="segmented qp-timer-mode" role="group" aria-label="Clock type">
                             <button class="seg-btn" id="qp-clock-type-cumulative" data-clock-type="cumulative" type="button" aria-pressed="false">Cumulative</button>
@@ -1100,7 +1103,7 @@
                         </div>
 
                         <label class="setting-row qp-setting qp-setting-time" data-accent="clue" id="qp-turn-clue-row">
-                          <span class="setting-label">Spymaster clue timer</span>
+                          <span class="setting-label">Spymaster Clock</span>
                           <div class="mmss-input mmss-input-minutes">
                             <input class="input mmss-part" id="qp-clue-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Clue timer minutes" />
                             <span class="mmss-unit">min</span>
@@ -1108,7 +1111,7 @@
                         </label>
 
                         <label class="setting-row qp-setting qp-setting-time" data-accent="guess" id="qp-turn-guess-row">
-                          <span class="setting-label">Guess timer</span>
+                          <span class="setting-label">Operative Clock</span>
                           <div class="mmss-input mmss-input-minutes">
                             <input class="input mmss-part" id="qp-guess-timer-min" type="number" min="0" max="99" step="1" inputmode="numeric" value="0" aria-label="Guess timer minutes" />
                             <span class="mmss-unit">min</span>
@@ -1139,7 +1142,7 @@
                         <label class="setting-row qp-setting qp-setting-toggle" data-accent="judges" id="qp-ai-challenge-row">
                           <span class="setting-label">Enable Challenge</span>
                           <div class="toggle-switch">
-                            <input type="checkbox" id="qp-ai-challenge-toggle" checked />
+                            <input type="checkbox" id="qp-ai-challenge-toggle" />
                             <span class="toggle-slider"></span>
                           </div>
                         </label>
@@ -1162,6 +1165,9 @@
                               <span>Judge Vlaada Chvátil</span>
                             </label>
                           </div>
+                        </div>
+                        <div class="advanced-settings-trigger">
+                          <button type="button" class="btn small advanced-settings-btn" id="qp-advanced-btn">Advanced Settings</button>
                         </div>
                       </div>
 

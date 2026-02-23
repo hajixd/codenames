@@ -3295,6 +3295,17 @@ body.light-mode .modal{
 .qp-settings-sub{ color: var(--text-dim); font-size: 13px; margin-top: 2px; line-height: 1.35; }
 
 .qp-settings-grid{ gap: 10px; }
+.advanced-settings-trigger{
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+.advanced-settings-btn{
+  font-size: 12px;
+  opacity: 0.7;
+  letter-spacing: 0.01em;
+}
+.advanced-settings-btn:hover{ opacity: 1; }
 .qp-setting{
   padding: 12px 12px;
   border-radius: 16px;

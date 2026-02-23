@@ -16,6 +16,7 @@ const NEUTRAL_CARDS = 7;
 const ASSASSIN_CARDS = 1;
 
 // Game state
+let qpAdvancedOpen = false;
 let wordsBank = [];
 let wordsDecks = {}; // loaded from words.json
 const DECK_CATALOG = [
@@ -2145,7 +2146,7 @@ function readQuickAIJudgeSettingsFromUI() {
   const challengeToggleEl = document.getElementById('qp-ai-challenge-toggle');
   const strictnessEl = document.getElementById('qp-ai-strictness');
   const aiJudgesEnabled = enabledToggleEl ? !!enabledToggleEl.checked : true;
-  const aiChallengeEnabledRaw = challengeToggleEl ? !!challengeToggleEl.checked : true;
+  const aiChallengeEnabledRaw = challengeToggleEl ? !!challengeToggleEl.checked : false;
   const aiChallengeEnabled = aiJudgesEnabled ? aiChallengeEnabledRaw : false;
   const aiJudgeStrictness = normalizeAIJudgeStrictness(strictnessEl?.value, 55);
   const selected = getQuickAIJudgeOptionInputs()
@@ -2179,12 +2180,12 @@ function setQuickAIJudgePanelState(enabled) {
   const strictnessRow = document.getElementById('qp-ai-strictness-row');
   const strictnessSlider = document.getElementById('qp-ai-strictness');
   if (challengeRow) {
-    challengeRow.style.display = enabled ? 'flex' : 'none';
+    challengeRow.style.display = (enabled && qpAdvancedOpen) ? 'flex' : 'none';
     challengeRow.classList.toggle('is-disabled', !enabled);
   }
   if (challengeToggle) challengeToggle.disabled = !enabled;
   if (strictnessRow) {
-    strictnessRow.style.display = enabled ? 'flex' : 'none';
+    strictnessRow.style.display = (enabled && qpAdvancedOpen) ? 'flex' : 'none';
     strictnessRow.classList.toggle('is-disabled', !enabled);
   }
   if (strictnessSlider) strictnessSlider.disabled = !enabled;
@@ -3900,6 +3901,18 @@ function initGameUI() {
     renderQuickAIJudgeOptions(current.enabledAIJudges);
     ensureQuickAtLeastOneJudge();
     if (quickLobbyGame) updateQuickRulesUI(quickLobbyGame);
+  });
+
+  document.getElementById('qp-advanced-btn')?.addEventListener('click', () => {
+    qpAdvancedOpen = !qpAdvancedOpen;
+    const qpAdvancedBtn = document.getElementById('qp-advanced-btn');
+    const settingsGrid = qpAdvancedBtn?.closest('.qp-settings-grid');
+    settingsGrid?.querySelectorAll('[data-advanced="true"]').forEach((el) => {
+      el.style.display = qpAdvancedOpen ? 'flex' : 'none';
+    });
+    if (qpAdvancedBtn) qpAdvancedBtn.textContent = qpAdvancedOpen ? 'Hide Advanced' : 'Advanced Settings';
+    const judgesEnabled = !!document.getElementById('qp-ai-judges-toggle')?.checked;
+    setQuickAIJudgePanelState(judgesEnabled);
   });
 
   // Role selection

@@ -1302,6 +1302,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAdminAssignModal();
   initJudgesAdminModal();
   initModeratorsModal();
+  subscribeToJudgeCatalog();
   initChatTab();
   initChatDrawerChrome();
   updateHeaderIconVisibility();
@@ -8366,12 +8367,39 @@ function saveAIJudgeCatalog(nextCatalog) {
   try {
     safeLSSet(LS_AI_JUDGE_CATALOG, JSON.stringify(normalized));
   } catch (_) {}
+  // Persist to Firestore so all devices stay in sync
+  try {
+    db.collection('config').doc('judges').set({
+      catalog: normalized,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (_) {}
   try {
     window.dispatchEvent(new CustomEvent('codenames:judge-catalog-updated', {
       detail: { judges: cloneAIJudgeCatalog(normalized) },
     }));
   } catch (_) {}
   return normalized;
+}
+
+let _judgesCatalogUnsubscribe = null;
+function subscribeToJudgeCatalog() {
+  if (_judgesCatalogUnsubscribe) _judgesCatalogUnsubscribe();
+  _judgesCatalogUnsubscribe = db.collection('config').doc('judges').onSnapshot((snap) => {
+    if (!snap.exists) return;
+    const data = snap.data();
+    const catalog = Array.isArray(data?.catalog) ? data.catalog : null;
+    if (!catalog) return;
+    const normalized = cloneAIJudgeCatalog(catalog);
+    // Update local cache
+    try { safeLSSet(LS_AI_JUDGE_CATALOG, JSON.stringify(normalized)); } catch (_) {}
+    // Notify all listeners (game.js, practice page, etc.)
+    try {
+      window.dispatchEvent(new CustomEvent('codenames:judge-catalog-updated', {
+        detail: { judges: cloneAIJudgeCatalog(normalized) },
+      }));
+    } catch (_) {}
+  }, (_) => {});
 }
 
 function getModeratorsSortedPlayers() {
@@ -13859,6 +13887,8 @@ function initPracticePage() {
 
   // Practice is its own page; primary tabs are hidden elsewhere.
 
+  let practiceAdvancedOpen = false;
+
   const roleBtns = Array.from(panel.querySelectorAll('[data-practice-role]'));
   const sizeBtns = Array.from(panel.querySelectorAll('[data-practice-size]'));
   const rulesTextEl = document.getElementById('practice-page-rules-text');
@@ -13909,7 +13939,7 @@ function initPracticePage() {
       teamTimerSeconds: 12 * 60,
       stackingEnabled: true,
       aiJudgesEnabled: true,
-      aiChallengeEnabled: true,
+      aiChallengeEnabled: false,
       enabledAIJudges: [],
       aiJudgeStrictness: 55,
     }
@@ -14025,12 +14055,12 @@ function initPracticePage() {
   const syncJudgePanelVisibility = () => {
     const enabled = !!settingsAiJudgesToggleEl?.checked;
     if (settingsAiChallengeRowEl) {
-      settingsAiChallengeRowEl.style.display = enabled ? 'flex' : 'none';
+      settingsAiChallengeRowEl.style.display = (enabled && practiceAdvancedOpen) ? 'flex' : 'none';
       settingsAiChallengeRowEl.classList.toggle('is-disabled', !enabled);
     }
     if (settingsAiChallengeToggleEl) settingsAiChallengeToggleEl.disabled = !enabled;
     if (settingsAiStrictnessRowEl) {
-      settingsAiStrictnessRowEl.style.display = enabled ? 'flex' : 'none';
+      settingsAiStrictnessRowEl.style.display = (enabled && practiceAdvancedOpen) ? 'flex' : 'none';
       settingsAiStrictnessRowEl.classList.toggle('is-disabled', !enabled);
     }
     if (settingsAiStrictnessEl) settingsAiStrictnessEl.disabled = !enabled;
@@ -14361,6 +14391,17 @@ function initPracticePage() {
     syncStateFromModal();
     refresh();
     closeSettingsModal();
+  });
+
+  const practiceAdvancedBtn = document.getElementById('practice-page-advanced-btn');
+  practiceAdvancedBtn?.addEventListener('click', () => {
+    practiceAdvancedOpen = !practiceAdvancedOpen;
+    const settingsGrid = practiceAdvancedBtn.closest('.qp-settings-grid');
+    settingsGrid?.querySelectorAll('[data-advanced="true"]').forEach((el) => {
+      el.style.display = practiceAdvancedOpen ? 'flex' : 'none';
+    });
+    practiceAdvancedBtn.textContent = practiceAdvancedOpen ? 'Hide Advanced' : 'Advanced Settings';
+    syncJudgePanelVisibility();
   });
 
   startBtn?.addEventListener('click', start);
