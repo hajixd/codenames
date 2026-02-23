@@ -14260,6 +14260,11 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
   transition: opacity 0.25s ease;
 }
 
+.confirm-dialog-backdrop[data-variant="judge-feedback"] {
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(8px);
+}
+
 .confirm-dialog-backdrop.hidden {
   opacity: 0;
   pointer-events: none;
@@ -14465,6 +14470,14 @@ body.light-mode .judges-admin-actions #judges-admin-cancel {
   color: #ffd8b0;
   border: 1px solid rgba(251, 146, 60, 0.45);
   background: rgba(251, 146, 60, 0.14);
+}
+
+.judge-feedback-word {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: #ffd8b0;
+  padding: 6px 0 2px;
 }
 
 .judge-feedback-copy {

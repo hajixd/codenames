@@ -10454,10 +10454,16 @@ async function showJudgeFeedbackDialog(reasonRaw = '', opts = {}) {
   const title = String(opts.title || 'Clue Rejected').trim() || 'Clue Rejected';
   const okText = String(opts.okText || 'Try Again').trim() || 'Try Again';
   const judgeName = parsed.judge || 'Judge Council';
-  const reason = parsed.reason || 'This clue breaks an active judge rule.';
+  const rawReason = parsed.reason || 'This clue breaks an active judge rule.';
+  const reason = rawReason.charAt(0).toUpperCase() + rawReason.slice(1);
+  const word = String(opts.word || '').trim().toUpperCase();
+  const wordHtml = word
+    ? `<div class="judge-feedback-word">${_escapeJudgeHtml(word)}</div>`
+    : '';
   const html = `
     <div class="judge-feedback-dialog">
       <div class="judge-feedback-chip">${_escapeJudgeHtml(judgeName)}</div>
+      ${wordHtml}
       <div class="judge-feedback-copy">${_escapeJudgeHtml(reason)}</div>
       <p class="judge-feedback-note">Submit a new clue that avoids this rule conflict.</p>
     </div>
@@ -10540,6 +10546,7 @@ async function handleClueSubmit(e) {
       await showJudgeFeedbackDialog(result.reason || 'Clue rejected by judge rules.', {
         title: 'Judge Ruling',
         okText: 'Try Again',
+        word,
       });
       return;
     }

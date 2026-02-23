@@ -12485,6 +12485,10 @@ function showSystemDialog(options = {}) {
       if (variantKey) iconEl.setAttribute('data-variant', variantKey);
       else iconEl.removeAttribute('data-variant');
     }
+    if (backdrop) {
+      if (variantKey) backdrop.setAttribute('data-variant', variantKey);
+      else backdrop.removeAttribute('data-variant');
+    }
 
     backdrop?.classList.remove('hidden');
     dialog?.classList.remove('hidden');
@@ -12500,6 +12504,7 @@ function hideSystemDialog() {
   dialog?.classList.add('hidden');
   dialog?.removeAttribute('data-variant');
   iconEl?.removeAttribute('data-variant');
+  backdrop?.removeAttribute('data-variant');
   if (systemDialogResolve) {
     systemDialogResolve(true);
     systemDialogResolve = null;
