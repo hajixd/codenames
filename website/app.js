@@ -93,6 +93,37 @@ function isValidUsername(v) {
   return /^[a-z0-9_]{3,20}$/.test(String(v || '').trim().toLowerCase());
 }
 
+function looksLikeFirebaseUid(v) {
+  return /^[A-Za-z0-9:_-]{20,}$/.test(String(v || '').trim());
+}
+
+function usernameDocUid(entry) {
+  const direct = String(entry?.uid || entry?.userId || entry?.accountId || entry?.odId || '').trim();
+  if (direct) return direct;
+  const docId = String(entry?.id || '').trim();
+  if (!docId) return '';
+  // Legacy registry variants used uid as the doc id.
+  if (!isValidUsername(docId) && looksLikeFirebaseUid(docId)) return docId;
+  return '';
+}
+
+function usernameDocName(entry) {
+  const fromId = normalizeUsername(entry?.id || '');
+  if (fromId && isValidUsername(fromId)) return fromId;
+
+  const fromUsername = normalizeUsername(entry?.username || '');
+  if (fromUsername && isValidUsername(fromUsername)) return fromUsername;
+
+  const fromName = normalizeUsername(entry?.name || '');
+  if (fromName && isValidUsername(fromName)) return fromName;
+
+  return '';
+}
+
+function usernameDocAuthHandle(data) {
+  return String(data?.authHandle || data?.auth_handle || data?.email || data?.handle || '').trim() || null;
+}
+
 // Firebase Auth enforces a minimum password length. We keep UX flexible by
 // transforming the user-entered password into a longer deterministic secret
 // before sending it to Auth. (Login uses the same transform.)
@@ -116,13 +147,45 @@ function makeAuthHandle(username) {
 }
 
 async function lookupAuthHandleForUsername(username) {
+  const u = normalizeUsername(username);
+  if (!u) return null;
+
   try {
-    const u = normalizeUsername(username);
-    const doc = await db.collection('usernames').doc(u).get();
-    if (!doc.exists) return null;
-    const data = doc.data() || {};
-    return String(data.authHandle || '').trim() || null;
+    const usernames = db.collection('usernames');
+    const direct = await usernames.doc(u).get();
+    if (direct.exists) {
+      const data = direct.data() || {};
+      const handle = usernameDocAuthHandle(data);
+      if (handle) return handle;
+    }
+
+    // Legacy fallback: username may be stored in a field while doc id is uid.
+    const qByUsername = await usernames.where('username', '==', u).limit(1).get().catch(() => null);
+    if (qByUsername && !qByUsername.empty) {
+      const h = usernameDocAuthHandle(qByUsername.docs[0].data() || {});
+      if (h) return h;
+    }
+
+    const qByName = await usernames.where('name', '==', u).limit(1).get().catch(() => null);
+    if (qByName && !qByName.empty) {
+      const h = usernameDocAuthHandle(qByName.docs[0].data() || {});
+      if (h) return h;
+    }
+
+    // Last-resort compatibility path for older registry shapes.
+    const scan = await usernames.limit(700).get().catch(() => null);
+    if (scan) {
+      for (const d of scan.docs) {
+        const row = { id: d.id, ...(d.data() || {}) };
+        if (usernameDocName(row) !== u) continue;
+        const h = usernameDocAuthHandle(row);
+        if (h) return h;
+      }
+    }
+    return null;
   } catch (e) {
+    const code = String(e?.code || '').toLowerCase();
+    if (code.includes('permission-denied') || code.includes('unauthenticated')) throw e;
     console.warn('Failed reading username registry (best-effort)', e);
     return null;
   }
@@ -130,9 +193,28 @@ async function lookupAuthHandleForUsername(username) {
 
 async function resolveUsernameForUid(uid) {
   try {
-    const q = await db.collection('usernames').where('uid', '==', String(uid || '').trim()).limit(1).get();
-    if (q.empty) return null;
-    return String(q.docs[0].id || '').trim() || null;
+    const targetUid = String(uid || '').trim();
+    if (!targetUid) return null;
+
+    const usernames = db.collection('usernames');
+    const uidFields = ['uid', 'userId', 'accountId', 'odId'];
+    for (const field of uidFields) {
+      const q = await usernames.where(field, '==', targetUid).limit(1).get().catch(() => null);
+      if (!q || q.empty) continue;
+      const row = { id: q.docs[0].id, ...(q.docs[0].data() || {}) };
+      const name = usernameDocName(row);
+      if (name) return name;
+    }
+
+    const scan = await usernames.limit(700).get().catch(() => null);
+    if (!scan) return null;
+    for (const d of scan.docs) {
+      const row = { id: d.id, ...(d.data() || {}) };
+      if (usernameDocUid(row) !== targetUid) continue;
+      const name = usernameDocName(row);
+      if (name) return name;
+    }
+    return null;
   } catch (e) {
     console.warn('Failed resolving username for uid (best-effort)', e);
     return null;
@@ -437,16 +519,36 @@ async function purgeCorruptedAccountEverywhere(u, info = {}) {
     // Prefer cache
     try {
       for (const r of (usernamesCache || [])) {
-        const rUid = String(r?.uid || '').trim();
-        const nm = String(r?.id || '').trim();
+        const rUid = usernameDocUid(r);
+        const nm = usernameDocName(r);
         if (rUid && rUid === uid && nm) names.add(nm);
       }
     } catch (_) {}
 
-    // If empty, query directly
+    // If empty, query directly (supports legacy uid field names).
     if (names.size === 0) {
-      const q = await db.collection('usernames').where('uid', '==', uid).get();
-      q.docs.forEach(d => names.add(String(d.id || '').trim()));
+      const uidFields = ['uid', 'userId', 'accountId', 'odId'];
+      for (const field of uidFields) {
+        const q = await db.collection('usernames').where(field, '==', uid).get().catch(() => null);
+        if (!q) continue;
+        q.docs.forEach((d) => {
+          const nm = usernameDocName({ id: d.id, ...(d.data() || {}) });
+          if (nm) names.add(nm);
+        });
+        if (names.size > 0) break;
+      }
+      if (names.size === 0) {
+        const scan = await db.collection('usernames').limit(700).get().catch(() => null);
+        if (scan) {
+          scan.docs.forEach((d) => {
+            const row = { id: d.id, ...(d.data() || {}) };
+            if (usernameDocUid(row) === uid) {
+              const nm = usernameDocName(row);
+              if (nm) names.add(nm);
+            }
+          });
+        }
+      }
     }
 
     // Last resort: try the provided username
@@ -484,6 +586,13 @@ let teamsUnsub = null;
 let playersUnsub = null;
 let usernamesUnsub = null;
 let usernamesCache = []; // docs from /usernames (public registry)
+
+function findRegistryUsernameByUid(uid) {
+  const target = String(uid || '').trim();
+  if (!target) return '';
+  const row = (usernamesCache || []).find((u) => usernameDocUid(u) === target) || null;
+  return row ? usernameDocName(row) : '';
+}
 
 // Avoid spamming Firestore with repeated legacy-migration writes.
 const migratedCreatorIds = new Set();
@@ -1829,6 +1938,8 @@ function initLaunchScreen() {
         if (loginHint) loginHint.textContent = 'Sign-in is not enabled for this Firebase project. Enable Email/Password in Firebase Console → Authentication.';
       } else if (ec === 'auth/network-request-failed') {
         if (loginHint) loginHint.textContent = 'Network error. Check your connection and try again.';
+      } else if (ec.includes('permission-denied') || ec.includes('unauthenticated')) {
+        if (loginHint) loginHint.textContent = 'Cannot read account registry. Check Firestore rules for /usernames reads.';
       } else {
         if (loginHint) loginHint.textContent = 'Login failed. Check username/password.';
       }
@@ -2140,7 +2251,8 @@ function initAuthGate() {
 
       // Signed out: stop listeners + show auth page.
       if (!u) {
-        // Stop presence + clear timers when signed out.
+        // Stop writes/timers when signed out.
+        // Keep read-only presence listening so auth-screen "Who's Online" still works.
         try { stopPresenceListener(); } catch (_) {}
         try { if (presenceUpdateInterval) clearInterval(presenceUpdateInterval); } catch (_) {}
         presenceUpdateInterval = null;
@@ -2162,6 +2274,7 @@ function initAuthGate() {
         unreadPersonalCount = 0;
         try { clearLastNavigation(); } catch (_) {}
         try { showAuthScreen(); } catch (_) {}
+        try { startPresenceListener(); } catch (_) {}
         if (isBoot) finishBootAuthLoading(750);
         return;
       }
@@ -3124,9 +3237,23 @@ function listenToPlayers() {
   // Players = anyone who has entered their name on this device at least once.
   if (playersUnsub) return;
   playersUnsub = db.collection('players')
-    .orderBy('name', 'asc')
     .onSnapshot((snapshot) => {
-      playersCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const nextPlayers = snapshot.docs.map((d) => {
+        const raw = d.data() || {};
+        const uid = String(d.id || '').trim();
+        const fallbackName = findRegistryUsernameByUid(uid);
+        const name = String(raw.name || raw.username || raw.displayName || fallbackName || '').trim();
+        return { ...raw, id: uid, name };
+      });
+      nextPlayers.sort((a, b) => {
+        const an = String(a?.name || '').trim();
+        const bn = String(b?.name || '').trim();
+        if (an && bn) return an.localeCompare(bn, undefined, { sensitivity: 'base' });
+        if (an) return -1;
+        if (bn) return 1;
+        return String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { sensitivity: 'base' });
+      });
+      playersCache = nextPlayers;
       playersByIdCache = new Map((playersCache || []).map((p) => [String(p?.id || '').trim(), p]).filter(([id]) => !!id));
       refreshModeratorRoleFromCache();
       // Duplicate player docs are no longer expected with Firebase Auth (uid keys).
@@ -3614,6 +3741,9 @@ function findKnownUserName(userId) {
   const p = (playersCache || []).find(x => x?.id === pid || nameToAccountId((x?.name || '').trim()) === pid);
   const pn = (p?.name || '').trim();
   if (pn) return pn;
+
+  const reg = findRegistryUsernameByUid(pid);
+  if (reg) return reg;
 
   for (const t of (teamsCache || [])) {
     for (const m of getMembers(t)) {
@@ -6618,8 +6748,8 @@ function getNameForAccount(uid) {
   const p = playersByIdCache.get(id) || null;
   if (p?.name) return String(p.name).trim();
   // Fall back to username registry doc id
-  const u = (usernamesCache || []).find(x => String(x?.uid || '').trim() === id);
-  if (u?.id) return String(u.id).trim();
+  const reg = findRegistryUsernameByUid(id);
+  if (reg) return reg;
   return '';
 }
 
@@ -6839,7 +6969,7 @@ function refreshDmNewList() {
   }
 
   const all = (usernamesCache || [])
-    .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
+    .map(u => ({ uid: usernameDocUid(u), name: usernameDocName(u) }))
     .filter(u => u.uid && u.name && u.uid !== me)
     .filter(u => u.name.toLowerCase().startsWith(q))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -6951,7 +7081,7 @@ function refreshPersonalChatSelect() {
   }
 
   const all = (usernamesCache || [])
-    .map(u => ({ uid: String(u?.uid || '').trim(), name: String(u?.id || '').trim() }))
+    .map(u => ({ uid: usernameDocUid(u), name: usernameDocName(u) }))
     .filter(u => u.uid && u.name && u.uid !== me)
     .filter(u => u.name.toLowerCase().startsWith(q))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -11351,9 +11481,18 @@ function startPresenceListener() {
   if (presenceUnsub) return;
 
   presenceUnsub = db.collection(PRESENCE_COLLECTION)
-    .orderBy('lastActivity', 'desc')
     .onSnapshot(snap => {
-      presenceCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const nextPresence = snap.docs.map((d) => {
+        const raw = d.data() || {};
+        const id = String(d.id || raw.odId || raw.uid || raw.userId || '').trim();
+        return { ...raw, id };
+      }).filter((row) => String(row?.id || row?.odId || '').trim());
+      nextPresence.sort((a, b) => {
+        const am = tsToMsSafe(a?.lastActivity || a?.updatedAt || a?.lastSeen || 0);
+        const bm = tsToMsSafe(b?.lastActivity || b?.updatedAt || b?.lastSeen || 0);
+        return bm - am;
+      });
+      presenceCache = nextPresence;
       renderOnlineCounter();
     }, err => {
       console.warn('Presence listener error:', err);
@@ -11476,11 +11615,11 @@ function getAllKnownAccounts() {
 
   // 1) Seed from username registry (shows all accounts even if offline).
   for (const u of (usernamesCache || [])) {
-    const username = String(u?.id || '').trim(); // doc id is the username
-    const uid = String(u?.uid || '').trim();
-    if (!uid || !username) continue;
+    const username = usernameDocName(u);
+    const uid = usernameDocUid(u);
+    if (!uid) continue;
     if (!byUid.has(uid)) {
-      byUid.set(uid, { id: uid, odId: uid, name: username });
+      byUid.set(uid, { id: uid, odId: uid, name: username || 'Unknown' });
     } else {
       const cur = byUid.get(uid);
       if (!cur.name) cur.name = username;
@@ -11491,7 +11630,7 @@ function getAllKnownAccounts() {
   for (const p of (playersCache || [])) {
     const uid = String(p?.id || '').trim();
     if (!uid) continue;
-    const nm = String(p?.name || '').trim();
+    const nm = String(p?.name || p?.username || findRegistryUsernameByUid(uid) || '').trim();
     if (!byUid.has(uid)) byUid.set(uid, { id: uid, odId: uid, name: nm || 'Unknown' });
     else if (nm && !String(byUid.get(uid)?.name || '').trim()) byUid.get(uid).name = nm;
   }
@@ -11659,16 +11798,36 @@ async function adminDeleteUser(userId, displayName) {
     // Prefer cache
     try {
       for (const r of (usernamesCache || [])) {
-        const rUid = String(r?.uid || '').trim();
-        const nm = String(r?.id || '').trim();
+        const rUid = usernameDocUid(r);
+        const nm = usernameDocName(r);
         if (rUid && rUid === uid && nm) names.add(nm);
       }
     } catch (_) {}
 
-    // If empty, query directly
+    // If empty, query directly (supports legacy uid field names).
     if (names.size === 0) {
-      const q = await db.collection('usernames').where('uid', '==', uid).get();
-      q.docs.forEach(d => names.add(String(d.id || '').trim()));
+      const uidFields = ['uid', 'userId', 'accountId', 'odId'];
+      for (const field of uidFields) {
+        const q = await db.collection('usernames').where(field, '==', uid).get().catch(() => null);
+        if (!q) continue;
+        q.docs.forEach((d) => {
+          const nm = usernameDocName({ id: d.id, ...(d.data() || {}) });
+          if (nm) names.add(nm);
+        });
+        if (names.size > 0) break;
+      }
+      if (names.size === 0) {
+        const scan = await db.collection('usernames').limit(700).get().catch(() => null);
+        if (scan) {
+          scan.docs.forEach((d) => {
+            const row = { id: d.id, ...(d.data() || {}) };
+            if (usernameDocUid(row) === uid) {
+              const nm = usernameDocName(row);
+              if (nm) names.add(nm);
+            }
+          });
+        }
+      }
     }
 
     // Last resort: try displayName if it's a plausible username
@@ -13302,7 +13461,7 @@ function getAccountCreatedAtForUid(uid) {
   // 1) Username registry (authoritative, immutable under our rules)
   try {
     for (const r of (usernamesCache || [])) {
-      const rUid = String(r?.uid || '').trim();
+      const rUid = usernameDocUid(r);
       if (rUid === id && r?.createdAt) return r.createdAt;
     }
   } catch (_) {}
