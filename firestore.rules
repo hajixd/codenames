@@ -57,13 +57,34 @@ service cloud.firestore {
     match /teams/{teamId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.creatorUserId == request.auth.uid;
-      function memberUids(teamData) {
-        return (teamData.members is list)
-          ? teamData.members.map(m => m.userId)
-          : [];
+      function uidListed(listValue) {
+        return (listValue is list) && listValue.hasAny([request.auth.uid]);
+      }
+      // Firestore Rules does not support JS-style lambdas (m => m.userId).
+      // Teams are small; scan a bounded number of roster entries.
+      function rosterEntryHasAuthUid(roster, i) {
+        return roster.size() > i
+          && roster[i] is map
+          && roster[i].get('userId', '') == request.auth.uid;
+      }
+      function rosterHasAuthUid(roster) {
+        return (roster is list) && (
+          rosterEntryHasAuthUid(roster, 0)  || rosterEntryHasAuthUid(roster, 1)
+          || rosterEntryHasAuthUid(roster, 2)  || rosterEntryHasAuthUid(roster, 3)
+          || rosterEntryHasAuthUid(roster, 4)  || rosterEntryHasAuthUid(roster, 5)
+          || rosterEntryHasAuthUid(roster, 6)  || rosterEntryHasAuthUid(roster, 7)
+          || rosterEntryHasAuthUid(roster, 8)  || rosterEntryHasAuthUid(roster, 9)
+          || rosterEntryHasAuthUid(roster, 10) || rosterEntryHasAuthUid(roster, 11)
+          || rosterEntryHasAuthUid(roster, 12) || rosterEntryHasAuthUid(roster, 13)
+          || rosterEntryHasAuthUid(roster, 14) || rosterEntryHasAuthUid(roster, 15)
+        );
       }
       function isTeamMember(teamData) {
-        return signedIn() && memberUids(teamData).hasAny([request.auth.uid]);
+        return signedIn() && (
+          teamData.get('creatorUserId', '') == request.auth.uid
+          || uidListed(teamData.get('memberIds', []))
+          || rosterHasAuthUid(teamData.get('members', []))
+        );
       }
       // Allow non-members to request/cancel by only touching the pending list.
       function isSelfPendingOnlyUpdate() {
@@ -71,17 +92,20 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pending', 'updatedAt'])
           && (
             // must be present in either the old or new pending list
-            ((resource.data.pending is list) ? resource.data.pending.map(p => p.userId).hasAny([request.auth.uid]) : false)
-            || ((request.resource.data.pending is list) ? request.resource.data.pending.map(p => p.userId).hasAny([request.auth.uid]) : false)
+            uidListed(resource.data.get('pendingIds', []))
+            || uidListed(request.resource.data.get('pendingIds', []))
+            || rosterHasAuthUid(resource.data.get('pending', []))
+            || rosterHasAuthUid(request.resource.data.get('pending', []))
           );
       }
       // Allow a user to join a team by adding themselves to members (invite accept).
       function isSelfJoinUpdate() {
         return signedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'pending', 'updatedAt'])
-          && ((request.resource.data.members is list)
-            ? request.resource.data.members.map(m => m.userId).hasAny([request.auth.uid])
-            : false);
+          && (
+            uidListed(request.resource.data.get('memberIds', []))
+            || rosterHasAuthUid(request.resource.data.get('members', []))
+          );
       }
       // Members can manage invites/requests and roster. Admin can do anything.
       allow update: if signedIn() && (isAdmin() || isTeamMember(resource.data) || isSelfPendingOnlyUpdate() || isSelfJoinUpdate());

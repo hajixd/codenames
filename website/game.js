@@ -3734,16 +3734,21 @@ function initGameUI() {
 
   // Quick Play role selector (Red ↔ Spectator ↔ Blue)
   // Click on a column selects that role. Arrow keys still cycle.
+  function getEventTargetElement(target) {
+    if (!target) return null;
+    if (target.nodeType === 1) return target;
+    return target.parentElement || null;
+  }
   const roleBox = document.getElementById('quick-seat-switcher');
   roleBox?.addEventListener('click', (e) => {
-    const t = e?.target;
+    const t = getEventTargetElement(e?.target);
     if (t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea'))) {
       return;
     }
     selectQuickRole('spectator');
   }, { capture: true });
   roleBox?.addEventListener('pointerup', (e) => {
-    const t = e?.target;
+    const t = getEventTargetElement(e?.target);
     if (t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea'))) {
       return;
     }
@@ -3767,14 +3772,14 @@ function initGameUI() {
   const redCol = document.getElementById('quick-red-col');
   const blueCol = document.getElementById('quick-blue-col');
   const isSeatIgnoredTarget = (target) => {
-    const t = target;
+    const t = getEventTargetElement(target);
     return !!(t && (t.closest?.('button') || t.closest?.('a') || t.closest?.('input') || t.closest?.('select') || t.closest?.('textarea')));
   };
   const resolveSeatRoleFromColumnClick = (colEl, event) => {
     if (!colEl || !event) return null;
     const roleLists = colEl.querySelector('.quick-role-lists');
     if (!roleLists) return null;
-    const target = event.target;
+    const target = getEventTargetElement(event.target);
     const inRoleLists = !!(target && target.closest?.('.quick-role-lists'));
     if (!inRoleLists) return null;
     const seatSection = target?.closest?.('.quick-role-section');
@@ -3822,6 +3827,8 @@ function initGameUI() {
     if (!el) return;
     const go = (e) => {
       if (e?.type === 'keydown' && !(e.key === 'Enter' || e.key === ' ')) return;
+      const target = getEventTargetElement(e?.target);
+      if (target && target !== el && isSeatIgnoredTarget(target)) return;
       e?.preventDefault?.();
       e?.stopPropagation?.();
       selectQuickSeat(team, seatRole);
